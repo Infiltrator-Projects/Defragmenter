@@ -755,7 +755,7 @@ def test_user_facing_branding_is_defragmenter() -> None:
         ["git", "hash-object", str(icon_path)],
         cwd=ROOT.parent,
         text=True,
-    ).strip() == "14b36b78ab79e7ae2085d53a9921d827f56cca11"
+    ).strip() == "c4d352ff04d5438085fcbe71b4bfb795c26b7755"
     png = icon_path.read_bytes()
     assert png[:8] == bytes((0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A))
     assert int.from_bytes(png[16:20], "big") == 96

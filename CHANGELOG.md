@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Standardise Defragmenter artwork on the canonical `#00ADEF` non-automotive Infiltrator icon family while retaining the single-byte-source launcher/taskbar/About packaging contract.
+
+
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
 ## Unreleased
@@ -12,7 +17,7 @@ This changelog records user-visible, compatibility, architecture and validation 
 
 ## 1.8.0-188
 
-- Replaced the restored legacy glossy Defragmenter artwork with a flat 96×96 project-owned icon deliberately aligned to the System Monitor/Infiltrator desktop family: dark graphite tile, #72dcff cyan linework and a simple block-compaction defragmentation glyph.
+- Replaced the restored legacy glossy Defragmenter artwork with a flat 96×96 project-owned icon deliberately aligned to the System Monitor/Infiltrator desktop family: dark graphite tile, #00ADEF cyan linework and a simple block-compaction defragmentation glyph.
 - Kept the 1.8.0-186 GTK/GLib/X11 identity repair and the 1.8.0-187 complete PNG structural validation, so the new artwork is used consistently by Cinnamon taskbar matching, the main window, About, hicolor, Mint app-install metadata and the private runtime copy.
 - Moved the hicolor installation contract to the matching 96×96 directory and added regressions that reject stale 128×128/256×256 icon paths while pinning the exact new artwork Git blob.
 
