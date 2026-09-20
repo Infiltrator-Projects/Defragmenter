@@ -5,7 +5,7 @@ This document defines the Linux feature-completion target. The released source a
 ## Current foundation
 
 - [x] Broad first-party native allocation analysis across the currently registered filesystem families.
-- [x] Qualified Defragment, Growth Defrag and Recover engines for FAT12/16/32, exFAT, NTFS, ext2/3/4, XFS v5, Amiga OFS/FFS, Amiga SFS0 and HFS+/HFSX.
+- [x] Qualified Defragment, Growth Defrag and Recover engines for FAT12/16/32, exFAT, NTFS, ext2/3/4, XFS v5, Amiga OFS/FFS, Amiga SFS0/SFS2 and HFS+/HFSX.
 - [x] Exact target confirmation, descriptor-level identity binding, mounted-overlap refusal, durable recovery state, cooperative Stop and final read-only verification.
 - [x] Full filesystem, GUI, architecture, safety, packaging and release regression gate.
 - [x] Exact pinned Common dependency with filesystem-neutral mechanisms kept out of filesystem engines.
@@ -14,7 +14,7 @@ This document defines the Linux feature-completion target. The released source a
 
 A filesystem writer is complete only when Defragment, exact 10% Growth Defrag and Recover share a validated placement model, reject unsupported source state before authoritative writes, retain durable recovery material across interruption and independently verify the final image.
 
-- [ ] **Amiga SFS2** — add independent large-file fixtures, exact allocation/fragmentation analysis, offline native relayout, exact 10% Growth Defrag and Recover.
+- [x] **Amiga SFS2** — exact native allocation/fragmentation analysis, SFS2 48-bit file-size and 32-bit extent qualification, offline native relayout, exact 10% Growth Defrag and Recover.
 - [ ] **Amiga PFS3** — add first-party identification, exact allocation/fragmentation analysis, offline native relayout, exact 10% Growth Defrag, Recover and a Test Media creator.
 - [ ] **Classic Macintosh HFS** — promote the existing exact native analyser to a recoverable native Defragment/Growth Defrag/Recover engine.
 - [ ] **Btrfs** — retain exact raw analysis and add a fail-closed offline writer/recovery contract for the explicitly supported single-device feature subset.

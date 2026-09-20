@@ -6,7 +6,7 @@ Completed: 2026-08-25
 Extended: 2026-09-20
 
 Applies to: release version 1.8.0-191
-Audited source commit: b8b979dd885dbb082815dad7005f4132c7b2b40c
+Audited source commit: 82412471f25e1a8761374069c22ebfc662e00bdd
 Audited release-governance commit: b52008be6aa7f19dae2190ddbdd22c7e946849a7
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, sfs, hfsplus, minix
@@ -40,7 +40,7 @@ The completed audit covers these first-party write/recovery engines:
 - **EXT2/EXT3/EXT4** — native staged transaction using the linked libext2fs API in-process, followed by verification and Recover.
 - **XFS** — native raw userspace catalogue, planning, metadata rewrite, verification and Recover for the explicitly supported v5 contract.
 - **Amiga OFS/FFS** — native raw catalogue, relocation, verification and Recover.
-- **Amiga SFS0** — first-party native supported-subset relayout and Recover.
+- **Amiga SFS0/SFS2** — first-party native supported-subset relayout and Recover. SFS2 structure version 4 uses its native 48-bit file-size object field and 32-bit extent block counts rather than truncating them to SFS0 geometry.
 - **HFS+/HFSX** — native staged transaction and Recover for supported clean-journal states.
 - **Minix v1/v2/v3** — native fail-closed staged relayout, exact 10% Growth Defrag and durable Recover for the supported exact-analysis subset.
 
@@ -90,3 +90,6 @@ Earlier audit extensions documented individual implementation fixes, branding ch
 
 
 The 2026-09-20 audit extension additionally covers the Minix v1/v2/v3 writer introduced at `b8b979dd885dbb082815dad7005f4132c7b2b40c`. Hosted qualification completed with the native Minix unit suite, an end-to-end transaction fixture, the full 41-test CTest suite and ASan/UBSan lane. The writer remains fail-closed to the exact native subset accepted by its analyser and requires durable staged recovery material before authoritative source replacement.
+
+
+The 2026-09-20 SFS2 audit extension covers the SFS2-capable native SFS engine at `82412471f25e1a8761374069c22ebfc662e00bdd`. Qualification includes deterministic SFS2 structure-version-4 analysis, Defragment, exact 10% Growth Defrag and interruption/Recover paths, plus an independent sparse large-file fixture that forces a file above 4 GiB and an extent above 65,535 blocks so the SFS2-only 48-bit file-size and 32-bit extent fields are exercised rather than inferred from SFS0 behaviour. The writer remains fail-closed to the validated object-container, extent-tree, bitmap and transaction structures accepted by the native analyser.

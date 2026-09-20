@@ -49,10 +49,13 @@ treating one third-party implementation as infallible.
 - **UFS/FFS** - BSD Fast File System literature and current FreeBSD filesystem
   sources are corroborating references. UFS write support is not enabled.
 - **Amiga OFS/FFS/SFS** - public format descriptions, first-party deterministic
-  fixtures and cross-checks against known images are used together. Because
-  stable normative public specifications are less uniform than for FAT/ext4,
-  mutation support is deliberately limited to the structures exercised by the
-  audited parsers and fixtures.
+  fixtures and cross-checks against known images are used together. The original
+  SmartFilesystem source is used as the primary implementation reference for
+  SFS0 structures; Aaru's independent SFS reader is used as corroborating
+  evidence for the SFS2 structure-version-4 differences (48-bit file sizes and
+  32-bit extent counts). Because stable normative public specifications are less
+  uniform than for FAT/ext4, mutation support is deliberately limited to the
+  structures exercised by the audited parsers and fixtures.
 
 ## Linux/POSIX platform semantics
 

@@ -19,7 +19,7 @@ The user-facing product is **Defragmenter**. The Debian/APT package identity is 
 | XFS v5 | Exact | Native C raw userspace writer | Native C, exact 10% reserve | Yes |
 | Amiga OFS / FFS | Exact | Native C | Native C, exact 10% reserve | Yes |
 | Amiga SFS0 | Exact allocation + file-extent analysis | Native C supported-subset relayout | Exact 10% reserve | Yes |
-| Amiga SFS2 | Not implemented | Not implemented | Not implemented | No |
+| Amiga SFS2 | Exact allocation + 48-bit file/32-bit extent analysis | Native C supported-subset relayout | Native C, exact 10% reserve | Yes |
 | Amiga PFS3 | Not implemented | Not implemented | Not implemented | No |
 | HFS+ / HFSX | Exact | Native C, fail-closed preflight | Native C, exact 10% reserve | Yes |
 | Classic Macintosh HFS | Exact, native C read-only | Not implemented | Not implemented | No |
