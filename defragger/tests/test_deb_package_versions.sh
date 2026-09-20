@@ -16,14 +16,14 @@ if [ "${LD_TEST_FAKE_CMAKE:-0}" = 1 ]; then
         : "${LD_TEST_SOURCE_ROOT:?LD_TEST_SOURCE_ROOT is required for the fake install}"
         mkdir -p \
             "$DESTDIR/usr/lib/linux-defragger/filesystems/fat" \
-            "$DESTDIR/usr/share/icons/hicolor/256x256/apps" \
+            "$DESTDIR/usr/share/icons/hicolor/128x128/apps" \
             "$DESTDIR/usr/share/app-install/icons"
         : >"$DESTDIR/usr/lib/linux-defragger/filesystems/fat/linux-defragger-fat-worker"
         chmod 0755 "$DESTDIR/usr/lib/linux-defragger/filesystems/fat/linux-defragger-fat-worker"
         cp "$LD_TEST_SOURCE_ROOT/packaging/io.github.linuxdefragger.png" \
             "$DESTDIR/usr/lib/linux-defragger/defragmenter-icon.png"
         cp "$LD_TEST_SOURCE_ROOT/packaging/io.github.linuxdefragger.png" \
-            "$DESTDIR/usr/share/icons/hicolor/256x256/apps/io.github.linuxdefragger.png"
+            "$DESTDIR/usr/share/icons/hicolor/128x128/apps/io.github.linuxdefragger.png"
         cp "$LD_TEST_SOURCE_ROOT/packaging/io.github.linuxdefragger.png" \
             "$DESTDIR/usr/share/app-install/icons/infiltrator-defragmenter.png"
     fi
