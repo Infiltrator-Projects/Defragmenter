@@ -205,6 +205,7 @@ def main() -> None:
         "exFAT",
         "XFS",
         "Amiga OFS/FFS",
+        "Btrfs",
         "Amiga SFS0",
         "Classic Macintosh HFS",
         "HFS+/HFSX",

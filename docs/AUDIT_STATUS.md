@@ -6,10 +6,10 @@ Completed: 2026-08-25
 Extended: 2026-09-20
 
 Applies to: release version 1.8.0-191
-Audited source commit: cff4c684019dbec0492639b067c3278b2f94a5d1
+Audited source commit: e24d3eec8422a1e304d67dddc7b73e36ac8af816
 Audited release-governance commit: b52008be6aa7f19dae2190ddbdd22c7e946849a7
 
-Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, pfs3, sfs, hfs, hfsplus, minix
+Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, btrfs, pfs3, sfs, hfs, hfsplus, minix
 
 This document records the **current** write-safety case. Historical audit-development detail remains available in Git history and immutable release tags rather than being repeated here.
 
@@ -39,6 +39,7 @@ The completed audit covers these first-party write/recovery engines:
 - **NTFS** — native fail-closed preflight, canonical supported-subset relocation, exact Growth Defrag reserve and Recover. Plan-database/digest resource ownership uses a narrow C++17 RAII unit behind the existing C ABI; raw planning, relocation and worker control remain C.
 - **EXT2/EXT3/EXT4** — native staged transaction using the linked libext2fs API in-process, followed by verification and Recover.
 - **XFS** — native raw userspace catalogue, planning, metadata rewrite, verification and Recover for the explicitly supported v5 contract.
+- **Btrfs** — exact first-party raw analysis plus a bounded offline Defragment, exact 10% Growth Defrag and durable Recover contract for a single-device CRC32C subset. The writer requires level-0 mutable roots in one unprofiled mixed data/metadata block group, skinny metadata, NODATASUM unencoded full regular-file extents with single inline references, no log root/snapshots/qgroups/device-replace/balance state, and no unsupported feature bits; everything else fails closed.
 - **Amiga OFS/FFS** — native raw catalogue, relocation, verification and Recover.
 - **Amiga SFS0/SFS2** — first-party native supported-subset relayout and Recover. SFS2 structure version 4 uses its native 48-bit file-size object field and 32-bit extent block counts rather than truncating them to SFS0 geometry.
 - **Amiga PFS3** — first-party native exact allocation/anode-chain analysis, bounded offline canonical relayout, exact 10% Growth Defrag and durable Recover for the qualified small-disk subset. The writer rejects superindex/large-file mode, nested directories, links and special entries before authoritative writes.
@@ -101,3 +102,6 @@ The 2026-09-20 PFS3 audit extension covers the bounded native PFS3 engine and fi
 
 
 The 2026-09-20 Classic HFS audit extension covers the bounded native writer at `cff4c684019dbec0492639b067c3278b2f94a5d1`. The writer and existing exact analyser share one parser source for the MDB, allocation bitmap, Extents Overflow B-tree and Catalog B-tree. Mutation requires the volume to be recorded as cleanly unmounted and not hardware/software locked, rejects HFS wrappers containing embedded HFS+/HFSX, preserves the special files and B-tree topology in place, and relocates only regular-file data/resource forks whose complete maps fit in the three inline catalog extents. Qualification exercises deterministic fragmented data-fork payloads, canonical Defragment, exact 10% Growth Defrag reserve, durable interruption/Recover, clean-volume rejection and final payload/layout verification. The complete 43-test CTest gate and hosted ASan/UBSan lane passed before this audit baseline was advanced.
+
+
+The 2026-09-20 Btrfs audit extension covers the bounded native writer qualified at `e24d3eec8422a1e304d67dddc7b73e36ac8af816`. The writer consumes the same native chunk/root/extent/filesystem-tree model as the exact analyser, validates CRC32C on every mutable tree root, stages the complete filesystem prefix before source mutation, relocates only unshared NODATASUM regular-file extents, rewrites the corresponding filesystem/extent-tree records with updated generations and CRC32C, invalidates stale free-space-cache state and publishes updated superblock mirrors. It rejects multi-device/striped profiles, non-level-0 mutable roots, snapshots/subvolumes, qgroups, active log/balance/device-replace state, encoded/checksummed/shared/sparse extents and unsupported feature bits before authoritative writes. Qualification uses an independently manufactured checksummed Btrfs fixture with deliberately fragmented file extents; it exercises Defragment, exact 10% Growth Defrag, durable interruption/Recover and fail-closed encoded-state rejection. The complete 43-test CTest suite and hosted ASan/UBSan lane passed before this audit baseline was advanced.

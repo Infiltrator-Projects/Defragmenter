@@ -5,7 +5,7 @@ This document defines the Linux feature-completion target. The released source a
 ## Current foundation
 
 - [x] Broad first-party native allocation analysis across the currently registered filesystem families.
-- [x] Qualified Defragment, Growth Defrag and Recover engines for FAT12/16/32, exFAT, NTFS, ext2/3/4, XFS v5, Amiga OFS/FFS, Amiga SFS0/SFS2, bounded Amiga PFS3, bounded Classic HFS and HFS+/HFSX.
+- [x] Qualified Defragment, Growth Defrag and Recover engines for FAT12/16/32, exFAT, NTFS, ext2/3/4, XFS v5, Amiga OFS/FFS, Amiga SFS0/SFS2, bounded Amiga PFS3, bounded Classic HFS, bounded single-device Btrfs and HFS+/HFSX.
 - [x] Exact target confirmation, descriptor-level identity binding, mounted-overlap refusal, durable recovery state, cooperative Stop and final read-only verification.
 - [x] Full filesystem, GUI, architecture, safety, packaging and release regression gate.
 - [x] Exact pinned Common dependency with filesystem-neutral mechanisms kept out of filesystem engines.
@@ -17,7 +17,7 @@ A filesystem writer is complete only when Defragment, exact 10% Growth Defrag an
 - [x] **Amiga SFS2** — exact native allocation/fragmentation analysis, SFS2 48-bit file-size and 32-bit extent qualification, offline native relayout, exact 10% Growth Defrag and Recover.
 - [x] **Amiga PFS3** — first-party identification, exact allocation/anode-chain fragmentation analysis for the qualified small-disk subset, bounded offline native relayout, exact 10% Growth Defrag, Recover and a deterministic first-party Test Media creator.
 - [x] **Classic Macintosh HFS** — exact native analyser plus bounded recoverable native Defragment/Growth Defrag/Recover support for clean volumes with complete inline regular-file fork extent maps; unsupported overflow-backed regular-file forks fail closed.
-- [ ] **Btrfs** — retain exact raw analysis and add a fail-closed offline writer/recovery contract for the explicitly supported single-device feature subset.
+- [x] **Btrfs** — exact raw allocation/fragmentation analysis plus a fail-closed recoverable offline Defragment/Growth Defrag/Recover contract for the qualified single-device CRC32C, level-0 mixed-group subset.
 - [ ] **APFS** — replace summary mapping with exact spaceman-backed allocation/fragmentation analysis for a clearly bounded feature subset, then add recoverable offline Defragment/Growth Defrag/Recover and a deterministic Test Media fixture/creator.
 - [x] **Minix v1/v2/v3** — exact native analyser plus recoverable native Defragment/Growth Defrag/Recover support, including exact 10% reserve qualification.
 - [ ] **UFS1/UFS2** — make UFS1 allocation mapping exact, decode file fragmentation for both supported variants, then add recoverable native Defragment/Growth Defrag/Recover support.

@@ -182,13 +182,14 @@ live_updates=$(grep -c '^@@LIVE_MAP ' "$WORK/fat16-growth-to-packed.log")
     fail "FAT16 live map exposed transient staging allocations: ${live_updates} updates for ${forward_batches} completed batches"
 python3 "$ROOT/tests/verify_fat16_workspace_image.py" "$WORK/fat16-workspace.img"
 
-# Write confirmation is mandatory and the classic HFS helper is read-only.
+# Write confirmation is mandatory. Classic HFS has its own dedicated mutation
+# regression above; an invalid target must still fail closed here.
 if "$FAT_WORKER" defrag "$WORK/gapped.img" --write --confirm wrong \
     --journal "$WORK/wrong-confirm.journal" >"$WORK/wrong-confirm.log" 2>&1; then
     fail "engine accepted an incorrect write confirmation"
 fi
 if "$HFS_ANALYSER" defrag /dev/null >"$WORK/hfs-write.log" 2>&1; then
-    fail "read-only HFS analyser accepted a write operation"
+    fail "classic HFS worker accepted an invalid write target"
 fi
 
 printf 'Linux Defragger %s focused tests passed.\n' "$EXPECTED_VERSION"

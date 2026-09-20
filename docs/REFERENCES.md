@@ -36,10 +36,11 @@ treating one third-party implementation as infallible.
   <https://git.kernel.org/pub/scm/fs/xfs/xfsprogs-dev.git/>. Mutation is
   restricted to the explicitly validated XFS v5 feature subset.
 - **Btrfs** - Btrfs development documentation, *On-disk Format*:
-  <https://btrfs.readthedocs.io/en/latest/dev/On-disk-format.html>. That
-  document explicitly warns that parts are incomplete/outdated, so it is
-  treated as corroborating rather than sole authority. Defragmenter currently
-  uses Btrfs only for read-only raw analysis.
+  <https://btrfs.readthedocs.io/en/latest/dev/On-disk-format.html>, corroborated
+  against current btrfs-progs on-disk structures/checksum logic. The native
+  writer is intentionally restricted to the qualified single-device CRC32C,
+  level-0 mixed data/metadata subset and fails closed on feature combinations
+  for which deterministic offline mutation has not been established.
 - **Classic HFS** - Apple *Inside Macintosh: Files* HFS on-disk structures, corroborated by Apple's open-source HFS implementation and the Linux HFS driver. The writer is restricted to clean classic-HFS volumes with regular-file fork maps completely represented by the inline catalog extent record; special B-trees remain fixed.
 - **HFS+ / HFSX** - Apple Technical Note TN1150, *HFS Plus Volume Format*:
   <https://developer.apple.com/library/archive/technotes/tn/tn1150.html>.
