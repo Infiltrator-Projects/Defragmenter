@@ -223,12 +223,12 @@ const std::vector<BackendInfo>& backend_registry() {
                 "NTFS writing uses Defragmenter's offline native C raw engine. No NTFS filesystem driver, mount, filesystem ioctl or external filesystem utility is used.",
                 "NTFS Growth Defrag uses the same native C raw engine and leaves an exact 10% free-cluster reserve after every supported regular-file stream.")});
         result.push_back({
-            "sfs", "Amiga SFS", {"sfs", "sfs0", "smartfilesystem"},
+            "sfs", "Amiga SFS", {"sfs", "sfs0", "sfs2", "smartfilesystem"},
             write, "exact-allocation", "sfs-native", MapAdapter::NativeMap,
             standard_write_ops(
                 "sfs-native",
-                "Amiga SFS0 writing uses Defragmenter's offline first-party native C raw engine.",
-                "SFS0 Growth Defrag leaves an exact 10% free-block reserve after every regular file.")});
+                "Amiga SFS0/SFS2 writing uses Defragmenter's offline first-party native C raw engine.",
+                "SFS0/SFS2 Growth Defrag leaves an exact 10% free-block reserve after every regular file.")});
         result.push_back({
             "swap", "Linux Swap", {"swap", "swapspace", "linux-swap"},
             read, "summary", "swap-native", MapAdapter::NativeMap, {}});
