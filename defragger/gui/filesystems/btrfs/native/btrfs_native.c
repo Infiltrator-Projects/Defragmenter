@@ -9,6 +9,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <linux/fs.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -1388,9 +1389,8 @@ static int writer_leaf_load(const Reader *reader, const ChunkVec *chunks,
         goto done;
     }
     const uint32_t nritems = infiltratr_load_le32(raw + 96U);
-    if ((size_t)nritems >
-        (SIZE_MAX - BTRFS_HEADER_SIZE) / BTRFS_ITEM_SIZE ||
-        BTRFS_HEADER_SIZE + (size_t)nritems * BTRFS_ITEM_SIZE > node_size) {
+    if ((uint64_t)BTRFS_HEADER_SIZE +
+            (uint64_t)nritems * (uint64_t)BTRFS_ITEM_SIZE > node_size) {
         set_error(error, error_size, "invalid Btrfs writer leaf item count");
         goto done;
     }
@@ -2385,9 +2385,9 @@ int btrfs_verify_layout(const char *path, bool growth,
         const uint64_t reserve =
             reserve_blocks * model.sector_size;
         if (expected > UINT64_MAX - reserve ||
-            reserve != 0U &&
-            writer_extent_overlaps(&model.extent_leaf, expected,
-                                   expected + reserve, model.node_size)) {
+            (reserve != 0U &&
+             writer_extent_overlaps(&model.extent_leaf, expected,
+                                    expected + reserve, model.node_size))) {
             set_error(error, error_size,
                       "Btrfs file %" PRIu64
                       " lacks its required 10 percent growth reserve",
