@@ -19,7 +19,7 @@ A filesystem writer is complete only when Defragment, exact 10% Growth Defrag an
 - [ ] **Classic Macintosh HFS** — promote the existing exact native analyser to a recoverable native Defragment/Growth Defrag/Recover engine.
 - [ ] **Btrfs** — retain exact raw analysis and add a fail-closed offline writer/recovery contract for the explicitly supported single-device feature subset.
 - [ ] **APFS** — replace summary mapping with exact spaceman-backed allocation/fragmentation analysis for a clearly bounded feature subset, then add recoverable offline Defragment/Growth Defrag/Recover and a deterministic Test Media fixture/creator.
-- [ ] **Minix v1/v2/v3** — promote the exact native analyser to recoverable native Defragment/Growth Defrag/Recover support.
+- [x] **Minix v1/v2/v3** — exact native analyser plus recoverable native Defragment/Growth Defrag/Recover support, including exact 10% reserve qualification.
 - [ ] **UFS1/UFS2** — make UFS1 allocation mapping exact, decode file fragmentation for both supported variants, then add recoverable native Defragment/Growth Defrag/Recover support.
 - [ ] **ZFS/OpenZFS member** — replace summary mapping with exact allocation/fragmentation analysis for a bounded supported on-disk feature set, then add a recoverable offline writer contract only where pool/member semantics make deterministic safe mutation provable.
 - [ ] **GTK compatibility migration** — finish the staged Python-to-native application-service migration so Python remains presentation/glue only and the temporary duplicate registry/contract representations disappear.
