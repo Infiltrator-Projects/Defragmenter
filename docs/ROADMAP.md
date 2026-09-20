@@ -1,28 +1,42 @@
 # Roadmap
 
-This is a direction document, not a dated promise. The released source and tests define what is actually supported.
+This document defines the Linux feature-completion target. The released source and tests remain authoritative for what is supported today; unchecked items are not release claims.
 
 ## Current foundation
 
-- maintain broad read-only allocation analysis and the explicitly qualified write engines
-- keep exact target confirmation, mounted-target refusal and recovery invariants enforced
-- run the full filesystem/GUI/safety regression gate
+- [x] Broad first-party native allocation analysis across the currently registered filesystem families.
+- [x] Qualified Defragment, Growth Defrag and Recover engines for FAT12/16/32, exFAT, NTFS, ext2/3/4, XFS v5, Amiga OFS/FFS, Amiga SFS0 and HFS+/HFSX.
+- [x] Exact target confirmation, descriptor-level identity binding, mounted-overlap refusal, durable recovery state, cooperative Stop and final read-only verification.
+- [x] Full filesystem, GUI, architecture, safety, packaging and release regression gate.
+- [x] Exact pinned Common dependency with filesystem-neutral mechanisms kept out of filesystem engines.
 
-## Near-term priorities
+## Linux feature-completion backlog
 
-- expand write support only where a complete staging/recovery contract can be proved
-- continue reducing duplicated filesystem-neutral mechanics
-- keep audit status and validation evidence aligned with actual implementation
+A filesystem writer is complete only when Defragment, exact 10% Growth Defrag and Recover share a validated placement model, reject unsupported source state before authoritative writes, retain durable recovery material across interruption and independently verify the final image.
 
-## Longer-term direction
+- [ ] **Amiga SFS2** — add independent large-file fixtures, exact allocation/fragmentation analysis, offline native relayout, exact 10% Growth Defrag and Recover.
+- [ ] **Amiga PFS3** — add first-party identification, exact allocation/fragmentation analysis, offline native relayout, exact 10% Growth Defrag, Recover and a Test Media creator.
+- [ ] **Classic Macintosh HFS** — promote the existing exact native analyser to a recoverable native Defragment/Growth Defrag/Recover engine.
+- [ ] **Btrfs** — retain exact raw analysis and add a fail-closed offline writer/recovery contract for the explicitly supported single-device feature subset.
+- [ ] **APFS** — replace summary mapping with exact spaceman-backed allocation/fragmentation analysis for a clearly bounded feature subset, then add recoverable offline Defragment/Growth Defrag/Recover and a deterministic Test Media fixture/creator.
+- [ ] **Minix v1/v2/v3** — promote the exact native analyser to recoverable native Defragment/Growth Defrag/Recover support.
+- [ ] **UFS1/UFS2** — make UFS1 allocation mapping exact, decode file fragmentation for both supported variants, then add recoverable native Defragment/Growth Defrag/Recover support.
+- [ ] **ZFS/OpenZFS member** — replace summary mapping with exact allocation/fragmentation analysis for a bounded supported on-disk feature set, then add a recoverable offline writer contract only where pool/member semantics make deterministic safe mutation provable.
+- [ ] **GTK compatibility migration** — finish the staged Python-to-native application-service migration so Python remains presentation/glue only and the temporary duplicate registry/contract representations disappear.
+- [ ] **Test Media completeness** — remove the remaining manual/reserved PFS3 and APFS slots only after their first-party creators and verification fixtures exist.
 
-- add deeper format coverage when corruption/recovery behaviour is understood well enough to remain fail-closed
-- improve performance without weakening deterministic placement or recovery semantics
+Linux swap is complete by design as analysis-only: defragmentation, Growth Defrag and Recover are not meaningful operations for swap and are therefore not backlog items.
+
+## Performance and qualification
+
+Performance work may proceed alongside feature completion, but it must not weaken deterministic placement, resource bounds or recovery semantics. New writers must gain malformed-media tests, successful disposable-image tests, independent post-operation verification and interruption/recovery qualification before release.
+
+The opt-in dm-log-writes/replay-log lane remains environment-dependent evidence for destructive durability boundaries and does not replace filesystem-specific transaction tests.
 
 ## Admission rule
 
-A proposed capability enters the roadmap only when its ownership is clear and there is a credible way to validate it. Features that require pretending uncertain behaviour is known do not qualify.
+A proposed capability enters the supported matrix only when its ownership is clear and there is a credible validation path. Features that require pretending uncertain on-disk behaviour is known do not qualify.
 
 ## Completion rule
 
-An item is complete when implementation, tests, user-visible behaviour and maintained documentation agree. A checkbox or release number cannot substitute for missing evidence.
+The Linux target is feature-complete when every item above is either checked with implementation/tests/user-visible behaviour/documentation in agreement, or explicitly removed from product scope by a documented design decision. A checkbox or release number cannot substitute for missing evidence.
