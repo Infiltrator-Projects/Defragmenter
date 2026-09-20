@@ -206,6 +206,7 @@ def main() -> None:
         "XFS",
         "Amiga OFS/FFS",
         "Amiga SFS0",
+        "Classic Macintosh HFS",
         "HFS+/HFSX",
         "Project quality gate",
         "protected-main",

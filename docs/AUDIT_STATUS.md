@@ -6,10 +6,10 @@ Completed: 2026-08-25
 Extended: 2026-09-20
 
 Applies to: release version 1.8.0-191
-Audited source commit: 0c330deca961669d30b1985ef3063fd526ca8ac6
+Audited source commit: cff4c684019dbec0492639b067c3278b2f94a5d1
 Audited release-governance commit: b52008be6aa7f19dae2190ddbdd22c7e946849a7
 
-Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, pfs3, sfs, hfsplus, minix
+Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, pfs3, sfs, hfs, hfsplus, minix
 
 This document records the **current** write-safety case. Historical audit-development detail remains available in Git history and immutable release tags rather than being repeated here.
 
@@ -42,6 +42,7 @@ The completed audit covers these first-party write/recovery engines:
 - **Amiga OFS/FFS** — native raw catalogue, relocation, verification and Recover.
 - **Amiga SFS0/SFS2** — first-party native supported-subset relayout and Recover. SFS2 structure version 4 uses its native 48-bit file-size object field and 32-bit extent block counts rather than truncating them to SFS0 geometry.
 - **Amiga PFS3** — first-party native exact allocation/anode-chain analysis, bounded offline canonical relayout, exact 10% Growth Defrag and durable Recover for the qualified small-disk subset. The writer rejects superindex/large-file mode, nested directories, links and special entries before authoritative writes.
+- **Classic Macintosh HFS** — exact native allocation/catalog analysis plus bounded offline Defragment, exact 10% Growth Defrag and durable Recover. Mutation is restricted to clean, writable classic-HFS volumes whose regular-file data/resource fork extent maps are complete in their three inline catalog descriptors; Extents Overflow-backed regular-file forks fail closed.
 - **HFS+/HFSX** — native staged transaction and Recover for supported clean-journal states.
 - **Minix v1/v2/v3** — native fail-closed staged relayout, exact 10% Growth Defrag and durable Recover for the supported exact-analysis subset.
 
@@ -97,3 +98,6 @@ The 2026-09-20 SFS2 audit extension covers the SFS2-capable native SFS engine at
 
 
 The 2026-09-20 PFS3 audit extension covers the bounded native PFS3 engine and first-party Test Media creator qualified at `0c330deca961669d30b1985ef3063fd526ca8ac6`. The supported writer contract is deliberately narrower than the full PFS3 format: 512-byte logical sectors, 1 KiB reserved blocks, split anodes, small-disk index mode and regular files directly in the root directory. Superindex/large-file mode, nested directories, links and special entries fail closed before mutation. Qualification covers exact bitmap-index/allocation-bitmap decoding, anode-chain fragmentation analysis, production Defragment, exact 10% Growth Defrag, durable interruption/Recover, deterministic malformed-media rejection, and a first-party 1 GiB Test Media image carrying a deterministic 25 MiB file in 100 extents with payload-corruption detection. The complete 43-test CTest suite and hosted ASan/UBSan lane passed before this audit baseline was advanced.
+
+
+The 2026-09-20 Classic HFS audit extension covers the bounded native writer at `cff4c684019dbec0492639b067c3278b2f94a5d1`. The writer and existing exact analyser share one parser source for the MDB, allocation bitmap, Extents Overflow B-tree and Catalog B-tree. Mutation requires the volume to be recorded as cleanly unmounted and not hardware/software locked, rejects HFS wrappers containing embedded HFS+/HFSX, preserves the special files and B-tree topology in place, and relocates only regular-file data/resource forks whose complete maps fit in the three inline catalog extents. Qualification exercises deterministic fragmented data-fork payloads, canonical Defragment, exact 10% Growth Defrag reserve, durable interruption/Recover, clean-volume rejection and final payload/layout verification. The complete 43-test CTest gate and hosted ASan/UBSan lane passed before this audit baseline was advanced.

@@ -40,6 +40,7 @@ treating one third-party implementation as infallible.
   document explicitly warns that parts are incomplete/outdated, so it is
   treated as corroborating rather than sole authority. Defragmenter currently
   uses Btrfs only for read-only raw analysis.
+- **Classic HFS** - Apple *Inside Macintosh: Files* HFS on-disk structures, corroborated by Apple's open-source HFS implementation and the Linux HFS driver. The writer is restricted to clean classic-HFS volumes with regular-file fork maps completely represented by the inline catalog extent record; special B-trees remain fixed.
 - **HFS+ / HFSX** - Apple Technical Note TN1150, *HFS Plus Volume Format*:
   <https://developer.apple.com/library/archive/technotes/tn/tn1150.html>.
 - **APFS** - Apple, *Apple File System Reference*:
