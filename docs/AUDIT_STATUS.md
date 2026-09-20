@@ -5,8 +5,8 @@ Status: **complete**
 Completed: 2026-08-25  
 Extended: 2026-09-20
 
-Applies to: release version 1.8.0-190
-Audited source commit: 755add8117a17f1b71e62c5e8805dc64e22e6f67
+Applies to: release version 1.8.0-191
+Audited source commit: ee3b3d68490b74c186ffea18d0e751b838fb57b0
 Audited release-governance commit: b52008be6aa7f19dae2190ddbdd22c7e946849a7
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, sfs, hfsplus
@@ -20,7 +20,7 @@ The enabled writers share the following release requirements:
 | Risk | Required contract | Principal evidence | Remaining limit |
 | --- | --- | --- | --- |
 | Wrong target or mounted overlap | exact target confirmation, descriptor identity/capacity checks and mounted-overlap refusal, including hard-link aliases of mounted images | native mountinfo/loop-backing identity regressions, safety tests and filesystem worker checks | a compromised privileged OS is outside the model |
-| Unsupported or corrupt metadata | complete pre-write validation and fail-closed feature checks | negative fixtures and filesystem-native tests | untested feature combinations remain unsupported |
+| Unsupported or corrupt metadata | complete pre-write validation and fail-closed feature checks | negative fixtures, filesystem-native tests and the cross-worker deterministic malformed-media matrix | untested feature combinations remain unsupported |
 | Interrupted mutation | durable filesystem-specific transaction state before recovery can be required | transaction/fault-injection and Recover suites | hardware that lies about persistence is outside the model |
 | Unsafe Stop | cooperative Stop only at unchanged, valid or recoverable boundaries | worker/transaction Stop regressions | Stop is not an arbitrary mid-write abort |
 | Privileged supervisor loss | closed control output cannot abandon a root writer; the native helper owns a process group, detects transport failure, requests cooperative SIGINT and waits for exit | native live-child tests verify Stop, queued Stop, control EOF, broken output, delayed safe completion and child reaping; real worker safety tests remain separate | controlled-child tests establish supervision, not physical-media crash safety |
@@ -75,7 +75,13 @@ The quality gate now owns the release handoff as a direct dependent reusable-wor
 
 APT publication is likewise a direct reusable-workflow dependency of successful release publication, with manual `workflow_dispatch` retained only as a retry path. It verifies the immutable release tag/SHA before dispatching the central repository refresh, so release or APT retries cannot lose their handoff through `workflow_run` semantics. A release-head retry may contain documentation or release metadata only after the audited source commit; the exact-head gate still rejects any production/build/package drift.
 
-Version 1.8.0-190 is the current audited release line. It retains the exact Common 1.19.10 pin, the retry-safe publication workflow, the GTK/GLib/X11 identity repair and complete PNG structural validation. The audited source baseline at `755add8117a17f1b71e62c5e8805dc64e22e6f67` restores the exact approved 1.8.0-188 graphite/cyan block-compaction artwork after the unpublished 1.8.0-189 experiment; application and packaging identity are otherwise unchanged. No filesystem engine, target-safety decision, placement, mutation or recovery semantic changed for this release. Any later change beneath audited production/build/package paths requires a new source audit baseline before release.
+Version 1.8.0-191 is the current audited release line. It retains the exact Common 1.19.10 pin, the retry-safe publication workflow, the GTK/GLib/X11 identity repair and complete PNG structural validation, while standardising the final graphite/cyan artwork on the canonical Infiltrator desktop colour family.
+
+The audited source baseline at `ee3b3d68490b74c186ffea18d0e751b838fb57b0` also strengthens the root-owned trusted-directory walk: supported Linux kernels use `openat2()` with `RESOLVE_BENEATH`, `RESOLVE_NO_SYMLINKS` and `RESOLVE_NO_MAGICLINKS`; older kernels retain the previously audited `openat(O_NOFOLLOW)` component-by-component fallback and the same ownership/mode validation. The obsolete duplicate base-window About implementation has been removed, leaving the LINK-standard presenter as the single concrete About/licence/icon path.
+
+Parser qualification now adds a deterministic malformed-media matrix across every installed native filesystem worker, rejecting hangs, signal termination and accidental identification of empty, truncated, all-ones or seeded-noise media. An opt-in `dm-log-writes`/`replay-log` harness is present for sacrificial block-layer FLUSH/FUA replay, but it is intentionally classified as environment-dependent evidence until run on suitable disposable devices; it does not replace the existing transaction/recovery fault-injection suite.
+
+No filesystem placement algorithm, on-disk mutation format, transaction state machine or recovery semantic changed in 1.8.0-191. Any later change beneath audited production/build/package paths requires a new source audit baseline before release.
 
 ## Historical record
 
