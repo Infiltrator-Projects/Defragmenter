@@ -63,15 +63,21 @@ static int analyse(const char *path, SfsAnalysis *analysis)
     return 0;
 }
 
-static void print_identify(void)
+static const char *format_name(const SfsAnalysis *analysis)
 {
-    (void)puts("{\"filesystem\":\"sfs\",\"format\":\"SFS0\"}");
+    return analysis != NULL && analysis->structure_version == 4U ? "SFS2" : "SFS0";
+}
+
+static void print_identify(const SfsAnalysis *analysis)
+{
+    (void)printf("{\"filesystem\":\"sfs\",\"format\":\"%s\"}\n",
+                 format_name(analysis));
 }
 
 static void print_analysis_json(const SfsAnalysis *analysis)
 {
     (void)printf(
-        "{\"filesystem\":\"sfs\",\"format\":\"SFS0\","
+        "{\"filesystem\":\"sfs\",\"format\":\"%s\","
         "\"structure_version\":%u,\"sequence_number\":%u,"
         "\"block_size\":%u,\"total_blocks\":%u,\"filesystem_bytes\":%" PRIu64 ","
         "\"physical_bytes\":%" PRIu64 ",\"bitmap_base\":%u,\"bitmap_blocks\":%u,"
@@ -81,6 +87,7 @@ static void print_analysis_json(const SfsAnalysis *analysis)
         "\"growth_10_satisfied\":%s,"
         "\"primary_root_valid\":%s,\"backup_root_valid\":%s,"
         "\"transaction_pending\":%s,\"fragmentation_available\":true}\n",
+        format_name(analysis),
         analysis->structure_version, analysis->sequence_number,
         analysis->block_size, analysis->total_blocks, analysis->filesystem_bytes,
         analysis->physical_bytes, analysis->bitmap_base, analysis->bitmap_blocks,
@@ -157,13 +164,13 @@ static int print_map(const char *path, uint64_t requested_cells)
             map[i].fragmented_count, map[i].outside_count);
     }
     (void)printf(
-        "],\"details\":{\"format\":\"SFS0\",\"structure_version\":%u,"
+        "],\"details\":{\"format\":\"%s\",\"structure_version\":%u,"
         "\"sequence_number\":%u,\"bitmap_base\":%u,\"bitmap_blocks\":%u,"
         "\"primary_root_valid\":%s,\"backup_root_valid\":%s,"
         "\"transaction_pending\":%s,\"fragmentation_available\":true,"
         "\"fragmentation_basis\":\"validated SFS object containers and extent B-tree chains\","
-        "\"allocation_basis\":\"validated SFS BTMP free-space bitmap\","
-        "\"sfs2_note\":\"SFS2 is not advertised until independent large-file fixtures and compatibility validation are available\"}}\n",
+        "\"allocation_basis\":\"validated SFS BTMP free-space bitmap\"}}\n",
+        format_name(&analysis),
         analysis.structure_version, analysis.sequence_number,
         analysis.bitmap_base, analysis.bitmap_blocks,
         json_bool(analysis.primary_root_valid), json_bool(analysis.backup_root_valid),
@@ -862,9 +869,10 @@ int main(int argc, char **argv)
     const char *mode = argv[1];
     const char *device = argv[2];
     if (strcmp(mode, "identify") == 0 && argc == 3) {
-        if (!sfs_probe(device))
+        SfsAnalysis analysis;
+        if (analyse(device, &analysis) != 0)
             return 1;
-        print_identify();
+        print_identify(&analysis);
         return 0;
     }
     if (strcmp(mode, "analyse-json") == 0 && argc == 3) {
