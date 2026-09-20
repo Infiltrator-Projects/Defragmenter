@@ -71,10 +71,18 @@ def main() -> None:
     )
 
     for required in (
+        "linux-defragger-native-malformed-matrix",
+        "tests/test_native_malformed_matrix.py",
+        "LINUX_DEFRAGGER_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}",
+    ):
+        assert required in cmake, (
+            f"sanitizer-visible malformed-media matrix lost CTest contract: {required}"
+        )
+
+    for required in (
         "tests/test_release_artifacts.sh",
         "tests/run_typecheck.sh",
         "tests/test_no_external_fs_tools.py",
-        "tests/test_native_malformed_matrix.py",
         "tests/test_architecture.py",
         "tests/test_gui_models.py",
         "tests/test_gui_services.py",
