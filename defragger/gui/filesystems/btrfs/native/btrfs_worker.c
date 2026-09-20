@@ -3,13 +3,29 @@
 #include "version.h"
 
 #include "infiltratr/core.h"
+#include "infiltratr/config.h"
+#include "infiltratr/posix.h"
+#include "ld_device.h"
+#include "ld_io.h"
+#include "ld_path.h"
+#include "ld_protocol.h"
+#include "ld_runtime.h"
+#include "ld_stop.h"
 
+#include <errno.h>
+#include <fcntl.h>
 #include <inttypes.h>
+#include <limits.h>
+#include <openssl/evp.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/file.h>
+#include <sys/stat.h>
+#include <sys/sysmacros.h>
+#include <unistd.h>
 
 #define PROG "linux-defragger-btrfs-worker"
 
@@ -27,7 +43,9 @@ static void usage(FILE *stream)
 {
     (void)fprintf(stream,
                   "Usage: %s --version | identify DEVICE | analyse-json DEVICE | "
-                  "map DEVICE --cells COUNT\n", PROG);
+                  "map DEVICE --cells COUNT | "
+                  "defrag|growth-defrag|recover DEVICE --write --confirm DEVICE "
+                  "--journal PATH [--growth-percent 10] [--live-updates]\n", PROG);
 }
 
 static int unit_range_compare(const void *left, const void *right)
@@ -263,6 +281,541 @@ static int print_map_json(const BtrfsAnalysis *analysis, uint64_t requested_cell
     return 0;
 }
 
+
+#define BTRFS_JOURNAL_MAGIC "LINUX-DEFRAGGER-BTRFS-JOURNAL-1"
+#define BTRFS_STAGE_SUFFIX ".btrfs-stage"
+#define BTRFS_TXN_IO_BYTES (1024U * 1024U)
+#define BTRFS_TXN_STOPPED 130
+
+typedef struct {
+    char *device;
+    char *target_identity;
+    char *stage;
+    char operation[24];
+    char phase[24];
+    char volume_token[65];
+    char source_sha256[65];
+    char stage_sha256[65];
+    uint64_t physical_bytes;
+    uint64_t filesystem_bytes;
+    uint64_t generation;
+    uint32_t sector_size;
+} BtrfsJournal;
+
+static void txn_error(char *error, size_t error_size, const char *format, ...)
+{
+    if (error == NULL || error_size == 0U) return;
+    va_list args;
+    va_start(args, format);
+    (void)vsnprintf(error, error_size, format, args);
+    va_end(args);
+}
+
+static bool parse_unsigned(const char *text, unsigned *value)
+{
+    uint64_t parsed = 0U;
+    if (!infiltratr_parse_u64_range(text, 10U, 0U, UINT_MAX, &parsed))
+        return false;
+    *value = (unsigned)parsed;
+    return true;
+}
+
+static bool safe_value(const char *value)
+{
+    return value != NULL && strchr(value, '\n') == NULL &&
+           strchr(value, '\r') == NULL && strchr(value, '=') == NULL;
+}
+
+static void unlink_if_exists(const char *path)
+{
+    if (path == NULL || *path == '\0') return;
+    const int failure = infiltratr_unlink_durable(path, true);
+    if (failure != 0)
+        (void)fprintf(stderr, "%s: warning: cannot durably remove %s: %s\n",
+                      PROG, path, strerror(failure));
+}
+
+static void journal_free(BtrfsJournal *state)
+{
+    free(state->device);
+    free(state->target_identity);
+    free(state->stage);
+    memset(state, 0, sizeof(*state));
+}
+
+static bool journal_write_stream(FILE *file, const void *user_data)
+{
+    const BtrfsJournal *state = user_data;
+    (void)fprintf(file, "%s\n", BTRFS_JOURNAL_MAGIC);
+    (void)fprintf(file, "device=%s\n", state->device);
+    (void)fprintf(file, "target_identity=%s\n", state->target_identity);
+    (void)fprintf(file, "stage=%s\n", state->stage);
+    (void)fprintf(file, "operation=%s\n", state->operation);
+    (void)fprintf(file, "phase=%s\n", state->phase);
+    (void)fprintf(file, "volume_token=%s\n", state->volume_token);
+    (void)fprintf(file, "source_sha256=%s\n", state->source_sha256);
+    (void)fprintf(file, "stage_sha256=%s\n", state->stage_sha256);
+    (void)fprintf(file, "physical_bytes=%" PRIu64 "\n", state->physical_bytes);
+    (void)fprintf(file, "filesystem_bytes=%" PRIu64 "\n", state->filesystem_bytes);
+    (void)fprintf(file, "generation=%" PRIu64 "\n", state->generation);
+    (void)fprintf(file, "sector_size=%u\n", state->sector_size);
+    return !ferror(file);
+}
+
+static int journal_save(const char *path, const BtrfsJournal *state,
+                        char *error, size_t error_size)
+{
+    if (!safe_value(state->device) || !safe_value(state->target_identity) ||
+        !safe_value(state->stage)) {
+        txn_error(error, error_size,
+                  "Btrfs transaction paths contain unsupported journal characters");
+        return -1;
+    }
+    char *parent = ld_path_parent_directory(path);
+    if (parent == NULL || ld_path_ensure_trusted_directory_tree(parent) != 0) {
+        txn_error(error, error_size,
+                  "cannot create Btrfs journal directory: %s", strerror(errno));
+        free(parent);
+        return -1;
+    }
+    free(parent);
+    const int failure = infiltratr_atomic_file_write(
+        path, INFILTRATR_ATOMIC_FILE_PRIVATE, journal_write_stream, state);
+    if (failure != 0) {
+        txn_error(error, error_size,
+                  "cannot publish Btrfs recovery journal: %s", strerror(failure));
+        return -1;
+    }
+    return 0;
+}
+
+static int parse_u64_value(const char *text, uint64_t *value)
+{
+    return infiltratr_parse_u64(text, 10U, value) ? 0 : -1;
+}
+
+static int journal_load(const char *path, BtrfsJournal *state,
+                        char *error, size_t error_size)
+{
+    memset(state, 0, sizeof(*state));
+    FILE *file = fopen(path, "r");
+    if (file == NULL) {
+        txn_error(error, error_size,
+                  "cannot open Btrfs recovery journal: %s", strerror(errno));
+        return -1;
+    }
+    char *line = NULL;
+    size_t capacity = 0U;
+    if (getline(&line, &capacity, file) < 0) goto invalid;
+    infiltratr_trim_line_end(line);
+    if (strcmp(line, BTRFS_JOURNAL_MAGIC) != 0) goto invalid;
+    while (getline(&line, &capacity, file) >= 0) {
+        char *key = NULL;
+        char *value = NULL;
+        if (infiltratr_config_parse_line(line, &key, &value) !=
+            INFILTRATR_CONFIG_LINE_ENTRY) goto invalid;
+        if (strcmp(key, "device") == 0) {
+            free(state->device); state->device = ld_xstrdup(value);
+        } else if (strcmp(key, "target_identity") == 0) {
+            free(state->target_identity); state->target_identity = ld_xstrdup(value);
+        } else if (strcmp(key, "stage") == 0) {
+            free(state->stage); state->stage = ld_xstrdup(value);
+        } else if (strcmp(key, "operation") == 0) {
+            infiltratr_copy_string(state->operation, sizeof(state->operation), value);
+        } else if (strcmp(key, "phase") == 0) {
+            infiltratr_copy_string(state->phase, sizeof(state->phase), value);
+        } else if (strcmp(key, "volume_token") == 0) {
+            infiltratr_copy_string(state->volume_token, sizeof(state->volume_token), value);
+        } else if (strcmp(key, "source_sha256") == 0) {
+            infiltratr_copy_string(state->source_sha256, sizeof(state->source_sha256), value);
+        } else if (strcmp(key, "stage_sha256") == 0) {
+            infiltratr_copy_string(state->stage_sha256, sizeof(state->stage_sha256), value);
+        } else if (strcmp(key, "physical_bytes") == 0) {
+            if (parse_u64_value(value, &state->physical_bytes) != 0) goto invalid;
+        } else if (strcmp(key, "filesystem_bytes") == 0) {
+            if (parse_u64_value(value, &state->filesystem_bytes) != 0) goto invalid;
+        } else if (strcmp(key, "generation") == 0) {
+            if (parse_u64_value(value, &state->generation) != 0) goto invalid;
+        } else if (strcmp(key, "sector_size") == 0) {
+            uint64_t parsed = 0U;
+            if (parse_u64_value(value, &parsed) != 0 || parsed > UINT32_MAX)
+                goto invalid;
+            state->sector_size = (uint32_t)parsed;
+        }
+    }
+    free(line);
+    (void)fclose(file);
+    if (state->device == NULL || state->target_identity == NULL ||
+        state->stage == NULL || state->operation[0] == '\0' ||
+        state->phase[0] == '\0' || strlen(state->volume_token) != 64U ||
+        strlen(state->source_sha256) != 64U ||
+        strlen(state->stage_sha256) != 64U ||
+        state->physical_bytes == 0U || state->filesystem_bytes == 0U ||
+        state->sector_size == 0U)
+        goto invalid_state;
+    return 0;
+invalid:
+    free(line);
+    (void)fclose(file);
+invalid_state:
+    journal_free(state);
+    txn_error(error, error_size,
+              "Btrfs recovery journal is malformed or incomplete");
+    return -1;
+}
+
+static int journal_phase(const char *path, BtrfsJournal *state,
+                         const char *phase, char *error, size_t error_size)
+{
+    infiltratr_copy_string(state->phase, sizeof(state->phase), phase);
+    return journal_save(path, state, error, error_size);
+}
+
+static char *stage_name(const char *journal)
+{
+    return ld_path_append_suffix(journal, BTRFS_STAGE_SUFFIX);
+}
+
+static void transaction_cleanup(const char *journal,
+                                const BtrfsJournal *state)
+{
+    if (state != NULL) unlink_if_exists(state->stage);
+    unlink_if_exists(journal);
+}
+
+static char *canonical_path(const char *path, char *error, size_t error_size)
+{
+    char *resolved = realpath(path, NULL);
+    if (resolved == NULL)
+        txn_error(error, error_size,
+                  "cannot resolve Btrfs target %s: %s", path, strerror(errno));
+    return resolved;
+}
+
+static int target_identity(const char *path, char **identity, uint64_t *size,
+                           char *error, size_t error_size)
+{
+    struct stat status;
+    if (stat(path, &status) != 0) {
+        txn_error(error, error_size,
+                  "cannot stat Btrfs target: %s", strerror(errno));
+        return -1;
+    }
+    if (!S_ISREG(status.st_mode) && !S_ISBLK(status.st_mode)) {
+        txn_error(error, error_size,
+                  "Btrfs target is not a block device or regular image");
+        return -1;
+    }
+    char text[160];
+    if (S_ISBLK(status.st_mode)) {
+        (void)snprintf(text, sizeof(text), "block:%u:%u",
+                       major(status.st_rdev), minor(status.st_rdev));
+        LdDevice target = ld_device_open(path, false);
+        *size = target.size_bytes;
+        ld_device_close(&target);
+    } else {
+        (void)snprintf(text, sizeof(text), "file:%llu:%llu",
+                       (unsigned long long)status.st_dev,
+                       (unsigned long long)status.st_ino);
+        *size = (uint64_t)status.st_size;
+    }
+    if (*size == 0U) {
+        txn_error(error, error_size, "cannot determine Btrfs target size");
+        return -1;
+    }
+    *identity = ld_xstrdup(text);
+    return 0;
+}
+
+static int digest_final(EVP_MD_CTX *context, char output[65],
+                        char *error, size_t error_size)
+{
+    unsigned char digest[32];
+    unsigned int length = 0U;
+    if (EVP_DigestFinal_ex(context, digest, &length) != 1 ||
+        length != sizeof(digest)) {
+        txn_error(error, error_size, "finalising Btrfs SHA-256 failed");
+        return -1;
+    }
+    static const char digits[] = "0123456789abcdef";
+    for (size_t index = 0U; index < sizeof(digest); ++index) {
+        output[index * 2U] = digits[digest[index] >> 4U];
+        output[index * 2U + 1U] = digits[digest[index] & 15U];
+    }
+    output[64] = '\0';
+    return 0;
+}
+
+static int hash_prefix(const char *path, uint64_t bytes, bool stoppable,
+                       char output[65], char *error, size_t error_size)
+{
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
+        txn_error(error, error_size,
+                  "cannot open Btrfs bytes for SHA-256: %s", strerror(errno));
+        return -1;
+    }
+    EVP_MD_CTX *context = EVP_MD_CTX_new();
+    uint8_t *buffer = malloc(BTRFS_TXN_IO_BYTES);
+    if (context == NULL || buffer == NULL ||
+        EVP_DigestInit_ex(context, EVP_sha256(), NULL) != 1) {
+        EVP_MD_CTX_free(context); free(buffer); (void)close(fd);
+        txn_error(error, error_size, "cannot initialise Btrfs SHA-256");
+        return -1;
+    }
+    int rc = 0;
+    for (uint64_t offset = 0U; offset < bytes;) {
+        if (stoppable && ld_stop_requested()) {
+            rc = BTRFS_TXN_STOPPED;
+            break;
+        }
+        const uint64_t remaining = bytes - offset;
+        const size_t count = remaining > BTRFS_TXN_IO_BYTES
+                           ? BTRFS_TXN_IO_BYTES : (size_t)remaining;
+        if (ld_pread_full(fd, buffer, count, offset) != (ssize_t)count ||
+            EVP_DigestUpdate(context, buffer, count) != 1) {
+            txn_error(error, error_size, "hashing Btrfs bytes failed");
+            rc = -1;
+            break;
+        }
+        offset += count;
+    }
+    if (rc == 0) rc = digest_final(context, output, error, error_size);
+    EVP_MD_CTX_free(context); free(buffer); (void)close(fd);
+    return rc;
+}
+
+static int primary_super_token(const char *path, char output[65],
+                               char *error, size_t error_size)
+{
+    return hash_prefix(path, 64U * 1024U + 4096U, false,
+                       output, error, error_size);
+}
+
+static int capture_target(const char *device, BtrfsJournal *state,
+                          char *error, size_t error_size)
+{
+    state->device = canonical_path(device, error, error_size);
+    if (state->device == NULL) return -1;
+    if (target_identity(state->device, &state->target_identity,
+                        &state->physical_bytes, error, error_size) != 0)
+        return -1;
+    BtrfsAnalysis analysis;
+    if (btrfs_analyse(state->device, &analysis, error, error_size) != 0)
+        return -1;
+    state->filesystem_bytes = analysis.total_bytes;
+    state->generation = analysis.generation;
+    state->sector_size = analysis.sector_size;
+    btrfs_analysis_free(&analysis);
+    if (state->filesystem_bytes > state->physical_bytes ||
+        primary_super_token(state->device, state->volume_token,
+                            error, error_size) != 0)
+        return -1;
+    return hash_prefix(state->device, state->filesystem_bytes, true,
+                       state->source_sha256, error, error_size);
+}
+
+static int check_target_identity(const char *device, const BtrfsJournal *state,
+                                 char *error, size_t error_size)
+{
+    char *canonical = canonical_path(device, error, error_size);
+    if (canonical == NULL) return -1;
+    char *identity = NULL;
+    uint64_t size = 0U;
+    int rc = target_identity(canonical, &identity, &size, error, error_size);
+    if (rc == 0 &&
+        (strcmp(canonical, state->device) != 0 ||
+         strcmp(identity, state->target_identity) != 0 ||
+         size != state->physical_bytes)) {
+        txn_error(error, error_size,
+                  "Btrfs target path, identity or capacity changed before commit");
+        rc = -1;
+    }
+    free(identity); free(canonical);
+    return rc;
+}
+
+static int check_source_unchanged(const char *device,
+                                  const BtrfsJournal *state,
+                                  char *error, size_t error_size)
+{
+    if (check_target_identity(device, state, error, error_size) != 0)
+        return -1;
+    char token[65];
+    char digest[65];
+    int rc = primary_super_token(state->device, token, error, error_size);
+    if (rc == 0)
+        rc = hash_prefix(state->device, state->filesystem_bytes, true,
+                         digest, error, error_size);
+    if (rc != 0) return rc;
+    if (strcmp(token, state->volume_token) != 0 ||
+        strcmp(digest, state->source_sha256) != 0) {
+        txn_error(error, error_size,
+                  "Btrfs source changed after preflight; refusing source writes");
+        return -1;
+    }
+    return 0;
+}
+
+static int safe_commit_stage(const char *stage_path, const char *target_path,
+                             const BtrfsJournal *state, uint64_t *written,
+                             char *error, size_t error_size)
+{
+    int stage = open(stage_path, O_RDONLY | O_CLOEXEC);
+    int target = ld_device_open_verified_fd(target_path, true,
+                                            state->target_identity,
+                                            state->physical_bytes);
+    if (stage < 0 || target < 0) {
+        if (stage >= 0) (void)close(stage);
+        if (target >= 0) (void)close(target);
+        txn_error(error, error_size,
+                  "cannot open Btrfs stage or target for commit: %s",
+                  strerror(errno));
+        return -1;
+    }
+    if (flock(target, LOCK_EX | LOCK_NB) != 0) {
+        txn_error(error, error_size,
+                  "cannot lock Btrfs target for commit: %s", strerror(errno));
+        (void)close(stage); (void)close(target);
+        return -1;
+    }
+    uint8_t *buffer = malloc(BTRFS_TXN_IO_BYTES);
+    if (buffer == NULL) {
+        txn_error(error, error_size, "out of memory committing Btrfs stage");
+        (void)flock(target, LOCK_UN); (void)close(stage); (void)close(target);
+        return -1;
+    }
+    int rc = 0;
+    uint64_t total = 0U;
+    for (uint64_t offset = 0U; offset < state->filesystem_bytes;) {
+        if (ld_stop_requested()) {
+            rc = fsync(target) == 0 ? BTRFS_TXN_STOPPED : -1;
+            if (rc < 0)
+                txn_error(error, error_size,
+                          "cannot sync Btrfs target at Stop boundary: %s",
+                          strerror(errno));
+            break;
+        }
+        const uint64_t remaining = state->filesystem_bytes - offset;
+        const size_t count = remaining > BTRFS_TXN_IO_BYTES
+                           ? BTRFS_TXN_IO_BYTES : (size_t)remaining;
+        if (ld_pread_full(stage, buffer, count, offset) != (ssize_t)count ||
+            ld_pwrite_full(target, buffer, count, offset) != (ssize_t)count) {
+            txn_error(error, error_size,
+                      "short I/O committing Btrfs bytes at offset %" PRIu64,
+                      offset);
+            rc = -1;
+            break;
+        }
+        offset += count; total += count;
+    }
+    if (rc == 0 && fsync(target) != 0) {
+        txn_error(error, error_size,
+                  "cannot sync Btrfs target: %s", strerror(errno));
+        rc = -1;
+    }
+    free(buffer); (void)flock(target, LOCK_UN);
+    (void)close(stage); (void)close(target);
+    if (written != NULL) *written = total;
+    return rc;
+}
+
+static bool valid_operation(const char *operation)
+{
+    return strcmp(operation, "defrag") == 0 ||
+           strcmp(operation, "growth-defrag") == 0;
+}
+
+static bool valid_phase(const char *phase)
+{
+    return strcmp(phase, "staged") == 0 ||
+           strcmp(phase, "committing") == 0 ||
+           strcmp(phase, "committed") == 0;
+}
+
+static int recover_transaction(const char *device, const char *journal,
+                               bool live, char *error, size_t error_size)
+{
+    BtrfsJournal state;
+    if (journal_load(journal, &state, error, error_size) != 0)
+        return 1;
+    if (!ld_path_is_derived_from(state.stage, journal, BTRFS_STAGE_SUFFIX) ||
+        !valid_operation(state.operation) || !valid_phase(state.phase)) {
+        txn_error(error, error_size,
+                  "Btrfs recovery journal has an invalid stage binding, operation or phase");
+        journal_free(&state);
+        return 1;
+    }
+    const int identity_rc = strcmp(state.phase, "staged") == 0
+        ? check_source_unchanged(device, &state, error, error_size)
+        : check_target_identity(device, &state, error, error_size);
+    if (identity_rc != 0) {
+        journal_free(&state);
+        return identity_rc == BTRFS_TXN_STOPPED ? BTRFS_TXN_STOPPED : 1;
+    }
+    char digest[65];
+    const int hash_rc = hash_prefix(state.stage, state.filesystem_bytes, true,
+                                    digest, error, error_size);
+    if (hash_rc != 0 || strcmp(digest, state.stage_sha256) != 0) {
+        if (hash_rc == 0)
+            txn_error(error, error_size,
+                      "Btrfs recovery stage SHA-256 does not match the journal");
+        journal_free(&state);
+        return hash_rc == BTRFS_TXN_STOPPED ? BTRFS_TXN_STOPPED : 1;
+    }
+    const bool growth = strcmp(state.operation, "growth-defrag") == 0;
+    if (btrfs_verify_layout(state.stage, growth, 10U,
+                            error, error_size) != 0) {
+        journal_free(&state);
+        return 1;
+    }
+    if (strcmp(state.phase, "committed") == 0) {
+        if (btrfs_verify_layout(device, growth, 10U,
+                                error, error_size) != 0) {
+            journal_free(&state);
+            return 1;
+        }
+        transaction_cleanup(journal, &state);
+        ld_emit_result_event(stdout, "recover", "completed",
+                             "Verified an already committed Btrfs transaction.");
+        journal_free(&state);
+        return 0;
+    }
+    if (journal_phase(journal, &state, "committing",
+                      error, error_size) != 0) {
+        journal_free(&state);
+        return 1;
+    }
+    uint64_t written = 0U;
+    const int commit_rc = safe_commit_stage(
+        state.stage, state.device, &state, &written, error, error_size);
+    if (commit_rc == BTRFS_TXN_STOPPED) {
+        ld_emit_result_event(stdout, "recover", "stopped",
+                             "Recovery stopped at a durable boundary and can be resumed.");
+        journal_free(&state);
+        return BTRFS_TXN_STOPPED;
+    }
+    if (commit_rc != 0 ||
+        btrfs_verify_layout(state.device, growth, 10U,
+                            error, error_size) != 0 ||
+        journal_phase(journal, &state, "committed",
+                      error, error_size) != 0) {
+        journal_free(&state);
+        return 1;
+    }
+    transaction_cleanup(journal, &state);
+    if (live) {
+        (void)printf(
+            "@@LIVE_RESET {\"reason\":\"authoritative post-recovery Btrfs map\"}\n");
+        (void)fflush(stdout);
+    }
+    (void)printf("Recovered verified Btrfs source; committed %" PRIu64 " KiB.\n",
+                 written / 1024U);
+    ld_emit_result_event(stdout, "recover", "completed", "");
+    journal_free(&state);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     if (argc == 2 && strcmp(argv[1], "--version") == 0) {
@@ -270,12 +823,11 @@ int main(int argc, char **argv)
         return 0;
     }
     if (argc == 3 && strcmp(argv[1], "identify") == 0) {
-        if (!btrfs_probe(argv[2]))
-            return 1;
-        print_identify();
-        return 0;
+        if (!btrfs_probe(argv[2])) return 1;
+        print_identify(); return 0;
     }
-    if (argc == 5 && strcmp(argv[1], "map") == 0 && strcmp(argv[3], "--cells") == 0) {
+    if (argc == 5 && strcmp(argv[1], "map") == 0 &&
+        strcmp(argv[3], "--cells") == 0) {
         uint64_t cells = 0U;
         if (parse_cells(argv[4], &cells) != 0) {
             (void)fprintf(stderr, "%s: invalid cell count\n", PROG);
@@ -290,11 +842,7 @@ int main(int argc, char **argv)
         }
         const int result = print_map_json(&analysis, cells);
         btrfs_analysis_free(&analysis);
-        if (result != 0) {
-            (void)fprintf(stderr, "%s: out of memory building Btrfs map\n", PROG);
-            return 1;
-        }
-        return 0;
+        return result == 0 ? 0 : 1;
     }
     if (argc == 3 && strcmp(argv[1], "analyse-json") == 0) {
         BtrfsAnalysis analysis;
@@ -308,6 +856,187 @@ int main(int argc, char **argv)
         btrfs_analysis_free(&analysis);
         return 0;
     }
-    usage(stderr);
-    return 2;
+    if (argc < 3) { usage(stderr); return 2; }
+
+    const char *mode = argv[1];
+    const char *device = argv[2];
+    const bool growth = strcmp(mode, "growth-defrag") == 0;
+    const bool defrag = strcmp(mode, "defrag") == 0;
+    const bool recover = strcmp(mode, "recover") == 0;
+    if (!growth && !defrag && !recover) { usage(stderr); return 2; }
+
+    const char *confirm = NULL;
+    const char *journal = NULL;
+    unsigned growth_percent = 10U;
+    bool write = false;
+    bool live = false;
+    for (int index = 3; index < argc; ++index) {
+        if (strcmp(argv[index], "--write") == 0) write = true;
+        else if (strcmp(argv[index], "--live-updates") == 0) live = true;
+        else if (strcmp(argv[index], "--confirm") == 0 && index + 1 < argc)
+            confirm = argv[++index];
+        else if (strcmp(argv[index], "--journal") == 0 && index + 1 < argc)
+            journal = argv[++index];
+        else if (strcmp(argv[index], "--growth-percent") == 0 &&
+                 index + 1 < argc) {
+            if (!parse_unsigned(argv[++index], &growth_percent)) {
+                (void)fprintf(stderr, "%s: invalid --growth-percent\n", PROG);
+                return 2;
+            }
+        } else if ((strcmp(argv[index], "--workers") == 0 ||
+                    strcmp(argv[index], "--ram-buffer") == 0 ||
+                    strcmp(argv[index], "--batch-clusters") == 0 ||
+                    strcmp(argv[index], "--live-map-cells") == 0) &&
+                   index + 1 < argc) {
+            ++index;
+        } else {
+            (void)fprintf(stderr, "%s: unknown or incomplete Btrfs option: %s\n",
+                          PROG, argv[index]);
+            return 2;
+        }
+    }
+    if (!write || confirm == NULL || journal == NULL ||
+        strcmp(confirm, device) != 0) {
+        (void)fprintf(stderr,
+                      "%s: Btrfs mutation requires --write --confirm DEVICE --journal PATH\n",
+                      PROG);
+        return 2;
+    }
+    if (growth && growth_percent != 10U) {
+        (void)fprintf(stderr,
+                      "%s: Btrfs Growth Defrag requires exactly 10 percent reserve\n",
+                      PROG);
+        return 2;
+    }
+    if (ld_path_is_mounted(device)) {
+        (void)fprintf(stderr,
+                      "%s: Btrfs target is mounted; raw mutation and recovery require an unmounted filesystem\n",
+                      PROG);
+        return 1;
+    }
+
+    ld_stop_clear();
+    ld_stop_install_handlers();
+    char error[512] = {0};
+    if (recover) {
+        const int rc = recover_transaction(device, journal, live,
+                                           error, sizeof(error));
+        if (rc != 0 && rc != BTRFS_TXN_STOPPED)
+            (void)fprintf(stderr, "%s: %s\n", PROG,
+                          error[0] != '\0' ? error : "Btrfs recovery failed");
+        return rc;
+    }
+
+    BtrfsJournal state;
+    memset(&state, 0, sizeof(state));
+    infiltratr_copy_string(state.operation, sizeof(state.operation), mode);
+    const int capture_rc =
+        capture_target(device, &state, error, sizeof(error));
+    if (capture_rc != 0) {
+        if (capture_rc == BTRFS_TXN_STOPPED)
+            ld_emit_result_event(stdout, mode, "stopped",
+                                 "Stopped during read-only Btrfs preflight.");
+        goto fail;
+    }
+    state.stage = stage_name(journal);
+    if (state.stage == NULL) {
+        txn_error(error, sizeof(error),
+                  "out of memory creating Btrfs stage path");
+        goto fail;
+    }
+    if (access(journal, F_OK) == 0 || access(state.stage, F_OK) == 0) {
+        txn_error(error, sizeof(error),
+                  "existing Btrfs recovery artifacts must be recovered or removed before starting");
+        goto fail;
+    }
+
+    (void)printf("Starting native C Btrfs %s on %s.\n",
+                 growth ? "Growth Defrag" : "Defrag", device);
+    uint64_t planned = 0U;
+    const int stage_rc =
+        btrfs_build_stage(state.device, state.stage, growth,
+                          growth_percent, live, &planned,
+                          error, sizeof(error));
+    if (stage_rc != 0 ||
+        btrfs_verify_layout(state.stage, growth, growth_percent,
+                            error, sizeof(error)) != 0) {
+        unlink_if_exists(state.stage);
+        if (stage_rc == BTRFS_TXN_STOPPED) {
+            ld_emit_result_event(stdout, mode, "stopped",
+                                 "Stopped before any Btrfs source writes.");
+            journal_free(&state);
+            return BTRFS_TXN_STOPPED;
+        }
+        goto fail;
+    }
+    const int unchanged =
+        check_source_unchanged(state.device, &state, error, sizeof(error));
+    if (unchanged != 0) {
+        unlink_if_exists(state.stage);
+        if (unchanged == BTRFS_TXN_STOPPED) {
+            ld_emit_result_event(stdout, mode, "stopped",
+                                 "Stopped before any Btrfs source writes.");
+            journal_free(&state);
+            return BTRFS_TXN_STOPPED;
+        }
+        goto fail;
+    }
+    const int hash_rc =
+        hash_prefix(state.stage, state.filesystem_bytes, true,
+                    state.stage_sha256, error, sizeof(error));
+    if (hash_rc != 0) {
+        unlink_if_exists(state.stage);
+        if (hash_rc == BTRFS_TXN_STOPPED) {
+            ld_emit_result_event(stdout, mode, "stopped",
+                                 "Stopped before any Btrfs source writes.");
+            journal_free(&state);
+            return BTRFS_TXN_STOPPED;
+        }
+        goto fail;
+    }
+    infiltratr_copy_string(state.phase, sizeof(state.phase), "staged");
+    if (journal_save(journal, &state, error, sizeof(error)) != 0)
+        goto fail;
+    if (journal_phase(journal, &state, "committing",
+                      error, sizeof(error)) != 0)
+        goto fail;
+
+    (void)printf("Btrfs source commit: replaying %" PRIu64
+                 " KiB from the verified transaction stage.\n",
+                 planned / 1024U);
+    (void)fflush(stdout);
+    uint64_t written = 0U;
+    const int commit_rc =
+        safe_commit_stage(state.stage, state.device, &state,
+                          &written, error, sizeof(error));
+    if (commit_rc == BTRFS_TXN_STOPPED) {
+        ld_emit_result_event(stdout, mode, "stopped",
+                             "Run Recover to resume the verified Btrfs transaction.");
+        journal_free(&state);
+        return BTRFS_TXN_STOPPED;
+    }
+    if (commit_rc != 0 ||
+        btrfs_verify_layout(state.device, growth, growth_percent,
+                            error, sizeof(error)) != 0)
+        goto fail;
+    if (journal_phase(journal, &state, "committed",
+                      error, sizeof(error)) != 0)
+        goto fail;
+    transaction_cleanup(journal, &state);
+    if (live) {
+        (void)printf(
+            "@@LIVE_RESET {\"reason\":\"authoritative post-commit Btrfs map\"}\n");
+        (void)fflush(stdout);
+    }
+    (void)printf("Btrfs %s completed; committed %" PRIu64 " KiB.\n",
+                 growth ? "Growth Defrag" : "Defrag", written / 1024U);
+    ld_emit_result_event(stdout, mode, "completed", "");
+    journal_free(&state);
+    return 0;
+
+fail:
+    (void)fprintf(stderr, "%s: %s\n", PROG,
+                  error[0] != '\0' ? error : "Btrfs transaction failed");
+    journal_free(&state);
+    return 1;
 }

@@ -181,8 +181,12 @@ const std::vector<BackendInfo>& backend_registry() {
             "apfs", "Apple APFS", {"apfs"}, read, "summary",
             "apfs-native", MapAdapter::Apfs, {}});
         result.push_back({
-            "btrfs", "Btrfs", {"btrfs"}, read, "exact",
-            "btrfs-native", MapAdapter::NativeMap, {}});
+            "btrfs", "Btrfs", {"btrfs"}, write, "exact",
+            "btrfs-native", MapAdapter::NativeMap,
+            standard_write_ops(
+                "btrfs-native",
+                "Btrfs writing is offline and fail-closed to the qualified single-device CRC32C level-0 mixed-group NODATASUM subset.",
+                "Btrfs Growth Defrag leaves an exact 10% free-sector reserve after each supported regular file.")});
         result.push_back({
             "exfat", "exFAT", {"exfat"}, write, "exact",
             "exfat-native", MapAdapter::Exfat,

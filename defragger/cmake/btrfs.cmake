@@ -21,7 +21,7 @@ target_compile_options(linux-defragger-btrfs-worker PRIVATE ${LD_WARNING_FLAGS})
 target_compile_definitions(linux-defragger-btrfs-worker PRIVATE
     _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(linux-defragger-btrfs-worker PRIVATE
-    linux-defragger-btrfs-native linux-defragger-core)
+    linux-defragger-btrfs-native linux-defragger-core OpenSSL::Crypto)
 
 install(TARGETS linux-defragger-btrfs-worker
         RUNTIME DESTINATION lib/linux-defragger/filesystems/btrfs)
