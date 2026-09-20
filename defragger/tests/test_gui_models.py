@@ -361,27 +361,45 @@ def test_result_protocol_replaces_worker_output_text_matching() -> None:
 
 
 def test_about_dialog_matches_the_standard_project_identity() -> None:
-    source = (GUI / "ui" / "window_view.py").read_text()
+    view_source = (GUI / "ui" / "window_view.py").read_text()
+    about_source = (GUI / "ui" / "about.py").read_text()
     for required in (
         'APP_ICON_NAME = "io.github.linuxdefragger"',
         'COPYRIGHT = "Copyright © 1993-2026 Shannon Smith"',
         'PROJECT_URL = "https://github.com/Infiltrator-Projects/Defragmenter"',
-        "Gtk.Image.new_from_icon_name(APP_ICON_NAME, Gtk.IconSize.DIALOG)",
-        'Gtk.Label(label=f"Version {self.gui_version}")',
-        '("Build", self.build_label)',
-        "Shannon Smith — Author and project maintainer",
-        'Gtk.LinkButton.new_with_label(PROJECT_URL, "Project website")',
-        'dialog.add_button("Licence", 1)',
         "ABOUT_LICENSE",
+        "COPYING.GPL-3.0",
     ):
-        assert required in source
+        assert required in view_source
+
+    for required in (
+        "class LinkStandardWindowView(WindowView):",
+        "Gtk.AboutDialog(",
+        "program_name=info.product_name",
+        "version=info.version",
+        'website_label="Project website"',
+        "dialog.set_authors(list(info.authors))",
+        "dialog.set_license(info.license_text)",
+        "dialog.set_logo_icon_name(None)",
+        "dialog.set_logo(logo)",
+        'subtitle="DEFRAGMENTER · NATIVE FILESYSTEM OPTIMISATION"',
+        "Shannon Smith — Author and project maintainer",
+    ):
+        assert required in about_source
+
+    # Keep one concrete GTK About implementation. The base view retains only
+    # the dispatch point used by its menu construction.
+    assert "Gtk.AboutDialog(" not in view_source
+    assert "Gtk.LinkButton.new_with_label(PROJECT_URL" not in view_source
+    assert "def _show_license(" not in view_source
+    assert about_source.count("def show_about(self) -> None:") == 1
+
     version_template = (ROOT / "packaging" / "generated" / "version.py.in").read_text()
     assert 'BUILD_PROFILE = "@LINUX_DEFRAGGER_BUILD_PROFILE@"' in version_template
     assert 'BUILD_LABEL = "@LINUX_DEFRAGGER_BUILD_LABEL@"' in version_template
-    assert "Operation engine:" not in source
-    assert "hfsutils" not in source
-    assert "COPYING.GPL-3.0" in source
-    assert "LICENSES/GPL-3.0-or-later.txt" not in source
+    assert "Operation engine:" not in about_source
+    assert "hfsutils" not in about_source
+    assert "LICENSES/GPL-3.0-or-later.txt" not in view_source
 
 
 def test_ui_polish_preserves_allocation_map_visual_contract() -> None:
