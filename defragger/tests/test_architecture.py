@@ -741,8 +741,8 @@ def test_user_facing_branding_is_defragmenter() -> None:
 
     project_cmake = (ROOT / "cmake" / "project.cmake").read_text()
     assert "packaging/io.github.linuxdefragger.png" in project_cmake
-    assert "share/icons/hicolor/128x128/apps" in project_cmake
-    assert "share/icons/hicolor/256x256/apps" not in project_cmake
+    assert "share/icons/hicolor/96x96/apps" in project_cmake
+    assert "share/icons/hicolor/128x128/apps" not in project_cmake
     assert "DESTINATION share/app-install/icons" in project_cmake
     assert "RENAME infiltrator-defragmenter.png" in project_cmake
     assert "DESTINATION lib/linux-defragger" in project_cmake
@@ -754,11 +754,11 @@ def test_user_facing_branding_is_defragmenter() -> None:
         ["git", "hash-object", str(icon_path)],
         cwd=ROOT.parent,
         text=True,
-    ).strip() == "2da0939b9e68cbea9fee31358a2a9d130ad21e15"
+    ).strip() == "14b36b78ab79e7ae2085d53a9921d827f56cca11"
     png = icon_path.read_bytes()
     assert png[:8] == bytes((0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A))
-    assert int.from_bytes(png[16:20], "big") == 128
-    assert int.from_bytes(png[20:24], "big") == 128
+    assert int.from_bytes(png[16:20], "big") == 96
+    assert int.from_bytes(png[20:24], "big") == 96
 
     # Validate every PNG chunk boundary and CRC. The previous 256px asset
     # carried a plausible signature/IHDR but declared an IDAT larger than EOF,
