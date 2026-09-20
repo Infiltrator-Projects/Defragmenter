@@ -57,7 +57,7 @@ int main() {
                "large GUI maps have bounded capture space") && ok;
 
     const auto& registry = backend_registry();
-    ok = check(registry.size() == 17U, "registry size") && ok;
+    ok = check(registry.size() == 18U, "registry size") && ok;
 
     const BackendInfo* ext = backend_by_fstype("EXT2");
     ok = check(ext != nullptr, "EXT2 alias lookup") && ok;
@@ -217,6 +217,8 @@ int main() {
                "manifest NTFS entry") && ok;
     ok = check(manifest.find("\"id\":\"hfsplus\"") != std::string::npos,
                "manifest HFS+ entry") && ok;
+    ok = check(manifest.find("\"id\":\"pfs3\"") != std::string::npos,
+               "manifest PFS3 entry") && ok;
 
     return ok ? 0 : 1;
 }

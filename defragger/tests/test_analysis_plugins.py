@@ -22,7 +22,7 @@ from ui.volume_coordinator import VolumeCoordinator
 
 registry = Registry()
 manifest = registry.manifest()
-assert len(manifest) == 17
+assert len(manifest) == 18
 assert all(item["capabilities"] & 1 for item in manifest)
 assert all(item["capabilities"] & 2 for item in manifest)
 

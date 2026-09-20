@@ -75,7 +75,7 @@ struct ProgramSpec {
     const char* build_name;
 };
 
-constexpr std::array<ProgramSpec, 19> kPrograms{{
+constexpr std::array<ProgramSpec, 20> kPrograms{{
     {"hfsplus-native", "LINUX_DEFRAGGER_HFSPLUS_WORKER",
      "/usr/lib/linux-defragger/filesystems/hfsplus/linux-defragger-hfsplus-worker",
      "linux-defragger-hfsplus-worker"},
@@ -114,6 +114,9 @@ constexpr std::array<ProgramSpec, 19> kPrograms{{
     {"sfs-native", "LINUX_DEFRAGGER_SFS_WORKER",
      "/usr/lib/linux-defragger/filesystems/sfs/linux-defragger-sfs-worker",
      "linux-defragger-sfs-worker"},
+    {"pfs3-native", "LINUX_DEFRAGGER_PFS3_WORKER",
+     "/usr/lib/linux-defragger/filesystems/pfs3/linux-defragger-pfs3-worker",
+     "linux-defragger-pfs3-worker"},
     {"swap-native", "LINUX_DEFRAGGER_SWAP_WORKER",
      "/usr/lib/linux-defragger/filesystems/swap/linux-defragger-swap-worker",
      "linux-defragger-swap-worker"},
@@ -165,7 +168,7 @@ const std::vector<BackendInfo>& backend_registry() {
             CAP_GROWTH_DEFRAG;
 
         std::vector<BackendInfo> result;
-        result.reserve(17);
+        result.reserve(18);
         result.push_back({
             "affs", "Amiga OFS/FFS",
             {"affs", "amiga", "ofs", "ffs", "dostype"}, write, "exact",
@@ -229,6 +232,13 @@ const std::vector<BackendInfo>& backend_registry() {
                 "sfs-native",
                 "Amiga SFS0/SFS2 writing uses Defragmenter's offline first-party native C raw engine.",
                 "SFS0/SFS2 Growth Defrag leaves an exact 10% free-block reserve after every regular file.")});
+        result.push_back({
+            "pfs3", "Amiga PFS3", {"pfs3", "pfs", "professionalfilesystem"},
+            write, "exact-allocation", "pfs3-native", MapAdapter::NativeMap,
+            standard_write_ops(
+                "pfs3-native",
+                "Amiga PFS3 writing uses Defragmenter's offline first-party native C raw engine and fails closed outside its qualified subset.",
+                "PFS3 Growth Defrag leaves an exact 10% free-block reserve after every supported regular file.")});
         result.push_back({
             "swap", "Linux Swap", {"swap", "swapspace", "linux-swap"},
             read, "summary", "swap-native", MapAdapter::NativeMap, {}});

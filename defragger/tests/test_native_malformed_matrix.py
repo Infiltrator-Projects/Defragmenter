@@ -29,6 +29,7 @@ WORKERS = (
     "linux-defragger-ufs-worker",
     "linux-defragger-zfs-worker",
     "linux-defragger-sfs-worker",
+    "linux-defragger-pfs3-worker",
 )
 
 
