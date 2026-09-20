@@ -20,17 +20,21 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#define SFS_ROOT_ID 0x53465300U
+#define SFS0_ROOT_ID 0x53465300U
+#define SFS2_ROOT_ID 0x53465302U
 #define SFS_BITMAP_ID 0x42544d50U
 #define SFS_TRFA_ID 0x54524641U
 #define SFS_BNODE_ID 0x424e4443U
 #define SFS_OBJECT_ID 0x4f424a43U
-#define SFS_STRUCTURE_VERSION 3U
+#define SFS0_STRUCTURE_VERSION 3U
+#define SFS2_STRUCTURE_VERSION 4U
 #define SFS_BNODE_HEADER_BYTES 16U
 #define SFS_INTERNAL_NODE_BYTES 8U
-#define SFS_EXTENT_NODE_BYTES 14U
+#define SFS0_EXTENT_NODE_BYTES 14U
+#define SFS2_EXTENT_NODE_BYTES 16U
 #define SFS_OBJECT_CONTAINER_BYTES 24U
-#define SFS_OBJECT_FIXED_BYTES 25U
+#define SFS0_OBJECT_FIXED_BYTES 25U
+#define SFS2_OBJECT_FIXED_BYTES 27U
 #define SFS_OTYPE_HARDLINK 32U
 #define SFS_OTYPE_LINK 64U
 #define SFS_OTYPE_DIR 128U
@@ -67,16 +71,34 @@ static bool checksum_ok(const uint8_t *block, uint32_t block_size) {
 typedef struct {
     uint32_t block_size, total_blocks, bitmap_base, root_object_container;
     uint32_t admin_space_container, extent_bnode_root, object_node_root;
+    uint32_t root_id;
     uint16_t version, sequence;
     uint8_t bits;
     uint32_t own_block;
 } Root;
 
+static bool root_id_supported(uint32_t root_id) {
+    return root_id == SFS0_ROOT_ID || root_id == SFS2_ROOT_ID;
+}
+
+static bool root_is_sfs2(const Root *root) {
+    return root != NULL && root->root_id == SFS2_ROOT_ID &&
+           root->version == SFS2_STRUCTURE_VERSION;
+}
+
+static uint8_t extent_node_bytes(const Root *root) {
+    return root_is_sfs2(root) ? SFS2_EXTENT_NODE_BYTES : SFS0_EXTENT_NODE_BYTES;
+}
+
+static uint8_t object_fixed_bytes(const Root *root) {
+    return root_is_sfs2(root) ? SFS2_OBJECT_FIXED_BYTES : SFS0_OBJECT_FIXED_BYTES;
+}
+
 typedef struct {
     uint32_t key;
     uint32_t next;
     uint32_t prev;
-    uint16_t blocks;
+    uint32_t blocks;
     uint32_t container_block;
     uint32_t node_offset;
 } SfsExtent;
@@ -103,7 +125,7 @@ typedef struct {
     uint32_t object_block;
     uint32_t object_offset;
     uint32_t object_node;
-    uint32_t byte_size;
+    uint64_t byte_size;
     uint32_t first_extent;
     uint32_t new_start;
     SfsSizeVec chain;
@@ -174,10 +196,13 @@ static void files_free(SfsFileVec *files) {
 
 static bool parse_root(const uint8_t *block, uint32_t bytes, uint32_t expected_own,
                        Root *root) {
-    if (bytes < 116U || infiltratr_load_be32(block) != SFS_ROOT_ID || infiltratr_load_be32(block + 8U) != expected_own ||
+    const uint32_t root_id = infiltratr_load_be32(block);
+    if (bytes < 116U || !root_id_supported(root_id) ||
+        infiltratr_load_be32(block + 8U) != expected_own ||
         !checksum_ok(block, bytes)) return false;
     Root r = {0};
     r.own_block = expected_own;
+    r.root_id = root_id;
     r.version = infiltratr_load_be16(block + 12U);
     r.sequence = infiltratr_load_be16(block + 14U);
     r.bits = block[20U];
@@ -188,7 +213,10 @@ static bool parse_root(const uint8_t *block, uint32_t bytes, uint32_t expected_o
     r.root_object_container = infiltratr_load_be32(block + 104U);
     r.extent_bnode_root = infiltratr_load_be32(block + 108U);
     r.object_node_root = infiltratr_load_be32(block + 112U);
-    if (r.version != SFS_STRUCTURE_VERSION || !valid_block_size(r.block_size) ||
+    const bool version_matches =
+        (r.root_id == SFS0_ROOT_ID && r.version == SFS0_STRUCTURE_VERSION) ||
+        (r.root_id == SFS2_ROOT_ID && r.version == SFS2_STRUCTURE_VERSION);
+    if (!version_matches || !valid_block_size(r.block_size) ||
         r.block_size != bytes || r.total_blocks < 4U || r.bitmap_base == 0U ||
         r.bitmap_base >= r.total_blocks || r.root_object_container >= r.total_blocks ||
         r.admin_space_container >= r.total_blocks || r.extent_bnode_root >= r.total_blocks ||
@@ -215,7 +243,8 @@ static int discover_roots(int fd, uint64_t physical, Root *selected,
     bool pvalid = false, bvalid = false;
     uint32_t bs = infiltratr_load_be32(probe + 52U);
     uint32_t total = infiltratr_load_be32(probe + 48U);
-    if (infiltratr_load_be32(probe) == SFS_ROOT_ID && valid_block_size(bs) && total >= 4U &&
+    if (root_id_supported(infiltratr_load_be32(probe)) &&
+        valid_block_size(bs) && total >= 4U &&
         (uint64_t)total * bs <= physical) {
         pvalid = load_root_at(fd, bs, 0U, &primary) == 0;
         bvalid = load_root_at(fd, bs, total - 1U, &backup) == 0;
@@ -241,7 +270,9 @@ static int discover_roots(int fd, uint64_t physical, Root *selected,
     Root chosen = pvalid ? primary : backup;
     if (bvalid && (!pvalid || backup.sequence > primary.sequence)) chosen = backup;
     if (pvalid && bvalid && (primary.block_size != backup.block_size ||
-        primary.total_blocks != backup.total_blocks)) {
+        primary.total_blocks != backup.total_blocks ||
+        primary.root_id != backup.root_id ||
+        primary.version != backup.version)) {
         set_error(error, error_size, "SFS redundant roots disagree on filesystem geometry"); return -1;
     }
     *selected = chosen; *primary_valid = pvalid; *backup_valid = bvalid;
@@ -307,7 +338,8 @@ static int scan_extent_container(int fd, const Root *root, uint32_t block_no,
     const uint16_t count = infiltratr_load_be16(buffer + 12U);
     const bool leaf = buffer[14U] != 0U;
     const uint8_t node_size = buffer[15U];
-    const uint8_t expected_size = leaf ? SFS_EXTENT_NODE_BYTES : SFS_INTERNAL_NODE_BYTES;
+    const uint8_t expected_size =
+        leaf ? extent_node_bytes(root) : SFS_INTERNAL_NODE_BYTES;
     if (node_size != expected_size ||
         (uint64_t)count * node_size > root->block_size - SFS_BNODE_HEADER_BYTES) {
         free(buffer);
@@ -332,7 +364,9 @@ static int scan_extent_container(int fd, const Root *root, uint32_t block_no,
                 .key = key,
                 .next = infiltratr_load_be32(node + 4U),
                 .prev = infiltratr_load_be32(node + 8U),
-                .blocks = infiltratr_load_be16(node + 12U),
+                .blocks = root_is_sfs2(root)
+                    ? infiltratr_load_be32(node + 12U)
+                    : infiltratr_load_be16(node + 12U),
                 .container_block = block_no,
                 .node_offset = SFS_BNODE_HEADER_BYTES + (uint32_t)index * node_size,
             };
@@ -410,7 +444,7 @@ static void add_fragmented_cells(SfsMapCell *cells, uint64_t cell_count,
 
 static int evaluate_file(const Root *root, const SfsExtentVec *extents,
                          uint8_t *extent_owned, const uint8_t *free_map,
-                         uint32_t first, uint32_t size,
+                         uint32_t first, uint64_t size,
                          SfsAnalysis *analysis, SfsMapCell *cells,
                          uint64_t cell_count, SfsSizeVec *record_chain,
                          char *error, size_t error_size) {
@@ -432,7 +466,7 @@ static int evaluate_file(const Root *root, const SfsExtentVec *extents,
     SfsSizeVec chain = {0};
     uint32_t key = first;
     uint32_t previous_key = 0U;
-    uint16_t previous_blocks = 0U;
+    uint32_t previous_blocks = 0U;
     uint64_t blocks = 0U;
     bool fragmented = false;
     while (key != 0U) {
@@ -551,9 +585,10 @@ static int scan_object_catalogue(int fd, const Root *root,
                 break;
             }
 
+            const size_t fixed_bytes = object_fixed_bytes(root);
             size_t offset = SFS_OBJECT_CONTAINER_BYTES;
-            while (offset + SFS_OBJECT_FIXED_BYTES + 2U <= root->block_size) {
-                const size_t name_offset = offset + SFS_OBJECT_FIXED_BYTES;
+            while (offset + fixed_bytes + 2U <= root->block_size) {
+                const size_t name_offset = offset + fixed_bytes;
                 if (buffer[name_offset] == 0U) break;
                 const uint8_t *limit = buffer + root->block_size;
                 const uint8_t *name_end =
@@ -576,7 +611,12 @@ static int scan_object_catalogue(int fd, const Root *root,
                 const uint32_t object_node = infiltratr_load_be32(buffer + offset + 4U);
                 const uint32_t data = infiltratr_load_be32(buffer + offset + 12U);
                 const uint32_t auxiliary = infiltratr_load_be32(buffer + offset + 16U);
-                const uint8_t bits = buffer[offset + 24U];
+                const uint64_t file_size = root_is_sfs2(root)
+                    ? ((uint64_t)auxiliary << 16U) |
+                      infiltratr_load_be16(buffer + offset + 20U)
+                    : auxiliary;
+                const uint8_t bits =
+                    buffer[offset + (root_is_sfs2(root) ? 26U : 24U)];
                 if (object_node == 0U) {
                     free(buffer);
                     set_error(error, error_size, "SFS object has an invalid node number");
@@ -595,7 +635,7 @@ static int scan_object_catalogue(int fd, const Root *root,
                 } else if ((bits & (SFS_OTYPE_LINK | SFS_OTYPE_HARDLINK)) == 0U) {
                     SfsSizeVec chain = {0};
                     if (evaluate_file(root, extents, extent_owned, free_map,
-                                      data, auxiliary, analysis, cells, cell_count,
+                                      data, file_size, analysis, cells, cell_count,
                                       files != NULL ? &chain : NULL,
                                       error, error_size) != 0) {
                         free(buffer);
@@ -607,7 +647,7 @@ static int scan_object_catalogue(int fd, const Root *root,
                             .object_block = block_no,
                             .object_offset = (uint32_t)offset,
                             .object_node = object_node,
-                            .byte_size = auxiliary,
+                            .byte_size = file_size,
                             .first_extent = data,
                             .new_start = 0U,
                             .chain = chain,
@@ -1059,9 +1099,10 @@ static int write_extent_records(int fd, const Root *root,
             free(block);
             return -1;
         }
-        if ((uint64_t)slot->node_offset + SFS_EXTENT_NODE_BYTES >
+        const uint8_t leaf_bytes = extent_node_bytes(root);
+        if ((uint64_t)slot->node_offset + leaf_bytes >
             root->block_size || block[14U] == 0U ||
-            block[15U] != SFS_EXTENT_NODE_BYTES) {
+            block[15U] != leaf_bytes) {
             free(block);
             set_error(error, error_size, "SFS extent slot changed during staging");
             return -1;
@@ -1070,7 +1111,17 @@ static int write_extent_records(int fd, const Root *root,
         infiltratr_store_be32(node, record->key);
         infiltratr_store_be32(node + 4U, record->next);
         infiltratr_store_be32(node + 8U, record->prev);
-        infiltratr_store_be16(node + 12U, record->blocks);
+        if (root_is_sfs2(root))
+            infiltratr_store_be32(node + 12U, record->blocks);
+        else {
+            if (record->blocks > UINT16_MAX) {
+                free(block);
+                set_error(error, error_size,
+                          "SFS0 extent exceeds its 16-bit block-count field");
+                return -1;
+            }
+            infiltratr_store_be16(node + 12U, (uint16_t)record->blocks);
+        }
         fix_checksum(block, root->block_size);
         if (ld_pwrite_full(fd, block, root->block_size,
                            (uint64_t)slot->container_block * root->block_size) !=
@@ -1107,7 +1158,7 @@ static int refresh_btree_node(int fd, const Root *root, uint32_t block_no,
     const uint16_t count = infiltratr_load_be16(block + 12U);
     const bool leaf = block[14U] != 0U;
     const uint8_t node_size = block[15U];
-    if ((leaf && node_size != SFS_EXTENT_NODE_BYTES) ||
+    if ((leaf && node_size != extent_node_bytes(root)) ||
         (!leaf && node_size != SFS_INTERNAL_NODE_BYTES) ||
         (uint64_t)count * node_size >
             root->block_size - SFS_BNODE_HEADER_BYTES) {
@@ -1189,7 +1240,7 @@ static int write_file_pointer(int fd, const Root *root, const SfsFile *file,
         free(block);
         return -1;
     }
-    if ((uint64_t)file->object_offset + SFS_OBJECT_FIXED_BYTES >
+    if ((uint64_t)file->object_offset + object_fixed_bytes(root) >
             root->block_size ||
         infiltratr_load_be32(block + file->object_offset + 4U) != file->object_node) {
         free(block);
@@ -1322,7 +1373,7 @@ int sfs_build_stage(const char *source, const char *stage, bool growth,
             ((uint64_t)file->byte_size + model.root.block_size - 1U) /
             model.root.block_size;
         if (need64 > UINT32_MAX) {
-            set_error(error, error_size, "SFS file is too large for SFS0 relocation");
+            set_error(error, error_size, "SFS file is too large for supported relocation");
             rc = -1;
             break;
         }
