@@ -6,7 +6,7 @@ Completed: 2026-08-25
 Extended: 2026-09-20
 
 Applies to: release version 1.8.0-184
-Audited source commit: 69cba05e27de7e8efe6678429af6df1f089e37ff
+Audited source commit: f5b64bfab830bd599bae588bfe4ccb99e00cd4c4
 Audited release-governance commit: b5f891f623f37df16d0d902029a22ca715301581
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, sfs, hfsplus
@@ -75,7 +75,7 @@ The release workflow verifies the `protected-main` history rules, the current `m
 
 APT publication is a separate retryable workflow bound to the published release version and SHA. A release-head retry may contain documentation or release metadata only after the audited source commit; the exact-head gate still rejects any production/build/package drift.
 
-Version 1.8.0-184 is the current audited release line. It retains the exact Common 1.19.10 pin and the completed reuse boundary from 1.8.0-183. The only production-source change after that release is the GTK3 About-logo precedence repair at audited commit `69cba05e27de7e8efe6678429af6df1f089e37ff`: GtkAboutDialog's default `logo-icon-name` is cleared before the already-validated Defragmenter pixbuf is assigned, so GTK3 cannot substitute its `image-missing` icon. The approved artwork, packaging paths, filesystem engines, target-safety decisions, placement, mutation and recovery semantics are unchanged. The C++17 application-service plus first-party filesystem writer contracts remain covered by the full quality gate. Any later change beneath audited production/build/package paths requires a new source audit baseline before release.
+Version 1.8.0-184 is the current audited release line. It retains the exact Common 1.19.10 pin and the completed reuse boundary from 1.8.0-183. Production-source changes after that release are limited to the GTK3 About-logo precedence repair and the project-wide copyright normalization to 2000-2026, both included by audited commit `f5b64bfab830bd599bae588bfe4ccb99e00cd4c4`. The About repair clears GtkAboutDialog's default `logo-icon-name` before assigning the already-validated Defragmenter pixbuf, so GTK3 cannot substitute its `image-missing` icon. The approved artwork, packaging paths, filesystem engines, target-safety decisions, placement, mutation and recovery semantics are unchanged. The C++17 application-service plus first-party filesystem writer contracts remain covered by the full quality gate. Any later change beneath audited production/build/package paths requires a new source audit baseline before release.
 
 ## Historical record
 
