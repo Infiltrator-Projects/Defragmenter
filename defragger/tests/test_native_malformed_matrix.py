@@ -24,6 +24,7 @@ WORKERS = (
     "linux-defragger-btrfs-worker",
     "linux-defragger-affs-worker",
     "linux-defragger-hfsplus-worker",
+    "hfs_analyser",
     "linux-defragger-swap-worker",
     "linux-defragger-ufs-worker",
     "linux-defragger-zfs-worker",
