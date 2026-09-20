@@ -4,12 +4,12 @@
 # Author: Shannon Smith
 # Purpose: Thin GUI adapter for the native C Amiga Smart File System analyser.
 
-"""Native SFS0 allocation and offline relocation backend.
+"""Native SFS0/SFS2 allocation and offline relocation backend.
 
-The native worker validates redundant root blocks and every BTMP allocation
-bitmap block directly from raw storage.  SFS2 is intentionally not advertised as supported by this backend until its
-large-file variant has independent fixtures and an on-disk compatibility audit.
-The SFS0 decoder therefore exposes no ``sfs2`` alias.
+The native worker validates redundant root blocks, BTMP allocation bitmaps,
+object containers and extent B-trees directly from raw storage.  SFS2 uses
+its native structure-version 4 object and 32-bit extent records while sharing
+the same fail-closed staging, verification and recovery contract.
 """
 
 from __future__ import annotations
@@ -27,12 +27,12 @@ from backends.base import (
 from core.paths import resolve_program
 
 INFO = BackendInfo(
-    "sfs", "Amiga SFS", ("sfs", "sfs0", "smartfilesystem"),
+    "sfs", "Amiga SFS", ("sfs", "sfs0", "sfs2", "smartfilesystem"),
     CAP_ANALYSE | CAP_MAP | CAP_DEFRAG | CAP_GROWTH_DEFRAG | CAP_RECOVER | CAP_LIVE_MAP,
     "exact-allocation",
     operations=(
-        operation("defrag", "sfs-native", warning="Amiga SFS0 writing uses Defragmenter's offline first-party native C raw engine."),
-        operation("growth-defrag", "sfs-native", warning="SFS0 Growth Defrag leaves an exact 10% free-block reserve after every regular file."),
+        operation("defrag", "sfs-native", warning="Amiga SFS0/SFS2 writing uses Defragmenter's offline first-party native C raw engine."),
+        operation("growth-defrag", "sfs-native", warning="SFS0/SFS2 Growth Defrag leaves an exact 10% free-block reserve after every regular file."),
         operation("recover", "sfs-native"),
     ),
 )
