@@ -59,12 +59,17 @@ treating one third-party implementation as infallible.
 The safety model depends on documented Linux/POSIX interfaces rather than on
 pathnames as persistent identities:
 
-- Linux man-pages project: `open(2)`, `openat(2)`, `pread(2)`,
+- Linux man-pages project: `open(2)`, `openat(2)`, `openat2(2)`, `pread(2)`,
   `pwrite(2)`, `fsync(2)`, `flock(2)`, `stat(2)`,
   `proc_pid_mountinfo(5)` and `ioctl(2)`:
   <https://man7.org/linux/man-pages/>.
 - Linux kernel block-device/sysfs interfaces:
   <https://docs.kernel.org/>.
+- Linux device-mapper `dm-log-writes` target for completed-write/FLUSH/FUA
+  replay during crash-consistency qualification:
+  <https://docs.kernel.org/admin-guide/device-mapper/log-writes.html>.
+- Upstream `log-writes` userspace replay tool:
+  <https://github.com/josefbacik/log-writes>.
 - SQLite atomic-commit model:
   <https://sqlite.org/atomiccommit.html>.
 
@@ -78,6 +83,11 @@ environment.
   <https://clang.llvm.org/docs/AddressSanitizer.html>.
 - UndefinedBehaviorSanitizer documentation:
   <https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html>.
+- LLVM libFuzzer documentation:
+  <https://llvm.org/docs/LibFuzzer.html>.
+- e2fsprogs `e2fuzz`/filesystem corruption harness, used as corroborating
+  testing practice for malformed on-disk structures:
+  <https://github.com/tytso/e2fsprogs/tree/master/misc>.
 
 ## Referencing practice in source
 

@@ -12,6 +12,7 @@ The project quality gate combines:
 
 - warnings-as-errors native builds;
 - parser, geometry, checksum and allocation-model tests;
+- a deterministic malformed-image matrix that drives every installed native filesystem identifier with empty, truncated, all-ones and seeded-noise media and rejects hangs, signals or accidental acceptance;
 - disposable filesystem-image mutation tests;
 - target-safety, privilege, Stop and transaction regressions, including mounted-image hard-link identity and native privileged-helper tests that launch controlled children and verify SIGINT, delayed safe completion and reaping on Stop, control EOF and broken output;
 - GUI/service and typed worker-protocol tests, plus C++ mapper contract checks and real-fixture parity against native filesystem analysis;
@@ -40,6 +41,22 @@ Common-integration regressions additionally bind CMake, the local installer and 
 Branding validation likewise treats the Defragmenter icon as an exact release asset. The architecture test verifies the approved 96×96 PNG's Git object identity, dimensions, complete chunk boundaries and CRCs and checks that packaging installs it consistently for the desktop icon theme, Mint app-install catalogue and About/window private path.
 
 The mutation path is not accepted as its own sole oracle where a separate structural or payload check can be used.
+
+## Block-layer crash replay
+
+`defragger/tests/destructive/run_dm_log_writes_replay.sh` is an opt-in
+sacrificial-media harness for Linux `dm-log-writes` plus the upstream
+`replay-log` utility. It copies a prepared filesystem image through the
+logging target, marks that exact state as the baseline, runs the production
+Defragmenter worker and then reconstructs/replays the operation while invoking
+a caller-supplied read-only checker at every FLUSH or FUA boundary.
+
+This evidence is deliberately separate from the normal hosted quality gate:
+it requires root, two disposable block devices and a kernel exposing the
+`log-writes` target. It validates block-layer write ordering of the source
+filesystem. It does not pretend to replay persistence of the external recovery
+journal; the transaction/fault-injection suites remain the evidence for that
+cross-filesystem recovery contract.
 
 ## Manual and environment-dependent evidence
 

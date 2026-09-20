@@ -8,7 +8,9 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <linux/openat2.h>
 #include <stdint.h>
+#include <sys/syscall.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -59,6 +61,30 @@ char *ld_path_parent_directory(const char *path)
     return copy;
 }
 
+static int open_child_directory(int parent, const char *component)
+{
+#ifdef SYS_openat2
+    /*
+     * openat2 expresses the complete "stay beneath this trusted parent and do
+     * not traverse any symlink/magic-link component" policy in one kernel
+     * lookup. Older kernels fall back to the established openat/O_NOFOLLOW
+     * path below; correctness does not depend on openat2 being available.
+     */
+    const struct open_how how = {
+        .flags = O_RDONLY | O_DIRECTORY | O_CLOEXEC,
+        .resolve = RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS |
+                   RESOLVE_NO_MAGICLINKS,
+    };
+    const long opened =
+        syscall(SYS_openat2, parent, component, &how, sizeof(how));
+    if (opened >= 0) return (int)opened;
+    if (errno != ENOSYS && errno != EINVAL && errno != E2BIG)
+        return -1;
+#endif
+    return openat(parent, component,
+                  O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+}
+
 static bool trusted_directory(const struct stat *status, uid_t effective_uid)
 {
     if (!S_ISDIR(status->st_mode)) return false;
@@ -98,15 +124,13 @@ int ld_path_ensure_trusted_directory_tree(const char *path)
             break;
         }
 
-        int next = openat(directory, component,
-                          O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+        int next = open_child_directory(directory, component);
         if (next < 0 && errno == ENOENT) {
             if (mkdirat(directory, component, 0755) != 0 && errno != EEXIST) {
                 result = -1;
                 break;
             }
-            next = openat(directory, component,
-                          O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+            next = open_child_directory(directory, component);
         }
         if (next < 0) {
             result = -1;

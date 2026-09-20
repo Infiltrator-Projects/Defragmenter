@@ -508,98 +508,11 @@ class WindowView:
         chooser.destroy()
         return filename
 
-    def _show_license(self, parent: Gtk.Window) -> None:
-        dialog = Gtk.Dialog(
-            title="Defragmenter licence",
-            transient_for=parent,
-            modal=True,
-        )
-        dialog.add_button("Close", Gtk.ResponseType.CLOSE)
-        dialog.set_default_size(520, 300)
-        content = dialog.get_content_area()
-        content.set_border_width(18)
-        content.set_spacing(10)
-        text = Gtk.Label(label=ABOUT_LICENSE)
-        text.set_xalign(0)
-        text.set_yalign(0)
-        text.set_line_wrap(True)
-        text.set_selectable(True)
-        text.get_style_context().add_class("about-copy")
-        content.pack_start(text, True, True, 0)
-        dialog.show_all()
-        dialog.run()
-        dialog.destroy()
-
     def show_about(self) -> None:
-        dialog = Gtk.Dialog(
-            title=f"About {APP_NAME}",
-            transient_for=self.window,
-            modal=True,
+        """Display the product About surface through the selected presenter."""
+        raise NotImplementedError(
+            "WindowView requires a concrete About presentation implementation"
         )
-        dialog.set_default_size(540, 470)
-        dialog.add_button("Licence", 1)
-        dialog.add_button("Close", Gtk.ResponseType.CLOSE)
-
-        content = dialog.get_content_area()
-        content.set_border_width(24)
-        content.set_spacing(16)
-
-        hero = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=18)
-        image = Gtk.Image.new_from_icon_name(APP_ICON_NAME, Gtk.IconSize.DIALOG)
-        image.set_pixel_size(88)
-        hero.pack_start(image, False, False, 0)
-
-        title_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
-        title = Gtk.Label(label=APP_NAME)
-        title.set_xalign(0)
-        title.get_style_context().add_class("about-title")
-        title_box.pack_start(title, False, False, 0)
-        version = Gtk.Label(label=f"Version {self.gui_version}")
-        version.set_xalign(0)
-        version.get_style_context().add_class("about-version")
-        title_box.pack_start(version, False, False, 0)
-        hero.pack_start(title_box, True, True, 0)
-        content.pack_start(hero, False, False, 0)
-
-        description = Gtk.Label(label=ABOUT_COMMENTS)
-        description.set_xalign(0)
-        description.set_line_wrap(True)
-        description.get_style_context().add_class("about-copy")
-        content.pack_start(description, False, False, 0)
-
-        details = Gtk.Grid(column_spacing=14, row_spacing=8)
-        details.set_hexpand(True)
-        for row, (key, value) in enumerate(
-            (
-                ("Author", "Shannon Smith — Author and project maintainer"),
-                ("Build", self.build_label),
-                ("Engine", self.engine_version),
-                ("Copyright", COPYRIGHT),
-            )
-        ):
-            key_label = Gtk.Label(label=key)
-            key_label.set_xalign(0)
-            key_label.get_style_context().add_class("about-meta-key")
-            value_label = Gtk.Label(label=value)
-            value_label.set_xalign(0)
-            value_label.set_line_wrap(True)
-            value_label.get_style_context().add_class("about-meta-value")
-            details.attach(key_label, 0, row, 1, 1)
-            details.attach(value_label, 1, row, 1, 1)
-        content.pack_start(details, False, False, 0)
-
-        website = Gtk.LinkButton.new_with_label(PROJECT_URL, "Project website")
-        website.set_halign(Gtk.Align.START)
-        content.pack_start(website, False, False, 0)
-
-        dialog.show_all()
-        while True:
-            response = dialog.run()
-            if response == 1:
-                self._show_license(dialog)
-                continue
-            break
-        dialog.destroy()
 
     def reset_summary(self) -> None:
         self.capacity_card.set_title("Capacity")

@@ -8,7 +8,7 @@
 
 Defragmenter is a C-first offline filesystem allocation analyser and defragmenter for Linux. Native C owns the raw filesystem engines and storage-safety core; C++17 owns selected filesystem-neutral application services where RAII, stronger value types and explicit process/protocol ownership improve the implementation. Write-capable engines operate directly on unmounted block devices or filesystem images and do not delegate production mutations to mounted kernel filesystem drivers or external repair/defragmentation tools.
 
-**Current version:** 1.8.0-190
+**Current version:** 1.8.0-191
 
 **Platform:** Linux
 
@@ -66,7 +66,7 @@ cmake --build build -j"$(nproc)"
 ctest --test-dir build --output-on-failure
 ```
 
-The permanent GitHub quality gate performs warnings-as-errors C/C++ builds and runs the complete native, filesystem, GUI, architecture, safety and release regression suite, including native-helper shutdown with live child processes, mounted-image hard-link identity, large-map capture and C++ mapper fixture-parity checks.
+The permanent GitHub quality gate performs warnings-as-errors C/C++ builds and runs the complete native, filesystem, GUI, architecture, safety and release regression suite, including native-helper shutdown with live child processes, mounted-image hard-link identity, large-map capture, deterministic malformed-media rejection and C++ mapper fixture-parity checks. An opt-in dm-log-writes/replay-log harness adds sacrificial block-layer crash-boundary qualification without pretending that hosted CI is physical-media evidence.
 
 ## Release assets
 

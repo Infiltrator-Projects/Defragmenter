@@ -448,6 +448,11 @@ def test_infiltratr_common_integration() -> None:
     assert "infiltratr_string_starts_with" in ntfs_worker
     path_source = (ROOT / "src" / "core" / "ld_path.c").read_text()
     path_header = (ROOT / "src" / "core" / "ld_path.h").read_text()
+    assert "SYS_openat2" in path_source
+    assert "RESOLVE_BENEATH" in path_source
+    assert "RESOLVE_NO_SYMLINKS" in path_source
+    assert "RESOLVE_NO_MAGICLINKS" in path_source
+    assert "O_NOFOLLOW" in path_source
     assert "infiltratr_size_add_checked" in path_source
     assert "infiltratr_path_concat" in path_source
     assert "ld_path_open_atomic_temp" not in path_source + path_header

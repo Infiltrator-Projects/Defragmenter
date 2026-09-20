@@ -9,6 +9,7 @@ ABOUT = (ROOT / "gui" / "ui" / "about.py").read_text()
 ICON_ASSETS = (ROOT / "gui" / "ui" / "icon_assets.py").read_text()
 APPLICATION = (ROOT / "gui" / "ui" / "application.py").read_text()
 WINDOW = (ROOT / "gui" / "ui" / "window.py").read_text()
+WINDOW_VIEW = (ROOT / "gui" / "ui" / "window_view.py").read_text()
 DESKTOP = (ROOT / "packaging" / "io.github.linuxdefragger.desktop").read_text()
 
 for required in (
@@ -57,5 +58,12 @@ assert "from .about import LinkStandardWindowView" in WINDOW
 assert "apply_window_icon(self)" in WINDOW
 assert "self.view = LinkStandardWindowView(" in WINDOW
 assert "self.view = WindowView(" not in WINDOW
+
+# The base view exposes only the typed dispatch point. The GTK About widgets,
+# licence handling and icon policy live once in about.py.
+assert "def _show_license(" not in WINDOW_VIEW
+assert "Gtk.LinkButton.new_with_label(PROJECT_URL" not in WINDOW_VIEW
+assert "WindowView requires a concrete About presentation implementation" in WINDOW_VIEW
+assert ABOUT.count("def show_about(self) -> None:") == 1
 
 print("LINK-standard About presentation contract passed")
