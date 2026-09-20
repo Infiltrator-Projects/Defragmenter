@@ -687,6 +687,7 @@ static int format_regular(const LdtmFilesystemSpec *spec, const char *partition)
             const char *const argv[] = {program, "-L", spec->label, partition, NULL};
             return run_process(argv, NULL, 0);
         }
+        case LDTM_CREATOR_PFS3:
         case LDTM_CREATOR_ZFS:
         case LDTM_CREATOR_MANUAL:
             break;
