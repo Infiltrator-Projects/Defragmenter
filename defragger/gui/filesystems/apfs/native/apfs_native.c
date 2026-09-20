@@ -5,6 +5,7 @@
 #include "ld_io.h"
 #include "ld_runtime.h"
 
+#include "infiltratr/arithmetic.h"
 #include "infiltratr/core.h"
 #include "infiltratr/endian.h"
 
