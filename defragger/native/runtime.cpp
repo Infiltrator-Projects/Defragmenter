@@ -185,7 +185,7 @@ const std::vector<BackendInfo>& backend_registry() {
             "btrfs-native", MapAdapter::NativeMap,
             standard_write_ops(
                 "btrfs-native",
-                "Btrfs writing is offline and fail-closed to the qualified single-device CRC32C level-0 mixed-group NODATASUM subset.",
+                "Btrfs writing is offline and fail-closed to the qualified single-device, CRC32C, level-0, mixed data/metadata, NODATASUM regular-file subset.",
                 "Btrfs Growth Defrag leaves an exact 10% free-sector reserve after each supported regular file.")});
         result.push_back({
             "exfat", "exFAT", {"exfat"}, write, "exact",
