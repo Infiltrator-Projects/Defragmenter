@@ -32,13 +32,18 @@ static uint32_t get32(const uint8_t *p)
            ((uint32_t)p[2] << 8) | (uint32_t)p[3];
 }
 
-static void stamp_checksum(uint8_t *block)
+static void stamp_checksum_bytes(uint8_t *block, uint32_t block_size)
 {
     put32(block + 4U, 0U);
     uint32_t sum = 1U;
-    for (uint32_t offset = 0U; offset < TEST_BLOCK_SIZE; offset += 4U)
+    for (uint32_t offset = 0U; offset < block_size; offset += 4U)
         sum += get32(block + offset);
     put32(block + 4U, 0U - sum);
+}
+
+static void stamp_checksum(uint8_t *block)
+{
+    stamp_checksum_bytes(block, TEST_BLOCK_SIZE);
 }
 
 static void set_header(uint8_t *block, const char id[4], uint32_t own_block)
@@ -47,11 +52,12 @@ static void set_header(uint8_t *block, const char id[4], uint32_t own_block)
     put32(block + 8U, own_block);
 }
 
-static void make_root(uint8_t *block, uint32_t own_block, uint16_t sequence)
+static void make_root(uint8_t *block, uint32_t own_block, uint16_t sequence,
+                      int sfs2)
 {
     memset(block, 0, TEST_BLOCK_SIZE);
-    set_header(block, "SFS\0", own_block);
-    put16(block + 12U, 3U);
+    set_header(block, sfs2 != 0 ? "SFS\2" : "SFS\0", own_block);
+    put16(block + 12U, sfs2 != 0 ? 4U : 3U);
     put16(block + 14U, sequence);
     put32(block + 48U, TEST_BLOCKS);
     put32(block + 52U, TEST_BLOCK_SIZE);
@@ -86,48 +92,64 @@ static void make_bitmap(uint8_t *block, int fragmented)
     stamp_checksum(block);
 }
 
-static void make_extent_tree(uint8_t *block, int fragmented)
+static void make_extent_tree(uint8_t *block, int fragmented, int sfs2)
 {
     memset(block, 0, TEST_BLOCK_SIZE);
     set_header(block, "BNDC", 3U);
     put16(block + 12U, 2U);
     block[14U] = 1U;
-    block[15U] = 14U;
+    const uint32_t stride = sfs2 != 0 ? 16U : 14U;
+    block[15U] = (uint8_t)stride;
     const uint32_t second = fragmented != 0 ? 30U : 21U;
-    put32(block + 16U, 20U);
-    put32(block + 20U, second);
-    put32(block + 24U, 0U);
-    put16(block + 28U, 1U);
-    put32(block + 30U, second);
-    put32(block + 34U, 0U);
-    put32(block + 38U, 20U);
-    put16(block + 42U, 2U);
+    uint8_t *first_node = block + 16U;
+    uint8_t *second_node = first_node + stride;
+    put32(first_node, 20U);
+    put32(first_node + 4U, second);
+    put32(first_node + 8U, 0U);
+    if (sfs2 != 0) put32(first_node + 12U, 1U);
+    else put16(first_node + 12U, 1U);
+    put32(second_node, second);
+    put32(second_node + 4U, 0U);
+    put32(second_node + 8U, 20U);
+    if (sfs2 != 0) put32(second_node + 12U, 2U);
+    else put16(second_node + 12U, 2U);
     stamp_checksum(block);
 }
 
-static void make_object_container(uint8_t *block)
+static void make_object_container(uint8_t *block, int sfs2)
 {
     memset(block, 0, TEST_BLOCK_SIZE);
     set_header(block, "OBJC", 4U);
-    put32(block + 24U + 4U, 10U);
-    put32(block + 24U + 8U, 0x0fU);
-    put32(block + 24U + 12U, 20U);
-    put32(block + 24U + 16U, 3U * TEST_BLOCK_SIZE);
-    block[24U + 24U] = 0U;
-    memcpy(block + 24U + 25U, "frag", 5U);
-    block[24U + 30U] = 0U;
+    uint8_t *object = block + 24U;
+    const uint64_t file_size = 3U * TEST_BLOCK_SIZE;
+    put32(object + 4U, 10U);
+    put32(object + 8U, 0x0fU);
+    put32(object + 12U, 20U);
+    if (sfs2 != 0) {
+        put32(object + 16U, (uint32_t)(file_size >> 16U));
+        put16(object + 20U, (uint16_t)file_size);
+        object[26U] = 0U;
+        memcpy(object + 27U, "frag", 5U);
+        object[32U] = 0U;
+    } else {
+        put32(object + 16U, (uint32_t)file_size);
+        object[24U] = 0U;
+        memcpy(object + 25U, "frag", 5U);
+        object[30U] = 0U;
+    }
     stamp_checksum(block);
 }
 
-static void make_image(uint8_t *image, int transaction_pending, int fragmented)
+static void make_image(uint8_t *image, int transaction_pending, int fragmented,
+                       int sfs2)
 {
     memset(image, 0, TEST_BYTES);
-    make_root(image, 0U, 5U);
+    make_root(image, 0U, 5U, sfs2);
     make_root(image + (TEST_BLOCKS - 1U) * TEST_BLOCK_SIZE,
-              TEST_BLOCKS - 1U, 6U);
+              TEST_BLOCKS - 1U, 6U, sfs2);
     make_bitmap(image + TEST_BLOCK_SIZE, fragmented);
-    make_extent_tree(image + 3U * TEST_BLOCK_SIZE, fragmented);
-    make_object_container(image + 4U * TEST_BLOCK_SIZE);
+    make_extent_tree(image + 3U * TEST_BLOCK_SIZE, fragmented, sfs2);
+    make_object_container(image + 4U * TEST_BLOCK_SIZE, sfs2);
     memset(image + 20U * TEST_BLOCK_SIZE, 'A', TEST_BLOCK_SIZE);
     if (fragmented != 0) {
         memset(image + 30U * TEST_BLOCK_SIZE, 'B', TEST_BLOCK_SIZE);
@@ -200,13 +222,15 @@ int main(int argc, char **argv)
         uint8_t *fixture = malloc(TEST_BYTES);
         if (fixture == NULL)
             return 2;
-        const int fragmented = strcmp(argv[3], "fragmented") == 0 ? 1 :
-                               strcmp(argv[3], "contiguous") == 0 ? 0 : -1;
+        const int sfs2 = strncmp(argv[3], "sfs2-", 5U) == 0 ? 1 : 0;
+        const char *layout = sfs2 != 0 ? argv[3] + 5U : argv[3];
+        const int fragmented = strcmp(layout, "fragmented") == 0 ? 1 :
+                               strcmp(layout, "contiguous") == 0 ? 0 : -1;
         if (fragmented < 0) {
             free(fixture);
             return 2;
         }
-        make_image(fixture, 0, fragmented);
+        make_image(fixture, 0, fragmented, sfs2);
         const int fd = open(argv[2], O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
         const ssize_t written = fd >= 0 ? write(fd, fixture, TEST_BYTES) : -1;
         if (fd >= 0) (void)close(fd);
@@ -223,7 +247,7 @@ int main(int argc, char **argv)
     SfsMapCell cells[16];
     char error[256] = {0};
 
-    make_image(image, 0, 1);
+    make_image(image, 0, 1, 0);
     if (analyse_image(image, &analysis, cells, 16U, error, sizeof(error)) != 0) {
         (void)fprintf(stderr, "valid SFS image rejected: %s\n", error);
         free(image);
@@ -257,7 +281,7 @@ int main(int argc, char **argv)
         return 4;
     }
 
-    make_image(image, 0, 0);
+    make_image(image, 0, 0, 0);
     if (analyse_image(image, &analysis, cells, 16U, error, sizeof(error)) != 0 ||
         analysis.fragmented_files != 0U || !analysis.growth_10_satisfied) {
         (void)fprintf(stderr, "contiguous SFS extent chain was not recognised: %s\n", error);
@@ -265,7 +289,7 @@ int main(int argc, char **argv)
         return 5;
     }
 
-    make_image(image, 1, 1);
+    make_image(image, 1, 1, 0);
     if (analyse_image(image, &analysis, NULL, 0U, error, sizeof(error)) != 0 ||
         !analysis.transaction_pending) {
         (void)fprintf(stderr, "SFS unfinished transaction was not reported: %s\n", error);
@@ -273,7 +297,7 @@ int main(int argc, char **argv)
         return 5;
     }
 
-    make_image(image, 0, 1);
+    make_image(image, 0, 1, 0);
     image[TEST_BLOCK_SIZE + 20U] ^= 1U;
     if (probe_image(image) != 1) {
         (void)fprintf(stderr, "SFS identity probe depended on bitmap health\n");
@@ -286,7 +310,7 @@ int main(int argc, char **argv)
         return 7;
     }
 
-    make_image(image, 0, 1);
+    make_image(image, 0, 1, 0);
     image[4U] ^= 1U;
     if (analyse_image(image, &analysis, NULL, 0U, error, sizeof(error)) != 0 ||
         analysis.primary_root_valid || !analysis.backup_root_valid ||
@@ -296,7 +320,7 @@ int main(int argc, char **argv)
         return 8;
     }
 
-    make_image(image, 0, 1);
+    make_image(image, 0, 1, 0);
     put32(image + (TEST_BLOCKS - 1U) * TEST_BLOCK_SIZE + 48U, TEST_BLOCKS - 1U);
     stamp_checksum(image + (TEST_BLOCKS - 1U) * TEST_BLOCK_SIZE);
     if (analyse_image(image, &analysis, NULL, 0U, error, sizeof(error)) == 0) {
@@ -305,7 +329,7 @@ int main(int argc, char **argv)
         return 9;
     }
 
-    make_image(image, 0, 1);
+    make_image(image, 0, 1, 0);
     char source[64];
     char stage[64];
     if (save_image(image, source) != 0 || make_stage_path(stage) != 0) {
