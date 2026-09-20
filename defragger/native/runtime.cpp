@@ -226,19 +226,19 @@ const std::vector<BackendInfo>& backend_registry() {
                 "NTFS writing uses Defragmenter's offline native C raw engine. No NTFS filesystem driver, mount, filesystem ioctl or external filesystem utility is used.",
                 "NTFS Growth Defrag uses the same native C raw engine and leaves an exact 10% free-cluster reserve after every supported regular-file stream.")});
         result.push_back({
-            "sfs", "Amiga SFS", {"sfs", "sfs0", "sfs2", "smartfilesystem"},
-            write, "exact-allocation", "sfs-native", MapAdapter::NativeMap,
-            standard_write_ops(
-                "sfs-native",
-                "Amiga SFS0/SFS2 writing uses Defragmenter's offline first-party native C raw engine.",
-                "SFS0/SFS2 Growth Defrag leaves an exact 10% free-block reserve after every regular file.")});
-        result.push_back({
             "pfs3", "Amiga PFS3", {"pfs3", "pfs", "professionalfilesystem"},
             write, "exact-allocation", "pfs3-native", MapAdapter::NativeMap,
             standard_write_ops(
                 "pfs3-native",
                 "Amiga PFS3 writing uses Defragmenter's offline first-party native C raw engine and fails closed outside its qualified subset.",
                 "PFS3 Growth Defrag leaves an exact 10% free-block reserve after every supported regular file.")});
+        result.push_back({
+            "sfs", "Amiga SFS", {"sfs", "sfs0", "sfs2", "smartfilesystem"},
+            write, "exact-allocation", "sfs-native", MapAdapter::NativeMap,
+            standard_write_ops(
+                "sfs-native",
+                "Amiga SFS0/SFS2 writing uses Defragmenter's offline first-party native C raw engine.",
+                "SFS0/SFS2 Growth Defrag leaves an exact 10% free-block reserve after every regular file.")});
         result.push_back({
             "swap", "Linux Swap", {"swap", "swapspace", "linux-swap"},
             read, "summary", "swap-native", MapAdapter::NativeMap, {}});
