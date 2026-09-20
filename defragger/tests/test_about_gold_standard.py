@@ -37,7 +37,7 @@ assert "dialog.set_logo_icon_name(APP_ICON_NAME)" in ABOUT
 
 for required in (
     '"/usr/lib/linux-defragger/defragmenter-icon.png"',
-    '"/usr/share/icons/hicolor/256x256/apps/io.github.linuxdefragger.png"',
+    '"/usr/share/icons/hicolor/128x128/apps/io.github.linuxdefragger.png"',
     '"packaging" / "io.github.linuxdefragger.png"',
     "GdkPixbuf.Pixbuf.new_from_file_at_scale",
     "GLib.set_prgname(APP_ICON_NAME)",
