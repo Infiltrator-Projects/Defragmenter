@@ -2,7 +2,7 @@
 
 # Defragmenter
 
-**Project copyright:** © 2000-2026 Shannon Smith
+**Project copyright:** © 1993-2026 Shannon Smith
 
 [![Project quality gate](https://github.com/Infiltrator-Projects/Defragmenter/actions/workflows/quality-gate.yml/badge.svg)](https://github.com/Infiltrator-Projects/Defragmenter/actions/workflows/quality-gate.yml)
 
@@ -109,6 +109,6 @@ Defragmentation changes filesystem allocation metadata and data placement. Keep 
 
 ## Licence
 
-Copyright © 2000-2026 Shannon Smith.
+Copyright © 1993-2026 Shannon Smith.
 
 Defragmenter first-party code, scripts, tests, packaging and documentation are licensed under the GNU General Public License version 3 or, at your option, any later version (`GPL-3.0-or-later`). The canonical licence text is `LICENSE`.

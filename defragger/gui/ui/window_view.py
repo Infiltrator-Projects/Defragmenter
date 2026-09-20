@@ -16,7 +16,7 @@ from .widgets import DiskMap, SummaryCard
 APP_NAME = "Defragmenter"
 APP_ICON_NAME = "io.github.linuxdefragger"
 PROJECT_URL = "https://github.com/Infiltrator-Projects/Defragmenter"
-COPYRIGHT = "Copyright © 2000-2026 Shannon Smith"
+COPYRIGHT = "Copyright © 1993-2026 Shannon Smith"
 ABOUT_COMMENTS = (
     "A C-first Linux filesystem allocation analyser and offline defragmenter "
     "authored by Shannon Smith."
