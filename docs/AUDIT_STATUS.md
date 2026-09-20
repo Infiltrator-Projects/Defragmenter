@@ -6,10 +6,10 @@ Completed: 2026-08-25
 Extended: 2026-09-20
 
 Applies to: release version 1.8.0-191
-Audited source commit: c57d05eb7e1581a24edeee5cab8c873ff3224777
+Audited source commit: b8b979dd885dbb082815dad7005f4132c7b2b40c
 Audited release-governance commit: b52008be6aa7f19dae2190ddbdd22c7e946849a7
 
-Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, sfs, hfsplus
+Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, sfs, hfsplus, minix
 
 This document records the **current** write-safety case. Historical audit-development detail remains available in Git history and immutable release tags rather than being repeated here.
 
@@ -42,6 +42,7 @@ The completed audit covers these first-party write/recovery engines:
 - **Amiga OFS/FFS** — native raw catalogue, relocation, verification and Recover.
 - **Amiga SFS0** — first-party native supported-subset relayout and Recover.
 - **HFS+/HFSX** — native staged transaction and Recover for supported clean-journal states.
+- **Minix v1/v2/v3** — native fail-closed staged relayout, exact 10% Growth Defrag and durable Recover for the supported exact-analysis subset.
 
 Read-only support for other formats is not promoted to write support by this audit. Unsupported or ambiguous layouts continue to fail closed.
 
@@ -77,7 +78,7 @@ APT publication is likewise a direct reusable-workflow dependency of successful 
 
 Version 1.8.0-191 is the current audited release line. It retains the exact Common 1.19.10 pin, the retry-safe publication workflow, the GTK/GLib/X11 identity repair and complete PNG structural validation, while standardising the final graphite/cyan artwork on the canonical Infiltrator desktop colour family.
 
-The audited source baseline at `ee3b3d68490b74c186ffea18d0e751b838fb57b0` also strengthens the root-owned trusted-directory walk: supported Linux kernels use `openat2()` with `RESOLVE_BENEATH`, `RESOLVE_NO_SYMLINKS` and `RESOLVE_NO_MAGICLINKS`; older kernels retain the previously audited `openat(O_NOFOLLOW)` component-by-component fallback and the same ownership/mode validation. The obsolete duplicate base-window About implementation has been removed, leaving the LINK-standard presenter as the single concrete About/licence/icon path.
+The audited source baseline also strengthens the root-owned trusted-directory walk: supported Linux kernels use `openat2()` with `RESOLVE_BENEATH`, `RESOLVE_NO_SYMLINKS` and `RESOLVE_NO_MAGICLINKS`; older kernels retain the previously audited `openat(O_NOFOLLOW)` component-by-component fallback and the same ownership/mode validation. The obsolete duplicate base-window About implementation has been removed, leaving the LINK-standard presenter as the single concrete About/licence/icon path.
 
 Parser qualification now adds a deterministic malformed-media matrix across every installed native filesystem worker, rejecting hangs, signal termination and accidental identification of empty, truncated, all-ones or seeded-noise media. An opt-in `dm-log-writes`/`replay-log` harness is present for sacrificial block-layer FLUSH/FUA replay, but it is intentionally classified as environment-dependent evidence until run on suitable disposable devices; it does not replace the existing transaction/recovery fault-injection suite.
 
@@ -86,3 +87,6 @@ No filesystem placement algorithm, on-disk mutation format, transaction state ma
 ## Historical record
 
 Earlier audit extensions documented individual implementation fixes, branding changes, Common migrations and release-pipeline corrections inline. Those details are preserved in Git history and release tags. Keeping them out of this current-state safety case prevents historical narrative from becoming a second changelog.
+
+
+The 2026-09-20 audit extension additionally covers the Minix v1/v2/v3 writer introduced at `b8b979dd885dbb082815dad7005f4132c7b2b40c`. Hosted qualification completed with the native Minix unit suite, an end-to-end transaction fixture, the full 41-test CTest suite and ASan/UBSan lane. The writer remains fail-closed to the exact native subset accepted by its analyser and requires durable staged recovery material before authoritative source replacement.
