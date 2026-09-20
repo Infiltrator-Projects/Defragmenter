@@ -475,15 +475,20 @@ target_compile_definitions(linux-defragger-xfs-worker PRIVATE
 target_link_libraries(linux-defragger-xfs-worker PRIVATE
     linux-defragger-xfs-native linux-defragger-core SQLite::SQLite3 OpenSSL::Crypto)
 
-# Classic HFS read-only analysis is first-party native C.  The analyser parses
-# the MDB, Extents Overflow B-tree and Catalog B-tree directly; no bundled HFS
-# library or external filesystem utility participates in the production path.
-add_executable(linux-defragger-hfs-analyser gui/filesystems/hfs/native/analyser.c)
-target_compile_options(linux-defragger-hfs-analyser PRIVATE ${LD_WARNING_FLAGS})
-target_compile_definitions(linux-defragger-hfs-analyser PRIVATE
+# Classic HFS analysis and bounded offline mutation share the same first-party
+# parser.  The installed binary retains the historical hfs_analyser name for
+# compatibility while adding Defragment/Growth Defrag/Recover.
+add_executable(linux-defragger-hfs-worker gui/filesystems/hfs/native/writer.c)
+target_include_directories(linux-defragger-hfs-worker PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
+    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/hfs/native"
+    "${LD_GENERATED_DIR}")
+target_compile_options(linux-defragger-hfs-worker PRIVATE ${LD_WARNING_FLAGS})
+target_compile_definitions(linux-defragger-hfs-worker PRIVATE
     _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-target_link_libraries(linux-defragger-hfs-analyser PRIVATE InfiltratrCommon::Common)
-set_target_properties(linux-defragger-hfs-analyser PROPERTIES OUTPUT_NAME hfs_analyser)
+target_link_libraries(linux-defragger-hfs-worker PRIVATE
+    linux-defragger-core OpenSSL::Crypto)
+set_target_properties(linux-defragger-hfs-worker PROPERTIES OUTPUT_NAME hfs_analyser)
 
 install(TARGETS linux-defragger-affs-worker
         RUNTIME DESTINATION lib/linux-defragger/filesystems/affs)
@@ -505,7 +510,7 @@ install(TARGETS linux-defragger-exfat-worker
         RUNTIME DESTINATION lib/linux-defragger/filesystems/exfat)
 install(TARGETS linux-defragger-hfsplus-worker
         RUNTIME DESTINATION lib/linux-defragger/filesystems/hfsplus)
-install(TARGETS linux-defragger-hfs-analyser
+install(TARGETS linux-defragger-hfs-worker
         RUNTIME DESTINATION lib/linux-defragger/filesystems/hfs)
 
 # Native C++ application services replace the Python mapper, operation

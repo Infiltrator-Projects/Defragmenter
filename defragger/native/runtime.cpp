@@ -202,8 +202,12 @@ const std::vector<BackendInfo>& backend_registry() {
                 standard_write_ops("fat-native")});
         }
         result.push_back({
-            "hfs", "Apple HFS", {"hfs"}, read, "exact",
-            "hfs-native", MapAdapter::NativeMap, {}});
+            "hfs", "Apple HFS", {"hfs"}, write, "exact",
+            "hfs-native", MapAdapter::NativeMap,
+            standard_write_ops(
+                "hfs-native",
+                "Classic HFS writing uses Defragmenter's offline first-party native C engine and fails closed when a regular-file fork requires overflow extent records.",
+                "Classic HFS Growth Defrag leaves a 10% free allocation-block reserve after each supported non-empty file fork.")});
         result.push_back({
             "hfsplus", "Apple HFS+/HFSX", {"hfsplus", "hfs+", "hfsx"},
             write, "exact", "hfsplus-native", MapAdapter::HfsPlus,

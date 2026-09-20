@@ -34,6 +34,7 @@ NATIVE_WRITERS = {
     "affs": "affs-native",
     "sfs": "sfs-native",
     "pfs3": "pfs3-native",
+    "hfs": "hfs-native",
     "hfsplus": "hfsplus-native",
     "minix": "minix-native",
 }
@@ -93,7 +94,7 @@ def test_dispatch_is_filesystem_neutral() -> None:
                                    ("ntfs", "ntfs-native"), ("ext4", "ext-native"),
                                    ("xfs", "xfs-native"), ("affs", "affs-native"),
                                    ("sfs", "sfs-native"), ("pfs3", "pfs3-native"),
-                                   ("hfsplus", "hfsplus-native"),
+                                   ("hfs", "hfs-native"), ("hfsplus", "hfsplus-native"),
                                    ("minix", "minix-native")):
             command = operation_engine.build_worker_command(
                 registry, filesystem, "defrag", "/dev/test", []
@@ -127,7 +128,7 @@ def test_single_filesystem_hierarchy_and_c_first_writers() -> None:
         "zfs": {"zfs_native.h", "zfs_native.c", "zfs_worker.c"},
         "sfs": {"sfs_native.h", "sfs_native.c", "sfs_worker.c"},
         "pfs3": {"pfs3_native.h", "pfs3_native.c", "pfs3_worker.c"},
-        "hfs": {"analyser.c"},
+        "hfs": {"analyser.c", "writer.c"},
     }
     for filesystem, native_files in required_native.items():
         package = GUI / "filesystems" / filesystem
@@ -143,7 +144,7 @@ def test_single_filesystem_hierarchy_and_c_first_writers() -> None:
         "runtime.py", "staging.py", "tools.py", "libext.py", "geometry.py", "format.py",
         "placement.py",
     }
-    for filesystem in ("ext4", "ntfs", "exfat", "xfs", "affs", "sfs", "pfs3", "hfsplus", "minix"):
+    for filesystem in ("ext4", "ntfs", "exfat", "xfs", "affs", "sfs", "pfs3", "hfs", "hfsplus", "minix"):
         package = GUI / "filesystems" / filesystem
         assert not ({path.name for path in package.glob("*.py")} & forbidden_python)
 
@@ -210,9 +211,9 @@ def test_build_and_path_registry_install_native_workers() -> None:
         )
         assert install_pattern.search(cmake), f"{worker} has no package install rule"
         assert worker in paths
-    assert "linux-defragger-hfs-analyser" in cmake
+    assert "linux-defragger-hfs-worker" in cmake
     assert re.search(
-        r"install\(TARGETS\s+linux-defragger-hfs-analyser\s+"
+        r"install\(TARGETS\s+linux-defragger-hfs-worker\s+"
         r"RUNTIME DESTINATION lib/linux-defragger/filesystems/hfs\)",
         cmake,
     )
@@ -481,7 +482,7 @@ def test_infiltratr_common_integration() -> None:
     assert "writable" not in rawio
 
     for filesystem, worker in (("affs", "affs_worker.c"), ("sfs", "sfs_worker.c"),
-                               ("pfs3", "pfs3_worker.c"),
+                               ("pfs3", "pfs3_worker.c"), ("hfs", "writer.c"),
                                ("hfsplus", "hfsplus_worker.c"), ("minix", "minix_worker.c")):
         source = (GUI / "filesystems" / filesystem / "native" / worker).read_text()
         assert "infiltratr_parse_u64_range" in source
@@ -498,7 +499,7 @@ def test_core_remains_filesystem_neutral() -> None:
         path.read_text(encoding="utf-8", errors="replace").lower()
         for path in core.glob("*.[ch]")
     )
-    for filesystem in ("xfs", "ntfs", "exfat", "ext4", "btrfs", "hfsplus", "pfs3"):
+    for filesystem in ("xfs", "ntfs", "exfat", "ext4", "btrfs", "hfs", "hfsplus", "pfs3"):
         assert f"{filesystem}_" not in combined
 
 
@@ -522,6 +523,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
         "affs": native / "affs" / "native" / "affs_worker.c",
         "sfs": native / "sfs" / "native" / "sfs_worker.c",
         "pfs3": native / "pfs3" / "native" / "pfs3_worker.c",
+        "hfs": native / "hfs" / "native" / "writer.c",
         "hfsplus": native / "hfsplus" / "native" / "hfsplus_worker.c",
         "minix": native / "minix" / "native" / "minix_worker.c",
     }
@@ -559,6 +561,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
     assert "ld_path_is_mounted(device)" in sources["affs"]
     assert "ld_path_is_mounted(device)" in sources["sfs"]
     assert "ld_path_is_mounted(device)" in sources["pfs3"]
+    assert "ld_path_is_mounted(device)" in sources["hfs"]
     assert "ld_path_is_mounted(device)" in sources["hfsplus"]
     assert "ld_path_is_mounted(device)" in sources["minix"]
 
@@ -570,6 +573,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
         "affs": (".affs-stage",),
         "sfs": (".sfs-stage",),
         "pfs3": (".pfs3-stage",),
+        "hfs": (".hfs-stage",),
         "hfsplus": (".hfsplus-stage",),
         "minix": (".minix-stage",),
     }
@@ -587,6 +591,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
         "affs": workers["affs"],
         "sfs": workers["sfs"],
         "pfs3": workers["pfs3"],
+        "hfs": workers["hfs"],
         "hfsplus": workers["hfsplus"],
         "minix": workers["minix"],
     }
@@ -614,6 +619,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
         native / "affs" / "native" / "affs_native.c",
         native / "sfs" / "native" / "sfs_native.c",
         native / "pfs3" / "native" / "pfs3_native.c",
+        native / "hfs" / "native" / "writer.c",
         native / "hfsplus" / "native" / "hfsplus_native.c",
         native / "minix" / "native" / "minix_native.c",
     ):
@@ -648,7 +654,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
 
     journal_workers = (
         workers["ext"], workers["ntfs"], workers["exfat"], workers["xfs"],
-        workers["affs"], workers["sfs"], workers["pfs3"], workers["hfsplus"], workers["minix"],
+        workers["affs"], workers["sfs"], workers["pfs3"], workers["hfs"], workers["hfsplus"], workers["minix"],
         native / "exfat" / "native" / "exfat_relayout.c",
     )
     for path in journal_workers:
@@ -673,7 +679,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
 
     for path in (
         workers["ext"], workers["ntfs"], workers["affs"],
-        workers["sfs"], workers["pfs3"], workers["hfsplus"], workers["minix"],
+        workers["sfs"], workers["pfs3"], workers["hfs"], workers["hfsplus"], workers["minix"],
         native / "ntfs" / "native" / "ntfs_plan.c",
         native / "exfat" / "native" / "exfat_relayout.c",
     ):
@@ -719,7 +725,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
 
     for path in (
         workers["ext"], workers["ntfs"], workers["affs"],
-        workers["sfs"], workers["pfs3"], workers["hfsplus"], workers["minix"],
+        workers["sfs"], workers["pfs3"], workers["hfs"], workers["hfsplus"], workers["minix"],
     ):
         source = path.read_text()
         assert "open(device, O_RDWR | O_CLOEXEC)" not in source

@@ -17,8 +17,13 @@ from backends.base import (
     BackendError,
     BackendInfo,
     CAP_ANALYSE,
+    CAP_DEFRAG,
+    CAP_GROWTH_DEFRAG,
+    CAP_LIVE_MAP,
     CAP_MAP,
+    CAP_RECOVER,
     FilesystemBackend,
+    operation,
 )
 from core.paths import resolve_program
 
@@ -26,8 +31,19 @@ INFO = BackendInfo(
     "hfs",
     "Apple HFS",
     ("hfs",),
-    CAP_ANALYSE | CAP_MAP,
+    CAP_ANALYSE | CAP_MAP | CAP_DEFRAG | CAP_GROWTH_DEFRAG | CAP_RECOVER | CAP_LIVE_MAP,
     "exact",
+    operations=(
+        operation(
+            "defrag", "hfs-native",
+            warning="Classic HFS writing uses Defragmenter's offline first-party native C engine and fails closed when a regular-file fork requires overflow extent records.",
+        ),
+        operation(
+            "growth-defrag", "hfs-native",
+            warning="Classic HFS Growth Defrag leaves a 10% free allocation-block reserve after each supported non-empty file fork.",
+        ),
+        operation("recover", "hfs-native"),
+    ),
 )
 
 
