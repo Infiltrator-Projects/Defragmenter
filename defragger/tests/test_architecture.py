@@ -741,8 +741,8 @@ def test_user_facing_branding_is_defragmenter() -> None:
 
     project_cmake = (ROOT / "cmake" / "project.cmake").read_text()
     assert "packaging/io.github.linuxdefragger.png" in project_cmake
-    assert "share/icons/hicolor/256x256/apps" in project_cmake
-    assert "share/icons/hicolor/128x128/apps" not in project_cmake
+    assert "share/icons/hicolor/128x128/apps" in project_cmake
+    assert "share/icons/hicolor/256x256/apps" not in project_cmake
     assert "DESTINATION share/app-install/icons" in project_cmake
     assert "RENAME infiltrator-defragmenter.png" in project_cmake
     assert "DESTINATION lib/linux-defragger" in project_cmake
@@ -754,11 +754,38 @@ def test_user_facing_branding_is_defragmenter() -> None:
         ["git", "hash-object", str(icon_path)],
         cwd=ROOT.parent,
         text=True,
-    ).strip() == "6c860b623ef3e9608e8d5bbde5fa91cb4fe6783f"
+    ).strip() == "2da0939b9e68cbea9fee31358a2a9d130ad21e15"
     png = icon_path.read_bytes()
     assert png[:8] == bytes((0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A))
-    assert int.from_bytes(png[16:20], "big") == 256
-    assert int.from_bytes(png[20:24], "big") == 256
+    assert int.from_bytes(png[16:20], "big") == 128
+    assert int.from_bytes(png[20:24], "big") == 128
+
+    # Validate every PNG chunk boundary and CRC. The previous 256px asset
+    # carried a plausible signature/IHDR but declared an IDAT larger than EOF,
+    # so GdkPixbuf correctly rejected it at runtime.
+    import zlib
+    cursor = 8
+    saw_iend = False
+    while cursor < len(png):
+        assert cursor + 12 <= len(png), "truncated PNG chunk header"
+        length = int.from_bytes(png[cursor:cursor + 4], "big")
+        chunk_type = png[cursor + 4:cursor + 8]
+        data_start = cursor + 8
+        data_end = data_start + length
+        crc_end = data_end + 4
+        assert crc_end <= len(png), (
+            f"truncated PNG chunk {chunk_type!r}: declared {length} bytes"
+        )
+        expected_crc = int.from_bytes(png[data_end:crc_end], "big")
+        actual_crc = zlib.crc32(chunk_type)
+        actual_crc = zlib.crc32(png[data_start:data_end], actual_crc) & 0xFFFFFFFF
+        assert actual_crc == expected_crc, f"bad PNG CRC for {chunk_type!r}"
+        cursor = crc_end
+        if chunk_type == b"IEND":
+            saw_iend = True
+            break
+    assert saw_iend, "PNG has no IEND chunk"
+    assert cursor == len(png), "bytes follow PNG IEND chunk"
     assert not (ROOT / "packaging" / "io.github.linuxdefragger.svg").exists()
 
     release_workflow = (ROOT.parent / ".github" / "workflows" / "release.yml").read_text()
