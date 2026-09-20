@@ -5,8 +5,8 @@ Status: **complete**
 Completed: 2026-08-25  
 Extended: 2026-09-20
 
-Applies to: release version 1.8.0-188
-Audited source commit: af6c6f575761b4c5b00d0ce94b61b25f59e75b0f
+Applies to: release version 1.8.0-190
+Audited source commit: 755add8117a17f1b71e62c5e8805dc64e22e6f67
 Audited release-governance commit: b52008be6aa7f19dae2190ddbdd22c7e946849a7
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, sfs, hfsplus
@@ -75,7 +75,7 @@ The quality gate now owns the release handoff as a direct dependent reusable-wor
 
 APT publication is likewise a direct reusable-workflow dependency of successful release publication, with manual `workflow_dispatch` retained only as a retry path. It verifies the immutable release tag/SHA before dispatching the central repository refresh, so release or APT retries cannot lose their handoff through `workflow_run` semantics. A release-head retry may contain documentation or release metadata only after the audited source commit; the exact-head gate still rejects any production/build/package drift.
 
-Version 1.8.0-187 is the current audited release line. It retains the exact Common 1.19.10 pin, all filesystem/write-safety semantics from 1.8.0-186 and the retry-safe publication workflow. The audited source baseline at `13994663de2da1b81274927ca43ecfab315b5b9b` replaces the malformed 256×256 branding asset with the last known structurally valid project-owned 128×128 black/cyan PNG, moves hicolor installation back to the matching 128×128 directory and adds complete PNG chunk/CRC validation so a truncated image cannot pass release qualification again. The GTK/GLib/X11 identity repair from 1.8.0-186 is retained unchanged. No filesystem engine, target-safety decision, placement, mutation or recovery semantic changed for this release. Any later change beneath audited production/build/package paths requires a new source audit baseline before release.
+Version 1.8.0-190 is the current audited release line. It retains the exact Common 1.19.10 pin, the retry-safe publication workflow, the GTK/GLib/X11 identity repair and complete PNG structural validation. The audited source baseline at `755add8117a17f1b71e62c5e8805dc64e22e6f67` restores the exact approved 1.8.0-188 graphite/cyan block-compaction artwork after the unpublished 1.8.0-189 experiment; application and packaging identity are otherwise unchanged. No filesystem engine, target-safety decision, placement, mutation or recovery semantic changed for this release. Any later change beneath audited production/build/package paths requires a new source audit baseline before release.
 
 ## Historical record
 

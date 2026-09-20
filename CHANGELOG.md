@@ -4,6 +4,12 @@ This changelog records user-visible, compatibility, architecture and validation 
 
 ## Unreleased
 
+## 1.8.0-190
+
+- Kept the approved 1.8.0-188 Defragmenter artwork exactly: the flat graphite/cyan block-compaction icon remains the canonical application identity for About, window, Cinnamon taskbar, hicolor, Mint app-install and private runtime use.
+- Reverted the unpublished 1.8.0-189 icon experiment before release; no alternate disk/cylinder artwork is shipped by Defragmenter.
+- No filesystem engine, safety, placement, recovery or Common integration behaviour changed in this release.
+
 ## 1.8.0-188
 
 - Replaced the restored legacy glossy Defragmenter artwork with a flat 96×96 project-owned icon deliberately aligned to the System Monitor/Infiltrator desktop family: dark graphite tile, #72dcff cyan linework and a simple block-compaction defragmentation glyph.
