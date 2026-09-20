@@ -208,6 +208,7 @@ def main() -> None:
         "Btrfs",
         "Amiga SFS0",
         "Classic Macintosh HFS",
+        "APFS now has an audited exact read-only analysis contract",
         "HFS+/HFSX",
         "Project quality gate",
         "protected-main",

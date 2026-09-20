@@ -6,7 +6,7 @@ Completed: 2026-08-25
 Extended: 2026-09-20
 
 Applies to: release version 1.8.0-191
-Audited source commit: e24d3eec8422a1e304d67dddc7b73e36ac8af816
+Audited source commit: e0f9fdc0f290f5c2d2763a537345e9ba4e53453a
 Audited release-governance commit: b52008be6aa7f19dae2190ddbdd22c7e946849a7
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, btrfs, pfs3, sfs, hfs, hfsplus, minix
@@ -46,6 +46,8 @@ The completed audit covers these first-party write/recovery engines:
 - **Classic Macintosh HFS** — exact native allocation/catalog analysis plus bounded offline Defragment, exact 10% Growth Defrag and durable Recover. Mutation is restricted to clean, writable classic-HFS volumes whose regular-file data/resource fork extent maps are complete in their three inline catalog descriptors; Extents Overflow-backed regular-file forks fail closed.
 - **HFS+/HFSX** — native staged transaction and Recover for supported clean-journal states.
 - **Minix v1/v2/v3** — native fail-closed staged relayout, exact 10% Growth Defrag and durable Recover for the supported exact-analysis subset.
+
+APFS now has an audited exact read-only analysis contract for a deliberately bounded subset: the analyser validates the active checkpoint, Fletcher checksums, checkpoint-map spaceman binding, direct-CIB spaceman bitmaps, a single unencrypted/unsealed/snapshot-free volume, flat object-map roots and a flat catalog root. Allocation is derived from spaceman bitmaps rather than a synthetic summary, and file fragmentation is derived from catalog file-extent records. Unsupported checkpoint, volume, sharing, sparse, encrypted or deeper-tree states fail closed. This analysis qualification does not yet promote APFS to write support.
 
 Read-only support for other formats is not promoted to write support by this audit. Unsupported or ambiguous layouts continue to fail closed.
 
@@ -105,3 +107,6 @@ The 2026-09-20 Classic HFS audit extension covers the bounded native writer at `
 
 
 The 2026-09-20 Btrfs audit extension covers the bounded native writer qualified at `e24d3eec8422a1e304d67dddc7b73e36ac8af816`. The writer consumes the same native chunk/root/extent/filesystem-tree model as the exact analyser, validates CRC32C on every mutable tree root, stages the complete filesystem prefix before source mutation, relocates only unshared NODATASUM regular-file extents, rewrites the corresponding filesystem/extent-tree records with updated generations and CRC32C, invalidates stale free-space-cache state and publishes updated superblock mirrors. It rejects multi-device/striped profiles, non-level-0 mutable roots, snapshots/subvolumes, qgroups, active log/balance/device-replace state, encoded/checksummed/shared/sparse extents and unsupported feature bits before authoritative writes. Qualification uses an independently manufactured checksummed Btrfs fixture with deliberately fragmented file extents; it exercises Defragment, exact 10% Growth Defrag, durable interruption/Recover and fail-closed encoded-state rejection. The complete 43-test CTest suite and hosted ASan/UBSan lane passed before this audit baseline was advanced.
+
+
+The 2026-09-20 APFS analysis extension is qualified at `e0f9fdc0f290f5c2d2763a537345e9ba4e53453a`. An independently constructed Fletcher-valid fixture contains an active checkpoint map, ephemeral spaceman object, direct chunk-info block and allocation bitmap, container and volume object maps, one unencrypted APFS volume, a flat catalog and deliberately fragmented regular-file extents. The native analyser proves exact free/used accounting from spaceman, identifies the fragmented file from catalog extent continuity, rejects a bitmap/catalog disagreement, rejects multiple-volume input outside the bounded contract and rejects sparse extents. Both the hosted ASan/UBSan lane and the complete 44-test CTest suite passed; the remaining local gate failure at that source revision was solely the expected audit-baseline drift that this document advances.

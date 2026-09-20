@@ -24,7 +24,7 @@ The user-facing product is **Defragmenter**. The Debian/APT package identity is 
 | HFS+ / HFSX | Exact | Native C, fail-closed preflight | Native C, exact 10% reserve | Yes |
 | Classic Macintosh HFS | Exact, native C | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
 | Btrfs | Exact raw single-device analysis | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
-| APFS | Summary read-only analysis, native C | Not implemented | Not implemented | No |
+| APFS | Exact native C analysis for bounded checkpoint/spaceman subset | Not implemented | Not implemented | No |
 | Minix v1 / v2 / v3 | Exact, native C | Native C, fail-closed staged relayout | Native C, exact 10% reserve | Yes |
 | UFS1 | Summary read-only analysis, native C | Not implemented | Not implemented | No |
 | UFS2 | Exact allocation read-only analysis, native C | Not implemented | Not implemented | No |
