@@ -216,6 +216,157 @@ static int probe_image(const uint8_t *image)
     return result;
 }
 
+
+static int write_block_at(int fd, const uint8_t *block, uint32_t block_size,
+                          uint32_t block_number)
+{
+    const off_t offset = (off_t)((uint64_t)block_number * block_size);
+    return pwrite(fd, block, block_size, offset) == (ssize_t)block_size ? 0 : -1;
+}
+
+static void bitmap_set(uint8_t *block, uint32_t number, int is_free)
+{
+    const uint8_t mask = (uint8_t)(0x80U >> (number & 7U));
+    uint8_t *slot = block + 12U + number / 8U;
+    if (is_free != 0)
+        *slot |= mask;
+    else
+        *slot &= (uint8_t)~mask;
+}
+
+/*
+ * SFS2's two material on-disk differences are qualified independently here:
+ * 48-bit file sizes in object records and 32-bit extent lengths.  A sparse
+ * >4 GiB host file keeps the fixture cheap while forcing both fields beyond
+ * the SFS0 limits; the analyser never relies on sparse-file semantics.
+ */
+static int test_sfs2_large_sparse(void)
+{
+    enum {
+        LARGE_BLOCK_SIZE = 65536U,
+        LARGE_BLOCKS = 70000U,
+        LARGE_DATA_START = 20U,
+        LARGE_DATA_BLOCKS = 65537U
+    };
+    const uint64_t file_size = UINT64_C(0x100000001);
+    char path[] = "/tmp/linux-defragger-sfs2-large-XXXXXX";
+    uint8_t *block = calloc(1U, LARGE_BLOCK_SIZE);
+    if (block == NULL)
+        return -1;
+    int fd = mkstemp(path);
+    if (fd < 0) {
+        free(block);
+        return -1;
+    }
+    const uint64_t image_bytes = (uint64_t)LARGE_BLOCKS * LARGE_BLOCK_SIZE;
+    if (ftruncate(fd, (off_t)image_bytes) != 0)
+        goto fail;
+
+    memset(block, 0, LARGE_BLOCK_SIZE);
+    set_header(block, "SFS\2", 0U);
+    put16(block + 12U, 4U);
+    put16(block + 14U, 5U);
+    put32(block + 48U, LARGE_BLOCKS);
+    put32(block + 52U, LARGE_BLOCK_SIZE);
+    put32(block + 96U, 1U);
+    put32(block + 100U, 2U);
+    put32(block + 104U, 4U);
+    put32(block + 108U, 3U);
+    put32(block + 112U, 5U);
+    stamp_checksum_bytes(block, LARGE_BLOCK_SIZE);
+    if (write_block_at(fd, block, LARGE_BLOCK_SIZE, 0U) != 0)
+        goto fail;
+
+    memset(block, 0, LARGE_BLOCK_SIZE);
+    set_header(block, "BTMP", 1U);
+    for (uint32_t number = 0U; number < LARGE_BLOCKS; ++number)
+        bitmap_set(block, number, 1);
+    for (uint32_t number = 0U; number < 16U; ++number)
+        bitmap_set(block, number, 0);
+    for (uint32_t number = LARGE_DATA_START;
+         number < LARGE_DATA_START + LARGE_DATA_BLOCKS; ++number)
+        bitmap_set(block, number, 0);
+    bitmap_set(block, LARGE_BLOCKS - 1U, 0);
+    stamp_checksum_bytes(block, LARGE_BLOCK_SIZE);
+    if (write_block_at(fd, block, LARGE_BLOCK_SIZE, 1U) != 0)
+        goto fail;
+
+    memset(block, 0, LARGE_BLOCK_SIZE);
+    set_header(block, "BNDC", 3U);
+    put16(block + 12U, 1U);
+    block[14U] = 1U;
+    block[15U] = 16U;
+    put32(block + 16U, LARGE_DATA_START);
+    put32(block + 20U, 0U);
+    put32(block + 24U, 0U);
+    put32(block + 28U, LARGE_DATA_BLOCKS);
+    stamp_checksum_bytes(block, LARGE_BLOCK_SIZE);
+    if (write_block_at(fd, block, LARGE_BLOCK_SIZE, 3U) != 0)
+        goto fail;
+
+    memset(block, 0, LARGE_BLOCK_SIZE);
+    set_header(block, "OBJC", 4U);
+    uint8_t *object = block + 24U;
+    put32(object + 4U, 10U);
+    put32(object + 8U, 0x0fU);
+    put32(object + 12U, LARGE_DATA_START);
+    put32(object + 16U, (uint32_t)(file_size >> 16U));
+    put16(object + 20U, (uint16_t)file_size);
+    object[26U] = 0U;
+    memcpy(object + 27U, "large", 6U);
+    object[33U] = 0U;
+    stamp_checksum_bytes(block, LARGE_BLOCK_SIZE);
+    if (write_block_at(fd, block, LARGE_BLOCK_SIZE, 4U) != 0)
+        goto fail;
+
+    memset(block, 0, LARGE_BLOCK_SIZE);
+    set_header(block, "SFS\2", LARGE_BLOCKS - 1U);
+    put16(block + 12U, 4U);
+    put16(block + 14U, 6U);
+    put32(block + 48U, LARGE_BLOCKS);
+    put32(block + 52U, LARGE_BLOCK_SIZE);
+    put32(block + 96U, 1U);
+    put32(block + 100U, 2U);
+    put32(block + 104U, 4U);
+    put32(block + 108U, 3U);
+    put32(block + 112U, 5U);
+    stamp_checksum_bytes(block, LARGE_BLOCK_SIZE);
+    if (write_block_at(fd, block, LARGE_BLOCK_SIZE, LARGE_BLOCKS - 1U) != 0 ||
+        fsync(fd) != 0)
+        goto fail;
+    if (close(fd) != 0) {
+        fd = -1;
+        goto fail_closed;
+    }
+    fd = -1;
+
+    SfsAnalysis analysis;
+    char error[256] = {0};
+    const int analysed = sfs_analyse(path, &analysis, NULL, 0U,
+                                     error, sizeof(error));
+    if (analysed != 0 || analysis.structure_version != 4U ||
+        analysis.regular_files != 1U ||
+        analysis.data_blocks != LARGE_DATA_BLOCKS ||
+        analysis.fragmented_files != 0U ||
+        analysis.growth_10_satisfied || !sfs_probe(path)) {
+        (void)fprintf(stderr, "large sparse SFS2 fixture rejected: %s\n", error);
+        goto fail_closed;
+    }
+
+    free(block);
+    return unlink(path) == 0 ? 0 : -1;
+
+fail:
+    (void)close(fd);
+    fd = -1;
+fail_closed:
+    if (fd >= 0)
+        (void)close(fd);
+    free(block);
+    (void)unlink(path);
+    return -1;
+}
+
 int main(int argc, char **argv)
 {
     if (argc == 4 && strcmp(argv[1], "--write-fixture") == 0) {
@@ -287,6 +438,69 @@ int main(int argc, char **argv)
         (void)fprintf(stderr, "contiguous SFS extent chain was not recognised: %s\n", error);
         free(image);
         return 5;
+    }
+
+    make_image(image, 0, 1, 1);
+    if (analyse_image(image, &analysis, cells, 16U, error, sizeof(error)) != 0 ||
+        analysis.structure_version != 4U ||
+        analysis.fragmented_files != 1U ||
+        analysis.data_blocks != 3U) {
+        (void)fprintf(stderr, "valid SFS2 image rejected: %s\n", error);
+        free(image);
+        return 15;
+    }
+
+    char sfs2_source[64];
+    char sfs2_stage[64];
+    uint64_t sfs2_commit_bytes = 0U;
+    if (save_image(image, sfs2_source) != 0 ||
+        make_stage_path(sfs2_stage) != 0 ||
+        sfs_build_stage(sfs2_source, sfs2_stage, false, 10U, false,
+                        &sfs2_commit_bytes, error, sizeof(error)) != 0 ||
+        sfs2_commit_bytes != TEST_BYTES ||
+        sfs_verify_layout(sfs2_stage, false, 10U,
+                          error, sizeof(error)) != 0) {
+        (void)fprintf(stderr, "SFS2 Defrag stage failed: %s\n", error);
+        (void)unlink(sfs2_source);
+        (void)unlink(sfs2_stage);
+        free(image);
+        return 16;
+    }
+
+    SfsAnalysis sfs2_staged;
+    if (sfs_analyse(sfs2_stage, &sfs2_staged, NULL, 0U,
+                    error, sizeof(error)) != 0 ||
+        sfs2_staged.structure_version != 4U ||
+        sfs2_staged.fragmented_files != 0U) {
+        (void)fprintf(stderr, "SFS2 Defrag stage did not verify: %s\n", error);
+        (void)unlink(sfs2_source);
+        (void)unlink(sfs2_stage);
+        free(image);
+        return 17;
+    }
+
+    (void)unlink(sfs2_stage);
+    if (make_stage_path(sfs2_stage) != 0 ||
+        sfs_build_stage(sfs2_source, sfs2_stage, true, 10U, false,
+                        &sfs2_commit_bytes, error, sizeof(error)) != 0 ||
+        sfs_verify_layout(sfs2_stage, true, 10U,
+                          error, sizeof(error)) != 0 ||
+        sfs_analyse(sfs2_stage, &sfs2_staged, NULL, 0U,
+                    error, sizeof(error)) != 0 ||
+        !sfs2_staged.growth_10_satisfied) {
+        (void)fprintf(stderr, "SFS2 Growth Defrag stage failed: %s\n", error);
+        (void)unlink(sfs2_source);
+        (void)unlink(sfs2_stage);
+        free(image);
+        return 18;
+    }
+    (void)unlink(sfs2_source);
+    (void)unlink(sfs2_stage);
+
+    if (test_sfs2_large_sparse() != 0) {
+        (void)fprintf(stderr, "SFS2 large-file qualification failed\n");
+        free(image);
+        return 19;
     }
 
     make_image(image, 1, 1, 0);
