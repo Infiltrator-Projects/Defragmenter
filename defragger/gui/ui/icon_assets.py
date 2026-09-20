@@ -16,7 +16,7 @@ _CANONICAL_PRIVATE_ICON_PATH = Path(
     "/usr/lib/linux-defragger/defragmenter-icon.png"
 )
 _HICOLOR_ICON_PATH = Path(
-    "/usr/share/icons/hicolor/256x256/apps/io.github.linuxdefragger.png"
+    "/usr/share/icons/hicolor/128x128/apps/io.github.linuxdefragger.png"
 )
 _SOURCE_ICON_PATH = (
     _MODULE_PATH.parents[2] / "packaging" / "io.github.linuxdefragger.png"
