@@ -274,8 +274,88 @@ static void test_full_size_map_analysis(void)
     CHECK(unlink(path) == 0);
 }
 
-int main(void)
+
+
+static int write_fixture_path(const char *path)
 {
+    uint8_t image[IMAGE_BYTES];
+    make_exact_v3(image);
+    const unsigned int zones[] = {8U, 10U, 11U, 13U, 14U};
+    for (size_t index = 0U; index < sizeof(zones) / sizeof(zones[0]); ++index)
+        memset(image + (size_t)zones[index] * 1024U,
+               (int)(0x30U + zones[index]), 1024U);
+
+    const int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (fd < 0)
+        return -1;
+    const ssize_t count = write(fd, image, sizeof(image));
+    const int close_result = close(fd);
+    return count == (ssize_t)sizeof(image) && close_result == 0 ? 0 : -1;
+}
+
+static void make_stage_path(char path[64])
+{
+    (void)snprintf(path, 64U, "/tmp/linux-defragger-minix-stage-XXXXXX");
+    const int fd = mkstemp(path);
+    CHECK(fd >= 0);
+    CHECK(close(fd) == 0);
+    CHECK(unlink(path) == 0);
+}
+
+static void test_native_relayout(void)
+{
+    uint8_t image[IMAGE_BYTES];
+    make_exact_v3(image);
+    const unsigned int zones[] = {8U, 10U, 11U, 13U, 14U};
+    for (size_t index = 0U; index < sizeof(zones) / sizeof(zones[0]); ++index)
+        memset(image + (size_t)zones[index] * 1024U,
+               (int)(0x30U + zones[index]), 1024U);
+
+    char source[64];
+    CHECK(write_image(image, source) == 0);
+    char error[256];
+    uint64_t committed = 0U;
+
+    char packed[64];
+    make_stage_path(packed);
+    CHECK(minix_build_stage(source, packed, false, 10U, &committed,
+                            error, sizeof(error)) == 0);
+    CHECK(committed == IMAGE_BYTES);
+    CHECK(minix_verify_layout(packed, false, 10U,
+                              error, sizeof(error)) == 0);
+    MinixAnalysis analysis;
+    CHECK(minix_analyse(packed, &analysis, NULL, 0U,
+                        error, sizeof(error)) == 0);
+    CHECK(analysis.fragmented_files == 0U);
+    CHECK(analysis.fragmented_directories == 0U);
+    CHECK(unlink(packed) == 0);
+
+    char growth[64];
+    make_stage_path(growth);
+    committed = 0U;
+    CHECK(minix_build_stage(source, growth, true, 10U, &committed,
+                            error, sizeof(error)) == 0);
+    CHECK(committed == IMAGE_BYTES);
+    CHECK(minix_verify_layout(growth, true, 10U,
+                              error, sizeof(error)) == 0);
+    CHECK(minix_verify_layout(growth, false, 10U,
+                              error, sizeof(error)) != 0);
+    CHECK(unlink(growth) == 0);
+    CHECK(unlink(source) == 0);
+}
+
+int main(int argc, char **argv)
+{
+    if (argc == 4 && strcmp(argv[1], "--write-fixture") == 0 &&
+        strcmp(argv[3], "fragmented") == 0)
+        return write_fixture_path(argv[2]) == 0 ? 0 : 1;
+    if (argc != 1) {
+        (void)fprintf(stderr,
+                      "Usage: %s [--write-fixture PATH fragmented]\n",
+                      argv[0]);
+        return 2;
+    }
+
     uint8_t image[IMAGE_BYTES];
 
     make_legacy(image, 0x137fU, 1U, 1);
@@ -326,7 +406,8 @@ int main(void)
     (void)unlink(path);
 
     test_exact_analysis();
+    test_native_relayout();
     test_full_size_map_analysis();
-    (void)puts("Minix summary and exact allocation/fragmentation tests passed");
+    (void)puts("Minix summary, exact analysis and native relayout tests passed");
     return 0;
 }

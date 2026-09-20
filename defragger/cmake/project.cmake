@@ -266,7 +266,9 @@ target_compile_definitions(linux-defragger-apfs-worker PRIVATE
 target_link_libraries(linux-defragger-apfs-worker PRIVATE
     linux-defragger-apfs-native linux-defragger-core)
 
-# Minix filesystem identification and superblock geometry are native C.
+find_package(OpenSSL REQUIRED)
+
+# Minix exact analysis, offline staging, mutation and recovery are native C.
 # Python is retained only as the GUI/backend adapter.
 add_library(linux-defragger-minix-native STATIC
     gui/filesystems/minix/native/minix_native.c)
@@ -289,7 +291,7 @@ target_compile_options(linux-defragger-minix-worker PRIVATE ${LD_WARNING_FLAGS})
 target_compile_definitions(linux-defragger-minix-worker PRIVATE
     _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(linux-defragger-minix-worker PRIVATE
-    linux-defragger-minix-native linux-defragger-core)
+    linux-defragger-minix-native linux-defragger-core OpenSSL::Crypto)
 
 # Linux swap identification, metadata and allocation mapping are native C.
 # Python remains only as a temporary GUI/backend adapter.
@@ -317,7 +319,6 @@ target_link_libraries(linux-defragger-swap-worker PRIVATE
     linux-defragger-swap-native linux-defragger-core)
 
 find_package(SQLite3 REQUIRED)
-find_package(OpenSSL REQUIRED)
 
 add_library(linux-defragger-xfs-native STATIC
     gui/filesystems/xfs/native/xfs_common.c
@@ -624,6 +625,13 @@ if(BUILD_TESTING)
     target_link_libraries(linux-defragger-minix-native-test PRIVATE
         linux-defragger-minix-native linux-defragger-core)
     add_test(NAME linux-defragger-minix-native COMMAND linux-defragger-minix-native-test)
+
+    add_test(NAME linux-defragger-minix-transaction
+        COMMAND "${LD_HELPER_TEST_PYTHON}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_minix_transaction.py")
+    set_tests_properties(linux-defragger-minix-transaction PROPERTIES
+        ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1;LINUX_DEFRAGGER_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+        TIMEOUT 120)
 
     add_executable(linux-defragger-swap-native-test
         tests/test_swap_native.c)

@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Defragmenter
 # Author: Shannon Smith
-# Purpose: Thin GUI adapter for native C Minix exact read-only analysis.
+# Purpose: Thin GUI adapter for native C Minix analysis and offline relayout.
 
-"""Read-only Minix backend delegated entirely to the native C worker."""
+"""Native Minix exact analysis and recoverable offline relayout backend."""
 
 from __future__ import annotations
 
@@ -17,8 +17,13 @@ from backends.base import (
     BackendError,
     BackendInfo,
     CAP_ANALYSE,
+    CAP_DEFRAG,
+    CAP_GROWTH_DEFRAG,
+    CAP_LIVE_MAP,
     CAP_MAP,
+    CAP_RECOVER,
     FilesystemBackend,
+    operation,
 )
 from core.paths import resolve_program
 
@@ -26,8 +31,21 @@ INFO = BackendInfo(
     "minix",
     "Minix Filesystem",
     ("minix", "minix2", "minix3"),
-    CAP_ANALYSE | CAP_MAP,
+    CAP_ANALYSE | CAP_MAP | CAP_DEFRAG | CAP_GROWTH_DEFRAG | CAP_RECOVER | CAP_LIVE_MAP,
     "exact",
+    operations=(
+        operation(
+            "defrag",
+            "minix-native",
+            warning="Minix writing uses Defragmenter's offline first-party native C raw engine.",
+        ),
+        operation(
+            "growth-defrag",
+            "minix-native",
+            warning="Minix Growth Defrag leaves an exact 10% free-zone reserve after every regular file.",
+        ),
+        operation("recover", "minix-native"),
+    ),
 )
 
 

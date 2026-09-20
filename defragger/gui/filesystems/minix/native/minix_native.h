@@ -50,6 +50,13 @@ int minix_read_summary(const char *path, MinixSummary *summary,
 int minix_analyse(const char *path, MinixAnalysis *analysis,
                   MinixMapCell *cells, uint64_t cell_count,
                   char *error, size_t error_size);
+int minix_build_stage(const char *source, const char *stage,
+                      bool growth, unsigned growth_percent,
+                      uint64_t *commit_bytes,
+                      char *error, size_t error_size);
+int minix_verify_layout(const char *path, bool growth,
+                        unsigned growth_percent,
+                        char *error, size_t error_size);
 bool minix_probe(const char *path);
 const char *minix_variant_name(const MinixSummary *summary);
 const char *minix_byte_order_name(const MinixSummary *summary);

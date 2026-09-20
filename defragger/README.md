@@ -25,7 +25,7 @@ The user-facing product is **Defragmenter**. The Debian/APT package identity is 
 | Classic Macintosh HFS | Exact, native C read-only | Not implemented | Not implemented | No |
 | Btrfs | Exact read-only raw analysis | Not implemented | Not implemented | No |
 | APFS | Summary read-only analysis, native C | Not implemented | Not implemented | No |
-| Minix v1 / v2 / v3 | Exact read-only analysis, native C | Not implemented | Not implemented | No |
+| Minix v1 / v2 / v3 | Exact, native C | Native C, fail-closed staged relayout | Native C, exact 10% reserve | Yes |
 | UFS1 | Summary read-only analysis, native C | Not implemented | Not implemented | No |
 | UFS2 | Exact allocation read-only analysis, native C | Not implemented | Not implemented | No |
 | ZFS / OpenZFS member | Summary read-only analysis, native C | Not implemented | Not implemented | No |

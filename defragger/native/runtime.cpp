@@ -210,7 +210,11 @@ const std::vector<BackendInfo>& backend_registry() {
                 "HFS+/HFSX Growth Defrag uses the native C raw engine and leaves an exact 10% free allocation-block reserve after each movable fork.")});
         result.push_back({
             "minix", "Minix Filesystem", {"minix", "minix2", "minix3"},
-            read, "exact", "minix-native", MapAdapter::NativeMap, {}});
+            write, "exact", "minix-native", MapAdapter::NativeMap,
+            standard_write_ops(
+                "minix-native",
+                "Minix writing uses Defragmenter's offline first-party native C raw engine.",
+                "Minix Growth Defrag leaves an exact 10% free-zone reserve after every regular file.")});
         result.push_back({
             "ntfs", "NTFS", {"ntfs", "ntfs3"}, write, "exact",
             "ntfs-native", MapAdapter::Ntfs,
