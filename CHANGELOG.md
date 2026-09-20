@@ -9,7 +9,7 @@ This changelog records user-visible, compatibility, architecture and validation 
 - Standardised Defragmenter artwork on the canonical `#00ADEF` non-automotive Infiltrator icon family while retaining the single-byte-source launcher/taskbar/About packaging contract.
 - Hardened root-anchored trusted-directory traversal with Linux `openat2()` using `RESOLVE_BENEATH`, `RESOLVE_NO_SYMLINKS` and `RESOLVE_NO_MAGICLINKS`, while preserving the established `openat(O_NOFOLLOW)` fallback for older kernels.
 - Removed the obsolete second GTK About implementation from the base window view; the LINK-standard About presenter is now the single concrete About/licence/icon implementation.
-- Added a deterministic fail-closed malformed-media matrix across all installed native filesystem workers, rejecting hangs, signal termination and accidental identification of empty/truncated/seeded garbage.
+- Added a deterministic fail-closed malformed-media matrix across all installed native filesystem worker families, rejecting hangs, signal termination and accidental identification of empty/truncated/seeded garbage; the matrix is a first-class CTest so it also runs under the hosted ASan/UBSan qualification lane.
 - Added an opt-in `dm-log-writes`/`replay-log` sacrificial-media harness for validating source-filesystem structure at each FLUSH or FUA durability boundary without conflating that evidence with external recovery-journal persistence.
 - Retained the exact released Infiltratr Common 1.19.10 pin and the existing filesystem-specific mutation/recovery ownership boundary.
 
