@@ -2,6 +2,7 @@
 #include "apfs_native.h"
 
 #include <fcntl.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,7 +25,21 @@ static void write_le64(uint8_t *p, uint64_t value)
 
 static int write_image(int fd, const uint8_t *block)
 {
-    if (ftruncate(fd, 0) != 0) return -1;
+    /*
+     * apfs_read_summary() now validates that the NX geometry fits the actual
+     * target. Keep the fixture sparse, but give it the capacity declared in
+     * the synthetic NX superblock.
+     */
+    const uint64_t block_size = (uint64_t)block[36] |
+                                ((uint64_t)block[37] << 8U) |
+                                ((uint64_t)block[38] << 16U) |
+                                ((uint64_t)block[39] << 24U);
+    uint64_t block_count = 0U;
+    for (unsigned int index = 0U; index < 8U; ++index)
+        block_count |= (uint64_t)block[40U + index] << (index * 8U);
+    if (block_size == 0U || block_count > (uint64_t)INT64_MAX / block_size)
+        return -1;
+    if (ftruncate(fd, (off_t)(block_size * block_count)) != 0) return -1;
     size_t done = 0U;
     while (done < 4096U) {
         const ssize_t count = pwrite(fd, block + done, 4096U - done, (off_t)done);
