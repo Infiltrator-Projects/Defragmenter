@@ -5,8 +5,8 @@ Status: **complete**
 Completed: 2026-08-25  
 Extended: 2026-09-20
 
-Applies to: release version 1.8.0-185
-Audited source commit: f5b64bfab830bd599bae588bfe4ccb99e00cd4c4
+Applies to: release version 1.8.0-186
+Audited source commit: c866561eb956479e0971fa2f783f5f31aaa9f12e
 Audited release-governance commit: b52008be6aa7f19dae2190ddbdd22c7e946849a7
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, sfs, hfsplus
@@ -75,7 +75,7 @@ The quality gate now owns the release handoff as a direct dependent reusable-wor
 
 APT publication is likewise a direct reusable-workflow dependency of successful release publication, with manual `workflow_dispatch` retained only as a retry path. It verifies the immutable release tag/SHA before dispatching the central repository refresh, so release or APT retries cannot lose their handoff through `workflow_run` semantics. A release-head retry may contain documentation or release metadata only after the audited source commit; the exact-head gate still rejects any production/build/package drift.
 
-Version 1.8.0-185 is the current audited release line. It retains the exact Common 1.19.10 pin, the 1.8.0-184 GTK3 About-icon repair and the same audited production source baseline at `f5b64bfab830bd599bae588bfe4ccb99e00cd4c4`. Release governance now uses the retry-safe direct dependency graph introduced at `b52008be6aa7f19dae2190ddbdd22c7e946849a7`: both quality lanes must succeed before the release reusable workflow can run, and successful release publication directly invokes the retryable APT reusable workflow. No filesystem engine, target-safety decision, placement, mutation or recovery semantic changed for this release. Any later change beneath audited production/build/package paths requires a new source audit baseline before release.
+Version 1.8.0-186 is the current audited release line. It retains the exact Common 1.19.10 pin and all filesystem/write-safety semantics from 1.8.0-185. The audited production change at `c866561eb956479e0971fa2f783f5f31aaa9f12e` repairs desktop icon identity only: GTK/GLib and the X11 `WM_CLASS` now use the same `io.github.linuxdefragger` identity declared by the installed desktop entry's `StartupWMClass`, and main/About windows use the same directly loaded project-owned pixbuf with a canonical theme-name fallback. The approved artwork bytes, filesystem engines, target-safety decisions, placement, mutation and recovery semantics are unchanged. Any later change beneath audited production/build/package paths requires a new source audit baseline before release.
 
 ## Historical record
 

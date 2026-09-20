@@ -4,6 +4,13 @@ This changelog records user-visible, compatibility, architecture and validation 
 
 ## Unreleased
 
+## 1.8.0-186
+
+- Fixed the Cinnamon taskbar identity at its source: the GTK process now publishes the installed `io.github.linuxdefragger` identity as its GLib program name and X11 program class, while the desktop entry declares the matching `StartupWMClass`.
+- Routed process-wide, main-window and About-window icons through the same directly loaded project-owned pixbuf, retaining the canonical icon-name fallback only when direct artwork loading is unavailable.
+- Kept the About dialog's GTK3 named-logo override cleared before assigning the project pixbuf, and added a canonical-name fallback for damaged/source-tree environments.
+- Added permanent regressions for the Cinnamon WM-class/desktop-entry match, direct pixbuf window icons, About-window icon application and release packaging identity.
+
 ## 1.8.0-185
 
 - Replaced the release pipeline's event-only `workflow_run` handoff with a direct reusable-workflow dependency of the two-lane Project quality gate, so a successful retry also reruns its dependent publication job.
