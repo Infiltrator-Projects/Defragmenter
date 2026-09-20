@@ -4,6 +4,13 @@ This changelog records user-visible, compatibility, architecture and validation 
 
 ## Unreleased
 
+## 1.8.0-187
+
+- Fixed the actual remaining icon failure: the 256×256 PNG introduced in 1.8.0-179 was structurally truncated. Its IHDR looked valid, but its IDAT chunk declared 51,276 bytes while the entire file was only 12,849 bytes, so GdkPixbuf correctly rejected it and GTK fell back to the missing-image glyph.
+- Restored the last known structurally valid project-owned black/cyan Defragmenter artwork (128×128, Git blob `2da0939b9e68cbea9fee31358a2a9d130ad21e15`) and returned the hicolor install path to the matching 128×128 directory while retaining the private runtime and Mint app-install copies.
+- Strengthened branding validation to parse the complete PNG container, verify every chunk stays within EOF, validate each chunk CRC, require IEND at the physical end of file and pin the exact restored artwork blob. Header-only PNG checks can no longer certify a truncated icon.
+- Retained the 1.8.0-186 GTK/GLib/X11 identity repair so Cinnamon taskbar matching and the About/window pixbuf path now operate on valid artwork rather than a corrupt asset.
+
 ## 1.8.0-186
 
 - Fixed the Cinnamon taskbar identity at its source: the GTK process now publishes the installed `io.github.linuxdefragger` identity as its GLib program name and X11 program class, while the desktop entry declares the matching `StartupWMClass`.
