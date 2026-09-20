@@ -20,7 +20,7 @@ The user-facing product is **Defragmenter**. The Debian/APT package identity is 
 | Amiga OFS / FFS | Exact | Native C | Native C, exact 10% reserve | Yes |
 | Amiga SFS0 | Exact allocation + file-extent analysis | Native C supported-subset relayout | Exact 10% reserve | Yes |
 | Amiga SFS2 | Exact allocation + 48-bit file/32-bit extent analysis | Native C supported-subset relayout | Native C, exact 10% reserve | Yes |
-| Amiga PFS3 | Not implemented | Not implemented | Not implemented | No |
+| Amiga PFS3 | Exact allocation + anode-chain analysis for qualified subset | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
 | HFS+ / HFSX | Exact | Native C, fail-closed preflight | Native C, exact 10% reserve | Yes |
 | Classic Macintosh HFS | Exact, native C read-only | Not implemented | Not implemented | No |
 | Btrfs | Exact read-only raw analysis | Not implemented | Not implemented | No |
@@ -58,7 +58,7 @@ Stop is cooperative and takes effect only at a filesystem-safe boundary.
 
 The package includes **Defragmenter Test Media**, a separate all-C GTK utility for manufacturing sacrificial test filesystems. It repeats destructive-target checks after privilege elevation and must never be pointed at a system disk or irreplaceable media.
 
-Formatting utilities used by Test Media are fixture-generation tools only; they are not part of production defragmentation.
+Formatting utilities used by Test Media are fixture-generation tools only; they are not part of production defragmentation. OFS/FFS, SFS and bounded PFS3 qualification media are manufactured by first-party raw C creators.
 
 ## Build and test
 

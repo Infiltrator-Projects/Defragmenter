@@ -6,10 +6,10 @@ Completed: 2026-08-25
 Extended: 2026-09-20
 
 Applies to: release version 1.8.0-191
-Audited source commit: 82412471f25e1a8761374069c22ebfc662e00bdd
+Audited source commit: 0c330deca961669d30b1985ef3063fd526ca8ac6
 Audited release-governance commit: b52008be6aa7f19dae2190ddbdd22c7e946849a7
 
-Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, sfs, hfsplus, minix
+Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, pfs3, sfs, hfsplus, minix
 
 This document records the **current** write-safety case. Historical audit-development detail remains available in Git history and immutable release tags rather than being repeated here.
 
@@ -41,6 +41,7 @@ The completed audit covers these first-party write/recovery engines:
 - **XFS** — native raw userspace catalogue, planning, metadata rewrite, verification and Recover for the explicitly supported v5 contract.
 - **Amiga OFS/FFS** — native raw catalogue, relocation, verification and Recover.
 - **Amiga SFS0/SFS2** — first-party native supported-subset relayout and Recover. SFS2 structure version 4 uses its native 48-bit file-size object field and 32-bit extent block counts rather than truncating them to SFS0 geometry.
+- **Amiga PFS3** — first-party native exact allocation/anode-chain analysis, bounded offline canonical relayout, exact 10% Growth Defrag and durable Recover for the qualified small-disk subset. The writer rejects superindex/large-file mode, nested directories, links and special entries before authoritative writes.
 - **HFS+/HFSX** — native staged transaction and Recover for supported clean-journal states.
 - **Minix v1/v2/v3** — native fail-closed staged relayout, exact 10% Growth Defrag and durable Recover for the supported exact-analysis subset.
 
@@ -82,7 +83,7 @@ The audited source baseline also strengthens the root-owned trusted-directory wa
 
 Parser qualification now adds a deterministic malformed-media matrix across every installed native filesystem worker, rejecting hangs, signal termination and accidental identification of empty, truncated, all-ones or seeded-noise media. An opt-in `dm-log-writes`/`replay-log` harness is present for sacrificial block-layer FLUSH/FUA replay, but it is intentionally classified as environment-dependent evidence until run on suitable disposable devices; it does not replace the existing transaction/recovery fault-injection suite.
 
-No filesystem placement algorithm, on-disk mutation format, transaction state machine or recovery semantic changed in 1.8.0-191. Any later change beneath audited production/build/package paths requires a new source audit baseline before release.
+The 2026-09-20 audit extensions add Minix, SFS2 and the bounded PFS3 writer/Test Media path to the 1.8.0-191 source baseline. Any later change beneath audited production/build/package paths requires a new exact source audit baseline before release.
 
 ## Historical record
 
@@ -93,3 +94,6 @@ The 2026-09-20 audit extension additionally covers the Minix v1/v2/v3 writer int
 
 
 The 2026-09-20 SFS2 audit extension covers the SFS2-capable native SFS engine at `82412471f25e1a8761374069c22ebfc662e00bdd`. Qualification includes deterministic SFS2 structure-version-4 analysis, Defragment, exact 10% Growth Defrag and interruption/Recover paths, plus an independent sparse large-file fixture that forces a file above 4 GiB and an extent above 65,535 blocks so the SFS2-only 48-bit file-size and 32-bit extent fields are exercised rather than inferred from SFS0 behaviour. The writer remains fail-closed to the validated object-container, extent-tree, bitmap and transaction structures accepted by the native analyser.
+
+
+The 2026-09-20 PFS3 audit extension covers the bounded native PFS3 engine and first-party Test Media creator qualified at `0c330deca961669d30b1985ef3063fd526ca8ac6`. The supported writer contract is deliberately narrower than the full PFS3 format: 512-byte logical sectors, 1 KiB reserved blocks, split anodes, small-disk index mode and regular files directly in the root directory. Superindex/large-file mode, nested directories, links and special entries fail closed before mutation. Qualification covers exact bitmap-index/allocation-bitmap decoding, anode-chain fragmentation analysis, production Defragment, exact 10% Growth Defrag, durable interruption/Recover, deterministic malformed-media rejection, and a first-party 1 GiB Test Media image carrying a deterministic 25 MiB file in 100 extents with payload-corruption detection. The complete 43-test CTest suite and hosted ASan/UBSan lane passed before this audit baseline was advanced.

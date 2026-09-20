@@ -48,14 +48,19 @@ treating one third-party implementation as infallible.
   a write contract.
 - **UFS/FFS** - BSD Fast File System literature and current FreeBSD filesystem
   sources are corroborating references. UFS write support is not enabled.
-- **Amiga OFS/FFS/SFS** - public format descriptions, first-party deterministic
+- **Amiga OFS/FFS/SFS/PFS3** - public format descriptions, first-party deterministic
   fixtures and cross-checks against known images are used together. The original
   SmartFilesystem source is used as the primary implementation reference for
   SFS0 structures; Aaru's independent SFS reader is used as corroborating
   evidence for the SFS2 structure-version-4 differences (48-bit file sizes and
-  32-bit extent counts). Because stable normative public specifications are less
-  uniform than for FAT/ext4, mutation support is deliberately limited to the
-  structures exercised by the audited parsers and fixtures.
+  32-bit extent counts). The public `tonioni/pfs3aio` implementation is the
+  primary structural reference for PFS3 root/reserved bitmaps, bitmap/index
+  blocks, split anodes, directory records and root-extension transaction state.
+  Defragmenter's PFS3 fixtures are independently constructed from those on-disk
+  contracts rather than copying runtime code. Because stable normative public
+  specifications are less uniform than for FAT/ext4, mutation support is
+  deliberately limited to the structures exercised by the audited parsers and
+  fixtures.
 
 ## Linux/POSIX platform semantics
 

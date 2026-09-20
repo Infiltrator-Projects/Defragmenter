@@ -34,7 +34,7 @@ The desktop, window and About surfaces use one approved 96×96 Defragmenter artw
 
 ## Capabilities
 
-The project contains native analysis support across FAT12/16/32, exFAT, NTFS, ext2/3/4, XFS v5, Amiga OFS/FFS/SFS variants, HFS/HFS+, Btrfs, APFS, Minix, UFS, ZFS/OpenZFS members and Linux swap, with write support implemented only where the filesystem-specific engine has an explicit contract.
+The project contains native analysis support across FAT12/16/32, exFAT, NTFS, ext2/3/4, XFS v5, Amiga OFS/FFS/SFS/PFS3 variants, HFS/HFS+, Btrfs, APFS, Minix, UFS, ZFS/OpenZFS members and Linux swap, with write support implemented only where the filesystem-specific engine has an explicit contract.
 
 Production operations are:
 
