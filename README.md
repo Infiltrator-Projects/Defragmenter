@@ -8,13 +8,13 @@
 
 Defragmenter is a C-first offline filesystem allocation analyser and defragmenter for Linux. Native C owns the raw filesystem engines and storage-safety core; C++17 owns selected filesystem-neutral application services where RAII, stronger value types and explicit process/protocol ownership improve the implementation. Write-capable engines operate directly on unmounted block devices or filesystem images and do not delegate production mutations to mounted kernel filesystem drivers or external repair/defragmentation tools.
 
-**Current version:** 1.8.0-187
+**Current version:** 1.8.0-188
 
 **Platform:** Linux
 
 **Licence:** GPL-3.0-or-later
 
-> **Safety status:** The version 1.8.0-187 filesystem-safety audit is complete. Defragment, Growth Defrag and Recover are enabled behind exact target confirmation, mounted-target refusal, durable filesystem-specific recovery and final verification. The separate Test Media utility is deliberately destructive and must be used only on sacrificial targets. See `docs/AUDIT_STATUS.md`.
+> **Safety status:** The version 1.8.0-188 filesystem-safety audit is complete. Defragment, Growth Defrag and Recover are enabled behind exact target confirmation, mounted-target refusal, durable filesystem-specific recovery and final verification. The separate Test Media utility is deliberately destructive and must be used only on sacrificial targets. See `docs/AUDIT_STATUS.md`.
 
 ## Engineering ethos
 
@@ -30,7 +30,7 @@ The main GTK application supports **Follow system**, **Day** and **Night** appea
 
 Typography is deliberately closed to the three packaged MB Corpo faces: MB Corpo A Condensed for primary titles, MB Corpo S Regular for normal interface text and MB Corpo S Bold for emphasis. Defragmenter and Test Media do not request generic system or monospace fallback families; the Debian and local installers ship and register the same verified font bundle used by MBLINK.
 
-The desktop, window and About surfaces use one approved 128×128 Defragmenter artwork asset. Packaging installs the same bytes into the desktop icon theme, Mint app-install icon path and the application's private runtime path; the GTK application resolves those installed copies deterministically before consulting the icon theme, so a missing cache entry cannot silently turn the About/window artwork into a placeholder. The process also publishes the same `io.github.linuxdefragger` identity as its GTK application ID, X11 program class and desktop `StartupWMClass`, so Cinnamon can associate the running Python-hosted window with the packaged desktop icon instead of falling back to a generic taskbar glyph.
+The desktop, window and About surfaces use one approved 96×96 Defragmenter artwork asset in the same non-automotive Infiltrator desktop family as System Monitor: a dark graphite tile, #72dcff cyan linework and a simple defragmentation glyph showing scattered blocks compacting into an ordered group. Packaging installs the same bytes into the desktop icon theme, Mint app-install icon path and the application's private runtime path; the GTK application resolves those installed copies deterministically before consulting the icon theme, so a missing cache entry cannot silently turn the About/window artwork into a placeholder. The process also publishes the same `io.github.linuxdefragger` identity as its GTK application ID, X11 program class and desktop `StartupWMClass`, so Cinnamon can associate the running Python-hosted window with the packaged desktop icon instead of falling back to a generic taskbar glyph.
 
 ## Capabilities
 

@@ -4,6 +4,12 @@ This changelog records user-visible, compatibility, architecture and validation 
 
 ## Unreleased
 
+## 1.8.0-188
+
+- Replaced the restored legacy glossy Defragmenter artwork with a flat 96×96 project-owned icon deliberately aligned to the System Monitor/Infiltrator desktop family: dark graphite tile, #72dcff cyan linework and a simple block-compaction defragmentation glyph.
+- Kept the 1.8.0-186 GTK/GLib/X11 identity repair and the 1.8.0-187 complete PNG structural validation, so the new artwork is used consistently by Cinnamon taskbar matching, the main window, About, hicolor, Mint app-install metadata and the private runtime copy.
+- Moved the hicolor installation contract to the matching 96×96 directory and added regressions that reject stale 128×128/256×256 icon paths while pinning the exact new artwork Git blob.
+
 ## 1.8.0-187
 
 - Fixed the actual remaining icon failure: the 256×256 PNG introduced in 1.8.0-179 was structurally truncated. Its IHDR looked valid, but its IDAT chunk declared 51,276 bytes while the entire file was only 12,849 bytes, so GdkPixbuf correctly rejected it and GTK fell back to the missing-image glyph.
