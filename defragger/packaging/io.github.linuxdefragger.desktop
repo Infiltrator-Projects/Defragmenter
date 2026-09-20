@@ -10,3 +10,4 @@ Terminal=false
 Categories=System;Utility;Filesystem;
 Keywords=defrag;defragment;growth;optimise;filesystem;disk;fat;allocation;
 StartupNotify=true
+StartupWMClass=io.github.linuxdefragger

@@ -10,7 +10,7 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk
 
-from .icon_assets import apply_default_window_icon
+from .icon_assets import apply_default_window_icon, configure_desktop_identity
 from .theme import apply_theme, load_theme_mode
 from .window import MainWindow
 
@@ -57,5 +57,6 @@ class LinuxDefraggerApplication(Gtk.Application):
 
 
 def main(argv: list[str] | None = None) -> int:
+    configure_desktop_identity()
     app = LinuxDefraggerApplication()
     return app.run(argv or sys.argv)

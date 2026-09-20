@@ -9,6 +9,7 @@ ABOUT = (ROOT / "gui" / "ui" / "about.py").read_text()
 ICON_ASSETS = (ROOT / "gui" / "ui" / "icon_assets.py").read_text()
 APPLICATION = (ROOT / "gui" / "ui" / "application.py").read_text()
 WINDOW = (ROOT / "gui" / "ui" / "window.py").read_text()
+DESKTOP = (ROOT / "packaging" / "io.github.linuxdefragger.desktop").read_text()
 
 for required in (
     "class AboutInfo:",
@@ -23,28 +24,35 @@ for required in (
     'website_label="Project website"',
     "load_app_icon_pixbuf(96)",
     "dialog.set_logo_icon_name(None)",
+    "apply_window_icon(dialog)",
     'subtitle="DEFRAGMENTER · NATIVE FILESYSTEM OPTIMISATION"',
     '"Shannon Smith — Author and project maintainer"',
 ):
     assert required in ABOUT, required
 
-# Gtk3 defaults logo-icon-name to "image-missing", and that named-icon
-# property overrides the pixbuf logo.  The About contract must clear it first.
+# GTK3's named-logo property overrides the pixbuf logo. Clear it before
+# installing the project-owned pixbuf and retain the canonical name fallback.
 assert ABOUT.index("dialog.set_logo_icon_name(None)") < ABOUT.index("dialog.set_logo(logo)")
+assert "dialog.set_logo_icon_name(APP_ICON_NAME)" in ABOUT
 
 for required in (
     '"/usr/lib/linux-defragger/defragmenter-icon.png"',
     '"/usr/share/icons/hicolor/256x256/apps/io.github.linuxdefragger.png"',
     '"packaging" / "io.github.linuxdefragger.png"',
     "GdkPixbuf.Pixbuf.new_from_file_at_scale",
-    "Gtk.Window.set_default_icon_from_file",
-    "window.set_icon_from_file",
+    "GLib.set_prgname(APP_ICON_NAME)",
+    "GLib.set_application_name(APP_NAME)",
+    "Gdk.set_program_class(APP_ICON_NAME)",
+    "Gtk.Window.set_default_icon(icon)",
+    "window.set_icon(icon)",
     "Gtk.Window.set_default_icon_name(APP_ICON_NAME)",
     "window.set_icon_name(APP_ICON_NAME)",
 ):
     assert required in ICON_ASSETS, required
 
 assert "apply_default_window_icon()" in APPLICATION
+assert "configure_desktop_identity()" in APPLICATION
+assert "StartupWMClass=io.github.linuxdefragger" in DESKTOP
 assert "from .about import LinkStandardWindowView" in WINDOW
 assert "apply_window_icon(self)" in WINDOW
 assert "self.view = LinkStandardWindowView(" in WINDOW

@@ -6,10 +6,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from gi.repository import Gdk, Gtk
 
-from .icon_assets import load_app_icon_pixbuf
+from .icon_assets import apply_window_icon, load_app_icon_pixbuf
 from .window_view import (
     ABOUT_COMMENTS,
     ABOUT_LICENSE,
+    APP_ICON_NAME,
     APP_NAME,
     COPYRIGHT,
     PROJECT_URL,
@@ -98,6 +99,7 @@ def show_common_about(parent: Gtk.Window, info: AboutInfo) -> None:
     dialog.set_default_size(560, 520)
     dialog.set_size_request(520, 480)
     dialog.get_style_context().add_class("link-about-dialog")
+    apply_window_icon(dialog)
     if info.authors:
         dialog.set_authors(list(info.authors))
     if info.license_text:
@@ -106,12 +108,13 @@ def show_common_about(parent: Gtk.Window, info: AboutInfo) -> None:
     elif info.license_name:
         dialog.set_license(info.license_name)
     logo = _about_logo()
+    dialog.set_logo_icon_name(None)
     if logo is not None:
-        # GtkAboutDialog's logo-icon-name defaults to "image-missing" in GTK3
-        # and overrides the pixbuf logo. Clear it before installing the
-        # approved artwork so the real Defragmenter icon is actually shown.
-        dialog.set_logo_icon_name(None)
         dialog.set_logo(logo)
+    else:
+        # Installed packages always ship the matching hicolor name. Keep this
+        # as a final theme fallback for source-tree or damaged-install runs.
+        dialog.set_logo_icon_name(APP_ICON_NAME)
     dialog.run()
     dialog.destroy()
 

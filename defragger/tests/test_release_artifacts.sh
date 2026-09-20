@@ -16,6 +16,8 @@ sh -n "$ROOT/packaging/build-deb.sh"
 sh -n "$ROOT/packaging/build-local-run.sh"
 grep -Fq 'OUTPUT=${OUTPUT_PATH:-"$ROOT/Defragmenter-${PACKAGE_VERSION}-${ARCH}.deb"}' "$ROOT/packaging/build-deb.sh"
 grep -Fq 'libstdc++6' "$ROOT/packaging/build-deb.sh"
+grep -Fq 'StartupWMClass=io.github.linuxdefragger' \
+    "$ROOT/packaging/io.github.linuxdefragger.desktop"
 grep -Fq 'OUTPUT=${1:-"$ROOT/Defragmenter-${VERSION}-local-folder.run"}' "$ROOT/packaging/build-local-run.sh"
 "$ROOT/packaging/build-local-run.sh" "$RUN" >/dev/null
 

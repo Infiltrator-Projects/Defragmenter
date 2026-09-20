@@ -737,6 +737,7 @@ def test_user_facing_branding_is_defragmenter() -> None:
     desktop = (ROOT / "packaging" / "io.github.linuxdefragger.desktop").read_text()
     assert "Name=Defragmenter" in desktop
     assert "Icon=io.github.linuxdefragger" in desktop
+    assert "StartupWMClass=io.github.linuxdefragger" in desktop
 
     project_cmake = (ROOT / "cmake" / "project.cmake").read_text()
     assert "packaging/io.github.linuxdefragger.png" in project_cmake
