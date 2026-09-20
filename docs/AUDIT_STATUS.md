@@ -7,7 +7,7 @@ Extended: 2026-09-20
 
 Applies to: release version 1.8.0-184
 Audited source commit: f5b64bfab830bd599bae588bfe4ccb99e00cd4c4
-Audited release-governance commit: b5f891f623f37df16d0d902029a22ca715301581
+Audited release-governance commit: b52008be6aa7f19dae2190ddbdd22c7e946849a7
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, sfs, hfsplus
 
@@ -71,9 +71,9 @@ Common owns reusable mechanisms such as checked arithmetic, strict and locale-in
 
 The repository uses a `direct-main` development model. The active main ruleset provides the permanent history protections checked by release automation; publication itself is guarded by the exact-head **Project quality gate**, exact audit baselines and immutable tag/release checks.
 
-The release workflow verifies the `protected-main` history rules, the current `main` SHA, the audited production baseline and the audited release-governance baseline before publication. The governance baseline includes the canonical repository-document paths used by release verification. A release still requires an **explicit release decision** represented by a `Release <version>` commit whose exact head passes the gate.
+The quality gate now owns the release handoff as a direct dependent reusable-workflow job. Publication therefore remains attached to the same qualified run: if a failed quality job is rerun successfully, GitHub reruns its dependent publication job instead of relying on a separate `workflow_run` event that may never be emitted for the retry. The called release workflow still verifies the `protected-main` history rules, the exact tested `main` SHA, the audited production baseline and the audited release-governance baseline before publication. A release still requires an **explicit release decision** represented by a `Release <version>` commit whose exact head passes both quality lanes.
 
-APT publication is a separate retryable workflow bound to the published release version and SHA. A release-head retry may contain documentation or release metadata only after the audited source commit; the exact-head gate still rejects any production/build/package drift.
+APT publication is likewise a direct reusable-workflow dependency of successful release publication, with manual `workflow_dispatch` retained only as a retry path. It verifies the immutable release tag/SHA before dispatching the central repository refresh, so release or APT retries cannot lose their handoff through `workflow_run` semantics. A release-head retry may contain documentation or release metadata only after the audited source commit; the exact-head gate still rejects any production/build/package drift.
 
 Version 1.8.0-184 is the current audited release line. It retains the exact Common 1.19.10 pin and the completed reuse boundary from 1.8.0-183. Production-source changes after that release are limited to the GTK3 About-logo precedence repair and the project-wide copyright normalization to 2000-2026, both included by audited commit `f5b64bfab830bd599bae588bfe4ccb99e00cd4c4`. The About repair clears GtkAboutDialog's default `logo-icon-name` before assigning the already-validated Defragmenter pixbuf, so GTK3 cannot substitute its `image-missing` icon. The approved artwork, packaging paths, filesystem engines, target-safety decisions, placement, mutation and recovery semantics are unchanged. The C++17 application-service plus first-party filesystem writer contracts remain covered by the full quality gate. Any later change beneath audited production/build/package paths requires a new source audit baseline before release.
 
