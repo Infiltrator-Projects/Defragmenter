@@ -4,6 +4,12 @@ This changelog records user-visible, compatibility, architecture and validation 
 
 ## Unreleased
 
+## 1.8.0-189
+
+- Replaced the independently designed 1.8.0-188 Defragmenter artwork with the **existing Software Centre Defragmenter `disk` identity** already visible in the Infiltrator APT catalogue.
+- The application icon now uses that catalogue's cylinder glyph and graphite/cyan family treatment instead of inventing a second Defragmenter symbol.
+- Retained the repaired GTK/GLib/X11 identity chain, 96×96 hicolor packaging and complete PNG chunk/CRC validation, so About, window, Cinnamon taskbar, Mint app-install and packaged artwork all resolve the same canonical identity.
+
 ## 1.8.0-188
 
 - Replaced the restored legacy glossy Defragmenter artwork with a flat 96×96 project-owned icon deliberately aligned to the System Monitor/Infiltrator desktop family: dark graphite tile, #72dcff cyan linework and a simple block-compaction defragmentation glyph.
