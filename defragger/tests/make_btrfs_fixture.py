@@ -151,7 +151,14 @@ def leaf(bytenr: int, owner: int, records: list[tuple[bytes, bytes]]) -> bytes:
     raw[64:80] = CHUNK_UUID
     raw[80:88] = le64(1)
     raw[88:96] = le64(owner)
-    records = sorted(records, key=lambda item: item[0])
+    records = sorted(
+        records,
+        key=lambda item: (
+            struct.unpack_from("<Q", item[0], 0)[0],
+            item[0][8],
+            struct.unpack_from("<Q", item[0], 9)[0],
+        ),
+    )
     raw[96:100] = le32(len(records))
     raw[100] = 0
     table_end = 101 + 25 * len(records)

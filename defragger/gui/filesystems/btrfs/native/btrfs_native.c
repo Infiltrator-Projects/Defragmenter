@@ -1710,12 +1710,12 @@ static int writer_validate_csum_tree(const WriterModel *model,
         }
         const uint64_t sectors = item->size / 4U;
         if (sectors > UINT64_MAX / model->sector_size) {
-            set_error(error, error_size, "Btrfs checksum range overflows");
+            set_error(error, error_size, "checksum range overflows in Btrfs metadata");
             return -1;
         }
         const uint64_t length = sectors * model->sector_size;
         if (item->key.offset > UINT64_MAX - length) {
-            set_error(error, error_size, "Btrfs checksum range overflows");
+            set_error(error, error_size, "checksum range overflows in Btrfs metadata");
             return -1;
         }
         const uint64_t end = item->key.offset + length;
