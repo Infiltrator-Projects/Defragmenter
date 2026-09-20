@@ -4,6 +4,12 @@ This changelog records user-visible, compatibility, architecture and validation 
 
 ## Unreleased
 
+## 1.8.0-185
+
+- Replaced the release pipeline's event-only `workflow_run` handoff with a direct reusable-workflow dependency of the two-lane Project quality gate, so a successful retry also reruns its dependent publication job.
+- Chained APT refresh directly from successful immutable release publication and retained manual `workflow_dispatch` only as a retry path; the APT workflow now verifies the requested release tag resolves to the exact released SHA before publication.
+- Added permanent release-contract regressions that reject reintroduction of `workflow_run` handoffs for either release or APT publication.
+
 ## 1.8.0-184
 
 - Fixed the About dialog's missing-image placeholder by clearing GTK3's default `logo-icon-name` before assigning the approved Defragmenter pixbuf; GTK3 gives the named-icon property precedence over `logo`.

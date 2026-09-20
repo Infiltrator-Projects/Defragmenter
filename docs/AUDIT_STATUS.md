@@ -5,7 +5,7 @@ Status: **complete**
 Completed: 2026-08-25  
 Extended: 2026-09-20
 
-Applies to: release version 1.8.0-184
+Applies to: release version 1.8.0-185
 Audited source commit: f5b64bfab830bd599bae588bfe4ccb99e00cd4c4
 Audited release-governance commit: b52008be6aa7f19dae2190ddbdd22c7e946849a7
 
@@ -75,7 +75,7 @@ The quality gate now owns the release handoff as a direct dependent reusable-wor
 
 APT publication is likewise a direct reusable-workflow dependency of successful release publication, with manual `workflow_dispatch` retained only as a retry path. It verifies the immutable release tag/SHA before dispatching the central repository refresh, so release or APT retries cannot lose their handoff through `workflow_run` semantics. A release-head retry may contain documentation or release metadata only after the audited source commit; the exact-head gate still rejects any production/build/package drift.
 
-Version 1.8.0-184 is the current audited release line. It retains the exact Common 1.19.10 pin and the completed reuse boundary from 1.8.0-183. Production-source changes after that release are limited to the GTK3 About-logo precedence repair and the project-wide copyright normalization to 2000-2026, both included by audited commit `f5b64bfab830bd599bae588bfe4ccb99e00cd4c4`. The About repair clears GtkAboutDialog's default `logo-icon-name` before assigning the already-validated Defragmenter pixbuf, so GTK3 cannot substitute its `image-missing` icon. The approved artwork, packaging paths, filesystem engines, target-safety decisions, placement, mutation and recovery semantics are unchanged. The C++17 application-service plus first-party filesystem writer contracts remain covered by the full quality gate. Any later change beneath audited production/build/package paths requires a new source audit baseline before release.
+Version 1.8.0-185 is the current audited release line. It retains the exact Common 1.19.10 pin, the 1.8.0-184 GTK3 About-icon repair and the same audited production source baseline at `f5b64bfab830bd599bae588bfe4ccb99e00cd4c4`. Release governance now uses the retry-safe direct dependency graph introduced at `b52008be6aa7f19dae2190ddbdd22c7e946849a7`: both quality lanes must succeed before the release reusable workflow can run, and successful release publication directly invokes the retryable APT reusable workflow. No filesystem engine, target-safety decision, placement, mutation or recovery semantic changed for this release. Any later change beneath audited production/build/package paths requires a new source audit baseline before release.
 
 ## Historical record
 
