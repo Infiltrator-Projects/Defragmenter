@@ -16,6 +16,7 @@ trap 'rm -rf "$WORK"' EXIT
 export PYTHONDONTWRITEBYTECODE=1
 export PYTHONPATH="$ROOT/gui"
 export LINUX_DEFRAGGER_BUILD_DIR="$BUILD_DIR"
+bash -n "$ROOT/tests/destructive/run_dm_log_writes_replay.sh"
 
 fail() {
     echo "TEST FAILURE: $*" >&2

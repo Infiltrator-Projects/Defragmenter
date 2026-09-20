@@ -131,7 +131,7 @@ created=0
 replay-log --log "$LOG" --replay "$DATA" --end-mark baseline
 
 resolved_check=${CHECK_COMMAND//\{device\}/$DATA}
-printf '%s\n' '#!/bin/sh' "exec sh -c $(printf '%q' "$resolved_check")" >"$checker"
+printf '%s\n' '#!/usr/bin/env bash' "exec bash -c $(printf '%q' "$resolved_check")" >"$checker"
 chmod 700 "$checker"
 
 replay-log \
