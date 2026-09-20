@@ -2,6 +2,7 @@
 #include "test_media.h"
 #include "affs_native.h"
 #include "sfs_native.h"
+#include "pfs3_native.h"
 
 #include <fcntl.h>
 #include <stdint.h>
@@ -156,6 +157,52 @@ static int test_sfs_formatter_and_payload(void) {
     return unlink(path) == 0 ? 0 : 1;
 }
 
+static int test_pfs3_formatter_and_payload(void) {
+    char path[] = "/tmp/linux-defragger-pfs3-media.XXXXXX";
+    char detail[512];
+    char error[256] = {0};
+    Pfs3Analysis analysis;
+    const LdtmFilesystemSpec *pfs3 = ldtm_find_spec("pfs3");
+    LdtmFragmentProfile profile;
+    int fd;
+    unsigned char byte;
+    if (pfs3 == NULL) return 1;
+    profile = ldtm_fragment_profile(pfs3);
+    fd = mkstemp(path);
+    if (fd < 0) return 1;
+    if (ftruncate(fd, (off_t)(1024U * LDTM_MIB)) != 0 || close(fd) != 0) {
+        (void)unlink(path);
+        return 1;
+    }
+    if (ldtm_format_amiga_volume(path, 1U, "LD_PFS3") != 0 ||
+        ldtm_populate_amiga_volume(path, 1U, &profile) != 0 ||
+        ldtm_verify_amiga_payload(path, 1U, &profile, detail, sizeof(detail)) != 0 ||
+        pfs3_analyse(path, &analysis, NULL, 0U, error, sizeof(error)) != 0 ||
+        analysis.regular_files != 1U || analysis.fragmented_files != 1U ||
+        analysis.data_blocks != 51200U || analysis.growth_10_satisfied) {
+        (void)unlink(path);
+        return 1;
+    }
+    fd = open(path, O_RDWR | O_CLOEXEC);
+    if (fd < 0 || pread(fd, &byte, 1U, (off_t)4096U * 512U) != 1) {
+        if (fd >= 0) (void)close(fd);
+        (void)unlink(path);
+        return 1;
+    }
+    byte ^= UINT8_C(0x5a);
+    if (pwrite(fd, &byte, 1U, (off_t)4096U * 512U) != 1 || fsync(fd) != 0) {
+        (void)close(fd);
+        (void)unlink(path);
+        return 1;
+    }
+    (void)close(fd);
+    if (ldtm_verify_amiga_payload(path, 1U, &profile, detail, sizeof(detail)) == 0) {
+        (void)unlink(path);
+        return 1;
+    }
+    return unlink(path) == 0 ? 0 : 1;
+}
+
 int main(void) {
     char script[8192];
     const LdtmFilesystemSpec *fat12 = ldtm_find_spec("fat12");
@@ -170,6 +217,7 @@ int main(void) {
     LdtmFragmentProfile small;
     LdtmFragmentProfile normal;
     LdtmFragmentProfile sfs_profile;
+    LdtmFragmentProfile pfs3_profile;
     size_t count = 0U;
     const char *cursor;
 
@@ -182,15 +230,20 @@ int main(void) {
     small = ldtm_fragment_profile(fat12);
     normal = ldtm_fragment_profile(fat16);
     sfs_profile = ldtm_fragment_profile(sfs);
+    pfs3_profile = ldtm_fragment_profile(pfs3);
     CHECK(ldtm_target_payload_bytes(fat12) == UINT64_C(4) * LDTM_MIB);
     CHECK(ldtm_target_payload_bytes(fat16) == UINT64_C(200) * LDTM_MIB);
     CHECK(ldtm_target_payload_bytes(ofs) == UINT64_C(200) * LDTM_MIB);
     CHECK(ldtm_target_payload_bytes(ffs) == UINT64_C(200) * LDTM_MIB);
     CHECK(ldtm_target_payload_bytes(sfs) == UINT64_C(25) * LDTM_MIB);
+    CHECK(ldtm_target_payload_bytes(pfs3) == UINT64_C(25) * LDTM_MIB);
     CHECK(small.directory_initial == 128U && small.directory_second == 128U);
     CHECK(normal.chunks == 100U && normal.directory_initial == 4096U && normal.directory_second == 4096U);
     CHECK(sfs_profile.files == 1U && sfs_profile.chunks == 100U && sfs_profile.chunk_kib == 256U);
     CHECK(sfs_profile.directory_initial == 0U && sfs_profile.directory_second == 0U);
+    CHECK(pfs3_profile.files == 1U && pfs3_profile.chunks == 100U &&
+          pfs3_profile.chunk_kib == 256U);
+    CHECK(pfs3_profile.directory_initial == 0U && pfs3_profile.directory_second == 0U);
 
     CHECK(ofs->creator == LDTM_CREATOR_AFFS);
     CHECK(ffs->creator == LDTM_CREATOR_AFFS);
@@ -199,19 +252,20 @@ int main(void) {
     CHECK(strcmp(ldtm_creator_program(ffs), "/usr/lib/linux-defragger/test-media-mkfs-ffs") == 0);
     CHECK(ldtm_creator_program(sfs) == NULL);
     CHECK(strstr(sfs->note, "SFS0") != NULL && strstr(sfs->note, "100 extents") != NULL);
-    CHECK(pfs3->creator == LDTM_CREATOR_MANUAL && strstr(pfs3->note, "PFS3") != NULL);
+    CHECK(pfs3->creator == LDTM_CREATOR_PFS3 && strstr(pfs3->note, "PFS3") != NULL);
     CHECK(strcmp(ldtm_creator_program(ufs), "makefs") == 0);
     CHECK(ufs->package_hint != NULL && strcmp(ufs->package_hint, "makefs") == 0);
     CHECK(strstr(ufs->note, "UFS2") != NULL && strstr(ufs->note, "fragmentation is not asserted") != NULL);
     CHECK(zfs->package_hint != NULL && strcmp(zfs->package_hint, "zfsutils-linux") == 0);
     CHECK(apfs->creator == LDTM_CREATOR_MANUAL && ldtm_creator_program(apfs) == NULL);
     CHECK(ldtm_is_reserved_partition_label("LD_SFS") == 0);
-    CHECK(ldtm_is_reserved_partition_label("LD_PFS3") == 1);
+    CHECK(ldtm_is_reserved_partition_label("LD_PFS3") == 0);
     CHECK(ldtm_is_reserved_partition_label("LD_APFS") == 1);
     CHECK(ldtm_is_reserved_partition_label("LD_OFS") == 0);
     CHECK(ldtm_is_reserved_partition_label("LD_HFSPLUS") == 0);
     CHECK(test_amiga_formatters_and_payload() == 0);
     CHECK(test_sfs_formatter_and_payload() == 0);
+    CHECK(test_pfs3_formatter_and_payload() == 0);
 
     CHECK(ldtm_transport_is_field_media(0, "mmc") == 1);
     CHECK(ldtm_transport_is_field_media(0, "usb") == 1);

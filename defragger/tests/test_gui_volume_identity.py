@@ -36,6 +36,8 @@ def _catalog() -> BackendCatalog:
                     "operations": [],
                 },
                 {"id": "hfsplus", "aliases": ["hfs+"], "capabilities": 1, "operations": []},
+                {"id": "sfs", "aliases": ["sfs0", "sfs2"], "capabilities": 1, "operations": []},
+                {"id": "pfs3", "aliases": ["pfs"], "capabilities": 1, "operations": []},
             ]
         }
     )
@@ -139,11 +141,15 @@ def test_amiga_discovery_does_not_depend_on_lsblk_fstype() -> None:
             # A normal Amiga partition with no Test Media label is recovered
             # from the authoritative first-party native probe.
             node("/dev/mmcblk0p20", partlabel="DH0"),
-            # Reserved Test Media slots must never surface stale filesystems.
+            # Raw SFS/PFS3 creators are identified from their Test Media labels
+            # when an unprivileged native probe cannot open the physical device.
+            node("/dev/mmcblk0p13", partlabel="LD_SFS"),
+            node("/dev/mmcblk0p14", partlabel="LD_PFS3"),
+            # The remaining manual APFS slot must suppress stale signatures.
             node(
-                "/dev/mmcblk0p13",
+                "/dev/mmcblk0p15",
                 fstype="hfsplus",
-                partlabel="LD_SFS",
+                partlabel="LD_APFS",
                 label="LD_HFSPLUS",
             ),
         ]
@@ -160,6 +166,8 @@ def test_amiga_discovery_does_not_depend_on_lsblk_fstype() -> None:
     assert set(by_path) == {
         "/dev/mmcblk0p11",
         "/dev/mmcblk0p12",
+        "/dev/mmcblk0p13",
+        "/dev/mmcblk0p14",
         "/dev/mmcblk0p20",
     }
     assert by_path["/dev/mmcblk0p11"].normalized_fstype == "affs"
@@ -167,6 +175,8 @@ def test_amiga_discovery_does_not_depend_on_lsblk_fstype() -> None:
     assert "— LD_OFS — OFS —" in by_path["/dev/mmcblk0p11"].display_name
     assert by_path["/dev/mmcblk0p12"].normalized_fstype == "affs"
     assert by_path["/dev/mmcblk0p12"].display_fstype == "ffs"
+    assert by_path["/dev/mmcblk0p13"].display_fstype == "sfs"
+    assert by_path["/dev/mmcblk0p14"].display_fstype == "pfs3"
     assert by_path["/dev/mmcblk0p20"].display_fstype == "ffs"
 
 

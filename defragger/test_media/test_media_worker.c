@@ -1074,7 +1074,7 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device) {
             (void)state_write_status(state, spec, "reserved", spec->note);
             continue;
         }
-        if (spec->creator == LDTM_CREATOR_AFFS) {
+        if ((spec->creator == LDTM_CREATOR_AFFS || spec->creator == LDTM_CREATOR_PFS3)) {
             if (create_amiga_and_populate(spec, partition, state) != 0) goto cleanup;
         } else if (spec->creator == LDTM_CREATOR_UFS) {
             if (create_ufs_and_populate(spec, partition, work, state) != 0) goto cleanup;
@@ -1311,7 +1311,7 @@ int ldtm_worker_verify(const char *device) {
             emit_status(spec->key, "verify-failed", "partition label is missing");
             continue;
         }
-        if (spec->creator == LDTM_CREATOR_AFFS) {
+        if ((spec->creator == LDTM_CREATOR_AFFS || spec->creator == LDTM_CREATOR_PFS3)) {
             const uint8_t dostype = strcmp(spec->key, "ofs") == 0 ? (uint8_t)0 : (uint8_t)1;
             const LdtmFragmentProfile profile = ldtm_fragment_profile(spec);
             char detail[512];

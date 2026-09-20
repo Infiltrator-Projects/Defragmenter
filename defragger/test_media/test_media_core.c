@@ -30,8 +30,8 @@ static const LdtmFilesystemSpec LDTM_SPECS[LDTM_SPEC_COUNT] = {
      "Amiga Fast File System DOS\\1; formatted by the built-in first-party C creator."},
     {"sfs", "LD_SFS", 64U, 25U, LDTM_CREATOR_AFFS, "",
      "Amiga Smart File System SFS0 v3; built-in raw C creator makes a 25 MiB file with 100 extents and an intentionally unsatisfied Growth Defrag reserve."},
-    {"pfs3", "LD_PFS3", 1024U, 200U, LDTM_CREATOR_MANUAL, "",
-     "Amiga Professional File System PFS3 roadmap slot; no Defragmenter engine or creator yet."},
+    {"pfs3", "LD_PFS3", 1024U, 25U, LDTM_CREATOR_PFS3, "",
+     "Amiga Professional File System 3; built-in raw C creator makes a 25 MiB file with 100 extents in the qualified small-disk PFS3 subset."},
     {"hfs", "LD_HFS", 1024U, 200U, LDTM_CREATOR_HFS, "hfsutils", ""},
     {"hfsplus", "LD_HFSPLUS", 2048U, 200U, LDTM_CREATOR_HFSPLUS, "hfsprogs", ""},
     {"minix", "LD_MINIX", 1024U, 200U, LDTM_CREATOR_MINIX, "util-linux", ""},
@@ -80,7 +80,8 @@ LdtmFragmentProfile ldtm_fragment_profile(const LdtmFilesystemSpec *spec) {
         profile.chunk_kib = 128U;
         profile.directory_initial = 128U;
         profile.directory_second = 128U;
-    } else if (spec != NULL && strcmp(spec->key, "sfs") == 0) {
+    } else if (spec != NULL &&
+               (strcmp(spec->key, "sfs") == 0 || strcmp(spec->key, "pfs3") == 0)) {
         profile.anchors = 0U;
         profile.anchor_kib = 0U;
         profile.files = 1U;
@@ -159,6 +160,7 @@ const char *ldtm_creator_program(const LdtmFilesystemSpec *spec) {
             if (strcmp(spec->key, "ofs") == 0) return "/usr/lib/linux-defragger/test-media-mkfs-ofs";
             if (strcmp(spec->key, "ffs") == 0) return "/usr/lib/linux-defragger/test-media-mkfs-ffs";
             return NULL;
+        case LDTM_CREATOR_PFS3: return NULL;
         case LDTM_CREATOR_HFS: return "hformat";
         case LDTM_CREATOR_HFSPLUS: return "mkfs.hfsplus";
         case LDTM_CREATOR_MINIX: return "mkfs.minix";
@@ -217,6 +219,11 @@ int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
     }
     if (spec->creator == LDTM_CREATOR_AFFS && strcmp(spec->key, "sfs") == 0) {
         (void)snprintf(detail, detail_capacity, "Built-in raw C creator + payload engine: Amiga SFS0 v3, 100-fragment native fixture");
+        return 1;
+    }
+    if (spec->creator == LDTM_CREATOR_PFS3) {
+        (void)snprintf(detail, detail_capacity,
+                       "Built-in raw C creator + payload engine: Amiga PFS3, 100-fragment native fixture");
         return 1;
     }
     if (spec->creator == LDTM_CREATOR_MANUAL) {

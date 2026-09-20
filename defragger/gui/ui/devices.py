@@ -25,8 +25,10 @@ _AMIGA_TYPES = frozenset({"ofs", "ffs"})
 _TEST_MEDIA_RAW_PARTLABELS = {
     "ld_ofs": "ofs",
     "ld_ffs": "ffs",
+    "ld_sfs": "sfs",
+    "ld_pfs3": "pfs3",
 }
-_TEST_MEDIA_RESERVED_PARTLABELS = frozenset({"ld_sfs", "ld_pfs3", "ld_apfs"})
+_TEST_MEDIA_RESERVED_PARTLABELS = frozenset({"ld_apfs"})
 _NATURAL_DEVICE_PARTS = re.compile(r"(\d+)")
 
 
