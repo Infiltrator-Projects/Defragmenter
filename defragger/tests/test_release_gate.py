@@ -44,6 +44,17 @@ def main() -> None:
     assert '"c-first-*"' not in gate, "quality gate must run from main only"
     assert "local-quality" not in gate, "home-runner qualification must not gate hosted release publication"
     for required in (
+        "publish-release:",
+        "needs: [quality-gate, sanitizers]",
+        "github.event_name == 'push'",
+        "github.ref == 'refs/heads/main'",
+        "startsWith(github.event.head_commit.message, 'Release ')",
+        "uses: ./.github/workflows/release.yml",
+        "expected_sha: ${{ github.sha }}",
+        "secrets: inherit",
+    ):
+        assert required in gate, f"qualified release handoff lost required contract: {required}"
+    for required in (
         "runs-on: [self-hosted, Linux, X64, linux-native]",
         "Verify local qualification dependencies",
         "Self-hosted runner is missing commands",
@@ -78,22 +89,25 @@ def main() -> None:
         assert required in harness, f"aggregate harness lost required regression: {required}"
 
     trigger_block = release.split("permissions:", 1)[0]
-    assert "workflow_run:" in trigger_block
-    assert 'workflows: ["Project quality gate"]' in trigger_block
+    assert "workflow_call:" in trigger_block
+    assert "expected_sha:" in trigger_block
+    assert "workflow_run:" not in trigger_block, (
+        "release publication must be a direct dependency of the quality gate so retries cannot lose the handoff"
+    )
     assert "workflow_dispatch:" not in trigger_block, (
         "release publication must not require manual approval"
     )
     assert "\n  push:" not in trigger_block, (
-        "release publication must wait for the completed main quality gate"
+        "release publication must be invoked only by the completed main quality gate"
     )
     assert ".release-request" not in release, (
         "legacy root release marker must not be part of the release contract"
     )
     for required in (
-        "github.event.workflow_run.conclusion == 'success'",
-        "github.event.workflow_run.event == 'push'",
-        "github.event.workflow_run.head_branch == 'main'",
-        "startsWith(github.event.workflow_run.head_commit.message, 'Release ')",
+        "EXPECTED_SHA: ${{ inputs.expected_sha }}",
+        "ref: ${{ inputs.expected_sha }}",
+        "version: ${{ steps.release_identity.outputs.version }}",
+        "release_sha: ${{ steps.release_identity.outputs.release_sha }}",
         "Verify permanent main history protection",
         '"repos/${GITHUB_REPOSITORY}/rules/branches/main"',
         "deletion",
@@ -114,6 +128,10 @@ def main() -> None:
         "tag_exists=false",
         "if [ \"$tag_exists\" = false ]",
         "gh release create",
+        "uses: ./.github/workflows/apt-refresh.yml",
+        "needs: release",
+        "version: ${{ needs.release.outputs.version }}",
+        "release_sha: ${{ needs.release.outputs.release_sha }}",
     ):
         assert required in release, f"release workflow lost required contract: {required}"
     assert "quarantine-notice:" not in release
@@ -124,16 +142,18 @@ def main() -> None:
     assert 'Defragmenter-${VERSION}.zip' not in release
     assert not (PROJECT_ROOT / "packaging" / "build-source-zip.sh").exists()
     assert "Refresh and verify Infiltrator APT repository" not in release
+    assert "workflow_run:" not in apt_refresh, (
+        "APT publication must be directly called from the release workflow so release retries cannot lose the handoff"
+    )
     for required in (
-        "workflow_run:",
-        'workflows: ["Build and publish release"]',
-        "github.event.workflow_run.conclusion == 'success'",
-        "github.event.workflow_run.head_branch == 'main'",
-        "github.event.workflow_run.head_sha",
-        "expected exactly one published release",
+        "workflow_call:",
         "workflow_dispatch:",
         "version:",
         "release_sha:",
+        "REQUESTED_VERSION",
+        "REQUESTED_SHA",
+        "releases/tags/${release_tag}",
+        "Published release ${release_tag} points at",
         "APT_REPOSITORY_DISPATCH_TOKEN",
         "application-release",
         "catalogue/apps.json",
