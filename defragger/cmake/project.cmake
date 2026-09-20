@@ -241,8 +241,9 @@ target_compile_definitions(linux-defragger-fat-worker PRIVATE
 target_link_libraries(linux-defragger-fat-worker PRIVATE
     linux-defragger-core Threads::Threads)
 
-# APFS remains analysis-only, but its on-disk NX superblock interpretation is
-# native C. Python is retained only as the GUI/backend adapter.
+# APFS remains analysis-only at this stage, but exact bounded checkpoint,
+# spaceman allocation and catalog-fragmentation interpretation is native C.
+# Python is retained only as GUI/registry glue.
 add_library(linux-defragger-apfs-native STATIC
     gui/filesystems/apfs/native/apfs_native.c)
 target_include_directories(linux-defragger-apfs-native PUBLIC
@@ -618,6 +619,12 @@ if(BUILD_TESTING)
     target_link_libraries(linux-defragger-apfs-native-test PRIVATE
         linux-defragger-apfs-native linux-defragger-core)
     add_test(NAME linux-defragger-apfs-native COMMAND linux-defragger-apfs-native-test)
+    add_test(NAME linux-defragger-apfs-native-python
+        COMMAND "${LD_HELPER_TEST_PYTHON}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_apfs_native.py")
+    set_tests_properties(linux-defragger-apfs-native-python PROPERTIES
+        ENVIRONMENT "LINUX_DEFRAGGER_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+        TIMEOUT 120)
 
     add_executable(linux-defragger-minix-native-test
         tests/test_minix_native.c)
