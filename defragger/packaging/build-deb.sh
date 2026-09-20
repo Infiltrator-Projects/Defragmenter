@@ -40,7 +40,7 @@ DESTDIR="$STAGE/root" cmake --install "$BUILD"
 SOURCE_ICON="$ROOT/packaging/io.github.linuxdefragger.png"
 for INSTALLED_ICON in \
     "$STAGE/root/usr/lib/linux-defragger/defragmenter-icon.png" \
-    "$STAGE/root/usr/share/icons/hicolor/256x256/apps/io.github.linuxdefragger.png" \
+    "$STAGE/root/usr/share/icons/hicolor/128x128/apps/io.github.linuxdefragger.png" \
     "$STAGE/root/usr/share/app-install/icons/infiltrator-defragmenter.png"
 do
     [ -f "$INSTALLED_ICON" ] || {
