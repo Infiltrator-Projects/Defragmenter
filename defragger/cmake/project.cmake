@@ -594,6 +594,13 @@ if(BUILD_TESTING)
     add_test(NAME linux-defragger-mapper-cpp-manifest
         COMMAND linux-defragger-mapper-cpp --list-backends)
 
+    add_test(NAME linux-defragger-native-malformed-matrix
+        COMMAND "${LD_HELPER_TEST_PYTHON}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_native_malformed_matrix.py")
+    set_tests_properties(linux-defragger-native-malformed-matrix PROPERTIES
+        ENVIRONMENT "LINUX_DEFRAGGER_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+        TIMEOUT 120)
+
     add_executable(linux-defragger-apfs-native-test
         tests/test_apfs_native.c)
     target_include_directories(linux-defragger-apfs-native-test PRIVATE
