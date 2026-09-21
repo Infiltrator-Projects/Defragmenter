@@ -4,7 +4,7 @@ This changelog records user-visible, compatibility, architecture and validation 
 
 ## Unreleased
 
-- Began the shared transaction-mechanics extraction with one-open target binding: Minix, SFS and PFS3 now capture canonical path, stable object identity and target capacity through one validated native-core open instead of resolving and reopening the target separately.
+- Extended the shared one-open transaction target binding across Minix, SFS, PFS3, APFS, Btrfs and UFS, removing duplicated canonical-path/identity open sequences while keeping filesystem-specific volume identity and recovery policy local.
 - Began the shared transaction-mechanics consolidation without centralising filesystem semantics: all native worker-level transaction target snapshots now use one filesystem-neutral identity formatter backed by the verified LdDevice contract, descriptor-based exFAT staging uses the same identity representation, and identity comparison delegates to that shared formatter.
 - Removed the final installed Python filesystem-capability contract: GTK now enables operations directly from the immutable native C++ registry manifest, and package installation carries only the GTK/core Python presentation modules.
 - Made the installed UFS worker itself fail closed on Defragment, Growth Defrag and Recover while UFS remains an unfinished roadmap item; developmental mutation code can no longer be reached simply by bypassing the read-only GUI/native registry capability declaration.
