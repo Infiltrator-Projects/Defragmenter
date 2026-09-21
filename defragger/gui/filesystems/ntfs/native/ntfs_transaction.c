@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define NTFS_JOURNAL_MAGIC "LINUX-DEFRAGGER-NTFS-JOURNAL-1"
 
@@ -33,6 +34,33 @@ static bool safe_journal_value(const char *value)
 {
     return value != NULL && strchr(value, '\n') == NULL &&
            strchr(value, '\r') == NULL && strchr(value, '=') == NULL;
+}
+
+static void unlink_if_exists(const char *path)
+{
+    if (path == NULL || *path == '\0')
+        return;
+    const int failure = infiltratr_unlink_durable(path, true);
+    if (failure != 0)
+        fprintf(stderr, "linux-defragger-ntfs-worker: warning: cannot durably remove %s: %s\n",
+                path, strerror(failure));
+}
+
+void ntfs_transaction_cleanup(const char *journal, const NtfsJournal *state)
+{
+    if (state != NULL) {
+        unlink_if_exists(state->stage);
+        unlink_if_exists(state->plan);
+        if (state->plan != NULL) {
+            char *wal = ld_path_append_suffix(state->plan, "-wal");
+            char *shm = ld_path_append_suffix(state->plan, "-shm");
+            unlink_if_exists(wal);
+            unlink_if_exists(shm);
+            free(wal);
+            free(shm);
+        }
+    }
+    unlink_if_exists(journal);
 }
 
 void ntfs_journal_free(NtfsJournal *state)

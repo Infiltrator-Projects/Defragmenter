@@ -27,6 +27,7 @@ typedef struct {
  * publication. Placement, commit ordering, phase meaning and recovery policy
  * remain in ntfs_worker.c.
  */
+void ntfs_transaction_cleanup(const char *journal, const NtfsJournal *state);
 void ntfs_journal_free(NtfsJournal *state);
 int ntfs_journal_save(const char *path, const NtfsJournal *state, char **error);
 int ntfs_journal_load(const char *path, NtfsJournal *state, char **error);

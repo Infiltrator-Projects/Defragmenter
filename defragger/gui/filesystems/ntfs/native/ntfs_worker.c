@@ -45,18 +45,10 @@ static void usage(FILE *stream) {
 
 
 
-static void transaction_cleanup(const char *journal, const NtfsJournal *state) {
-    if (state != NULL) {
-        unlink_if_exists(state->stage); unlink_if_exists(state->plan);
-        if (state->plan != NULL) {
-            char *wal = ld_path_append_suffix(state->plan, "-wal");
-            char *shm = ld_path_append_suffix(state->plan, "-shm");
-            unlink_if_exists(wal); unlink_if_exists(shm); free(wal); free(shm);
-        }
-    }
-    unlink_if_exists(journal);
+static int parse_u64(const char *text, uint64_t *value)
+{
+    return infiltratr_parse_u64(text, 10U, value) ? 0 : -1;
 }
-
 static void serial_hex(const uint8_t serial[8], char output[17]) {
     static const char digits[] = "0123456789abcdef";
     for (size_t i = 0; i < 8U; ++i) {
@@ -349,7 +341,7 @@ static int try_terminal_workspace_relayout(const char *device, const char *opera
             source_catalogue->fragmented_directories == 0 &&
             (!growth || source_catalogue->growth_10_satisfied)) {
             free(*error); *error = NULL;
-            transaction_cleanup(journal_path, state);
+            ntfs_transaction_cleanup(journal_path, state);
             puts("Not needed; canonical NTFS layout already verified.");
             ld_emit_result_event(stdout, operation, "not-needed", "");
             result = 0;
@@ -385,7 +377,7 @@ static int try_terminal_workspace_relayout(const char *device, const char *opera
             goto metadata_recover_required;
         if (set_source_dirty(device, state->target_identity, state->physical_bytes, false, error) != 0) goto metadata_recover_required;
         if (live_updates) emit_committed_live_reset(device, error);
-        transaction_cleanup(journal_path, state);
+        ntfs_transaction_cleanup(journal_path, state);
         puts("NTFS direct metadata layout: canonical metadata verified without payload relocation or a filesystem-sized working image.");
         printf("NTFS %s completed with serial and full device capacity preserved.\n",
                growth ? "Growth Defrag" : "Defragment");
@@ -464,7 +456,7 @@ static int try_terminal_workspace_relayout(const char *device, const char *opera
                                    &restore_error) == 0 &&
             set_source_dirty(device, state->target_identity, state->physical_bytes, false, &restore_error) == 0) {
             free(restore_error);
-            transaction_cleanup(journal_path, state);
+            ntfs_transaction_cleanup(journal_path, state);
             goto done;
         }
         free(restore_error);
@@ -479,7 +471,7 @@ static int try_terminal_workspace_relayout(const char *device, const char *opera
     if (ntfs_verify_stage(device, db, growth, true, error) != 0) goto recover_required;
     if (set_source_dirty(device, state->target_identity, state->physical_bytes, false, error) != 0) goto recover_required;
     if (live_updates) emit_committed_live_reset(device, error);
-    transaction_cleanup(journal_path, state);
+    ntfs_transaction_cleanup(journal_path, state);
     printf("NTFS unified workspace layout: %llu clusters staged and placed without a filesystem-sized working image.\n",
            (unsigned long long)state->workspace_clusters);
     printf("NTFS %s completed with serial and full device capacity preserved.\n",
@@ -490,7 +482,7 @@ static int try_terminal_workspace_relayout(const char *device, const char *opera
 
 fallback:
     if (db != NULL) { sqlite3_close(db); db = NULL; }
-    transaction_cleanup(journal_path, state);
+    ntfs_transaction_cleanup(journal_path, state);
     memcpy(source_layout->bitmap, original_bitmap, source_layout->bitmap_bytes);
     ntfs_placements_free(&placements);
     state->workspace_start = 0;
@@ -502,7 +494,7 @@ fallback:
     return 2;
 
 stopped_unchanged:
-    transaction_cleanup(journal_path, state);
+    ntfs_transaction_cleanup(journal_path, state);
     puts("Stop requested at a safe NTFS workspace boundary; the original filesystem layout is preserved.");
     ld_emit_result_event(stdout, operation, "stopped", "");
     goto done;
@@ -574,7 +566,7 @@ static int build_and_commit(const char *device, const char *operation, const cha
         if (error != NULL && *error != NULL && strstr(*error, "no supported movable") != NULL &&
             staged_catalogue.fragmented_files == 0 && staged_catalogue.fragmented_directories == 0 &&
             (!growth || staged_catalogue.growth_10_satisfied)) {
-            free(*error); *error = NULL; transaction_cleanup(journal_path, &state);
+            free(*error); *error = NULL; ntfs_transaction_cleanup(journal_path, &state);
             puts("Not needed; canonical NTFS layout already verified."); ld_emit_result_event(stdout, operation, "not-needed", ""); result = 0; goto done;
         }
         goto precommit_fail;
@@ -619,14 +611,14 @@ static int build_and_commit(const char *device, const char *operation, const cha
             emit_live_reset(&committed,&committed_layout); ntfs_layout_free(&committed_layout); ntfs_close_volume(&committed);
         }
     }
-    transaction_cleanup(journal_path, &state);
+    ntfs_transaction_cleanup(journal_path, &state);
     printf("NTFS %s completed with serial and full device capacity preserved.\n", growth ? "Growth Defrag" : "Defragment");
     ld_emit_result_event(stdout, operation, ld_stop_requested() ? "stopped" : "completed", ""); result = ld_stop_requested() ? 130 : 0; goto done;
 stopped:
-    transaction_cleanup(journal_path, &state); puts("Stop requested before source commit; the original NTFS filesystem is unchanged.");
+    ntfs_transaction_cleanup(journal_path, &state); puts("Stop requested before source commit; the original NTFS filesystem is unchanged.");
     ld_emit_result_event(stdout, operation, "stopped", ""); result = 130; goto done;
 precommit_fail:
-    transaction_cleanup(journal_path, &state); goto done;
+    ntfs_transaction_cleanup(journal_path, &state); goto done;
 commit_fail:
     /* The dirty source, verified stage and journal are deliberately retained for Recover. */
     goto done;
@@ -679,7 +671,7 @@ static int recover_transaction(const char *device, const char *journal_path, cha
             goto done;
         }
         sqlite3_close(metadata_db);
-        transaction_cleanup(journal_path, &state);
+        ntfs_transaction_cleanup(journal_path, &state);
         puts("NTFS metadata-only recovery completed successfully.");
         ld_emit_result_event(stdout, "recover", "completed", "");
         result = 0;
@@ -692,7 +684,7 @@ static int recover_transaction(const char *device, const char *journal_path, cha
             goto done;
         }
         if (strcmp(state.phase, "workspace-staging") == 0) {
-            transaction_cleanup(journal_path, &state);
+            ntfs_transaction_cleanup(journal_path, &state);
             puts("Discarded an incomplete NTFS terminal workspace; source metadata was unchanged.");
             result = 0;
             goto done;
@@ -728,14 +720,14 @@ static int recover_transaction(const char *device, const char *journal_path, cha
             sqlite3_close(workspace_db); goto done;
         }
         sqlite3_close(workspace_db);
-        transaction_cleanup(journal_path, &state);
+        ntfs_transaction_cleanup(journal_path, &state);
         puts("NTFS terminal-workspace recovery completed successfully.");
         ld_emit_result_event(stdout, "recover", "completed", "");
         result = 0;
         goto done;
     }
     if (strcmp(state.phase, "commit") != 0 && strcmp(state.phase, "verifying-source") != 0) {
-        transaction_cleanup(journal_path, &state);
+        ntfs_transaction_cleanup(journal_path, &state);
         puts("Discarded an incomplete NTFS working image; the source was unchanged."); result = 0; goto done;
     }
     struct stat stage_status;
@@ -760,7 +752,7 @@ static int recover_transaction(const char *device, const char *journal_path, cha
     if (ntfs_journal_phase(journal_path, &state, "verifying-source", error) != 0) { sqlite3_close(db); goto done; }
     if (ntfs_verify_stage(device, db, growth, true, error) != 0) { sqlite3_close(db); goto done; }
     if (set_source_dirty(device, state.target_identity, state.physical_bytes, false, error) != 0) { sqlite3_close(db); goto done; }
-    sqlite3_close(db); transaction_cleanup(journal_path, &state);
+    sqlite3_close(db); ntfs_transaction_cleanup(journal_path, &state);
     puts("NTFS recovery completed successfully."); ld_emit_result_event(stdout, "recover", "completed", ""); result = 0;
 done:
     free(real); free(identity); ntfs_journal_free(&state); return result;
