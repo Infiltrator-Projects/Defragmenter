@@ -541,7 +541,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
     assert sources["ext"].count("ld_path_is_mounted(device)") >= 2
     assert sources["ntfs"].count("ld_path_is_mounted(device)") >= 2
     assert "ld_path_is_mounted(device)" in sources["exfat"]
-    assert "ld_device_number_is_mounted(status.st_rdev)" in sources["xfs"]
+    assert "device.is_block && ld_device_number_is_mounted(device.device_number)" in sources["xfs"]
     assert "ld_path_is_mounted(device)" in sources["affs"]
     assert "ld_path_is_mounted(device)" in sources["apfs"]
     assert "ld_path_is_mounted(device)" in sources["btrfs"]
@@ -573,7 +573,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
     journal_sources = {
         "fat": native / "fat" / "native" / "fat_journal.c",
         "ext": workers["ext"],
-        "ntfs": workers["ntfs"],
+        "ntfs": native / "ntfs" / "native" / "ntfs_transaction.c",
         "exfat": workers["exfat"],
         "xfs": workers["xfs"],
         "affs": workers["affs"],
@@ -645,7 +645,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
     assert "ld_path_ensure_trusted_directory_tree" in fat_journal.read_text()
 
     journal_workers = (
-        workers["ext"], workers["ntfs"], workers["exfat"], workers["xfs"],
+        workers["ext"], native / "ntfs" / "native" / "ntfs_transaction.c", workers["exfat"], workers["xfs"],
         workers["affs"], workers["apfs"], workers["btrfs"], workers["sfs"], workers["pfs3"], workers["hfs"], workers["hfsplus"], workers["minix"],
         native / "exfat" / "native" / "exfat_relayout.c",
     )

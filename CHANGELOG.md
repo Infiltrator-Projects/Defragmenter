@@ -4,6 +4,7 @@ This changelog records user-visible, compatibility, architecture and validation 
 
 ## Unreleased
 
+- Realigned write-safety architecture regressions with current ownership: XFS mounted-device refusal now asserts the shared `LdDevice` block-device identity path, while NTFS durable journal publication and trusted-parent traversal are checked in `ntfs_transaction.c`.
 - Aligned the Common key/value-parser architecture regression with the NTFS journal split so the invariant now checks `ntfs_transaction.c`, the component that actually owns journal parsing.
 - Updated the Common-integration architecture regression to follow the NTFS journal parser into `ntfs_transaction.c`, matching the completed worker/transaction split without weakening the Common-usage invariant.
 ## 1.8.0-192
