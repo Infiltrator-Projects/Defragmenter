@@ -4,6 +4,7 @@ This changelog records user-visible, compatibility, architecture and validation 
 
 ## Unreleased
 
+- Updated the Common-integration architecture regression to follow the NTFS journal parser into `ntfs_transaction.c`, matching the completed worker/transaction split without weakening the Common-usage invariant.
 ## 1.8.0-192
 
 - Tightened allocation-map detail typing at the GTK/native-manifest boundary so strict Pyright validation no longer treats validated detail dictionaries as nullable.

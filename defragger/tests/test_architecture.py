@@ -269,11 +269,15 @@ def test_infiltratr_common_integration() -> None:
             assert wrapper not in source, (
                 f"{path.relative_to(ROOT)} retains a pass-through endian wrapper"
             )
-    for filesystem, worker in (("ext4", "ext_worker.c"), ("ntfs", "ntfs_worker.c"),
+    for filesystem, worker in (("ext4", "ext_worker.c"),
                                ("exfat", "exfat_worker.c"), ("xfs", "xfs_worker.c")):
         source = (GUI / "filesystems" / filesystem / "native" / worker).read_text()
         assert "infiltratr_parse_u64" in source
         assert "infiltratr_trim_line_end" in source
+    ntfs_worker = (GUI / "filesystems" / "ntfs" / "native" / "ntfs_worker.c").read_text()
+    ntfs_transaction = (GUI / "filesystems" / "ntfs" / "native" / "ntfs_transaction.c").read_text()
+    assert "infiltratr_parse_u64" in ntfs_worker
+    assert "infiltratr_trim_line_end" in ntfs_transaction
     exfat = (GUI / "filesystems" / "exfat" / "native" / "exfat_worker.c").read_text()
     assert "infiltratr_parse_binary_quantity_u64" in exfat
     assert "strtoull(" not in exfat
