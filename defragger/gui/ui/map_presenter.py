@@ -3,10 +3,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
-
-from backends.contracts import CAP_DEFRAG, CAP_GROWTH_DEFRAG, CAP_RECOVER
 
 from .formatting import human_bytes
 
@@ -33,13 +32,14 @@ class MapPresentation:
     analysis_log: str
 
 
-def operation_labels(capabilities: int) -> tuple[str, ...]:
+def operation_labels(operations: Iterable[str]) -> tuple[str, ...]:
+    available = frozenset(operations)
     labels: list[str] = []
-    if capabilities & CAP_DEFRAG:
+    if "defrag" in available:
         labels.append("Defragment")
-    if capabilities & CAP_GROWTH_DEFRAG:
+    if "growth-defrag" in available:
         labels.append("Growth Defrag")
-    if capabilities & CAP_RECOVER:
+    if "recover" in available:
         labels.append("Recover")
     return tuple(labels)
 
@@ -116,7 +116,7 @@ def _validated_cells(data: dict[str, Any]) -> tuple[list[dict[str, int]], int]:
 
 def _domain_presentation(
     data: dict[str, Any],
-    capabilities: int,
+    operations: Iterable[str],
     cells: list[dict[str, int]],
     cell_count: int,
 ) -> MapPresentation:
@@ -137,7 +137,7 @@ def _domain_presentation(
         "fragmented_directories",
     )
     has_fragmentation = all(name in data for name in summary_fields)
-    labels = operation_labels(capabilities)
+    labels = operation_labels(operations)
     full_allocation_unknown = (
         not is_swap
         and str(data.get("map_accuracy") or "").lower() == "summary"
@@ -377,12 +377,12 @@ def _fat_presentation(
     )
 
 
-def present_allocation_map(data: dict[str, Any], capabilities: int) -> MapPresentation:
+def present_allocation_map(data: dict[str, Any], operations: Iterable[str] = ()) -> MapPresentation:
     """Return a validated, filesystem-neutral view model for the GTK window."""
 
     if not isinstance(data, dict):
         raise AllocationMapError("allocation-map result is not an object")
     cells, cell_count = _validated_cells(data)
     if str(data.get("backend", "")) == "read-only-domain":
-        return _domain_presentation(data, capabilities, cells, cell_count)
+        return _domain_presentation(data, operations, cells, cell_count)
     return _fat_presentation(data, cells, cell_count)

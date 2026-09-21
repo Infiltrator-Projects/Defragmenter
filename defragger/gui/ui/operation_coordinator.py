@@ -109,8 +109,8 @@ class OperationCoordinator:
 
     def apply_map(self, data: dict[str, Any]) -> MapPresentation:
         volume = self.volumes.current
-        capabilities = volume.capabilities if volume else 0
-        presentation = present_allocation_map(data, capabilities)
+        operations = volume.operations if volume else ()
+        presentation = present_allocation_map(data, operations)
         data["cells"] = presentation.cells
         self.map_data = data
         self.volumes.remember_map(data)

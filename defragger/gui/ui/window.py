@@ -32,7 +32,6 @@ except (ImportError, ValueError) as exc:
     raise SystemExit(1) from exc
 
 from version import BUILD_LABEL, VERSION
-from backends.contracts import CAP_DEFRAG, CAP_GROWTH_DEFRAG, CAP_RECOVER
 
 from .about import LinkStandardWindowView
 from .command_runner import CommandRunner
@@ -305,11 +304,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def update_controls(self) -> None:
         volume = self.current_volume
-        mutation_backend = bool(
-            volume
-            and volume.capabilities
-            & (CAP_DEFRAG | CAP_GROWTH_DEFRAG | CAP_RECOVER)
-        )
+        mutation_backend = bool(volume and volume.operations)
         journal_exists = bool(
             mutation_backend
             and volume

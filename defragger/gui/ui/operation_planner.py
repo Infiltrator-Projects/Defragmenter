@@ -7,22 +7,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
-from backends.contracts import (
-    CAP_ANALYSE,
-    CAP_DEFRAG,
-    CAP_GROWTH_DEFRAG,
-    CAP_RECOVER,
-)
 from core.operations import build_standard_arguments
 from .backend_catalog import BackendCatalog
 from .devices import Volume
 
 
-CAPABILITY_FOR_OPERATION = {
-    "defrag": CAP_DEFRAG,
-    "growth-defrag": CAP_GROWTH_DEFRAG,
-    "recover": CAP_RECOVER,
-}
+KNOWN_MUTATIONS = frozenset({"defrag", "growth-defrag", "recover"})
 
 
 class OperationValidationError(RuntimeError):
@@ -87,17 +77,16 @@ def prepare_mutation(
 ) -> MutationPlan:
     """Validate one mutation and return its complete standard command."""
 
-    required = CAPABILITY_FOR_OPERATION.get(operation)
-    if required is None:
+    if operation not in KNOWN_MUTATIONS:
         raise OperationValidationError(
             "Unknown operation", f"Defragmenter does not recognise {operation!r}."
         )
-    if not (volume.capabilities & required):
+    operation_manifest = catalog.operations_for(volume.normalized_fstype).get(operation)
+    if operation_manifest is None:
         raise OperationValidationError(
             "Operation unavailable",
-            f"The {volume.normalized_fstype.upper()} backend does not advertise "
-            f"{operation}. The GUI enables operations from the backend capability "
-            "table rather than filesystem names.",
+            f"The {volume.normalized_fstype.upper()} native backend manifest does not "
+            f"advertise {operation}.",
         )
     if volume.readonly:
         raise OperationValidationError(
@@ -123,13 +112,6 @@ def prepare_mutation(
             "There is no unfinished transaction for this volume.",
         )
 
-    operation_manifest = catalog.operations_for(volume.normalized_fstype).get(operation)
-    if operation_manifest is None:
-        raise OperationValidationError(
-            "Operation unavailable",
-            f"The {volume.normalized_fstype.upper()} plugin did not provide a "
-            f"standard operation manifest for {operation}.",
-        )
     description = str(operation_manifest.get("description") or operation)
     warning = str(operation_manifest.get("warning") or "").strip()
     operation_name = str(
@@ -175,10 +157,8 @@ def control_state(
 ) -> ControlState:
     enabled = volume is not None and not busy
     mounted = bool(volume and volume.mounted)
-    capabilities = volume.capabilities if volume else 0
-    mutation_backend = bool(
-        capabilities & (CAP_DEFRAG | CAP_GROWTH_DEFRAG | CAP_RECOVER)
-    )
+    operations = volume.operations if volume else {}
+    mutation_backend = bool(operations)
     can_write = (
         enabled
         and mutation_backend
@@ -188,15 +168,15 @@ def control_state(
     return ControlState(
         refresh=not busy,
         select_device=not busy,
-        analyse=enabled and bool(capabilities & CAP_ANALYSE),
+        analyse=enabled,
         unmount=enabled and mounted and not bool(volume and volume.image),
-        defrag=can_write and bool(capabilities & CAP_DEFRAG) and not journal_exists,
+        defrag=can_write and "defrag" in operations and not journal_exists,
         growth_defrag=(
             can_write
-            and bool(capabilities & CAP_GROWTH_DEFRAG)
+            and "growth-defrag" in operations
             and not journal_exists
         ),
-        recover=can_write and bool(capabilities & CAP_RECOVER) and journal_exists,
+        recover=can_write and "recover" in operations and journal_exists,
         stop=busy and not stop_requested,
     )
 

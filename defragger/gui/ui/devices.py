@@ -9,7 +9,7 @@ import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Mapping
 
 from core.paths import resolve_program
 
@@ -204,8 +204,10 @@ class Volume:
         return self.normalized_fstype
 
     @property
-    def capabilities(self) -> int:
-        return self.catalog.capabilities_for(self.normalized_fstype)
+    def operations(self) -> Mapping[str, Mapping[str, Any]]:
+        """Return operations from the authoritative native backend manifest."""
+
+        return self.catalog.operations_for(self.normalized_fstype)
 
     @property
     def cache_key(self) -> tuple[object, ...]:
