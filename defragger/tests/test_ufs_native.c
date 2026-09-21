@@ -55,11 +55,12 @@ static void put_le64(uint8_t *data, uint64_t value)
 }
 
 static void check_variant(int fd, const char *path, const uint8_t magic[4],
-                          uint64_t candidate, uint64_t position,
+                          uint64_t candidate,
                           LdUfsVariant expected, const char *name,
                           const char *byte_order, unsigned int version)
 {
     clear_image(fd);
+    const uint64_t position = UFS_DISK_MAGIC_OFFSET;
     write_all(fd, magic, 4U, (off_t)(candidate + position));
 
     LdUfsSummary summary;
@@ -122,10 +123,14 @@ static void write_exact_superblock(int fd)
     memset(superblock, 0, sizeof(superblock));
     put_le32(superblock + 8U, 64U);
     put_le32(superblock + 12U, 72U);
+    put_le32(superblock + 16U, 80U);
+    put_le32(superblock + 20U, 96U);
     put_le32(superblock + 44U, 2U);
     put_le32(superblock + 48U, 8192U);
     put_le32(superblock + 52U, 1024U);
     put_le32(superblock + 56U, 8U);
+    put_le32(superblock + 116U, 1024U);
+    put_le32(superblock + 120U, 32U);
     put_le32(superblock + 160U, 1024U);
     put_le32(superblock + 184U, 64U);
     put_le32(superblock + 188U, 128U);
@@ -145,10 +150,11 @@ static void write_cylinder_group(int fd, uint32_t group, uint32_t fragments,
     put_le32(cg + 4U, 0x00090255U);
     put_le32(cg + 12U, group);
     put_le32(cg + 20U, fragments);
-    put_le32(cg + 96U, 168U);
+    put_le32(cg + 92U, 168U);
+    put_le32(cg + 96U, 176U);
     for (uint32_t local = 80U; local < fragments && *free_remaining != 0U;
          ++local) {
-        set_free(cg + 168U, local);
+        set_free(cg + 176U, local);
         (*free_remaining)--;
     }
     const uint64_t group_base = (uint64_t)group * 128U;
@@ -186,9 +192,9 @@ static void test_ufs2_exact_allocation(int fd, const char *path)
     CHECK(used_total == 200U);
 
     uint8_t byte = 0U;
-    CHECK(pread(fd, &byte, 1U, (off_t)(72U * 1024U + 168U + 10U)) == 1);
+    CHECK(pread(fd, &byte, 1U, (off_t)(72U * 1024U + 176U + 10U)) == 1);
     byte ^= 0x01U;
-    write_all(fd, &byte, 1U, (off_t)(72U * 1024U + 168U + 10U));
+    write_all(fd, &byte, 1U, (off_t)(72U * 1024U + 176U + 10U));
     CHECK(ufs_analyse_allocation(path, &analysis, NULL, 0U,
                                  error, sizeof(error)) != 0);
     CHECK(strstr(error, "disagrees") != NULL);
@@ -205,13 +211,13 @@ int main(void)
     static const uint8_t ufs2_le[4] = {0x19U, 0x01U, 0x54U, 0x19U};
     static const uint8_t ufs2_be[4] = {0x19U, 0x54U, 0x01U, 0x19U};
 
-    check_variant(fd, path, ufs1_le, 8192U, 64U, LD_UFS_VARIANT_UFS1_LE,
+    check_variant(fd, path, ufs1_le, 8192U, LD_UFS_VARIANT_UFS1_LE,
                   "ufs1-le", "little", 1U);
-    check_variant(fd, path, ufs1_be, 65536U, 128U, LD_UFS_VARIANT_UFS1_BE,
+    check_variant(fd, path, ufs1_be, 65536U, LD_UFS_VARIANT_UFS1_BE,
                   "ufs1-be", "big", 1U);
-    check_variant(fd, path, ufs2_le, 262144U, 256U, LD_UFS_VARIANT_UFS2_LE,
+    check_variant(fd, path, ufs2_le, 262144U, LD_UFS_VARIANT_UFS2_LE,
                   "ufs2-le", "little", 2U);
-    check_variant(fd, path, ufs2_be, 8192U, 4096U, LD_UFS_VARIANT_UFS2_BE,
+    check_variant(fd, path, ufs2_be, 8192U, LD_UFS_VARIANT_UFS2_BE,
                   "ufs2-be", "big", 2U);
 
     test_ufs2_recorded_allocation(fd, path);
