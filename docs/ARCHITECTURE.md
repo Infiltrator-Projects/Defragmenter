@@ -53,7 +53,7 @@ defragger/
 
 `native/runtime.cpp` is the single application registry used by the production C++ mapper, operation dispatcher and GTK manifest loader. The former Python registry, filesystem plugin declarations and Python dispatcher/helper compatibility graph have been removed rather than retained as a second knowledge base. Each native filesystem directory owns its probe, analyser, placement rules, writer and verifier.
 
-`src/core/` owns mechanics that are genuinely filesystem-neutral: exact raw I/O adaptation, target identity/capacity checks, overlap-aware mounted-target rejection, Stop state, resource defaults and machine-readable result emission. Filesystem geometry, metadata interpretation, transaction stages and recovery rules stay with the owning filesystem.
+`src/core/` owns mechanics that are genuinely filesystem-neutral: exact raw I/O adaptation, one-open canonical target/identity/capacity binding, descriptor-level identity revalidation, overlap-aware mounted-target rejection, Stop state, resource defaults and machine-readable result emission. Filesystem geometry, volume identity, metadata interpretation, transaction stages and recovery rules stay with the owning filesystem.
 
 GTK objects stay in the presentation layer. Runner, policy and storage models exchange plain values and typed events rather than making presentation code responsible for raw-device or filesystem policy.
 
@@ -98,7 +98,7 @@ A write operation follows one architecture-wide sequence:
 7. honour Stop only at a valid or recoverable boundary;
 8. reopen the target read-only and verify the required postcondition before success.
 
-Recovery state is monotonic and tied to one target. An unfinished transaction cannot be silently replaced by unrelated state. A successful writer return is not sufficient evidence of success without the final verification pass.
+Recovery state is monotonic and tied to one target. The initial transaction binding captures canonical path, stable object identity and capacity from one validated native-core open; later filesystem-specific checks add UUID/serial/generation/geometry identity as appropriate. An unfinished transaction cannot be silently replaced by unrelated state. A successful writer return is not sufficient evidence of success without the final verification pass.
 
 ## Failure model
 

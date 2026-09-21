@@ -110,10 +110,11 @@ engine.
 **Decision.** Common owns generic parsing, checked arithmetic, array growth,
 byte order, escaping, path/string helpers, exact I/O, generic durable-file
 publication/removal and neutral design contracts where semantics match.
-Defragmenter retains device-safety policy, filesystem geometry, placement,
-transaction stages, recovery binding, product presentation mapping and
-fail-closed decisions. Python compatibility analysis is read-only rather than
-maintaining a second mutation/durability implementation beside native Common.
+Defragmenter's native core owns product-local filesystem-neutral target safety
+and transaction-binding mechanics. Filesystem engines retain volume identity,
+geometry, placement, transaction stages, recovery meaning and fail-closed
+policy. Python is presentation/glue only and carries no filesystem control-plane
+or mutation/durability implementation.
 
 **Consequences.** Generic code is reused without obscuring the safety boundary.
 A smaller codebase is not treated as a sufficient reason to move
