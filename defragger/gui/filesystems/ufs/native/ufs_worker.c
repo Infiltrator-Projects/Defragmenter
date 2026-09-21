@@ -37,9 +37,7 @@ static void usage(FILE *stream)
 {
     (void)fprintf(stream,
                   "Usage: %s --version | identify DEVICE | analyse-json DEVICE | "
-                  "map DEVICE --cells COUNT | "
-                  "defrag|growth-defrag|recover DEVICE --write --confirm DEVICE "
-                  "--journal PATH [--growth-percent 10] [--live-updates]\n",
+                  "map DEVICE --cells COUNT\n",
                   PROG);
 }
 
@@ -885,6 +883,22 @@ int main(int argc, char **argv)
             print_summary_json(&summary, 1);
         }
         return 0;
+    }
+    /* UFS mutation is deliberately kept behind the product qualification
+     * boundary.  Development code may exist below while UFS1 exact allocation,
+     * file-fragmentation coverage and destructive recovery qualification are
+     * still incomplete, but the installed worker must not expose a write path
+     * merely because the native implementation is present in the source tree. */
+    if (argc >= 2 &&
+        (strcmp(argv[1], "defrag") == 0 ||
+         strcmp(argv[1], "growth-defrag") == 0 ||
+         strcmp(argv[1], "recover") == 0)) {
+        (void)fprintf(
+            stderr,
+            "%s: UFS mutation is not production-qualified; "
+            "Defragment, Growth Defrag and Recover remain disabled\n",
+            PROG);
+        return 2;
     }
     if (argc < 3) { usage(stderr); return 2; }
 

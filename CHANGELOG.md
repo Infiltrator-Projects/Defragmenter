@@ -4,6 +4,10 @@ This changelog records user-visible, compatibility, architecture and validation 
 
 ## Unreleased
 
+- Made the installed UFS worker itself fail closed on Defragment, Growth Defrag and Recover while UFS remains an unfinished roadmap item; developmental mutation code can no longer be reached simply by bypassing the read-only GUI/native registry capability declaration.
+- Corrected the Debian package description so Btrfs, classic HFS, APFS and Minix are no longer incorrectly described as analysis-only.
+- Added permanent architecture and genuine-makefs regressions for the UFS production qualification boundary.
+
 ## 1.8.0-191
 
 - Standardised Defragmenter artwork on the canonical `#00ADEF` non-automotive Infiltrator icon family while retaining the single-byte-source launcher/taskbar/About packaging contract.

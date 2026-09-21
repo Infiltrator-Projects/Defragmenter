@@ -87,6 +87,25 @@ def test_plugin_discovery_and_native_worker_contracts() -> None:
     assert writer_ids == set(NATIVE_WRITERS)
 
 
+def test_unqualified_ufs_mutation_is_fail_closed_in_the_installed_worker() -> None:
+    source = (GUI / "filesystems" / "ufs" / "native" / "ufs_worker.c").read_text()
+    refusal = source.index("UFS mutation is not production-qualified")
+    mutation_dispatch = source.index("const char *mode = argv[1]")
+    assert refusal < mutation_dispatch
+
+    plugin = (GUI / "filesystems" / "ufs" / "plugin.py").read_text()
+    assert "CAP_ANALYSE | CAP_MAP" in plugin
+    assert "CAP_DEFRAG" not in plugin
+    assert "CAP_GROWTH_DEFRAG" not in plugin
+    assert "CAP_RECOVER" not in plugin
+
+    runtime = (ROOT / "native" / "runtime.cpp").read_text()
+    assert '"ufs", "Solaris/BSD UFS"' in runtime
+    ufs_entry = runtime.split('"ufs", "Solaris/BSD UFS"', 1)[1].split("result.push_back", 1)[0]
+    assert 'read, "variant-dependent", "ufs-native"' in ufs_entry
+    assert "standard_write_ops" not in ufs_entry
+
+
 def test_dispatch_is_filesystem_neutral() -> None:
     registry = Registry()
     original_resolver = operation_engine.resolve_program

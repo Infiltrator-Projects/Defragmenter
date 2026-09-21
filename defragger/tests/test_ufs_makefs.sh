@@ -48,4 +48,20 @@ assert sum(cell["used"] for cell in payload["cells"]) * payload["unit_size"] == 
 assert sum(cell["unknown"] for cell in payload["cells"]) * payload["unit_size"] == payload["unknown_bytes"]
 PY
 
-printf '%s\n' 'makefs UFS2 image accepted with exact allocation and inode-tree fragmentation mapping.'
+# The UFS mutation implementation remains developmental until the roadmap's
+# exact UFS1 mapping, cross-variant file-fragmentation and recovery evidence are
+# complete.  The installed worker must fail closed even when explicitly invoked.
+MUTATION_LOG="$WORK/ufs-mutation.log"
+if "$UFS_WORKER" defrag "$WORK/ufs2.img" \
+    --write --confirm "$WORK/ufs2.img" --journal "$WORK/ufs2.journal" \
+    >"$MUTATION_LOG" 2>&1; then
+    printf '%s\n' 'production UFS worker unexpectedly accepted Defragment' >&2
+    exit 1
+fi
+grep -q 'UFS mutation is not production-qualified' "$MUTATION_LOG"
+[ ! -e "$WORK/ufs2.journal" ] || {
+    printf '%s\n' 'refused UFS mutation created a recovery journal' >&2
+    exit 1
+}
+
+printf '%s\n' 'makefs UFS2 image accepted with exact allocation and inode-tree fragmentation mapping; mutation remains fail-closed.'
