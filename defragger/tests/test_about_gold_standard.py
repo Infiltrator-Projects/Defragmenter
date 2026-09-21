@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Source-contract regression for the shared LINK-style About surface."""
+"""Source-contract regression for the suite-wide System Monitor About surface."""
 
 from pathlib import Path
 
@@ -14,22 +14,28 @@ DESKTOP = (ROOT / "packaging" / "io.github.linuxdefragger.desktop").read_text()
 
 for required in (
     "class AboutInfo:",
-    "class LinkStandardWindowView(WindowView):",
+    "class SuiteStandardWindowView(WindowView):",
     "Gtk.AboutDialog(",
-    'add_class("link-about-dialog")',
-    "dialog.set_default_size(560, 520)",
-    "dialog.set_size_request(520, 480)",
     "dialog.set_authors(list(info.authors))",
     "dialog.set_license(info.license_text)",
     "dialog.set_wrap_license(True)",
-    'website_label="Project website"',
+    'website_label="Website"',
     "load_app_icon_pixbuf(96)",
     "dialog.set_logo_icon_name(None)",
     "apply_window_icon(dialog)",
-    'subtitle="DEFRAGMENTER · NATIVE FILESYSTEM OPTIMISATION"',
+    'build=self.build_label',
     '"Shannon Smith — Author and project maintainer"',
 ):
     assert required in ABOUT, required
+
+for forbidden in (
+    'add_class("link-about-dialog")',
+    "dialog.set_default_size(",
+    "dialog.set_size_request(",
+    'subtitle="DEFRAGMENTER · NATIVE FILESYSTEM OPTIMISATION"',
+    'website_label="Project website"',
+):
+    assert forbidden not in ABOUT, forbidden
 
 # GTK3's named-logo property overrides the pixbuf logo. Clear it before
 # installing the project-owned pixbuf and retain the canonical name fallback.
@@ -54,9 +60,9 @@ for required in (
 assert "apply_default_window_icon()" in APPLICATION
 assert "configure_desktop_identity()" in APPLICATION
 assert "StartupWMClass=io.github.linuxdefragger" in DESKTOP
-assert "from .about import LinkStandardWindowView" in WINDOW
+assert "from .about import SuiteStandardWindowView" in WINDOW
 assert "apply_window_icon(self)" in WINDOW
-assert "self.view = LinkStandardWindowView(" in WINDOW
+assert "self.view = SuiteStandardWindowView(" in WINDOW
 assert "self.view = WindowView(" not in WINDOW
 
 # The base view exposes only the typed dispatch point. The GTK About widgets,
@@ -66,4 +72,4 @@ assert "Gtk.LinkButton.new_with_label(PROJECT_URL" not in WINDOW_VIEW
 assert "WindowView requires a concrete About presentation implementation" in WINDOW_VIEW
 assert ABOUT.count("def show_about(self) -> None:") == 1
 
-print("LINK-standard About presentation contract passed")
+print("Suite-standard About presentation contract passed")

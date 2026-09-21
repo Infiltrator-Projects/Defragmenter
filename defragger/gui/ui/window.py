@@ -33,7 +33,7 @@ except (ImportError, ValueError) as exc:
 
 from version import BUILD_LABEL, VERSION
 
-from .about import LinkStandardWindowView
+from .about import SuiteStandardWindowView
 from .command_runner import CommandRunner
 from .devices import Volume
 from .engine_client import (
@@ -86,7 +86,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
         self.volumes = VolumeCoordinator(self.backend_catalog)
 
-        self.view = LinkStandardWindowView(
+        self.view = SuiteStandardWindowView(
             self,
             self,
             gui_version=VERSION,

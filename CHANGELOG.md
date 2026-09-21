@@ -2,6 +2,11 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+
+## Unreleased
+
+- Standardise Defragmenter About on the System Monitor native GTK contract: remove forced dialog geometry/private About CSS and the redundant product tagline, expose the build identity in the normal comments block, and use the common Website / Credits / Licence / Close hierarchy.
+
 ## Unreleased
 
 - Corrected the production write-safety regression scope so deliberately read-only/fail-closed UFS is not treated as an enabled writer while all qualified writers remain checked for one-open target binding.
