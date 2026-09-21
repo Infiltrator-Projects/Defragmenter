@@ -4,6 +4,8 @@ This changelog records user-visible, compatibility, architecture and validation 
 
 ## Unreleased
 
+## 1.8.0-192
+
 - Removed the accidental home-runner dependency from release qualification: the permanent full project quality gate now runs on GitHub-hosted Ubuntu alongside the hosted sanitizer lane, while the self-hosted local-quality workflow remains optional manual evidence.
 - Restored explicit durable cleanup for incomplete NTFS staging images after the transaction-component split, keeping pre-journal failure cleanup worker-local while persistent journal-owned cleanup stays in `ntfs_transaction.c`.
 - Completed the NTFS journal split by moving durable stage/plan/WAL/SHM cleanup into the transaction component and restoring worker-local numeric option parsing, fixing the warnings-as-errors sanitizer build after the refactor.
