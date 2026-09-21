@@ -96,7 +96,10 @@ int ntfs_journal_save(const char *path, const NtfsJournal *state, char **error)
 
 static char *value_copy(const char *value)
 {
-    const size_t length = strlen(value);
+    size_t length = strlen(value);
+    while (length != 0U &&
+           (value[length - 1U] == '\n' || value[length - 1U] == '\r'))
+        --length;
     return ld_xstrndup(value, length);
 }
 
