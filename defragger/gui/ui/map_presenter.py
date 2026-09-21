@@ -128,7 +128,8 @@ def _domain_presentation(
     total_units = _required_int(data, "total_units", minimum=1)
     outside_bytes = _optional_int(data, "outside_bytes")
     filesystem_bytes = _optional_int(data, "filesystem_bytes", total_bytes)
-    details = data.get("details") if isinstance(data.get("details"), dict) else {}
+    raw_details = data.get("details")
+    details: dict[str, Any] = raw_details if isinstance(raw_details, dict) else {}
     is_swap = filesystem == "SWAP"
     summary_fields = (
         "regular_files",

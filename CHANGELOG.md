@@ -6,6 +6,7 @@ This changelog records user-visible, compatibility, architecture and validation 
 
 ## 1.8.0-192
 
+- Tightened allocation-map detail typing at the GTK/native-manifest boundary so strict Pyright validation no longer treats validated detail dictionaries as nullable.
 - Restored executable Git modes on the aggregate test harness, packaging builder and directly runnable regression scripts after the source migration, preventing hosted CTest and release packaging from failing with permission-denied errors.
 - Removed the accidental home-runner dependency from release qualification: the permanent full project quality gate now runs on GitHub-hosted Ubuntu alongside the hosted sanitizer lane, while the self-hosted local-quality workflow remains optional manual evidence.
 - Restored explicit durable cleanup for incomplete NTFS staging images after the transaction-component split, keeping pre-journal failure cleanup worker-local while persistent journal-owned cleanup stays in `ntfs_transaction.c`.
