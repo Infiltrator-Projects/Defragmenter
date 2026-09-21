@@ -4,6 +4,7 @@ This changelog records user-visible, compatibility, architecture and validation 
 
 ## Unreleased
 
+- Removed the final installed Python filesystem-capability contract: GTK now enables operations directly from the immutable native C++ registry manifest, and package installation carries only the GTK/core Python presentation modules.
 - Made the installed UFS worker itself fail closed on Defragment, Growth Defrag and Recover while UFS remains an unfinished roadmap item; developmental mutation code can no longer be reached simply by bypassing the read-only GUI/native registry capability declaration.
 - Corrected the Debian package description so Btrfs, classic HFS, APFS and Minix are no longer incorrectly described as analysis-only.
 - Added permanent architecture and genuine-makefs regressions for the UFS production qualification boundary.
