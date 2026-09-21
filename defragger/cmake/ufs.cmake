@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-# UFS1/UFS2 identification and summary mapping are native C.
-# Python remains only as the GUI/backend adapter.
+# UFS1/UFS2 exact allocation/inode-tree analysis and bounded recoverable
+# offline mutation are native C. Python remains only GUI/backend glue.
 add_library(linux-defragger-ufs-native STATIC
     gui/filesystems/ufs/native/ufs_native.c)
 target_include_directories(linux-defragger-ufs-native PUBLIC
@@ -23,7 +23,7 @@ target_compile_options(linux-defragger-ufs-worker PRIVATE ${LD_WARNING_FLAGS})
 target_compile_definitions(linux-defragger-ufs-worker PRIVATE
     _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(linux-defragger-ufs-worker PRIVATE
-    linux-defragger-ufs-native linux-defragger-core)
+    linux-defragger-ufs-native linux-defragger-core OpenSSL::Crypto)
 
 install(TARGETS linux-defragger-ufs-worker
         RUNTIME DESTINATION lib/linux-defragger/filesystems/ufs)
