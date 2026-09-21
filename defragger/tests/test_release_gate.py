@@ -43,6 +43,12 @@ def main() -> None:
     assert "merge_group:" not in gate, "quality gate must not require merge branches"
     assert '"c-first-*"' not in gate, "quality gate must run from main only"
     assert "local-quality" not in gate, "home-runner qualification must not gate hosted release publication"
+    assert "runs-on: ubuntu-24.04" in gate, (
+        "primary release quality gate must run on GitHub-hosted Linux"
+    )
+    assert "runs-on: [self-hosted, Linux, X64, linux-native]" not in gate, (
+        "primary release quality gate must not depend on the optional home runner"
+    )
     for required in (
         "publish-release:",
         "needs: [quality-gate, sanitizers]",

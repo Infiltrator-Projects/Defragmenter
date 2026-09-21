@@ -17,8 +17,8 @@ concurrency:
 
 jobs:
   quality-gate:
-    name: Local project quality gate
-    runs-on: [self-hosted, Linux, X64, linux-native]
+    name: Hosted project quality gate
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     defaults:
       run:
@@ -42,7 +42,6 @@ jobs:
           fi
 
       - name: Install build and test dependencies
-        if: runner.environment == 'github-hosted'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -51,25 +50,6 @@ jobs:
             gir1.2-gtk-3.0 libgtk-3-dev policykit-1 udisks2 util-linux makefs \
             libext2fs-dev libsqlite3-dev libssl-dev
 
-      - name: Verify local qualification dependencies
-        if: runner.environment == 'self-hosted'
-        shell: bash
-        run: |
-          set -euo pipefail
-          commands=(cmake cc c++ make dpkg-deb pkg-config zip unzip python3 makefs udisksctl pkexec)
-          for command_name in "${commands[@]}"; do
-            command -v "$command_name" >/dev/null 2>&1 || {
-              echo "Self-hosted runner is missing $command_name." >&2
-              exit 1
-            }
-          done
-          for package_name in gtk+-3.0 ext2fs sqlite3 openssl; do
-            pkg-config --exists "$package_name" || {
-              echo "Self-hosted runner is missing pkg-config package $package_name." >&2
-              exit 1
-            }
-          done
-          python3 -c 'import gi, cairo'
       - name: Build first-party C/C++ with warnings as errors
         run: |
           cmake -S . -B build \
