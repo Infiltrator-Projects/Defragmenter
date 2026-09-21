@@ -469,7 +469,8 @@ bool native_accuracy_matches(const BackendInfo& backend,
     if (backend.id == "swap")
         return accuracy == "summary" || accuracy == "exact";
     if (backend.id == "ufs")
-        return accuracy == "summary" || accuracy == "exact-allocation";
+        return accuracy == "summary" || accuracy == "exact-allocation" ||
+               accuracy == "exact";
     return accuracy == backend.map_accuracy;
 }
 

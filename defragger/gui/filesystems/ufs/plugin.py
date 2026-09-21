@@ -82,6 +82,7 @@ class UfsBackend(FilesystemBackend):
         if payload.get("schema") != 1 or payload.get("map_accuracy") not in {
             "summary",
             "exact-allocation",
+            "exact",
         }:
             raise BackendError("native UFS mapper returned an invalid map contract")
         if not isinstance(payload.get("cells"), list) or not isinstance(payload.get("details"), dict):

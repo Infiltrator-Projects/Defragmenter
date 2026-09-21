@@ -38,6 +38,7 @@ def _catalog() -> BackendCatalog:
                 {"id": "hfsplus", "aliases": ["hfs+"], "capabilities": 1, "operations": []},
                 {"id": "sfs", "aliases": ["sfs0", "sfs2"], "capabilities": 1, "operations": []},
                 {"id": "pfs3", "aliases": ["pfs"], "capabilities": 1, "operations": []},
+                {"id": "apfs", "aliases": ["apfs"], "capabilities": 1, "operations": []},
             ]
         }
     )
@@ -145,12 +146,13 @@ def test_amiga_discovery_does_not_depend_on_lsblk_fstype() -> None:
             # when an unprivileged native probe cannot open the physical device.
             node("/dev/mmcblk0p13", partlabel="LD_SFS"),
             node("/dev/mmcblk0p14", partlabel="LD_PFS3"),
-            # The remaining manual APFS slot must suppress stale signatures.
+            # APFS now has a first-party creator.  Its Test Media GPT label
+            # must override a stale pre-rebuild signature.
             node(
                 "/dev/mmcblk0p15",
                 fstype="hfsplus",
                 partlabel="LD_APFS",
-                label="LD_HFSPLUS",
+                label="LD_APFS",
             ),
         ]
     }
@@ -168,6 +170,7 @@ def test_amiga_discovery_does_not_depend_on_lsblk_fstype() -> None:
         "/dev/mmcblk0p12",
         "/dev/mmcblk0p13",
         "/dev/mmcblk0p14",
+        "/dev/mmcblk0p15",
         "/dev/mmcblk0p20",
     }
     assert by_path["/dev/mmcblk0p11"].normalized_fstype == "affs"
@@ -177,6 +180,7 @@ def test_amiga_discovery_does_not_depend_on_lsblk_fstype() -> None:
     assert by_path["/dev/mmcblk0p12"].display_fstype == "ffs"
     assert by_path["/dev/mmcblk0p13"].display_fstype == "sfs"
     assert by_path["/dev/mmcblk0p14"].display_fstype == "pfs3"
+    assert by_path["/dev/mmcblk0p15"].display_fstype == "apfs"
     assert by_path["/dev/mmcblk0p20"].display_fstype == "ffs"
 
 

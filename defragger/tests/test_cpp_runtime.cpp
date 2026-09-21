@@ -112,6 +112,28 @@ int main() {
         (void)unsetenv("LINUX_DEFRAGGER_FAT_WORKER");
     }
 
+
+    const BackendInfo* ufs = backend_by_fstype("ufs2");
+    ok = check(ufs != nullptr, "UFS2 alias lookup") && ok;
+    if (ufs != nullptr) {
+        const std::string exact_worker = fake_map_worker(
+            "{\"schema\":1,\"backend\":\"read-only-domain\","
+            "\"filesystem\":\"ufs\",\"map_accuracy\":\"exact\","
+            "\"unit_size\":4096,\"total_units\":1,\"cell_count\":1,"
+            "\"cells\":[{\"start\":0,\"end\":0,\"free\":0,\"used\":1,"
+            "\"unknown\":0,\"bad\":0,\"fragmented\":0,\"directory\":0}]}");
+        (void)setenv("LINUX_DEFRAGGER_UFS_WORKER", exact_worker.c_str(), 1);
+        try {
+            const Json mapped = map_backend(*ufs, "/dev/null", 1U);
+            ok = check(mapped.at("map_accuracy").string() == "exact",
+                       "UFS exact native map contract accepted") && ok;
+        } catch (...) {
+            ok = check(false, "UFS exact native map contract accepted") && ok;
+        }
+        (void)unlink(exact_worker.c_str());
+        (void)unsetenv("LINUX_DEFRAGGER_UFS_WORKER");
+    }
+
     const std::vector<std::string> input{
         "--keep", "a", "--drop", "value", "--drop=other", "--tail"};
     const std::vector<std::string> blocked{"--drop"};

@@ -27,8 +27,8 @@ _TEST_MEDIA_RAW_PARTLABELS = {
     "ld_ffs": "ffs",
     "ld_sfs": "sfs",
     "ld_pfs3": "pfs3",
+    "ld_apfs": "apfs",
 }
-_TEST_MEDIA_RESERVED_PARTLABELS = frozenset({"ld_apfs"})
 _NATURAL_DEVICE_PARTS = re.compile(r"(\d+)")
 
 
@@ -126,10 +126,12 @@ def _resolved_discovery_fstype(
     """Resolve one lsblk node without treating the host probe as authoritative."""
 
     partlabel = str(node.get("partlabel") or "").strip().lower()
-    # These Test Media slots intentionally contain no filesystem.  Suppress a
-    # stale signature even before the next rebuilt disk has been sanitised.
-    if partlabel in _TEST_MEDIA_RESERVED_PARTLABELS:
-        return ""
+    hinted = _TEST_MEDIA_RAW_PARTLABELS.get(partlabel, "")
+    if hinted and catalog.supports(hinted):
+        # Test Media owns these GPT labels.  Prefer the expected first-party
+        # filesystem identity over a stale signature left on a partition that
+        # has not yet been rebuilt in the current media-generation pass.
+        return hinted
 
     raw = str(node.get("fstype") or "").strip().lower()
     if raw and catalog.supports(raw):
@@ -140,11 +142,7 @@ def _resolved_discovery_fstype(
     if probed and catalog.supports(probed):
         return probed
 
-    # Linux/libblkid does not reliably identify Amiga DOS\0/DOS\1.  Test Media
-    # owns these GPT partition names, so they are a safe discovery hint when
-    # the authoritative native probe cannot open a root-only block device.
-    hinted = _TEST_MEDIA_RAW_PARTLABELS.get(partlabel, "")
-    return hinted if hinted and catalog.supports(hinted) else ""
+    return ""
 
 
 @dataclass(slots=True)

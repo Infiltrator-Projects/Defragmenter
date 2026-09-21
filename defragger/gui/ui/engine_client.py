@@ -75,11 +75,11 @@ def detect_image_fstype(
     )
     detected = result.stdout.strip().lower() if result.returncode == 0 else ""
     if not catalog.supports(detected):
-        supported = "FAT12, FAT16, FAT32, exFAT, NTFS, ext2/3/4, Btrfs or XFS"
         detail = result.stderr.strip()
+        detected_text = f" Host detection reported {detected!r}." if detected else ""
         raise RuntimeError(
-            "The image does not contain a recognised supported filesystem. "
-            f"Supported types: {supported}."
+            "The image does not contain a filesystem advertised by this build's "
+            f"native backend catalogue.{detected_text}"
             + (f"\n\n{detail}" if detail else "")
         )
     if not Path(path).is_file():

@@ -655,11 +655,11 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
         )
 
     support_source = (GUI / "ui" / "support.py").read_text()
-    helper_source = (GUI / "privileged_helper.py").read_text()
+    helper_policy = (ROOT / "native" / "helper_policy.cpp").read_text()
     assert "/var/lib/linux-defragger/state" in support_source
     assert "XDG_STATE_HOME" not in support_source
-    assert "_validate_operation_engine_args" in helper_source
-    assert "operation journal must be directly below" in helper_source
+    assert "validate_operation_args" in helper_policy
+    assert "operation journal must be directly below" in helper_policy
 
     fat_journal = native / "fat" / "native" / "fat_journal.c"
     assert "ld_path_ensure_trusted_directory_tree" in fat_journal.read_text()
@@ -782,6 +782,18 @@ def test_user_facing_branding_is_defragmenter() -> None:
     assert "StartupWMClass=io.github.linuxdefragger" in desktop
 
     project_cmake = (ROOT / "cmake" / "project.cmake").read_text()
+    install_programs = project_cmake.split("install(PROGRAMS", 1)[1].split(
+        "DESTINATION lib/linux-defragger", 1
+    )[0]
+    for legacy_dispatcher in (
+        "gui/allocation_mapper.py",
+        "gui/privileged_helper.py",
+        "gui/operation_engine.py",
+    ):
+        assert legacy_dispatcher not in install_programs, (
+            f"legacy Python control-plane dispatcher is still installed: {legacy_dispatcher}"
+        )
+    assert "gui/linux_defragger_gui.py" in install_programs
     assert "packaging/io.github.linuxdefragger.png" in project_cmake
     assert "share/icons/hicolor/96x96/apps" in project_cmake
     assert "share/icons/hicolor/128x128/apps" not in project_cmake

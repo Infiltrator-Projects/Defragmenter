@@ -514,9 +514,10 @@ install(TARGETS linux-defragger-hfsplus-worker
 install(TARGETS linux-defragger-hfs-worker
         RUNTIME DESTINATION lib/linux-defragger/filesystems/hfs)
 
-# Native C++ application services replace the Python mapper, operation
-# dispatcher and privileged helper while preserving their established command
-# and JSON protocol contracts during the staged GUI migration.
+# Native C++ application services are the only installed mapper, operation
+# dispatcher and privileged helper.  The legacy Python dispatcher sources stay
+# in-tree only as migration/parity test fixtures until the GTK compatibility
+# boundary is removed.
 install(TARGETS
         linux-defragger-operation-engine-cpp
         linux-defragger-mapper-cpp
@@ -525,9 +526,6 @@ install(TARGETS
 
 install(PROGRAMS
     gui/linux_defragger_gui.py
-    gui/allocation_mapper.py
-    gui/privileged_helper.py
-    gui/operation_engine.py
     DESTINATION lib/linux-defragger)
 install(FILES "${LD_GENERATED_DIR}/version.py" DESTINATION lib/linux-defragger)
 
