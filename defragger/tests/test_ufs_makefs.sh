@@ -27,7 +27,7 @@ printf '%s\n' "$IDENTIFY" | grep -q '^{"filesystem":"ufs","variant":"ufs2-le","v
 ANALYSE=$($UFS_WORKER analyse-json "$WORK/ufs2.img")
 printf '%s\n' "$ANALYSE" \
     | grep -q '"filesystem":"ufs","variant":"ufs2-le","version":2,"byte_order":"little"'
-printf '%s\n' "$ANALYSE" | grep -q '"map_accuracy":"exact-allocation"'
+printf '%s\n' "$ANALYSE" | grep -q '"map_accuracy":"exact"'
 
 MAP=$($UFS_WORKER map "$WORK/ufs2.img" --cells 8)
 python3 - "$MAP" <<'PY'
@@ -36,8 +36,8 @@ import sys
 
 payload = json.loads(sys.argv[1])
 assert payload["filesystem"] == "ufs"
-assert payload["map_accuracy"] == "exact-allocation"
-assert payload["details"]["allocation_basis"] == "validated UFS2 cylinder-group fragment bitmaps"
+assert payload["map_accuracy"] == "exact"
+assert payload["details"]["allocation_basis"] == "validated UFS1/UFS2 cylinder-group fragment bitmaps"
 assert payload["filesystem_bytes"] > 0
 assert payload["free_bytes"] > 0
 assert payload["used_bytes"] > 0
@@ -48,4 +48,4 @@ assert sum(cell["used"] for cell in payload["cells"]) * payload["unit_size"] == 
 assert sum(cell["unknown"] for cell in payload["cells"]) * payload["unit_size"] == payload["unknown_bytes"]
 PY
 
-printf '%s\n' 'makefs UFS2 image accepted with exact cylinder-group allocation mapping.'
+printf '%s\n' 'makefs UFS2 image accepted with exact allocation and inode-tree fragmentation mapping.'

@@ -86,6 +86,8 @@ static void test_ufs2_recorded_allocation(int fd, const char *path)
     put_le32(superblock + 48U, 8192U);
     put_le32(superblock + 52U, 1024U);
     put_le32(superblock + 56U, 8U);
+    put_le32(superblock + 116U, 1024U);
+    put_le32(superblock + 120U, 32U);
     put_le64(superblock + 1016U, 100U);
     put_le64(superblock + 1032U, 3U);
     put_le64(superblock + 1080U, 1000U);
