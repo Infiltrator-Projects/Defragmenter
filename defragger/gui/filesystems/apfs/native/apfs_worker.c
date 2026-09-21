@@ -459,7 +459,7 @@ static int capture_target(const char *device, APFSJournal *state,
     if (target_identity(state->device, &state->target_identity,
                         &state->physical_bytes, error, error_size) != 0)
         return -1;
-    APFSAnalysis analysis;
+    ApfsAnalysis analysis;
     if (apfs_analyse(state->device, &analysis, error, error_size) != 0)
         return -1;
     if (analysis.block_count >
@@ -690,7 +690,7 @@ int main(int argc, char **argv)
         return 0;
     }
     if (argc == 3 && strcmp(argv[1], "identify") == 0) {
-        APFSSummary summary;
+        ApfsSummary summary;
         char error[256] = {0};
         if (apfs_read_summary(argv[2], &summary,
                               error, sizeof(error)) != 0) {
@@ -711,7 +711,7 @@ int main(int argc, char **argv)
             (void)fprintf(stderr, "%s: invalid cell count\n", PROG);
             return 2;
         }
-        APFSAnalysis analysis;
+        ApfsAnalysis analysis;
         char error[512] = {0};
         if (apfs_analyse(argv[2], &analysis,
                          error, sizeof(error)) != 0) {
@@ -725,7 +725,7 @@ int main(int argc, char **argv)
         return rc;
     }
     if (argc == 3 && strcmp(argv[1], "analyse-json") == 0) {
-        APFSAnalysis analysis;
+        ApfsAnalysis analysis;
         char error[512] = {0};
         if (apfs_analyse(argv[2], &analysis,
                          error, sizeof(error)) != 0) {
