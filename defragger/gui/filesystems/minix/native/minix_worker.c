@@ -309,49 +309,6 @@ static void transaction_cleanup(const char *journal,
     unlink_if_exists(journal);
 }
 
-static char *canonical_path(const char *path,
-                            char *error, size_t error_size)
-{
-    char *resolved = realpath(path, NULL);
-    if (resolved == NULL)
-        worker_error(error, error_size,
-                     "cannot resolve Minix target %s: %s",
-                     path, strerror(errno));
-    return resolved;
-}
-
-static int target_identity(const char *path, char **identity, uint64_t *size,
-                           char *error, size_t error_size)
-{
-    LdDevice target;
-    if (ld_device_try_open(path, false, &target) != 0) {
-        worker_error(error, error_size,
-                     "cannot inspect Minix target: %s", strerror(errno));
-        return -1;
-    }
-
-    char text[160];
-    if (target.size_bytes == 0U) {
-        ld_device_close(&target);
-        worker_error(error, error_size,
-                     "cannot determine Minix target size");
-        return -1;
-    }
-    if (ld_device_format_identity(&target, text, sizeof(text)) != 0) {
-        const int failure = errno;
-        ld_device_close(&target);
-        worker_error(error, error_size,
-                     "cannot identify Minix target: %s",
-                     strerror(failure));
-        return -1;
-    }
-
-    *size = target.size_bytes;
-    *identity = ld_xstrdup(text);
-    ld_device_close(&target);
-    return 0;
-}
-
 static int digest_final_hex(EVP_MD_CTX *context, char output[65],
                             char *error, size_t error_size)
 {
@@ -432,13 +389,13 @@ static int volume_token(const char *path, char output[65],
 static int capture_target(const char *device, MinixJournal *state,
                           char *error, size_t error_size)
 {
-    state->device = canonical_path(device, error, error_size);
-    if (state->device == NULL)
+    if (ld_device_capture_binding(device, &state->device,
+                                  &state->target_identity,
+                                  &state->physical_bytes) != 0) {
+        worker_error(error, error_size,
+                     "cannot bind Minix target: %s", strerror(errno));
         return -1;
-    if (target_identity(state->device, &state->target_identity,
-                        &state->physical_bytes,
-                        error, error_size) != 0)
-        return -1;
+    }
 
     MinixAnalysis analysis;
     if (minix_analyse(state->device, &analysis, NULL, 0U,
@@ -467,15 +424,15 @@ static int check_target_identity(const char *device,
                                  const MinixJournal *state,
                                  char *error, size_t error_size)
 {
-    char *canonical = canonical_path(device, error, error_size);
-    if (canonical == NULL)
-        return -1;
-
+    char *canonical = NULL;
     char *identity = NULL;
     uint64_t physical_bytes = 0U;
-    int result =
-        target_identity(canonical, &identity, &physical_bytes,
-                        error, error_size);
+    int result = ld_device_capture_binding(
+        device, &canonical, &identity, &physical_bytes);
+    if (result != 0) {
+        worker_error(error, error_size,
+                     "cannot rebind Minix target: %s", strerror(errno));
+    }
     if (result == 0 &&
         (strcmp(canonical, state->device) != 0 ||
          strcmp(identity, state->target_identity) != 0 ||

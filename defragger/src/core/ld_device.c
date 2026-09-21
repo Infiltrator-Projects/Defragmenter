@@ -572,6 +572,49 @@ int ld_device_open_verified_fd(const char *path, bool writable,
     return fd;
 }
 
+int ld_device_capture_binding(const char *path, char **canonical_path,
+                              char **identity, uint64_t *size_bytes) {
+    if (path == NULL || canonical_path == NULL || identity == NULL ||
+        size_bytes == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    *canonical_path = NULL;
+    *identity = NULL;
+    *size_bytes = 0U;
+
+    LdDevice device;
+    if (ld_device_try_open(path, false, &device) != 0)
+        return -1;
+    if (device.size_bytes == 0U) {
+        ld_device_close(&device);
+        errno = EINVAL;
+        return -1;
+    }
+
+    char text[160];
+    if (ld_device_format_identity(&device, text, sizeof(text)) != 0) {
+        const int failure = errno;
+        ld_device_close(&device);
+        errno = failure;
+        return -1;
+    }
+    char *copied_identity = strdup(text);
+    if (copied_identity == NULL) {
+        const int failure = errno;
+        ld_device_close(&device);
+        errno = failure;
+        return -1;
+    }
+
+    *canonical_path = device.path;
+    device.path = NULL;
+    *identity = copied_identity;
+    *size_bytes = device.size_bytes;
+    ld_device_close(&device);
+    return 0;
+}
+
 LdDevice ld_device_open(const char *path, bool writable) {
     LdDevice device;
     if (ld_device_try_open(path, writable, &device) != 0)

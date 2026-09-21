@@ -119,6 +119,18 @@ int main(void) {
         return fail("target identity bounded buffer");
     ld_device_close(&target);
 
+    char *captured_path = NULL;
+    char *captured_identity = NULL;
+    uint64_t captured_size = 0U;
+    if (ld_device_capture_binding(target_link, &captured_path,
+                                  &captured_identity, &captured_size) != 0 ||
+        strcmp(captured_path, resolved_target) != 0 ||
+        strcmp(captured_identity, target_identity) != 0 ||
+        captured_size != 8192U)
+        return fail("transaction target binding capture");
+    free(captured_path);
+    free(captured_identity);
+
     int verified_fd = ld_device_open_verified_fd(
         target_path, false, target_identity, 8192U);
     if (verified_fd < 0) return fail("journal-bound target accepted");

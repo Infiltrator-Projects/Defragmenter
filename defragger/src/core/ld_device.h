@@ -65,6 +65,12 @@ int ld_device_open_verified_fd(const char *path, bool writable,
                                const char *expected_identity,
                                uint64_t expected_size);
 
+/* Capture canonical path, stable object identity and capacity from one
+ * validated read-only open. Returned strings are heap-owned by the caller.
+ */
+int ld_device_capture_binding(const char *path, char **canonical_path,
+                              char **identity, uint64_t *size_bytes);
+
 /* Fatal-policy convenience wrapper used where target-open failure aborts work. */
 LdDevice ld_device_open(const char *path, bool writable);
 void ld_device_close(LdDevice *device);
