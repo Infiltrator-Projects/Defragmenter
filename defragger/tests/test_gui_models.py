@@ -12,7 +12,6 @@ GUI = ROOT / "gui"
 if str(GUI) not in sys.path:
     sys.path.insert(0, str(GUI))
 
-from backends.base import CAP_DEFRAG, CAP_GROWTH_DEFRAG, CAP_RECOVER
 from core.protocol import EngineEventParser, OperationResult
 from ui.backend_catalog import BackendCatalog
 from ui.devices import Volume
@@ -29,7 +28,7 @@ def _manifest(backend_id: str = "ext4", alias: str = "ext3") -> dict:
             {
                 "id": backend_id,
                 "aliases": [alias],
-                "capabilities": CAP_DEFRAG | CAP_GROWTH_DEFRAG | CAP_RECOVER,
+                "capabilities": 0,
                 "operations": [
                     {"name": "defrag", "label": "Defragment"},
                     {"name": "growth-defrag", "label": "Growth Defrag"},
@@ -65,7 +64,7 @@ def test_catalog_is_validated_immutable_and_instance_owned() -> None:
     first = BackendCatalog.from_manifest(_manifest())
     second = BackendCatalog.from_manifest(_manifest("xfs", "xfs-test"))
     assert first.normalize("EXT3") == "ext4"
-    assert first.capabilities_for("ext3") & CAP_DEFRAG
+    assert set(first.operations_for("ext3")) == {"defrag", "growth-defrag", "recover"}
     assert set(first.operations_for("ext4")) == {
         "defrag",
         "growth-defrag",
@@ -136,7 +135,7 @@ def test_map_presenter_validates_and_normalises_fat_map() -> None:
         "cell_count": 2,
         "cells": _cells(),
     }
-    view = present_allocation_map(data, CAP_DEFRAG)
+    view = present_allocation_map(data, ("defrag",))
     assert view.capacity_value == "32.0 KB"
     assert view.free_value == "20.0 KB (62.5%)"
     assert view.fragmentation_value == "1 files · 0 dirs"
@@ -188,13 +187,13 @@ def test_map_presenter_handles_domain_and_swap_maps() -> None:
     }
     writable = present_allocation_map(
         domain,
-        CAP_DEFRAG | CAP_GROWTH_DEFRAG | CAP_RECOVER,
+        ("defrag", "growth-defrag", "recover"),
     )
     assert writable.fragmentation_value == "Not calculated"
     assert "white tail" in writable.caption
     assert "available: Defragment, Growth Defrag, Recover" in writable.status
 
-    read_only = present_allocation_map(domain, 0)
+    read_only = present_allocation_map(domain)
     assert read_only.fragmentation_value == "Not available"
     assert "read-only allocation map" in read_only.status
 
@@ -216,7 +215,7 @@ def test_map_presenter_handles_domain_and_swap_maps() -> None:
             "unknown_bytes": 4096,
             "cells": unknown_cells,
         }
-        unknown_view = present_allocation_map(unknown_summary, 0)
+        unknown_view = present_allocation_map(unknown_summary)
         assert unknown_view.free_value == "Unknown"
         assert unknown_view.files_value == "Unknown"
         assert unknown_view.fragmentation_value == "Not available"
@@ -234,7 +233,7 @@ def test_map_presenter_handles_domain_and_swap_maps() -> None:
         used_bytes=2 * 4096,
         details={"active": True, "page_size": 4096},
     )
-    swap_view = present_allocation_map(swap, 0)
+    swap_view = present_allocation_map(swap)
     assert swap_view.files_title == "Usage"
     assert swap_view.files_value == "8.0 KB used · 2 pages"
     assert swap_view.fragmentation_value == "Not applicable"
@@ -318,7 +317,7 @@ def test_invalid_map_is_rejected_before_widget_state_changes() -> None:
         "cells": _cells(),
     }
     try:
-        present_allocation_map(invalid, 0)
+        present_allocation_map(invalid)
     except AllocationMapError:
         pass
     else:

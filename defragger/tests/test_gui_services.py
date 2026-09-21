@@ -15,7 +15,6 @@ GUI = ROOT / "gui"
 if str(GUI) not in sys.path:
     sys.path.insert(0, str(GUI))
 
-from backends.base import CAP_ANALYSE, CAP_DEFRAG, CAP_GROWTH_DEFRAG, CAP_RECOVER
 from ui.backend_catalog import BackendCatalog
 from ui.command_runner import (
     CommandCompletion,
@@ -44,12 +43,7 @@ def _catalog() -> BackendCatalog:
                 {
                     "id": "ext4",
                     "aliases": ["ext2", "ext3"],
-                    "capabilities": (
-                        CAP_ANALYSE
-                        | CAP_DEFRAG
-                        | CAP_GROWTH_DEFRAG
-                        | CAP_RECOVER
-                    ),
+                    "capabilities": 0,
                     "operations": [
                         {
                             "name": "defrag",

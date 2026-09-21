@@ -15,7 +15,6 @@ GUI = ROOT / "gui"
 if str(GUI) not in sys.path:
     sys.path.insert(0, str(GUI))
 
-from backends.base import CAP_ANALYSE, CAP_DEFRAG, CAP_GROWTH_DEFRAG, CAP_RECOVER
 from ui.backend_catalog import BackendCatalog
 from ui.command_models import CommandCompletion
 from ui.live_controller import LiveEventController
@@ -120,7 +119,7 @@ class _Volumes:
             mounted=False,
             image=image,
             readonly=False,
-            capabilities=CAP_ANALYSE | CAP_DEFRAG | CAP_GROWTH_DEFRAG | CAP_RECOVER,
+            operations={"defrag": {}, "growth-defrag": {}, "recover": {}},
         )
         self.invalidated: list[str] = []
         self.remembered: list[dict[str, object]] = []
@@ -150,7 +149,7 @@ def _catalog() -> BackendCatalog:
                 {
                     "id": "ext4",
                     "aliases": ["ext2", "ext3"],
-                    "capabilities": CAP_ANALYSE | CAP_DEFRAG | CAP_GROWTH_DEFRAG | CAP_RECOVER,
+                    "capabilities": 0,
                     "operations": [
                         {"name": "defrag", "label": "Defragment", "description": "Pack."},
                         {"name": "growth-defrag", "label": "Growth Defrag", "description": "Reserve."},

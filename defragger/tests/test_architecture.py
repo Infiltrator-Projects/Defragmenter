@@ -774,10 +774,11 @@ def test_version_and_registry_are_dynamic() -> None:
         GUI / "ui" / "window.py",
         GUI / "ui" / "operation_planner.py",
         GUI / "ui" / "map_presenter.py",
+        GUI / "ui" / "devices.py",
     ):
         source = runtime_module.read_text()
-        assert "from backends.contracts import" in source
-        assert "from backends.base import" not in source
+        assert "from backends." not in source
+        assert "import backends." not in source
 
 
 def test_user_facing_branding_is_defragmenter() -> None:
@@ -819,8 +820,9 @@ def test_user_facing_branding_is_defragmenter() -> None:
     assert "gui/filesystems" not in project_cmake.split(
         "install(DIRECTORY gui/core gui/ui", 1
     )[1].split("DESTINATION lib/linux-defragger", 1)[0]
-    assert "gui/backends/contracts.py" in project_cmake
-    assert "gui/backends/base.py" not in project_cmake
+    assert "gui/backends/" not in project_cmake.split(
+        "install(DIRECTORY gui/core gui/ui", 1
+    )[1].split("install(PROGRAMS packaging/linux-defragger", 1)[0]
     for legacy_dispatcher in (
         "gui/allocation_mapper.py",
         "gui/privileged_helper.py",
