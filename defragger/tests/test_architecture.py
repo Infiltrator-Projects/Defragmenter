@@ -71,7 +71,7 @@ def test_unqualified_ufs_mutation_is_fail_closed_in_the_installed_worker() -> No
     assert refusal < mutation_dispatch
 
     assert not (GUI / "filesystems" / "ufs" / "plugin.py").exists()
-    assert "ld_device_format_identity" in source
+    assert source.count("ld_device_capture_binding(") >= 2
 
     runtime = (ROOT / "native" / "runtime.cpp").read_text()
     assert '"ufs", "Solaris/BSD UFS"' in runtime
