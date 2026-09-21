@@ -203,32 +203,6 @@ static void uuid_hex(const uint8_t uuid[16], char output[33]) {
     output[32] = '\0';
 }
 
-static char *canonical_path(const char *path, char **error) {
-    char *resolved = realpath(path, NULL);
-    if (resolved == NULL) ext_set_error(error, "cannot resolve EXT target %s: %s", path, strerror(errno));
-    return resolved;
-}
-
-static int target_identity(const char *path, char **identity, uint64_t *size, char **error) {
-    LdDevice device;
-    if (ld_device_try_open(path, false, &device) != 0) {
-        ext_set_error(error, "cannot inspect EXT target %s: %s", path, strerror(errno));
-        return -1;
-    }
-    char buffer[160];
-    if (ld_device_format_identity(&device, buffer, sizeof(buffer)) != 0) {
-        const int failure = errno;
-        ld_device_close(&device);
-        ext_set_error(error, "cannot identify EXT target %s: %s",
-                      path, strerror(failure));
-        return -1;
-    }
-    *size = device.size_bytes;
-    *identity = ld_xstrdup(buffer);
-    ld_device_close(&device);
-    return 0;
-}
-
 static int capacity_preflight(const char *journal_path, const ExtGeometry *geometry, char **error) {
     char *parent = ld_path_parent_directory(journal_path);
     struct statvfs info;
@@ -312,11 +286,15 @@ static bool same_uuid(const ExtGeometry *geometry, const char *uuid) {
 
 static int check_unchanged_target(const char *device, const ExtJournal *state,
                                   const ExtGeometry *expected, char **error) {
-    char *identity = NULL; uint64_t size = 0;
-    if (target_identity(device, &identity, &size, error) != 0) return -1;
-    bool identity_ok = strcmp(identity, state->target_identity) == 0 && size == state->physical_bytes;
-    free(identity);
-    if (!identity_ok) { ext_set_error(error, "the EXT target identity or size changed while its working image was prepared"); return -1; }
+    char *canonical = NULL, *identity = NULL; uint64_t size = 0;
+    if (ld_device_capture_binding(device, &canonical, &identity, &size) != 0) {
+        ext_set_error(error, "cannot rebind EXT target: %s", strerror(errno));
+        return -1;
+    }
+    bool identity_ok = strcmp(canonical, state->device) == 0 &&
+        strcmp(identity, state->target_identity) == 0 && size == state->physical_bytes;
+    free(canonical); free(identity);
+    if (!identity_ok) { ext_set_error(error, "the EXT target path, identity or size changed while its working image was prepared"); return -1; }
     ExtGeometry current;
     if (ext_read_geometry(device, &current, error) != 0) return -1;
     if (!same_uuid(&current, state->uuid) || current.total_blocks != expected->total_blocks ||
@@ -367,12 +345,16 @@ static uint64_t committed_allocated_bytes(const ExtRangeVec *ranges, uint64_t cu
 
 static int commit_stage(const char *device_path, const char *journal_path,
                         ExtJournal *state, uint64_t start_offset, char **error) {
-    char *identity = NULL; uint64_t size = 0;
-    if (target_identity(device_path, &identity, &size, error) != 0) return -1;
-    if (strcmp(identity, state->target_identity) != 0 || size != state->physical_bytes) {
-        free(identity); ext_set_error(error, "target identity or size changed before the EXT commit"); return -1;
+    char *canonical = NULL, *identity = NULL; uint64_t size = 0;
+    if (ld_device_capture_binding(device_path, &canonical, &identity, &size) != 0) {
+        ext_set_error(error, "cannot rebind EXT target before commit: %s", strerror(errno));
+        return -1;
     }
-    free(identity);
+    if (strcmp(canonical, state->device) != 0 ||
+        strcmp(identity, state->target_identity) != 0 || size != state->physical_bytes) {
+        free(canonical); free(identity); ext_set_error(error, "target path, identity or size changed before the EXT commit"); return -1;
+    }
+    free(canonical); free(identity);
     if (start_offset > state->filesystem_bytes) {
         ext_set_error(error, "EXT recovery journal has an invalid commit offset");
         return -1;
@@ -767,12 +749,14 @@ static int build_and_commit(const char *device, const char *operation,
     ExtGeometry source_geometry, staged_geometry; ExtCatalogue verified = {0};
     ext2_filsys source_fs = NULL, stage_fs = NULL; sqlite3 *db = NULL;
     ExtJournal state = {0}; int result = 1;
-    if (target_identity(device, &identity, &physical_bytes, error) != 0) goto done;
+    if (ld_device_capture_binding(device, &real, &identity, &physical_bytes) != 0) {
+        ext_set_error(error, "cannot bind EXT target %s: %s", device, strerror(errno));
+        goto done;
+    }
     if (ext_read_geometry(device, &source_geometry, error) != 0) goto done;
     if (ext_open_fs(device, false, &source_fs, error) != 0) goto done;
     if (ext_validate_writer_support(source_fs, &source_geometry, error) != 0) goto done;
     (void)ext2fs_close(source_fs); source_fs = NULL;
-    real = canonical_path(device, error); if (real == NULL) goto done;
     state.device = ld_xstrdup(real); state.target_identity = ld_xstrdup(identity);
     uuid_hex(source_geometry.uuid, state.uuid); infiltratr_copy_string(state.source_type, sizeof(state.source_type), source_geometry.filesystem);
     snprintf(state.operation, sizeof(state.operation), "%s", operation); snprintf(state.phase, sizeof(state.phase), "preflight");
@@ -868,9 +852,11 @@ static int recover(const char *device, const char *journal_path, char **error) {
         journal_free(&state);
         return 1;
     }
-    char *real = canonical_path(device, error); if (real == NULL) { journal_free(&state); return 1; }
-    char *identity = NULL; uint64_t size = 0;
-    if (target_identity(device, &identity, &size, error) != 0) { free(real); journal_free(&state); return 1; }
+    char *real = NULL, *identity = NULL; uint64_t size = 0;
+    if (ld_device_capture_binding(device, &real, &identity, &size) != 0) {
+        ext_set_error(error, "cannot bind EXT recovery target: %s", strerror(errno));
+        journal_free(&state); return 1;
+    }
     if (strcmp(real, state.device) != 0 || strcmp(identity, state.target_identity) != 0 || size != state.physical_bytes) {
         ext_set_error(error, "EXT recovery journal belongs to a different target"); free(real); free(identity); journal_free(&state); return 1;
     }
