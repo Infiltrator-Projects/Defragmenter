@@ -4,23 +4,13 @@
 
 from __future__ import annotations
 
-import importlib
 import re
 import subprocess
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = ROOT.parent
 GUI = ROOT / "gui"
-if str(GUI) not in sys.path:
-    sys.path.insert(0, str(GUI))
-
-import operation_engine
-from backends.contracts import Capability, FilesystemBackend
-from backends.registry import Registry, discover_plugin_names
-from core.operations import Operation
-from core.paths import PROGRAMS
 
 
 NATIVE_WRITERS = {
@@ -57,35 +47,22 @@ def test_top_level_cmake_owns_native_language_declaration() -> None:
     assert "project(" not in project_fragment
 
 
-def test_plugin_discovery_and_native_worker_contracts() -> None:
-    names = discover_plugin_names()
-    registry = Registry()
-    assert len(names) == 18
-    assert len(registry.backends) == 18
-    assert len(registry.ids) == len(registry.backends)
+def test_native_registry_is_the_single_capability_authority() -> None:
+    runtime = (ROOT / "native" / "runtime.cpp").read_text()
+    mapper = (ROOT / "native" / "mapper.cpp").read_text()
+    operation_engine = (ROOT / "native" / "operation_engine.cpp").read_text()
 
-    operation_names = {item.value for item in Operation}
-    writer_ids: set[str] = set()
-    for name in names:
-        package = importlib.import_module(f"filesystems.{name}")
-        backend = package.BACKEND
-        assert isinstance(backend, FilesystemBackend)
-        assert backend is registry.ids[backend.info.id]
-        capabilities = Capability(backend.info.capabilities)
-        assert capabilities & Capability.ANALYSE
-        assert capabilities & Capability.MAP
-        for specification in backend.info.operations:
-            writer_ids.add(backend.info.id)
-            assert specification.name in operation_names
-            assert specification.worker in PROGRAMS
-            assert specification.raw_offline
-            if specification.name in {"defrag", "growth-defrag"}:
-                assert specification.live_updates
-                assert capabilities & Capability.LIVE_MAP
-                assert specification.worker == NATIVE_WRITERS[backend.info.id]
-
-    assert writer_ids == set(NATIVE_WRITERS)
-
+    assert "result.reserve(18)" in runtime
+    assert "registry_manifest_json" in runtime
+    assert "registry_manifest_json(2U)" in mapper
+    assert "backend_registry()" in mapper
+    assert "backend_by_fstype(filesystem)" in operation_engine
+    assert "operation_for(*backend, operation)" in operation_engine
+    for filesystem, worker in NATIVE_WRITERS.items():
+        assert f'"{worker}"' in runtime, f"{filesystem} lost native worker {worker}"
+    for readonly in ("ufs", "zfs", "swap"):
+        marker = f'"{readonly}"'
+        assert marker in runtime
 
 def test_unqualified_ufs_mutation_is_fail_closed_in_the_installed_worker() -> None:
     source = (GUI / "filesystems" / "ufs" / "native" / "ufs_worker.c").read_text()
@@ -93,11 +70,7 @@ def test_unqualified_ufs_mutation_is_fail_closed_in_the_installed_worker() -> No
     mutation_dispatch = source.index("const char *mode = argv[1]")
     assert refusal < mutation_dispatch
 
-    plugin = (GUI / "filesystems" / "ufs" / "plugin.py").read_text()
-    assert "CAP_ANALYSE | CAP_MAP" in plugin
-    assert "CAP_DEFRAG" not in plugin
-    assert "CAP_GROWTH_DEFRAG" not in plugin
-    assert "CAP_RECOVER" not in plugin
+    assert not (GUI / "filesystems" / "ufs" / "plugin.py").exists()
 
     runtime = (ROOT / "native" / "runtime.cpp").read_text()
     assert '"ufs", "Solaris/BSD UFS"' in runtime
@@ -107,23 +80,16 @@ def test_unqualified_ufs_mutation_is_fail_closed_in_the_installed_worker() -> No
 
 
 def test_dispatch_is_filesystem_neutral() -> None:
-    registry = Registry()
-    original_resolver = operation_engine.resolve_program
-    try:
-        operation_engine.resolve_program = lambda worker, anchor=None: f"/worker/{worker}"
-        for filesystem, worker in (("fat32", "fat-native"), ("exfat", "exfat-native"),
-                                   ("ntfs", "ntfs-native"), ("ext4", "ext-native"),
-                                   ("xfs", "xfs-native"), ("affs", "affs-native"),
-                                   ("apfs", "apfs-native"), ("btrfs", "btrfs-native"), ("sfs", "sfs-native"), ("pfs3", "pfs3-native"),
-                                   ("hfs", "hfs-native"), ("hfsplus", "hfsplus-native"),
-                                   ("minix", "minix-native")):
-            command = operation_engine.build_worker_command(
-                registry, filesystem, "defrag", "/dev/test", []
-            )
-            assert command == [f"/worker/{worker}", "defrag", "/dev/test"]
-    finally:
-        operation_engine.resolve_program = original_resolver
-
+    source = (ROOT / "native" / "operation_engine.cpp").read_text()
+    for required in (
+        "backend_by_fstype(filesystem)",
+        "operation_for(*backend, operation)",
+        "resolve_program(specification->worker)",
+        "without_options(forwarded, specification->unsupported_options)",
+    ):
+        assert required in source
+    for filesystem in NATIVE_WRITERS:
+        assert f'filesystem == "{filesystem}"' not in source
 
 def test_single_filesystem_hierarchy_and_c_first_writers() -> None:
     assert not (ROOT / "src" / "filesystems").exists()
@@ -153,36 +119,16 @@ def test_single_filesystem_hierarchy_and_c_first_writers() -> None:
     }
     for filesystem, native_files in required_native.items():
         package = GUI / "filesystems" / filesystem
-        assert sorted(path.name for path in package.glob("*.py")) == ["__init__.py", "plugin.py"]
         native = package / "native"
         assert native.is_dir()
         assert native_files <= {path.name for path in native.iterdir() if path.is_file()}
-        assert len((package / "plugin.py").read_text().splitlines()) < 260
+        assert not list(package.glob("*.py")), (
+            f"{filesystem} retained a duplicate Python filesystem declaration"
+        )
 
-    forbidden_python = {
-        "writer.py", "planner.py", "relocator.py", "transaction.py", "metadata.py",
-        "volume.py", "catalog.py", "codec.py", "bitmap.py", "record.py", "model.py",
-        "runtime.py", "staging.py", "tools.py", "libext.py", "geometry.py", "format.py",
-        "placement.py",
-    }
-    for filesystem in ("ext4", "ntfs", "exfat", "xfs", "affs", "btrfs", "sfs", "pfs3", "hfs", "hfsplus", "minix"):
-        package = GUI / "filesystems" / filesystem
-        assert not ({path.name for path in package.glob("*.py")} & forbidden_python)
-
-    ufs_plugin = (GUI / "filesystems" / "ufs" / "plugin.py").read_text()
-    for forbidden in ("Reader", "_CANDIDATES", "_MAGICS", "aggregate_ranges", "data.find"):
-        assert forbidden not in ufs_plugin
-    assert 'resolve_program("ufs-native"' in ufs_plugin
-
-    zfs_plugin = (GUI / "filesystems" / "zfs" / "plugin.py").read_text()
-    for forbidden in ("Reader", "_UBER_MAGIC_LE", "_UBER_MAGIC_BE", "_WINDOW_SIZE", "aggregate_ranges", "data.find"):
-        assert forbidden not in zfs_plugin
-    assert 'resolve_program("zfs-native"' in zfs_plugin
-
-    hfs_plugin = (GUI / "filesystems" / "hfs" / "plugin.py").read_text()
-    for forbidden in ("Reader", "aggregate_bitmap", "u16be", "u32be", "bitmap_sector", "candidates ="):
-        assert forbidden not in hfs_plugin
-    assert 'resolve_program("hfs-native"' in hfs_plugin
+    for obsolete_width_package in ("fat12", "fat16", "fat32"):
+        assert not (GUI / "filesystems" / obsolete_width_package).exists()
+    assert not (GUI / "filesystems" / "__init__.py").exists()
 
     ntfs_native = GUI / "filesystems" / "ntfs" / "native"
     ntfs_plan = (ntfs_native / "ntfs_plan.c").read_text()
@@ -763,11 +709,15 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
         assert "open(target_path, O_RDWR | O_CLOEXEC)" not in source
 
 
-def test_version_and_registry_are_dynamic() -> None:
+def test_version_and_native_registry_ownership() -> None:
     assert re.fullmatch(r"\d+\.\d+\.\d+-\d+", (ROOT / "VERSION").read_text().strip())
-    registry_source = (GUI / "backends" / "registry.py").read_text()
-    assert "PLUGIN_MODULES" not in registry_source
-    assert "pkgutil.iter_modules" in registry_source
+    runtime = (ROOT / "native" / "runtime.cpp").read_text()
+    assert "const std::vector<BackendInfo>& backend_registry()" in runtime
+    assert "registry_manifest_json" in runtime
+    assert not (GUI / "backends").exists()
+    assert not (GUI / "engine").exists()
+    for obsolete in ("allocation_mapper.py", "operation_engine.py", "privileged_helper.py"):
+        assert not (GUI / obsolete).exists()
     launcher_lines = (GUI / "linux_defragger_gui.py").read_text().splitlines()
     assert len(launcher_lines) < 20
     for runtime_module in (
@@ -780,7 +730,6 @@ def test_version_and_registry_are_dynamic() -> None:
         assert "from backends." not in source
         assert "import backends." not in source
 
-
 def test_user_facing_branding_is_defragmenter() -> None:
     repository_identifier = "Infiltrator-Projects/Defragmenter"
     user_facing = (
@@ -788,9 +737,9 @@ def test_user_facing_branding_is_defragmenter() -> None:
         ROOT / "README.md",
         REPO_ROOT / "docs" / "DESIGN.md",
         REPO_ROOT / "docs" / "AUDIT_STATUS.md",
-        GUI / "allocation_mapper.py",
-        GUI / "privileged_helper.py",
-        GUI / "backends" / "registry.py",
+        ROOT / "native" / "mapper.cpp",
+        ROOT / "native" / "operation_engine.cpp",
+        ROOT / "native" / "privileged_helper.cpp",
         GUI / "ui" / "window.py",
         GUI / "ui" / "window_view.py",
         GUI / "ui" / "operation_planner.py",

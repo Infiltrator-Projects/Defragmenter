@@ -9,7 +9,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 GUI = ROOT / "gui"
 PACKAGE = GUI / "filesystems" / "btrfs"
-PLUGIN = PACKAGE / "plugin.py"
 CMAKE = ROOT / "cmake" / "btrfs.cmake"
 PATHS = GUI / "core" / "paths.py"
 
@@ -20,16 +19,7 @@ def main() -> None:
     required = {"btrfs_native.h", "btrfs_native.c", "btrfs_worker.c"}
     assert required <= {path.name for path in native.iterdir() if path.is_file()}
 
-    plugin = PLUGIN.read_text(encoding="utf-8")
-    assert len(plugin.splitlines()) < 180
-    assert 'resolve_program("btrfs-native"' in plugin
-    for forbidden in (
-        "Reader", "u16le", "u32le", "u64le", "bisect", "_TreeReader",
-        "_Mapper", "_CHUNK_ITEM", "_EXTENT_ITEM", "_FILE_EXTENT_REG",
-        "aggregate_ranges", "complement_ranges", "overlay_ranges",
-    ):
-        assert forbidden not in plugin, f"Btrfs Python parser primitive returned: {forbidden}"
-
+    assert not list(PACKAGE.glob("*.py"))
     cmake = CMAKE.read_text(encoding="utf-8")
     assert "add_library(linux-defragger-btrfs-native" in cmake
     assert "add_executable(linux-defragger-btrfs-worker" in cmake
@@ -37,7 +27,7 @@ def main() -> None:
         "install(TARGETS linux-defragger-btrfs-worker\n"
         "        RUNTIME DESTINATION lib/linux-defragger/filesystems/btrfs)"
     ) in cmake
-    assert "linux-defragger-btrfs-native-python" in cmake
+    assert "tests/test_btrfs_native.py" in cmake
 
     paths = PATHS.read_text(encoding="utf-8")
     assert '"btrfs-native": ProgramPath(' in paths

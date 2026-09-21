@@ -29,8 +29,10 @@ for token in legacy:
     assert token not in writer, f"legacy growth-only executor symbol remains: {token}"
     assert token not in planner, f"legacy growth-only planner symbol remains: {token}"
 
-for bits in (12, 16, 32):
-    plugin = (root / f"gui/filesystems/fat{bits}/plugin.py").read_text(encoding="utf-8")
-    assert f"FatBackend({bits})" in plugin
+runtime = (root / "native/runtime.cpp").read_text(encoding="utf-8")
+assert 'for (const int bits : {12, 16, 32})' in runtime
+assert 'write, "exact", "fat-native", MapAdapter::Fat' in runtime
+assert 'standard_write_ops("fat-native")' in runtime
+
 
 print("FAT12/FAT16/FAT32 share one width-neutral relayout planner and executor")

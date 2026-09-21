@@ -43,7 +43,6 @@ PYTHONPATH="$ROOT/gui:$ROOT/tests" python3 "$ROOT/tests/test_planner_properties.
 python3 "$ROOT/tests/test_gui_analysis_start.py"
 python3 "$ROOT/tests/test_gui_models.py"
 python3 "$ROOT/tests/test_gui_services.py"
-python3 "$ROOT/tests/test_range_helpers.py"
 python3 "$ROOT/tests/test_safety.py"
 python3 "$ROOT/tests/test_worker_entrypoints.py"
 LINUX_DEFRAGGER_BUILD_DIR="$BUILD_DIR" PYTHONPATH="$ROOT/gui:$ROOT/tests" python3 "$ROOT/tests/test_native_top3.py"

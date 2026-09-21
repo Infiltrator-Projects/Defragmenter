@@ -1,12 +1,10 @@
 {
   "include": [
     "../gui/core",
-    "../gui/filesystems/fat/common.py",
-    "../gui/filesystems/ext4/plugin.py",
-    "../gui/filesystems/ntfs/plugin.py",
-    "../gui/filesystems/exfat/plugin.py",
-    "../gui/filesystems/xfs/plugin.py",
+    "../gui/ui/backend_catalog.py",
     "../gui/ui/command_models.py",
+    "../gui/ui/devices.py",
+    "../gui/ui/map_presenter.py",
     "../gui/ui/operation_coordinator.py",
     "../gui/ui/operation_planner.py",
     "../gui/ui/window_view.py"
