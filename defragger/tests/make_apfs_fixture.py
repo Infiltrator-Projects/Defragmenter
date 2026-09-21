@@ -142,14 +142,15 @@ def file_extent(logical: int, paddr: int) -> tuple[bytes, bytes]:
     return key, value
 
 
-def phys_extent(paddr: int) -> tuple[bytes, bytes]:
+def phys_extent(paddr: int, *, refcnt: int = 1) -> tuple[bytes, bytes]:
     key = cat_header(paddr, 2)
-    value = u64(1) + u64(DSTREAM) + u32(1)
+    value = u64((1 << 60) | 1) + u64(DSTREAM) + u32(refcnt)
     return key, value
 
 
 def build(path: Path, *, corrupt_bitmap: bool = False,
-          second_volume: bool = False, sparse: bool = False) -> None:
+          second_volume: bool = False, sparse: bool = False,
+          stale_checkpoint: bool = False, shared: bool = False) -> None:
     image = bytearray(BLOCK * BLOCKS)
     used = {
         0, CPM, NX, SPACEMAN, CIB, BITMAP, CONTAINER_OMAP,
@@ -179,6 +180,11 @@ def build(path: Path, *, corrupt_bitmap: bool = False,
     fletcher(nx)
     image[0:BLOCK] = nx
     image[NX * BLOCK:(NX + 1) * BLOCK] = nx
+    if stale_checkpoint:
+        stale = bytearray(nx)
+        stale[16:24] = u64(XID - 1)
+        fletcher(stale)
+        image[3 * BLOCK:4 * BLOCK] = stale
 
     cpm = bytearray(BLOCK)
     object_header(cpm, CPM, OBJ_PHYSICAL | TYPE_CPM)
@@ -271,7 +277,7 @@ def build(path: Path, *, corrupt_bitmap: bool = False,
     )
     image[EXTREF * BLOCK:(EXTREF + 1) * BLOCK] = node(
         EXTREF, EXTREF, TYPE_BLOCKREFTREE,
-        [phys_extent(DATA_A), phys_extent(DATA_B)], fixed=False
+        [phys_extent(DATA_A, refcnt=2 if shared else 1), phys_extent(DATA_B)], fixed=False
     )
     image[DATA_A * BLOCK:(DATA_A + 1) * BLOCK] = b"A" * BLOCK
     image[DATA_B * BLOCK:(DATA_B + 1) * BLOCK] = b"B" * BLOCK
@@ -284,9 +290,12 @@ def main() -> None:
     parser.add_argument("--corrupt-bitmap", action="store_true")
     parser.add_argument("--second-volume", action="store_true")
     parser.add_argument("--sparse", action="store_true")
+    parser.add_argument("--stale-checkpoint", action="store_true")
+    parser.add_argument("--shared", action="store_true")
     args = parser.parse_args()
     build(args.path, corrupt_bitmap=args.corrupt_bitmap,
-          second_volume=args.second_volume, sparse=args.sparse)
+          second_volume=args.second_volume, sparse=args.sparse,
+          stale_checkpoint=args.stale_checkpoint, shared=args.shared)
 
 
 if __name__ == "__main__":

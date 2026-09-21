@@ -241,9 +241,9 @@ target_compile_definitions(linux-defragger-fat-worker PRIVATE
 target_link_libraries(linux-defragger-fat-worker PRIVATE
     linux-defragger-core Threads::Threads)
 
-# APFS remains analysis-only at this stage, but exact bounded checkpoint,
-# spaceman allocation and catalog-fragmentation interpretation is native C.
-# Python is retained only as GUI/registry glue.
+# APFS exact bounded analysis and the fail-closed offline staged writer share
+# one native checkpoint/spaceman/catalog implementation. Python remains only
+# GUI/registry glue.
 add_library(linux-defragger-apfs-native STATIC
     gui/filesystems/apfs/native/apfs_native.c)
 target_include_directories(linux-defragger-apfs-native PUBLIC
@@ -265,7 +265,7 @@ target_compile_options(linux-defragger-apfs-worker PRIVATE ${LD_WARNING_FLAGS})
 target_compile_definitions(linux-defragger-apfs-worker PRIVATE
     _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(linux-defragger-apfs-worker PRIVATE
-    linux-defragger-apfs-native linux-defragger-core)
+    linux-defragger-apfs-native linux-defragger-core OpenSSL::Crypto)
 
 find_package(OpenSSL REQUIRED)
 

@@ -4,8 +4,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -29,6 +31,80 @@ def run(*args: object, check: bool = True) -> subprocess.CompletedProcess[str]:
     if check:
         assert completed.returncode == 0, (completed.stdout, completed.stderr)
     return completed
+
+
+
+def mutate(path: Path, operation: str) -> subprocess.CompletedProcess[str]:
+    journal = Path(str(path) + f".{operation}.journal")
+    args: list[object] = [
+        operation, path, "--write", "--confirm", path,
+        "--journal", journal, "--live-updates",
+    ]
+    if operation == "growth-defrag":
+        args += ["--growth-percent", "10"]
+    completed = run(*args)
+    assert f'@@RESULT {{"operation":"{operation}","status":"completed"' in completed.stdout
+    assert not journal.exists()
+    assert not Path(str(journal) + ".apfs-stage").exists()
+    return completed
+
+
+def test_writer(work: Path) -> None:
+    image = work / "defrag.img"
+    make(image)
+    mutate(image, "defrag")
+    analysis = json.loads(run("analyse-json", image).stdout)
+    assert analysis["fragmented_files"] == 0
+    raw = image.read_bytes()
+    assert raw[10 * 4096:11 * 4096] == b"A" * 4096
+    assert raw[11 * 4096:12 * 4096] == b"B" * 4096
+
+    growth = work / "growth.img"
+    make(growth)
+    mutate(growth, "growth-defrag")
+    analysis = json.loads(run("analyse-json", growth).stdout)
+    assert analysis["fragmented_files"] == 0
+    raw = growth.read_bytes()
+    bitmap = raw[33 * 4096:34 * 4096]
+    assert bitmap[12 >> 3] & (1 << (12 & 7)) == 0
+
+    for option, expected in (
+        ("--stale-checkpoint", "older checkpoint"),
+        ("--shared", "unshared"),
+    ):
+        rejected = work / (option[2:] + ".img")
+        make(rejected, option)
+        before = hashlib.sha256(rejected.read_bytes()).digest()
+        failed = run(
+            "defrag", rejected, "--write", "--confirm", rejected,
+            "--journal", work / (option[2:] + ".journal"),
+            check=False,
+        )
+        assert failed.returncode != 0
+        assert expected in failed.stderr.lower()
+        assert hashlib.sha256(rejected.read_bytes()).digest() == before
+
+
+def test_recovery(work: Path) -> None:
+    image = work / "recover.img"
+    make(image)
+    journal = work / "recover.journal"
+    image.chmod(stat.S_IRUSR)
+    failed = run(
+        "defrag", image, "--write", "--confirm", image,
+        "--journal", journal, check=False,
+    )
+    image.chmod(stat.S_IRUSR | stat.S_IWUSR)
+    assert failed.returncode != 0
+    stage = Path(str(journal) + ".apfs-stage")
+    assert journal.exists() and stage.exists()
+    recovered = run(
+        "recover", image, "--write", "--confirm", image,
+        "--journal", journal,
+    )
+    assert '@@RESULT {"operation":"recover","status":"completed"' in recovered.stdout
+    assert not journal.exists() and not stage.exists()
+    assert json.loads(run("analyse-json", image).stdout)["fragmented_files"] == 0
 
 
 def main() -> None:
@@ -75,7 +151,10 @@ def main() -> None:
         assert failed.returncode != 0
         assert "non-sparse" in failed.stderr.lower()
 
-    print("bounded APFS checkpoint/spaceman/catalog tests passed")
+        test_writer(work)
+        test_recovery(work)
+
+    print("bounded APFS checkpoint/spaceman/catalog/writer/recovery tests passed")
 
 
 if __name__ == "__main__":

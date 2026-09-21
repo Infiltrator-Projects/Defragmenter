@@ -178,8 +178,12 @@ const std::vector<BackendInfo>& backend_registry() {
                 "Amiga OFS/FFS writing uses Defragmenter's offline first-party native C raw engine.",
                 "Amiga Growth Defrag uses the native C raw engine and leaves an exact 10% free-block reserve after each regular file.")});
         result.push_back({
-            "apfs", "Apple APFS", {"apfs"}, read, "exact",
-            "apfs-native", MapAdapter::NativeMap, {}});
+            "apfs", "Apple APFS", {"apfs"}, write, "exact",
+            "apfs-native", MapAdapter::NativeMap,
+            standard_write_ops(
+                "apfs-native",
+                "APFS writing is offline and fail-closed to the qualified single-active-checkpoint, one-CIB, unencrypted, snapshot-free flat-tree subset.",
+                "APFS Growth Defrag leaves an exact 10% free-block reserve after each supported regular-file data stream.")});
         result.push_back({
             "btrfs", "Btrfs", {"btrfs"}, write, "exact",
             "btrfs-native", MapAdapter::NativeMap,

@@ -32,6 +32,7 @@ NATIVE_WRITERS = {
     "ext4": "ext-native",
     "xfs": "xfs-native",
     "affs": "affs-native",
+    "apfs": "apfs-native",
     "btrfs": "btrfs-native",
     "sfs": "sfs-native",
     "pfs3": "pfs3-native",
@@ -94,7 +95,7 @@ def test_dispatch_is_filesystem_neutral() -> None:
         for filesystem, worker in (("fat32", "fat-native"), ("exfat", "exfat-native"),
                                    ("ntfs", "ntfs-native"), ("ext4", "ext-native"),
                                    ("xfs", "xfs-native"), ("affs", "affs-native"),
-                                   ("btrfs", "btrfs-native"), ("sfs", "sfs-native"), ("pfs3", "pfs3-native"),
+                                   ("apfs", "apfs-native"), ("btrfs", "btrfs-native"), ("sfs", "sfs-native"), ("pfs3", "pfs3-native"),
                                    ("hfs", "hfs-native"), ("hfsplus", "hfsplus-native"),
                                    ("minix", "minix-native")):
             command = operation_engine.build_worker_command(
@@ -482,7 +483,7 @@ def test_infiltratr_common_integration() -> None:
     assert "write_exact" not in rawio
     assert "writable" not in rawio
 
-    for filesystem, worker in (("affs", "affs_worker.c"), ("btrfs", "btrfs_worker.c"), ("sfs", "sfs_worker.c"),
+    for filesystem, worker in (("affs", "affs_worker.c"), ("apfs", "apfs_worker.c"), ("btrfs", "btrfs_worker.c"), ("sfs", "sfs_worker.c"),
                                ("pfs3", "pfs3_worker.c"), ("hfs", "writer.c"),
                                ("hfsplus", "hfsplus_worker.c"), ("minix", "minix_worker.c")):
         source = (GUI / "filesystems" / filesystem / "native" / worker).read_text()
@@ -522,6 +523,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
         "exfat": native / "exfat" / "native" / "exfat_worker.c",
         "xfs": native / "xfs" / "native" / "xfs_worker.c",
         "affs": native / "affs" / "native" / "affs_worker.c",
+        "apfs": native / "apfs" / "native" / "apfs_worker.c",
         "btrfs": native / "btrfs" / "native" / "btrfs_worker.c",
         "sfs": native / "sfs" / "native" / "sfs_worker.c",
         "pfs3": native / "pfs3" / "native" / "pfs3_worker.c",
@@ -561,6 +563,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
     assert "ld_path_is_mounted(device)" in sources["exfat"]
     assert "ld_device_number_is_mounted(status.st_rdev)" in sources["xfs"]
     assert "ld_path_is_mounted(device)" in sources["affs"]
+    assert "ld_path_is_mounted(device)" in sources["apfs"]
     assert "ld_path_is_mounted(device)" in sources["btrfs"]
     assert "ld_path_is_mounted(device)" in sources["sfs"]
     assert "ld_path_is_mounted(device)" in sources["pfs3"]
@@ -574,6 +577,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
         "exfat": (".exfat-stage.img",),
         "xfs": (".xfs-stage.img", ".xfs-plan.sqlite"),
         "affs": (".affs-stage",),
+        "apfs": (".apfs-stage",),
         "btrfs": (".btrfs-stage",),
         "sfs": (".sfs-stage",),
         "pfs3": (".pfs3-stage",),
@@ -593,6 +597,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
         "exfat": workers["exfat"],
         "xfs": workers["xfs"],
         "affs": workers["affs"],
+        "apfs": workers["apfs"],
         "btrfs": workers["btrfs"],
         "sfs": workers["sfs"],
         "pfs3": workers["pfs3"],
@@ -622,6 +627,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
     for path in (
         native / "exfat" / "native" / "exfat_plan.c",
         native / "affs" / "native" / "affs_native.c",
+        native / "apfs" / "native" / "apfs_native.c",
         native / "btrfs" / "native" / "btrfs_native.c",
         native / "sfs" / "native" / "sfs_native.c",
         native / "pfs3" / "native" / "pfs3_native.c",
@@ -660,7 +666,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
 
     journal_workers = (
         workers["ext"], workers["ntfs"], workers["exfat"], workers["xfs"],
-        workers["affs"], workers["btrfs"], workers["sfs"], workers["pfs3"], workers["hfs"], workers["hfsplus"], workers["minix"],
+        workers["affs"], workers["apfs"], workers["btrfs"], workers["sfs"], workers["pfs3"], workers["hfs"], workers["hfsplus"], workers["minix"],
         native / "exfat" / "native" / "exfat_relayout.c",
     )
     for path in journal_workers:
@@ -684,7 +690,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
         )
 
     for path in (
-        workers["ext"], workers["ntfs"], workers["affs"], workers["btrfs"],
+        workers["ext"], workers["ntfs"], workers["affs"], workers["apfs"], workers["btrfs"],
         workers["sfs"], workers["pfs3"], workers["hfs"], workers["hfsplus"], workers["minix"],
         native / "ntfs" / "native" / "ntfs_plan.c",
         native / "exfat" / "native" / "exfat_relayout.c",
@@ -730,7 +736,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
     assert "ld_fd_matches_identity" in exfat_relayout
 
     for path in (
-        workers["ext"], workers["ntfs"], workers["affs"], workers["btrfs"],
+        workers["ext"], workers["ntfs"], workers["affs"], workers["apfs"], workers["btrfs"],
         workers["sfs"], workers["pfs3"], workers["hfs"], workers["hfsplus"], workers["minix"],
     ):
         source = path.read_text()

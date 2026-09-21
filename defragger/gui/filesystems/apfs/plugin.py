@@ -19,10 +19,28 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from backends.base import BackendError, BackendInfo, CAP_ANALYSE, CAP_MAP, FilesystemBackend
+from backends.base import (
+    BackendError, BackendInfo, CAP_ANALYSE, CAP_DEFRAG, CAP_GROWTH_DEFRAG,
+    CAP_LIVE_MAP, CAP_MAP, CAP_RECOVER, FilesystemBackend, operation,
+)
 from core.paths import resolve_program
 
-INFO = BackendInfo("apfs", "Apple APFS", ("apfs",), CAP_ANALYSE | CAP_MAP, "exact")
+INFO = BackendInfo(
+    "apfs", "Apple APFS", ("apfs",),
+    CAP_ANALYSE | CAP_MAP | CAP_DEFRAG | CAP_GROWTH_DEFRAG | CAP_RECOVER | CAP_LIVE_MAP,
+    "exact",
+    operations=(
+        operation(
+            "defrag", "apfs-native",
+            warning="APFS writing is offline and fail-closed to the qualified single-active-checkpoint, one-CIB, unencrypted, snapshot-free flat-tree subset.",
+        ),
+        operation(
+            "growth-defrag", "apfs-native",
+            warning="APFS Growth Defrag leaves an exact 10% free-block reserve after each supported regular-file data stream.",
+        ),
+        operation("recover", "apfs-native"),
+    ),
+)
 
 
 class APFSBackend(FilesystemBackend):
