@@ -31,6 +31,19 @@ typedef struct {
     uint32_t fragments_per_group;
     uint32_t inodes_per_group;
     uint32_t cylinder_block_fragment;
+    uint32_t inode_block_fragment;
+    uint32_t first_data_fragment;
+    uint32_t inodes_per_block;
+    uint32_t indirects_per_block;
+    int32_t old_cylinder_offset;
+    int32_t old_cylinder_mask;
+    uint8_t clean;
+    uint32_t flags;
+    uint32_t metadata_check_hashes;
+    int32_t contiguous_summary_size;
+    uint64_t pending_blocks;
+    uint32_t pending_inodes;
+    uint32_t snapshot_count;
 } LdUfsSummary;
 
 typedef struct {
@@ -40,6 +53,12 @@ typedef struct {
     uint64_t total_units;
     uint64_t free_fragments_exact;
     uint64_t used_fragments_exact;
+    uint64_t regular_files;
+    uint64_t directories;
+    uint64_t fragmented_files;
+    uint64_t fragmented_directories;
+    uint64_t sparse_files;
+    uint64_t indirect_files;
 } LdUfsAnalysis;
 
 typedef struct {
@@ -48,6 +67,8 @@ typedef struct {
     uint64_t free_count;
     uint64_t used_count;
     uint64_t outside_count;
+    uint64_t fragmented_count;
+    uint64_t directory_count;
 } LdUfsMapCell;
 
 int ufs_read_summary(const char *path, LdUfsSummary *summary,
@@ -55,6 +76,13 @@ int ufs_read_summary(const char *path, LdUfsSummary *summary,
 int ufs_analyse_allocation(const char *path, LdUfsAnalysis *analysis,
                            LdUfsMapCell *cells, uint64_t cell_count,
                            char *error, size_t error_size);
+int ufs_build_stage(const char *source, const char *stage,
+                    bool growth, unsigned growth_percent,
+                    bool live_updates, uint64_t *commit_bytes,
+                    char *error, size_t error_size);
+int ufs_verify_layout(const char *path, bool growth,
+                      unsigned growth_percent,
+                      char *error, size_t error_size);
 bool ufs_probe(const char *path);
 const char *ufs_variant_name(const LdUfsSummary *summary);
 const char *ufs_byte_order_name(const LdUfsSummary *summary);
