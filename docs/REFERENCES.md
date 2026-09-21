@@ -48,9 +48,12 @@ treating one third-party implementation as infallible.
   <https://developer.apple.com/support/apple-file-system/Apple-File-System-Reference.pdf>,
   corroborated against the public linux-apfs implementation for Fletcher
   checksums, checkpoint/spaceman layout and B-tree record interpretation.
-  Defragmenter performs exact read-only allocation/fragmentation analysis for
-  its bounded checkpoint/direct-CIB/single-volume/flat-tree subset. A write
-  contract is not yet claimed.
+  Defragmenter performs exact allocation/fragmentation analysis and bounded
+  offline Defragment/Growth Defrag/Recover for its qualified single-active-
+  checkpoint/direct-CIB/single-volume/flat-tree subset. The writer deliberately
+  rejects historical checkpoint-ring state, shared/sparse/encrypted data and
+  other feature combinations for which deterministic direct mutation is not
+  qualified.
 - **UFS/FFS** - BSD Fast File System literature and current FreeBSD filesystem
   sources are corroborating references. UFS write support is not enabled.
 - **Amiga OFS/FFS/SFS/PFS3** - public format descriptions, first-party deterministic

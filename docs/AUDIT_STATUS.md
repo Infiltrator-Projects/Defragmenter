@@ -6,10 +6,10 @@ Completed: 2026-08-25
 Extended: 2026-09-20
 
 Applies to: release version 1.8.0-191
-Audited source commit: e0f9fdc0f290f5c2d2763a537345e9ba4e53453a
+Audited source commit: 9b6afeae4b1458419b3fb87544613731436f97f5
 Audited release-governance commit: b52008be6aa7f19dae2190ddbdd22c7e946849a7
 
-Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, btrfs, pfs3, sfs, hfs, hfsplus, minix
+Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix
 
 This document records the **current** write-safety case. Historical audit-development detail remains available in Git history and immutable release tags rather than being repeated here.
 
@@ -47,7 +47,7 @@ The completed audit covers these first-party write/recovery engines:
 - **HFS+/HFSX** — native staged transaction and Recover for supported clean-journal states.
 - **Minix v1/v2/v3** — native fail-closed staged relayout, exact 10% Growth Defrag and durable Recover for the supported exact-analysis subset.
 
-APFS now has an audited exact read-only analysis contract for a deliberately bounded subset: the analyser validates the active checkpoint, Fletcher checksums, checkpoint-map spaceman binding, direct-CIB spaceman bitmaps, a single unencrypted/unsealed/snapshot-free volume, flat object-map roots and a flat catalog root. Allocation is derived from spaceman bitmaps rather than a synthetic summary, and file fragmentation is derived from catalog file-extent records. Unsupported checkpoint, volume, sharing, sparse, encrypted or deeper-tree states fail closed. This analysis qualification does not yet promote APFS to write support.
+- **APFS** — exact native checkpoint/spaceman allocation and catalog-fragmentation analysis plus bounded offline Defragment, exact 10% Growth Defrag and durable Recover. Mutation is restricted to a single active two-object checkpoint with no historical descriptor-ring objects, one direct CIB/allocation bitmap, no internal-pool or pending free-queue state, one unencrypted/unsealed/snapshot-free volume, current-XID flat catalog/extent-reference roots, and plain unshared non-sparse regular-file extents. Unsupported APFS states fail closed before authoritative writes.
 
 Read-only support for other formats is not promoted to write support by this audit. Unsupported or ambiguous layouts continue to fail closed.
 
@@ -110,3 +110,8 @@ The 2026-09-20 Btrfs audit extension covers the bounded native writer qualified 
 
 
 The 2026-09-20 APFS analysis extension is qualified at `e0f9fdc0f290f5c2d2763a537345e9ba4e53453a`. An independently constructed Fletcher-valid fixture contains an active checkpoint map, ephemeral spaceman object, direct chunk-info block and allocation bitmap, container and volume object maps, one unencrypted APFS volume, a flat catalog and deliberately fragmented regular-file extents. The native analyser proves exact free/used accounting from spaceman, identifies the fragmented file from catalog extent continuity, rejects a bitmap/catalog disagreement, rejects multiple-volume input outside the bounded contract and rejects sparse extents. Both the hosted ASan/UBSan lane and the complete 44-test CTest suite passed; the remaining local gate failure at that source revision was solely the expected audit-baseline drift that this document advances.
+
+
+The 2026-09-21 APFS writer/Test Media audit extension is qualified at `9b6afeae4b1458419b3fb87544613731436f97f5`. The writer stages the complete bounded APFS filesystem before source mutation, binds the source path/identity/capacity and complete source digest, relocates only regular-file blocks whose catalog records have one matching physical extent reference with refcount one, rewrites the catalog and extent-reference roots, updates the direct spaceman allocation bitmap without changing allocation cardinality, recomputes Fletcher checksums, and independently reopens the staged and committed image through the production analyser. Growth Defrag reserves exactly ceil(file_blocks × 10%) free blocks immediately after each supported file. Stop during authoritative replay retains the durable journal and verified stage for Recover.
+
+Qualification uses both an independently manufactured Python image and the first-party all-C Test Media creator. The fixture contains a single active checkpoint, direct spaceman CIB/bitmap, flat object maps, one unencrypted volume, flat catalog/extent-reference roots and a deliberately fragmented two-block regular file. Permanent regressions exercise Defragment, exact 10% Growth Defrag, payload preservation, Recover after an interrupted source-open boundary, refusal of a stale checkpoint ring, refusal of a shared physical extent and corruption detection in Test Media verification. The hosted ASan/UBSan lane passed with the complete sanitizer-visible APFS and Test Media suites at this source baseline. The self-hosted local quality lane may be rerun independently when that runner is available; release publication still requires its configured release conditions.

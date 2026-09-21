@@ -24,7 +24,7 @@ The user-facing product is **Defragmenter**. The Debian/APT package identity is 
 | HFS+ / HFSX | Exact | Native C, fail-closed preflight | Native C, exact 10% reserve | Yes |
 | Classic Macintosh HFS | Exact, native C | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
 | Btrfs | Exact raw single-device analysis | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
-| APFS | Exact native C analysis for bounded checkpoint/spaceman subset | Not implemented | Not implemented | No |
+| APFS | Exact native C analysis for bounded checkpoint/spaceman subset | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
 | Minix v1 / v2 / v3 | Exact, native C | Native C, fail-closed staged relayout | Native C, exact 10% reserve | Yes |
 | UFS1 | Summary read-only analysis, native C | Not implemented | Not implemented | No |
 | UFS2 | Exact allocation read-only analysis, native C | Not implemented | Not implemented | No |
@@ -58,7 +58,7 @@ Stop is cooperative and takes effect only at a filesystem-safe boundary.
 
 The package includes **Defragmenter Test Media**, a separate all-C GTK utility for manufacturing sacrificial test filesystems. It repeats destructive-target checks after privilege elevation and must never be pointed at a system disk or irreplaceable media.
 
-Formatting utilities used by Test Media are fixture-generation tools only; they are not part of production defragmentation. OFS/FFS, SFS and bounded PFS3 qualification media are manufactured by first-party raw C creators.
+Formatting utilities used by Test Media are fixture-generation tools only; they are not part of production defragmentation. OFS/FFS, SFS, bounded PFS3 and bounded APFS qualification media are manufactured by first-party raw C creators.
 
 ## Build and test
 
