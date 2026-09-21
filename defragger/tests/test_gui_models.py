@@ -372,19 +372,28 @@ def test_about_dialog_matches_the_standard_project_identity() -> None:
         assert required in view_source
 
     for required in (
-        "class LinkStandardWindowView(WindowView):",
+        "class SuiteStandardWindowView(WindowView):",
         "Gtk.AboutDialog(",
         "program_name=info.product_name",
         "version=info.version",
-        'website_label="Project website"',
+        'website_label="Website"',
         "dialog.set_authors(list(info.authors))",
         "dialog.set_license(info.license_text)",
         "dialog.set_logo_icon_name(None)",
         "dialog.set_logo(logo)",
-        'subtitle="DEFRAGMENTER · NATIVE FILESYSTEM OPTIMISATION"',
+        "build=self.build_label",
         "Shannon Smith — Author and project maintainer",
     ):
         assert required in about_source
+
+    for forbidden in (
+        "dialog.set_default_size(",
+        "dialog.set_size_request(",
+        'subtitle="DEFRAGMENTER · NATIVE FILESYSTEM OPTIMISATION"',
+        'website_label="Project website"',
+        'add_class("link-about-dialog")',
+    ):
+        assert forbidden not in about_source
 
     # Keep one concrete GTK About implementation. The base view retains only
     # the dispatch point used by its menu construction.
