@@ -230,43 +230,6 @@ static char *stage_name(const char *journal) {
     return ld_path_append_suffix(journal, ".affs-stage");
 }
 
-static char *canonical_path(const char *path, char **error) {
-    char *resolved = realpath(path, NULL);
-    if (resolved == NULL)
-        affs_set_error(error, "cannot resolve Amiga target %s: %s", path, strerror(errno));
-    return resolved;
-}
-
-static int target_identity(const char *path, char **identity,
-                           uint64_t *size, char **error)
-{
-    LdDevice target;
-    if (ld_device_try_open(path, false, &target) != 0) {
-        affs_set_error(error, "cannot inspect Amiga target: %s", strerror(errno));
-        return -1;
-    }
-    if (target.size_bytes == 0U) {
-        ld_device_close(&target);
-        affs_set_error(error, "cannot determine Amiga target size");
-        return -1;
-    }
-
-    char text[160];
-    if (ld_device_format_identity(&target, text, sizeof(text)) != 0) {
-        const int failure = errno;
-        ld_device_close(&target);
-        affs_set_error(error, "cannot identify Amiga target: %s",
-                  strerror(failure));
-        return -1;
-    }
-
-    *size = target.size_bytes;
-    *identity = ld_xstrdup(text);
-    ld_device_close(&target);
-    return 0;
-}
-
-
 static int digest_final_hex(EVP_MD_CTX *context, char output[65], char **error) {
     unsigned char digest[32];
     unsigned int length = 0;
@@ -385,10 +348,12 @@ static int stage_sha256(const char *path, char output[65], char **error) {
 }
 
 static int capture_target(const char *device, AffsJournal *state, char **error) {
-    state->device = canonical_path(device, error);
-    if (state->device == NULL) return -1;
-    if (target_identity(state->device, &state->target_identity,
-                        &state->physical_bytes, error) != 0) return -1;
+    if (ld_device_capture_binding(device, &state->device,
+                                  &state->target_identity,
+                                  &state->physical_bytes) != 0) {
+        affs_set_error(error, "cannot bind Amiga target: %s", strerror(errno));
+        return -1;
+    }
     return volume_token(state->device, state->physical_bytes,
                         &state->blocks, &state->root_block, &state->dostype,
                         &state->filesystem_bytes, state->volume_token, error);
@@ -396,13 +361,13 @@ static int capture_target(const char *device, AffsJournal *state, char **error) 
 
 static int check_unchanged_target(const char *device,
                                   const AffsJournal *state, char **error) {
-    char *canonical = canonical_path(device, error);
-    if (canonical == NULL) return -1;
+    char *canonical = NULL;
     char *identity = NULL;
     uint64_t physical_bytes = 0;
-    int rc = target_identity(canonical, &identity, &physical_bytes, error);
+    int rc = ld_device_capture_binding(
+        device, &canonical, &identity, &physical_bytes);
     if (rc != 0) {
-        free(canonical);
+        affs_set_error(error, "cannot rebind Amiga target: %s", strerror(errno));
         return -1;
     }
     if (strcmp(canonical, state->device) != 0 ||

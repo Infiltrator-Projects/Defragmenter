@@ -661,11 +661,11 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
             f"raw target identity core lost {required}"
         )
 
-    for name in ("ext", "ntfs", "exfat", "xfs", "affs", "hfs", "hfsplus"):
+    for name in ("ext", "ntfs", "exfat", "xfs"):
         assert "ld_device_format_identity" in sources[name], (
             f"{name} bypasses shared target identity formatting"
         )
-    for name in ("apfs", "btrfs", "ufs", "sfs", "pfs3", "minix"):
+    for name in ("affs", "apfs", "btrfs", "ufs", "sfs", "pfs3", "hfs", "hfsplus", "minix"):
         assert "ld_device_capture_binding" in sources[name], (
             f"{name} bypasses one-open shared transaction binding"
         )

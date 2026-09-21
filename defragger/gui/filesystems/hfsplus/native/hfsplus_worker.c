@@ -237,43 +237,6 @@ static char *stage_name(const char *journal) {
     return ld_path_append_suffix(journal, ".hfsplus-stage");
 }
 
-static char *canonical_path(const char *path, char **error) {
-    char *resolved = realpath(path, NULL);
-    if (resolved == NULL)
-        hfsplus_set_error(error, "cannot resolve HFS+ target %s: %s", path, strerror(errno));
-    return resolved;
-}
-
-static int target_identity(const char *path, char **identity,
-                           uint64_t *size, char **error)
-{
-    LdDevice target;
-    if (ld_device_try_open(path, false, &target) != 0) {
-        hfsplus_set_error(error, "cannot inspect HFS+ target: %s", strerror(errno));
-        return -1;
-    }
-    if (target.size_bytes == 0U) {
-        ld_device_close(&target);
-        hfsplus_set_error(error, "cannot determine HFS+ target size");
-        return -1;
-    }
-
-    char text[160];
-    if (ld_device_format_identity(&target, text, sizeof(text)) != 0) {
-        const int failure = errno;
-        ld_device_close(&target);
-        hfsplus_set_error(error, "cannot identify HFS+ target: %s",
-                  strerror(failure));
-        return -1;
-    }
-
-    *size = target.size_bytes;
-    *identity = ld_xstrdup(text);
-    ld_device_close(&target);
-    return 0;
-}
-
-
 static int digest_final_hex(EVP_MD_CTX *context, char output[65], char **error) {
     unsigned char digest[32];
     unsigned int length = 0;
@@ -401,10 +364,12 @@ static int stage_sha256(const char *path, char output[65], char **error) {
 }
 
 static int capture_target(const char *device, HfsPlusJournal *state, char **error) {
-    state->device = canonical_path(device, error);
-    if (state->device == NULL) return -1;
-    if (target_identity(state->device, &state->target_identity,
-                        &state->physical_bytes, error) != 0) return -1;
+    if (ld_device_capture_binding(device, &state->device,
+                                  &state->target_identity,
+                                  &state->physical_bytes) != 0) {
+        hfsplus_set_error(error, "cannot bind HFS+ target: %s", strerror(errno));
+        return -1;
+    }
     return volume_token(state->device, state->physical_bytes,
                         &state->signature, &state->version,
                         &state->block_size, &state->total_blocks,
@@ -413,13 +378,13 @@ static int capture_target(const char *device, HfsPlusJournal *state, char **erro
 
 static int check_unchanged_target(const char *device,
                                   const HfsPlusJournal *state, char **error) {
-    char *canonical = canonical_path(device, error);
-    if (canonical == NULL) return -1;
+    char *canonical = NULL;
     char *identity = NULL;
     uint64_t physical_bytes = 0;
-    int rc = target_identity(canonical, &identity, &physical_bytes, error);
+    int rc = ld_device_capture_binding(
+        device, &canonical, &identity, &physical_bytes);
     if (rc != 0) {
-        free(canonical);
+        hfsplus_set_error(error, "cannot rebind HFS+ target: %s", strerror(errno));
         return -1;
     }
     if (strcmp(canonical, state->device) != 0 ||
