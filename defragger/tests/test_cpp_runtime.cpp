@@ -56,6 +56,39 @@ int main() {
     ok = check(map_capture_limit(800000U) > 64U * 1024U * 1024U,
                "large GUI maps have bounded capture space") && ok;
 
+    const auto merged = merge_ranges(std::vector<UnitRange>{
+        {5U, 7U}, {0U, 2U}, {2U, 5U}, {10U, 12U}});
+    ok = check(merged.size() == 2U && merged[0].start == 0U &&
+                   merged[0].end == 7U && merged[1].start == 10U &&
+                   merged[1].end == 12U,
+               "native range merging") && ok;
+    const auto complement = complement_ranges(15U, merged);
+    ok = check(complement.size() == 2U && complement[0].start == 7U &&
+                   complement[0].end == 10U && complement[1].start == 12U &&
+                   complement[1].end == 15U,
+               "native range complement") && ok;
+    Json aggregated = aggregate_ranges(
+        20U, 4U, 1U, "test",
+        std::vector<StateRange>{{0U, 20U, 1U}}, "exact");
+    ok = check(aggregated.at("cells").array().size() == 4U,
+               "native range aggregation") && ok;
+    auto& aggregate_cells = aggregated.at("cells").array();
+    ok = check(overlay_ranges(
+                   aggregate_cells,
+                   std::vector<UnitRange>{{2U, 8U}, {7U, 13U}},
+                   "fragmented") == 11U,
+               "native range overlay coalesces overlaps") && ok;
+    bool rejected_overlap = false;
+    try {
+        (void)aggregate_ranges(
+            20U, 4U, 1U, "test",
+            std::vector<StateRange>{{0U, 10U, 1U}, {9U, 12U, 0U}},
+            "exact");
+    } catch (const std::runtime_error&) {
+        rejected_overlap = true;
+    }
+    ok = check(rejected_overlap, "native aggregation rejects overlapping states") && ok;
+
     const auto& registry = backend_registry();
     ok = check(registry.size() == 18U, "registry size") && ok;
 

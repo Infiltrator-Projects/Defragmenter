@@ -19,9 +19,7 @@ WORKER = Path(os.environ.get(
     "LINUX_DEFRAGGER_BTRFS_WORKER", BUILD / "linux-defragger-btrfs-worker"
 ))
 FIXTURE = ROOT / "tests" / "make_btrfs_fixture.py"
-sys.path.insert(0, str(ROOT / "gui"))
-
-from filesystems.btrfs.plugin import BtrfsBackend  # noqa: E402
+MAPPER = BUILD / "linux-defragger-mapper"
 
 
 def run(*args: object, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -81,33 +79,21 @@ def test_worker_contract(work: Path) -> None:
     assert sum(cell["fragmented"] for cell in result["cells"]) == 2
 
 
-def test_python_adapter_is_native_only(work: Path) -> None:
-    image = work / "adapter.img"
+def test_native_mapper_contract(work: Path) -> None:
+    image = work / "mapper.img"
     make(image)
-    old = os.environ.get("LINUX_DEFRAGGER_BTRFS_WORKER")
-    os.environ["LINUX_DEFRAGGER_BTRFS_WORKER"] = str(WORKER)
-    try:
-        backend = BtrfsBackend()
-        assert backend.probe(str(image))
-        result = backend.map(str(image), 12)
-    finally:
-        if old is None:
-            os.environ.pop("LINUX_DEFRAGGER_BTRFS_WORKER", None)
-        else:
-            os.environ["LINUX_DEFRAGGER_BTRFS_WORKER"] = old
+    completed = subprocess.run(
+        [str(MAPPER), str(image), "--fstype", "btrfs", "--cells", "12"],
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    result = json.loads(completed.stdout)
+    assert result["backend_id"] == "btrfs"
     assert result["fragmented_files"] == 1
     assert result["outside_bytes"] == 2 * 1024 * 1024
-
-    source = (ROOT / "gui" / "filesystems" / "btrfs" / "plugin.py").read_text()
-    for forbidden in (
-        "Reader", "u16le", "u32le", "u64le", "bisect", "_TreeReader",
-        "_Mapper", "_CHUNK_ITEM", "_EXTENT_ITEM", "_FILE_EXTENT_REG",
-        "aggregate_ranges", "complement_ranges", "overlay_ranges",
-    ):
-        assert forbidden not in source, forbidden
-    assert 'resolve_program("btrfs-native"' in source
-    assert len(source.splitlines()) < 180
-
+    assert sum(int(cell["outside"]) for cell in result["cells"]) == 512
 
 def test_malformed_metadata_fails_closed(work: Path) -> None:
     image = work / "malformed.img"
@@ -203,10 +189,11 @@ def test_recovery(work: Path) -> None:
 
 def main() -> None:
     assert WORKER.is_file(), f"missing native Btrfs worker: {WORKER}"
+    assert MAPPER.is_file(), f"missing native mapper: {MAPPER}"
     with tempfile.TemporaryDirectory(prefix="linux-defragger-btrfs-") as directory:
         work = Path(directory)
         test_worker_contract(work)
-        test_python_adapter_is_native_only(work)
+        test_native_mapper_contract(work)
         test_malformed_metadata_fails_closed(work)
         test_unsupported_layouts_fail_closed(work)
         test_native_writer(work)

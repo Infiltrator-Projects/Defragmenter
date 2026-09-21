@@ -13,7 +13,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "gui"))
 
 from core import devices
-import privileged_helper
 from ui import support
 
 
@@ -98,36 +97,10 @@ def test_root_owned_journal_namespace() -> None:
         else:
             os.environ["XDG_STATE_HOME"] = old_xdg
 
-    old_pkexec = os.environ.get("PKEXEC_UID")
-    os.environ["PKEXEC_UID"] = "1234"
-    good = [
-        "defrag", "/dev/test", "--filesystem", "xfs", "--write", "--confirm",
-        "/dev/test", "--journal",
-        "/var/lib/linux-defragger/state/1234/dev_test.journal",
-    ]
-    try:
-        privileged_helper._validate_operation_engine_args(good)
-        for bad in (
-            [*good[:-1], "/tmp/dev_test.journal"],
-            [*good[:-1], "/var/lib/linux-defragger/state/999/dev_test.journal"],
-            [*good, "--journal", "/var/lib/linux-defragger/state/1234/other.journal"],
-        ):
-            try:
-                privileged_helper._validate_operation_engine_args(bad)
-            except RuntimeError:
-                pass
-            else:
-                raise AssertionError(f"unsafe privileged journal accepted: {bad}")
-    finally:
-        if old_pkexec is None:
-            os.environ.pop("PKEXEC_UID", None)
-        else:
-            os.environ["PKEXEC_UID"] = old_pkexec
-
-
 def test_native_privileged_helper_contract() -> None:
     source = (ROOT / "native" / "privileged_helper.cpp").read_text(encoding="utf-8")
     engine = (ROOT / "native" / "operation_engine.cpp").read_text(encoding="utf-8")
+    policy = (ROOT / "native" / "helper_policy.cpp").read_text(encoding="utf-8")
 
     assert "posix_spawn(" in source
     assert "fork(" not in source
@@ -141,48 +114,8 @@ def test_native_privileged_helper_contract() -> None:
 
     assert "ld_path_is_mounted(device.c_str())" in engine
     assert "execv(raw[0], raw.data())" in engine
-
-
-def test_helper_waits_for_writer() -> None:
-    events: list[object] = []
-
-    class FakeProcess:
-        pid = 4321
-
-        @staticmethod
-        def poll() -> None:
-            return None
-
-    class FakeThread:
-        def __init__(self) -> None:
-            self.alive = True
-
-        def is_alive(self) -> bool:
-            return self.alive
-
-        def join(self, timeout: float | None = None) -> None:
-            events.append(("join", timeout))
-            self.alive = False
-
-    process = FakeProcess()
-    worker = FakeThread()
-    old_process = privileged_helper._active_process
-    old_thread = privileged_helper._active_thread
-    old_getpgid = os.getpgid
-    old_killpg = os.killpg
-    privileged_helper._active_process = process
-    privileged_helper._active_thread = worker
-    os.getpgid = lambda pid: pid
-    os.killpg = lambda pgid, sig: events.append(("signal", pgid, sig))
-    try:
-        privileged_helper.stop_active_and_wait()
-    finally:
-        privileged_helper._active_process = old_process
-        privileged_helper._active_thread = old_thread
-        os.getpgid = old_getpgid
-        os.killpg = old_killpg
-    assert events[0][0] == "signal"
-    assert events[1] == ("join", 0.1)
+    assert '"/var/lib/linux-defragger/state"' in policy
+    assert "journal.lexically_normal().parent_path() != expected_parent" in policy
 
 
 if __name__ == "__main__":
@@ -190,5 +123,4 @@ if __name__ == "__main__":
     test_regular_image_mount_source()
     test_root_owned_journal_namespace()
     test_native_privileged_helper_contract()
-    test_helper_waits_for_writer()
-    print("mount-topology and privileged-helper safety tests passed")
+    print("mount-topology and native privileged-helper safety tests passed")

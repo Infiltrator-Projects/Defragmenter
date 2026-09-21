@@ -8,18 +8,12 @@ import json
 import os
 import struct
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = Path(os.environ.get("LINUX_DEFRAGGER_BUILD_DIR", ROOT / "build"))
 MAPPER = BUILD / "linux-defragger-mapper"
-GUI = ROOT / "gui"
-if str(GUI) not in sys.path:
-    sys.path.insert(0, str(GUI))
-
-from filesystems.xfs.plugin import BACKEND
 
 
 def _native_worker() -> Path:
@@ -129,14 +123,20 @@ def test_worker_identify_and_analysis() -> None:
         assert payload["inobt_blocks"] == 1
 
 
-def test_gui_adapter_uses_native_analysis() -> None:
+def test_native_mapper_uses_native_analysis() -> None:
     worker = _native_worker()
     os.environ["LINUX_DEFRAGGER_XFS_WORKER"] = str(worker)
     with tempfile.TemporaryDirectory() as raw:
         image = Path(raw) / "minimal-xfs.img"
         _minimal_xfs(image)
-        assert BACKEND.probe(str(image)) is True
-        result = BACKEND.map(str(image), 32)
+        analysed = subprocess.run(
+            [str(worker), "analyse-json", str(image)],
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        summary = json.loads(analysed.stdout)
         mapped = subprocess.run(
             [str(MAPPER), str(image), "--fstype", "xfs", "--cells", "32"],
             check=True,
@@ -144,44 +144,20 @@ def test_gui_adapter_uses_native_analysis() -> None:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        native_map = json.loads(mapped.stdout)
-        assert native_map["filesystem"] == result["filesystem"]
-        assert native_map["total_units"] == result["total_units"]
-        assert native_map["free_bytes"] == result["free_bytes"]
-        assert native_map["fragmented_files"] == result["fragmented_files"]
+        result = json.loads(mapped.stdout)
+        assert result["backend_id"] == "xfs"
         assert result["filesystem"] == "xfs"
         assert result["map_accuracy"] == "exact"
-        assert result["total_units"] == 256
+        assert result["total_units"] == summary["dblocks"] == 256
         assert result["free_bytes"] == 20 * 4096
         assert result["regular_files"] == 0
         assert result["details"]["fragmentation_basis"].startswith("native C XFS")
 
-
-def test_no_python_xfs_engine_remains() -> None:
-    xfs_dir = GUI / "filesystems" / "xfs"
-    python_files = sorted(path.name for path in xfs_dir.glob("*.py"))
-    assert python_files == ["__init__.py", "plugin.py"]
-    source = (xfs_dir / "plugin.py").read_text(encoding="utf-8")
-    for forbidden in (
-        "class _XfsGeometry",
-        "_decode_bmbt_record",
-        "RawXfsMetadata",
-        "xfs_repair",
-        "XFS_IOC_",
-        "FIEMAP",
-        "losetup",
-        "mount -t xfs",
-    ):
-        assert forbidden not in source
-    assert not (GUI / "xfs_engine.py").exists()
-
-
 def main() -> None:
     assert MAPPER.is_file(), f"missing C++ mapper: {MAPPER}"
     test_worker_identify_and_analysis()
-    test_gui_adapter_uses_native_analysis()
-    test_no_python_xfs_engine_remains()
-    print("native C XFS worker and thin GUI adapter tests passed")
+    test_native_mapper_uses_native_analysis()
+    print("native C XFS worker and C++ mapper tests passed")
 
 
 if __name__ == "__main__":

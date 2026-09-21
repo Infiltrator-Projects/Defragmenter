@@ -7,17 +7,11 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = Path(os.environ.get("LINUX_DEFRAGGER_BUILD_DIR", ROOT / "build"))
-GUI = ROOT / "gui"
-if str(GUI) not in sys.path:
-    sys.path.insert(0, str(GUI))
-
-from filesystems.ext4.plugin import BACKEND  # noqa: E402
 
 
 def run_json(program: Path, *arguments: str) -> dict:
@@ -38,8 +32,9 @@ def ranges_overlap(left: tuple[int, int], right: tuple[int, int]) -> bool:
 def main() -> None:
     primary = BUILD / "linux-defragger-ext-worker"
     metadata = BUILD / "linux-defragger-ext-metadata-worker"
+    mapper = BUILD / "linux-defragger-mapper"
     fixture = BUILD / "linux-defragger-ext-fixture"
-    for program in (primary, metadata, fixture):
+    for program in (primary, metadata, mapper, fixture):
         assert program.is_file(), f"missing native EXT test executable: {program}"
 
     os.environ["LINUX_DEFRAGGER_EXT_WORKER"] = str(primary)
@@ -66,7 +61,9 @@ def main() -> None:
             ), (reserved, free_ranges)
 
         expected_metadata_blocks = sum(end - start for start, end in metadata_ranges)
-        mapped = BACKEND.map(str(image), 8192)
+        mapped = run_json(
+            mapper, str(image), "--fstype", "ext4", "--cells", "8192"
+        )
         metadata_cells = [cell for cell in mapped["cells"] if int(cell.get("bad", 0))]
         assert metadata_cells, "EXT GUI map did not expose metadata/reserved cells"
         mapped_metadata_blocks = sum(int(cell["bad"]) for cell in mapped["cells"])
@@ -75,9 +72,10 @@ def main() -> None:
         assert mapped["details"]["metadata_basis"].startswith("native C EXT")
         assert all(int(cell["bad"]) <= int(cell["used"]) for cell in mapped["cells"])
 
-    source = (GUI / "filesystems" / "ext4" / "plugin.py").read_text()
-    assert "linux-defragger-ext-metadata-worker" in source
-    assert 'metadata_ranges, "bad"' in source
+    mapper_source = (ROOT / "native" / "map.cpp").read_text()
+    assert '"ext-metadata"' in mapper_source
+    assert 'overlay_ranges(result.at("cells").array()' in mapper_source
+    assert '"bad"' in mapper_source
     print("EXT metadata/reserved allocation-map classification tests passed")
 
 
