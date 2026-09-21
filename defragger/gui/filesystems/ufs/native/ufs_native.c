@@ -9,6 +9,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <linux/fs.h>
 #include <stdbool.h>
 #include <stdint.h>
