@@ -15,7 +15,7 @@ A dependency is chosen because its contract is stronger for the job, not because
 ```text
 GTK 3 presentation
         ↓
-Python coordinators / service models (migration boundary)
+Python GTK coordinators / presentation models
         ↓
 C++17 application services
 registry / mapper / operation dispatcher / privileged session
@@ -38,12 +38,10 @@ The source tree reflects those responsibilities:
 
 ```text
 defragger/
-├── gui/ui/                 presentation and user interaction
-├── gui/core/               shared application protocol/data contracts
-├── gui/engine/             worker resolution, orchestration and read-only compatibility I/O
-├── gui/backends/           plugin contracts and single registry
-├── gui/filesystems/        authoritative per-filesystem implementations
-├── native/                 C++17 application services and protocol ownership
+├── gui/ui/                 GTK presentation and user interaction
+├── gui/core/               presentation-side protocol/device/path contracts
+├── gui/filesystems/*/native/ authoritative per-filesystem native engines
+├── native/                 authoritative C++17 registry/control services
 ├── src/core/               filesystem-neutral native C safety/runtime services
 ├── test_media/             destructive sacrificial-media utility
 ├── tests/                  native, filesystem, GUI, safety and release evidence
@@ -53,7 +51,7 @@ defragger/
 
 ## Contracts and ownership
 
-`native/runtime.cpp` is the authoritative application registry used by the production C++ mapper and operation dispatcher. GTK consumes that native registry manifest directly and no longer carries or installs a duplicate Python capability table. The older source-only Python plugin registry remains solely as migration/parity evidence until its final removal; it is not a production authority. Each filesystem package still owns its probe, analyser, placement rules, writer and verifier, and native C below a filesystem package remains an implementation detail rather than a second filesystem engine.
+`native/runtime.cpp` is the single application registry used by the production C++ mapper, operation dispatcher and GTK manifest loader. The former Python registry, filesystem plugin declarations and Python dispatcher/helper compatibility graph have been removed rather than retained as a second knowledge base. Each native filesystem directory owns its probe, analyser, placement rules, writer and verifier.
 
 `src/core/` owns mechanics that are genuinely filesystem-neutral: exact raw I/O adaptation, target identity/capacity checks, overlap-aware mounted-target rejection, Stop state, resource defaults and machine-readable result emission. Filesystem geometry, metadata interpretation, transaction stages and recovery rules stay with the owning filesystem.
 
@@ -63,7 +61,7 @@ GTK objects stay in the presentation layer. Runner, policy and storage models ex
 
 C and C++ are first-class implementation languages with different jobs. C remains the strongest fit for filesystem structures, codecs, raw parsers, planners, writers and the storage-safety core because those components map directly to fixed-layout data, kernel interfaces and explicit byte-oriented algorithms.
 
-C++17 is used where scoped ownership and stronger value types materially improve filesystem-neutral application work. The native registry, JSON/protocol model, allocation-map translation, operation dispatcher, bounded child-process capture and privileged helper session live in `defragger/native/`. Those native binaries are the only mapper/operation-dispatch/privileged-helper control plane installed with the application. The installed GTK layer carries no filesystem capability registry or operation table of its own: it loads the immutable native manifest and treats the advertised operation names as authoritative. The old Python dispatcher, engine and filesystem-plugin graphs remain in-tree only for migration/parity regression evidence and are no longer shipped as production control paths. The privileged helper uses `posix_spawn` rather than post-`fork` C++ work and owns its child process group explicitly.
+C++17 is used where scoped ownership and stronger value types materially improve filesystem-neutral application work. The native registry, JSON/protocol model, allocation-map translation, operation dispatcher, bounded child-process capture and privileged helper session live in `defragger/native/`. Those native binaries are the only mapper/operation-dispatch/privileged-helper control plane in the repository and installed application. GTK carries no filesystem capability registry or operation table of its own: it loads the immutable native manifest and treats the advertised operation names as authoritative. The privileged helper uses `posix_spawn` rather than post-`fork` C++ work and owns its child process group explicitly.
 
 The NTFS plan database also uses narrow, non-inheriting RAII owners for SQLite statements, transaction rollback and OpenSSL digest state behind the existing C-facing filesystem implementation. None of these uses creates a class hierarchy around the raw filesystem engines. Working C is not rewritten merely because C++ is available, and C++ is not avoided where it gives a stronger ownership model.
 
@@ -81,7 +79,7 @@ Paths and device-provided metadata are external input. A previously valid path m
 
 ## Filesystem engine contract
 
-Read-only plugins may probe and map a filesystem without implementing mutation. A write-capable plugin additionally owns a first-party native mutation path and an explicit Recover contract.
+A read-only native backend may probe and map a filesystem without implementing mutation. A write-capable backend additionally owns a first-party native mutation path and an explicit Recover contract.
 
 Production writers do not mount the target, ask a mounted filesystem to choose placement, or launch external repair/defragmentation utilities. In-process system libraries are permitted where their documented API is part of the chosen implementation, but Defragmenter remains responsible for placement, transaction, verification and failure policy.
 
@@ -116,7 +114,7 @@ The project assumes the kernel, libc, required libraries and storage hardware ho
 
 Common is authoritative for reusable mechanisms whose semantics are genuinely generic. If Defragmenter has a stronger implementation of a generic primitive, the preferred direction is to improve Common until its contract preserves that correctness, performance and resilience, then remove the local duplicate.
 
-For this pin, Common also owns deterministic finite-decimal conversion used by the C++ JSON adapter, checked allocation sizing used by local runtime wrappers, allocation-free key=value line parsing for native journals/manifests, POSIX lexical path joining/concatenation, native typography/structural design identity, immutable MB Corpo asset provenance and the complete layered Linux MBLINK Day/Night semantic role set. The GTK adapter is generated from Common's design JSON and consumes matching titlebar/connection/heading/summary/detail/note/state roles; Test Media consumes the same native design API directly. Defragmenter's no-font-fallback policy remains product-local because the package installs the verified Common-described faces itself. Python compatibility analysis remains read-only; generic durable publication/removal and exact write I/O are not duplicated there because authoritative mutation is native.
+For this pin, Common also owns deterministic finite-decimal conversion used by the C++ JSON adapter, checked allocation sizing used by local runtime wrappers, allocation-free key=value line parsing for native journals/manifests, POSIX lexical path joining/concatenation, native typography/structural design identity, immutable MB Corpo asset provenance and the complete layered Linux MBLINK Day/Night semantic role set. The GTK adapter is generated from Common's design JSON and consumes matching titlebar/connection/heading/summary/detail/note/state roles; Test Media consumes the same native design API directly. Defragmenter's no-font-fallback policy remains product-local because the package installs the verified Common-described faces itself. Python is confined to GTK presentation/glue; filesystem analysis, mapping, mutation, durability and capability authority are native.
 
 Do not move filesystem policy, target-safety decisions or transaction semantics into Common merely to reduce line count.
 

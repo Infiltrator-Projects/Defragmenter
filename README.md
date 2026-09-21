@@ -49,7 +49,7 @@ Unsupported layouts fail closed rather than being guessed. Write-capable engines
 
 The canonical implementation lives under `defragger/`.
 
-Filesystem implementations are organised below `defragger/gui/filesystems/<format>/`, with native C under each filesystem's `native/` directory where exact low-level analysis or mutation is required. Filesystem-neutral device safety, raw I/O and Stop handling live under `defragger/src/core/`. The C++17 application-service layer in `defragger/native/` owns the native registry contract, allocation-map translation, operation dispatch and privileged helper session while the GTK presentation is migrated incrementally.
+Filesystem implementations are organised below `defragger/gui/filesystems/<format>/native/`. Filesystem-neutral device safety, raw I/O and Stop handling live under `defragger/src/core/`. The C++17 application-service layer in `defragger/native/` is the sole registry, allocation-map translation, operation-dispatch and privileged-helper control plane; GTK remains Python presentation/glue and consumes the native manifest directly.
 
 The operating system supplies raw block I/O, but filesystem parsing, placement planning, staging and metadata updates are owned by the project. Architecture and regression tests reject known external filesystem mutation/repair orchestration and duplicate implementation paths.
 
