@@ -4,6 +4,7 @@ This changelog records user-visible, compatibility, architecture and validation 
 
 ## Unreleased
 
+- Began semantic decomposition of oversized filesystem sources by moving NTFS persistent-journal representation, parsing and durable publication into a dedicated transaction component; placement, commit ordering and Recover policy remain in the worker.
 - Clarified the transaction architecture after the target-binding extraction: the native core shares only canonical target/object/capacity mechanics, while filesystem-specific volume identity, phase meaning, placement and recovery semantics remain owned by each filesystem engine.
 - Extended the shared one-open transaction target binding across every write-path family except XFS, whose local probe deliberately retains an extra mounted-related-device assertion; filesystem-specific volume identity and recovery policy remain local.
 - Began the shared transaction-mechanics consolidation without centralising filesystem semantics: all native worker-level transaction target snapshots now use one filesystem-neutral identity formatter backed by the verified LdDevice contract, descriptor-based exFAT staging uses the same identity representation, and identity comparison delegates to that shared formatter.

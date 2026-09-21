@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "ntfs_native.h"
+#include "ntfs_transaction.h"
 
 #include "ld_device.h"
 #include "ld_io.h"
@@ -28,24 +29,7 @@
 #include <unistd.h>
 
 #define PROGRAM_NAME "linux-defragger-ntfs-worker"
-#define JOURNAL_MAGIC "LINUX-DEFRAGGER-NTFS-JOURNAL-1"
 #define JOURNAL_CLUSTER_INTERVAL UINT64_C(16384)
-
-typedef struct {
-    char *device;
-    char *target_identity;
-    char serial[17];
-    char operation[24];
-    char phase[32];
-    char *stage;
-    char *plan;
-    uint64_t physical_bytes;
-    uint64_t filesystem_bytes;
-    uint64_t commit_cluster;
-    uint64_t move_clusters;
-    uint64_t workspace_start;
-    uint64_t workspace_clusters;
-} NtfsJournal;
 
 static void usage(FILE *stream) {
     fprintf(stream,
@@ -60,126 +44,6 @@ static void usage(FILE *stream) {
 
 
 
-
-static int ensure_directory_tree(const char *path, char **error) {
-    if (ld_path_ensure_trusted_directory_tree(path) != 0) {
-        ntfs_set_error(error, "cannot create NTFS journal directory %s: %s",
-                       path, strerror(errno));
-        return -1;
-    }
-    return 0;
-}
-
-
-static void unlink_if_exists(const char *path) {
-    if (path == NULL || *path == '\0') return;
-    const int failure = infiltratr_unlink_durable(path, true);
-    if (failure != 0)
-        fprintf(stderr, "%s: warning: cannot durably remove %s: %s\n",
-                PROGRAM_NAME, path, strerror(failure));
-}
-
-
-static void journal_free(NtfsJournal *state) {
-    if (state == NULL) return;
-    free(state->device); free(state->target_identity); free(state->stage); free(state->plan);
-    memset(state, 0, sizeof(*state));
-}
-
-static bool safe_journal_value(const char *value) {
-    return value != NULL && strchr(value, '\n') == NULL && strchr(value, '\r') == NULL && strchr(value, '=') == NULL;
-}
-
-static bool journal_write_stream(FILE *file, const void *user_data) {
-    const NtfsJournal *state = user_data;
-    fprintf(file, "%s\n", JOURNAL_MAGIC);
-    fprintf(file, "device=%s\n", state->device);
-    fprintf(file, "target_identity=%s\n", state->target_identity);
-    fprintf(file, "serial=%s\n", state->serial);
-    fprintf(file, "operation=%s\n", state->operation);
-    fprintf(file, "phase=%s\n", state->phase);
-    fprintf(file, "stage=%s\n", state->stage);
-    fprintf(file, "plan=%s\n", state->plan);
-    fprintf(file, "physical_bytes=%" PRIu64 "\n", state->physical_bytes);
-    fprintf(file, "filesystem_bytes=%" PRIu64 "\n", state->filesystem_bytes);
-    fprintf(file, "commit_cluster=%" PRIu64 "\n", state->commit_cluster);
-    fprintf(file, "move_clusters=%" PRIu64 "\n", state->move_clusters);
-    fprintf(file, "workspace_start=%" PRIu64 "\n", state->workspace_start);
-    fprintf(file, "workspace_clusters=%" PRIu64 "\n", state->workspace_clusters);
-    return !ferror(file);
-}
-
-static int journal_save(const char *path, const NtfsJournal *state, char **error) {
-    if (!safe_journal_value(state->device) || !safe_journal_value(state->target_identity) ||
-        !safe_journal_value(state->stage) || !safe_journal_value(state->plan)) {
-        ntfs_set_error(error, "NTFS transaction paths contain unsupported journal characters");
-        return -1;
-    }
-    char *parent = ld_path_parent_directory(path);
-    if (ensure_directory_tree(parent, error) != 0) { free(parent); return -1; }
-    free(parent);
-    const int failure = infiltratr_atomic_file_write(
-        path, INFILTRATR_ATOMIC_FILE_PRIVATE, journal_write_stream, state);
-    if (failure != 0) {
-        ntfs_set_error(error, "cannot publish NTFS journal: %s", strerror(failure));
-        return -1;
-    }
-    return 0;
-}
-
-static char *value_copy(const char *value) {
-    size_t length = strlen(value);
-    while (length != 0 && (value[length - 1] == '\n' || value[length - 1] == '\r')) length--;
-    return ld_xstrndup(value, length);
-}
-
-static int parse_u64(const char *text, uint64_t *value) {
-    return infiltratr_parse_u64(text, 10U, value) ? 0 : -1;
-}
-
-static int journal_load(const char *path, NtfsJournal *state, char **error) {
-    memset(state, 0, sizeof(*state));
-    FILE *file = fopen(path, "r");
-    if (file == NULL) { ntfs_set_error(error, "cannot open NTFS recovery journal: %s", strerror(errno)); return -1; }
-    char *line = NULL; size_t capacity = 0;
-    if (getline(&line, &capacity, file) < 0) goto invalid;
-    infiltratr_trim_line_end(line);
-    if (strcmp(line, JOURNAL_MAGIC) != 0) goto invalid;
-    while (getline(&line, &capacity, file) >= 0) {
-        char *key = NULL;
-        char *equals = NULL;
-        if (infiltratr_config_parse_line(line, &key, &equals) !=
-            INFILTRATR_CONFIG_LINE_ENTRY)
-            goto invalid;
-        if (strcmp(key, "device") == 0) { free(state->device); state->device = value_copy(equals); }
-        else if (strcmp(key, "target_identity") == 0) { free(state->target_identity); state->target_identity = value_copy(equals); }
-        else if (strcmp(key, "serial") == 0) infiltratr_copy_string(state->serial, sizeof(state->serial), equals);
-        else if (strcmp(key, "operation") == 0) infiltratr_copy_string(state->operation, sizeof(state->operation), equals);
-        else if (strcmp(key, "phase") == 0) infiltratr_copy_string(state->phase, sizeof(state->phase), equals);
-        else if (strcmp(key, "stage") == 0) { free(state->stage); state->stage = value_copy(equals); }
-        else if (strcmp(key, "plan") == 0) { free(state->plan); state->plan = value_copy(equals); }
-        else if (strcmp(key, "physical_bytes") == 0 && parse_u64(equals, &state->physical_bytes) != 0) goto invalid;
-        else if (strcmp(key, "filesystem_bytes") == 0 && parse_u64(equals, &state->filesystem_bytes) != 0) goto invalid;
-        else if (strcmp(key, "commit_cluster") == 0 && parse_u64(equals, &state->commit_cluster) != 0) goto invalid;
-        else if (strcmp(key, "move_clusters") == 0 && parse_u64(equals, &state->move_clusters) != 0) goto invalid;
-        else if (strcmp(key, "workspace_start") == 0 && parse_u64(equals, &state->workspace_start) != 0) goto invalid;
-        else if (strcmp(key, "workspace_clusters") == 0 && parse_u64(equals, &state->workspace_clusters) != 0) goto invalid;
-    }
-    free(line); fclose(file);
-    if (state->device == NULL || state->target_identity == NULL || state->stage == NULL || state->plan == NULL ||
-        state->serial[0] == '\0' || state->operation[0] == '\0' || state->phase[0] == '\0' ||
-        state->physical_bytes == 0 || state->filesystem_bytes == 0) goto invalid_state;
-    return 0;
-invalid:
-    free(line); fclose(file);
-invalid_state:
-    journal_free(state); ntfs_set_error(error, "NTFS recovery journal is malformed or incomplete"); return -1;
-}
-
-static int journal_phase(const char *path, NtfsJournal *state, const char *phase, char **error) {
-    infiltratr_copy_string(state->phase, sizeof(state->phase), phase);
-    return journal_save(path, state, error);
-}
 
 static void transaction_cleanup(const char *journal, const NtfsJournal *state) {
     if (state != NULL) {
@@ -340,13 +204,13 @@ static int commit_stage(const char *device, const char *journal_path, NtfsJourna
         copied++; state->commit_cluster = c + 1U;
         if ((copied % JOURNAL_CLUSTER_INTERVAL) == 0U) {
             if (fsync(source) != 0) { ntfs_set_error(error, "syncing NTFS source commit failed: %s", strerror(errno)); goto fail; }
-            if (journal_save(journal_path, state, error) != 0) goto fail;
+            if (ntfs_journal_save(journal_path, state, error) != 0) goto fail;
             unsigned percent = total == 0 ? 100U : (unsigned)((copied * 100U) / total);
             printf("NTFS source commit: %u%%\n", percent); fflush(stdout);
         }
     }
     if (fsync(source) != 0) { ntfs_set_error(error, "syncing NTFS source commit failed: %s", strerror(errno)); goto fail; }
-    if (journal_save(journal_path, state, error) != 0) goto fail;
+    if (ntfs_journal_save(journal_path, state, error) != 0) goto fail;
     free(buffer); (void)flock(source, LOCK_UN); close(source);
     ntfs_layout_free(&layout); ntfs_close_volume(&stage); return 0;
 fail:
@@ -512,10 +376,10 @@ static int try_terminal_workspace_relayout(const char *device, const char *opera
         fflush(stdout);
         if (ld_stop_requested()) { result = 130; goto stopped_unchanged; }
         if (check_unchanged_target(device, state, error) != 0) goto done;
-        if (journal_phase(journal_path, state, "direct-metadata", error) != 0) goto done;
+        if (ntfs_journal_phase(journal_path, state, "direct-metadata", error) != 0) goto done;
         if (set_source_dirty(device, state->target_identity, state->physical_bytes, true, error) != 0) goto metadata_recover_required;
         if (ntfs_apply_stage_metadata(device, db, true, state->target_identity, state->physical_bytes, error) != 0) goto metadata_recover_required;
-        if (journal_phase(journal_path, state, "direct-verifying-source", error) != 0)
+        if (ntfs_journal_phase(journal_path, state, "direct-verifying-source", error) != 0)
             goto metadata_recover_required;
         if (ntfs_verify_stage(device, db, growth, true, error) != 0)
             goto metadata_recover_required;
@@ -552,7 +416,7 @@ static int try_terminal_workspace_relayout(const char *device, const char *opera
     fflush(stdout);
 
     if (ld_stop_requested()) { result = 130; goto stopped_unchanged; }
-    if (journal_phase(journal_path, state, "workspace-staging", error) != 0) goto done;
+    if (ntfs_journal_phase(journal_path, state, "workspace-staging", error) != 0) goto done;
     printf("NTFS phase 1: staging %llu moved clusters into the durable terminal safety workspace at cluster %llu.\n",
            (unsigned long long)state->workspace_clusters,
            (unsigned long long)state->workspace_start);
@@ -565,14 +429,14 @@ static int try_terminal_workspace_relayout(const char *device, const char *opera
     if (ntfs_verify_workspace(device, db, source->cluster_size,
                               state->target_identity, state->physical_bytes,
                               error) != 0) goto done;
-    if (journal_phase(journal_path, state, "workspace-staged", error) != 0) goto done;
+    if (ntfs_journal_phase(journal_path, state, "workspace-staged", error) != 0) goto done;
     printf("NTFS workspace staging complete: %llu clusters durably copied and checksummed; source metadata is still unchanged.\n",
            (unsigned long long)state->workspace_clusters);
     fflush(stdout);
     if (ld_stop_requested()) { result = 130; goto stopped_unchanged; }
     if (check_unchanged_target(device, state, error) != 0) goto done;
     if (set_source_dirty(device, state->target_identity, state->physical_bytes, true, error) != 0) goto done;
-    if (journal_phase(journal_path, state, "workspace-placing", error) != 0) goto recover_required;
+    if (ntfs_journal_phase(journal_path, state, "workspace-placing", error) != 0) goto recover_required;
 
     puts("NTFS phase 2: placing the canonical layout directly from the durable terminal workspace.");
     fflush(stdout);
@@ -606,11 +470,11 @@ static int try_terminal_workspace_relayout(const char *device, const char *opera
         free(restore_error);
         goto recover_required;
     }
-    if (journal_phase(journal_path, state, "workspace-metadata", error) != 0) goto recover_required;
+    if (ntfs_journal_phase(journal_path, state, "workspace-metadata", error) != 0) goto recover_required;
     puts("NTFS phase 3: committing canonical MFT mapping pairs and $Bitmap metadata.");
     fflush(stdout);
     if (ntfs_apply_stage_metadata(device, db, true, state->target_identity, state->physical_bytes, error) != 0) goto recover_required;
-    if (journal_phase(journal_path, state, "workspace-verifying-source", error) != 0)
+    if (ntfs_journal_phase(journal_path, state, "workspace-verifying-source", error) != 0)
         goto recover_required;
     if (ntfs_verify_stage(device, db, growth, true, error) != 0) goto recover_required;
     if (set_source_dirty(device, state->target_identity, state->physical_bytes, false, error) != 0) goto recover_required;
@@ -693,10 +557,10 @@ static int build_and_commit(const char *device, const char *operation, const cha
                                                             &source_layout, &source_catalogue, error);
     if (workspace_result == 0 || workspace_result == 130) { result = workspace_result; goto done; }
     if (workspace_result < 0) goto done;
-    if (capacity_preflight(journal_path, &source, &source_layout, error) != 0 || journal_save(journal_path, &state, error) != 0) goto precommit_fail;
+    if (capacity_preflight(journal_path, &source, &source_layout, error) != 0 || ntfs_journal_save(journal_path, &state, error) != 0) goto precommit_fail;
     printf("Raw userspace native-C NTFS engine %s\n", LD_VERSION); fflush(stdout);
     if (ld_stop_requested()) goto stopped;
-    if (journal_phase(journal_path, &state, "cloning", error) != 0) goto precommit_fail;
+    if (ntfs_journal_phase(journal_path, &state, "cloning", error) != 0) goto precommit_fail;
     int clone_result = create_stage(device, state.stage, &source, &source_layout, error);
     if (clone_result == -2 || ld_stop_requested()) goto stopped;
     if (clone_result != 0) goto precommit_fail;
@@ -704,7 +568,7 @@ static int build_and_commit(const char *device, const char *operation, const cha
     if (ntfs_open_volume(state.stage, true, &staged, error) != 0) goto precommit_fail;
     if (ntfs_read_layout(&staged, false, &staged_layout, error) != 0) goto precommit_fail;
     if (ntfs_scan_catalogue(&staged, &staged_layout, &staged_catalogue, error) != 0) goto precommit_fail;
-    if (journal_phase(journal_path, &state, "planning", error) != 0) goto precommit_fail;
+    if (ntfs_journal_phase(journal_path, &state, "planning", error) != 0) goto precommit_fail;
     bool growth = strcmp(operation, "growth-defrag") == 0;
     if (ntfs_plan_layout(&staged_layout, &staged_catalogue, staged.total_clusters, growth, &placements, error) != 0) {
         if (error != NULL && *error != NULL && strstr(*error, "no supported movable") != NULL &&
@@ -722,7 +586,7 @@ static int build_and_commit(const char *device, const char *operation, const cha
     ntfs_catalogue_free(&staged_catalogue);
     ntfs_layout_free(&staged_layout);
     ntfs_close_volume(&staged);
-    if (journal_phase(journal_path, &state, "arranging", error) != 0) goto precommit_fail;
+    if (ntfs_journal_phase(journal_path, &state, "arranging", error) != 0) goto precommit_fail;
     printf("Arranging %zu supported NTFS streams; %" PRIu64 " clusters require relocation.\n", placements.count, state.move_clusters);
     if (placements.fixed_streams != 0)
         printf("Preserving %" PRIu64 " unsupported-but-safe NTFS user stream%s in place as fixed allocation obstacle%s.\n",
@@ -737,16 +601,16 @@ static int build_and_commit(const char *device, const char *operation, const cha
         goto precommit_fail;
     }
     if (ntfs_apply_stage_metadata(state.stage, db, false, NULL, 0U, error) != 0) goto precommit_fail;
-    if (journal_phase(journal_path, &state, "verifying-stage", error) != 0 ||
+    if (ntfs_journal_phase(journal_path, &state, "verifying-stage", error) != 0 ||
         ntfs_verify_stage(state.stage, db, growth, false, error) != 0) goto precommit_fail;
     if (ld_stop_requested()) goto stopped;
     if (check_unchanged_target(device, &state, error) != 0) goto precommit_fail;
     if (set_source_dirty(device, state.target_identity, state.physical_bytes, true, error) != 0) goto precommit_fail;
     state.commit_cluster = 0;
-    if (journal_phase(journal_path, &state, "commit", error) != 0) goto commit_fail;
+    if (ntfs_journal_phase(journal_path, &state, "commit", error) != 0) goto commit_fail;
     puts("The internally verified raw NTFS working image is complete. Starting the persistent source commit."); fflush(stdout);
     if (commit_stage(device, journal_path, &state, 0, error) != 0) goto commit_fail;
-    if (journal_phase(journal_path, &state, "verifying-source", error) != 0) goto commit_fail;
+    if (ntfs_journal_phase(journal_path, &state, "verifying-source", error) != 0) goto commit_fail;
     if (ntfs_verify_stage(device, db, growth, true, error) != 0) goto commit_fail;
     if (set_source_dirty(device, state.target_identity, state.physical_bytes, false, error) != 0) goto commit_fail;
     if (live_updates) {
@@ -771,7 +635,7 @@ done:
     ntfs_placements_free(&placements);
     ntfs_catalogue_free(&staged_catalogue); ntfs_layout_free(&staged_layout); ntfs_close_volume(&staged);
     ntfs_catalogue_free(&source_catalogue); ntfs_layout_free(&source_layout); ntfs_close_volume(&source);
-    journal_free(&state); free(identity); free(real); return result;
+    ntfs_journal_free(&state); free(identity); free(real); return result;
 }
 
 static int recover_transaction(const char *device, const char *journal_path, char **error) {
@@ -781,12 +645,12 @@ static int recover_transaction(const char *device, const char *journal_path, cha
         return 1;
     }
     NtfsJournal state;
-    if (journal_load(journal_path, &state, error) != 0) return 1;
+    if (ntfs_journal_load(journal_path, &state, error) != 0) return 1;
     if (!ld_path_is_derived_from(state.stage, journal_path, ".ntfs-stage.img") ||
         !ld_path_is_derived_from(state.plan, journal_path, ".ntfs-plan.sqlite")) {
         ntfs_set_error(error,
             "NTFS recovery artifacts are not derived from the selected journal path");
-        journal_free(&state);
+        ntfs_journal_free(&state);
         return 1;
     }
     int result = 1; char *real = NULL, *identity = NULL; uint64_t size = 0;
@@ -806,9 +670,9 @@ static int recover_transaction(const char *device, const char *journal_path, cha
         puts("Recovering an NTFS metadata-only canonical relayout.");
         fflush(stdout);
         if (set_source_dirty(device, state.target_identity, state.physical_bytes, true, error) != 0 ||
-            journal_phase(journal_path, &state, "direct-metadata", error) != 0 ||
+            ntfs_journal_phase(journal_path, &state, "direct-metadata", error) != 0 ||
             ntfs_apply_stage_metadata(device, metadata_db, true, state.target_identity, state.physical_bytes, error) != 0 ||
-            journal_phase(journal_path, &state, "direct-verifying-source", error) != 0 ||
+            ntfs_journal_phase(journal_path, &state, "direct-verifying-source", error) != 0 ||
             ntfs_verify_stage(device, metadata_db, growth, true, error) != 0 ||
             set_source_dirty(device, state.target_identity, state.physical_bytes, false, error) != 0) {
             sqlite3_close(metadata_db);
@@ -852,13 +716,13 @@ static int recover_transaction(const char *device, const char *journal_path, cha
         puts("Recovering NTFS directly from the checksummed terminal safety workspace.");
         fflush(stdout);
         if (set_source_dirty(device, state.target_identity, state.physical_bytes, true, error) != 0 ||
-            journal_phase(journal_path, &state, "workspace-placing", error) != 0 ||
+            ntfs_journal_phase(journal_path, &state, "workspace-placing", error) != 0 ||
             ntfs_place_workspace(device, workspace_db, cluster_size,
                                  state.target_identity, state.physical_bytes,
                                  false, error) != 0 ||
-            journal_phase(journal_path, &state, "workspace-metadata", error) != 0 ||
+            ntfs_journal_phase(journal_path, &state, "workspace-metadata", error) != 0 ||
             ntfs_apply_stage_metadata(device, workspace_db, true, state.target_identity, state.physical_bytes, error) != 0 ||
-            journal_phase(journal_path, &state, "workspace-verifying-source", error) != 0 ||
+            ntfs_journal_phase(journal_path, &state, "workspace-verifying-source", error) != 0 ||
             ntfs_verify_stage(device, workspace_db, growth, true, error) != 0 ||
             set_source_dirty(device, state.target_identity, state.physical_bytes, false, error) != 0) {
             sqlite3_close(workspace_db); goto done;
@@ -893,13 +757,13 @@ static int recover_transaction(const char *device, const char *journal_path, cha
         printf("Resuming the NTFS source commit at cluster %" PRIu64 ".\n", state.commit_cluster); fflush(stdout);
         if (commit_stage(device, journal_path, &state, state.commit_cluster, error) != 0) { sqlite3_close(db); goto done; }
     }
-    if (journal_phase(journal_path, &state, "verifying-source", error) != 0) { sqlite3_close(db); goto done; }
+    if (ntfs_journal_phase(journal_path, &state, "verifying-source", error) != 0) { sqlite3_close(db); goto done; }
     if (ntfs_verify_stage(device, db, growth, true, error) != 0) { sqlite3_close(db); goto done; }
     if (set_source_dirty(device, state.target_identity, state.physical_bytes, false, error) != 0) { sqlite3_close(db); goto done; }
     sqlite3_close(db); transaction_cleanup(journal_path, &state);
     puts("NTFS recovery completed successfully."); ld_emit_result_event(stdout, "recover", "completed", ""); result = 0;
 done:
-    free(real); free(identity); journal_free(&state); return result;
+    free(real); free(identity); ntfs_journal_free(&state); return result;
 }
 
 int main(int argc, char **argv) {

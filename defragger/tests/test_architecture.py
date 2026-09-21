@@ -105,7 +105,7 @@ def test_single_filesystem_hierarchy_and_c_first_writers() -> None:
 
     required_native = {
         "ext4": {"ext_native.h", "ext_common.c", "ext_catalog.c", "ext_plan.c", "ext_worker.c"},
-        "ntfs": {"ntfs_native.h", "ntfs_common.c", "ntfs_catalog.c", "ntfs_plan.c", "ntfs_plan_db.cpp", "ntfs_worker.c"},
+        "ntfs": {"ntfs_native.h", "ntfs_common.c", "ntfs_catalog.c", "ntfs_plan.c", "ntfs_plan_db.cpp", "ntfs_transaction.h", "ntfs_transaction.c", "ntfs_worker.c"},
         "exfat": {"exfat_native.h", "exfat_common.c", "exfat_plan.c", "exfat_worker.c"},
         "xfs": {"xfs_native.h", "xfs_common.c", "xfs_catalog.c", "xfs_plan.c", "xfs_metadata.c", "xfs_worker.c"},
         "affs": {"affs_native.h", "affs_native.c", "affs_worker.c"},
@@ -118,6 +118,12 @@ def test_single_filesystem_hierarchy_and_c_first_writers() -> None:
         "pfs3": {"pfs3_native.h", "pfs3_native.c", "pfs3_worker.c"},
         "hfs": {"analyser.c", "writer.c"},
     }
+    ntfs_worker = (GUI / "filesystems" / "ntfs" / "native" / "ntfs_worker.c").read_text()
+    ntfs_transaction = (GUI / "filesystems" / "ntfs" / "native" / "ntfs_transaction.c").read_text()
+    assert "NTFS_JOURNAL_MAGIC" not in ntfs_worker
+    assert "NTFS_JOURNAL_MAGIC" in ntfs_transaction
+    assert "ntfs_journal_save" in ntfs_transaction
+
     for filesystem, native_files in required_native.items():
         package = GUI / "filesystems" / filesystem
         native = package / "native"

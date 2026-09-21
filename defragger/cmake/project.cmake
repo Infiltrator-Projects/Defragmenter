@@ -384,7 +384,8 @@ target_link_libraries(linux-defragger-ntfs-native PUBLIC
     linux-defragger-core SQLite::SQLite3 OpenSSL::Crypto)
 
 add_executable(linux-defragger-ntfs-worker
-    gui/filesystems/ntfs/native/ntfs_worker.c)
+    gui/filesystems/ntfs/native/ntfs_worker.c
+    gui/filesystems/ntfs/native/ntfs_transaction.c)
 target_include_directories(linux-defragger-ntfs-worker PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
     "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/ntfs/native"
