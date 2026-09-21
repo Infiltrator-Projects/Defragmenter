@@ -49,6 +49,17 @@ static int parse_u64(const char *text, uint64_t *value)
 {
     return infiltratr_parse_u64(text, 10U, value) ? 0 : -1;
 }
+
+static void remove_partial_stage(const char *path)
+{
+    if (path == NULL || *path == '\0')
+        return;
+    const int failure = infiltratr_unlink_durable(path, true);
+    if (failure != 0)
+        fprintf(stderr,
+                "%s: warning: cannot durably remove incomplete NTFS stage %s: %s\n",
+                PROGRAM_NAME, path, strerror(failure));
+}
 static void serial_hex(const uint8_t serial[8], char output[17]) {
     static const char digits[] = "0123456789abcdef";
     for (size_t i = 0; i < 8U; ++i) {
@@ -106,24 +117,24 @@ static int create_stage(const char *source_path, const char *stage_path,
     if (output < 0) { close(input); ntfs_set_error(error, "cannot create NTFS working image: %s", strerror(errno)); return -1; }
     if (ftruncate(output, (off_t)source->volume_bytes) != 0) {
         ntfs_set_error(error, "cannot size NTFS working image: %s", strerror(errno));
-        close(input); close(output); unlink_if_exists(stage_path); return -1;
+        close(input); close(output); remove_partial_stage(stage_path); return -1;
     }
     uint8_t *buffer = ld_xmalloc(source->cluster_size); uint64_t copied = 0;
     for (uint64_t cluster = 0; cluster < source->total_clusters; ++cluster) {
         bool needed = ntfs_bitmap_bit(layout, cluster) != 0 || cluster == 0 || cluster + 1U == source->total_clusters;
         if (!needed) continue;
         if (copy_cluster(input, output, source->cluster_size, cluster, buffer, error) != 0) {
-            free(buffer); close(input); close(output); unlink_if_exists(stage_path); return -1;
+            free(buffer); close(input); close(output); remove_partial_stage(stage_path); return -1;
         }
         copied++;
         if ((copied % 8192U) == 0U && ld_stop_requested()) {
-            free(buffer); close(input); close(output); unlink_if_exists(stage_path); return -2;
+            free(buffer); close(input); close(output); remove_partial_stage(stage_path); return -2;
         }
     }
     free(buffer);
     if (fsync(output) != 0) {
         ntfs_set_error(error, "cannot sync NTFS working image: %s", strerror(errno));
-        close(input); close(output); unlink_if_exists(stage_path); return -1;
+        close(input); close(output); remove_partial_stage(stage_path); return -1;
     }
     close(input); close(output); return 0;
 }

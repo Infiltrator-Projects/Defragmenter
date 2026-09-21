@@ -4,6 +4,7 @@ This changelog records user-visible, compatibility, architecture and validation 
 
 ## Unreleased
 
+- Restored explicit durable cleanup for incomplete NTFS staging images after the transaction-component split, keeping pre-journal failure cleanup worker-local while persistent journal-owned cleanup stays in `ntfs_transaction.c`.
 - Completed the NTFS journal split by moving durable stage/plan/WAL/SHM cleanup into the transaction component and restoring worker-local numeric option parsing, fixing the warnings-as-errors sanitizer build after the refactor.
 - Began semantic decomposition of oversized filesystem sources by moving NTFS persistent-journal representation, parsing and durable publication into a dedicated transaction component; placement, commit ordering and Recover policy remain in the worker.
 - Clarified the transaction architecture after the target-binding extraction: the native core shares only canonical target/object/capacity mechanics, while filesystem-specific volume identity, phase meaning, placement and recovery semantics remain owned by each filesystem engine.
