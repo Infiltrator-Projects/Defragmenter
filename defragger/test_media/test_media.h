@@ -28,6 +28,7 @@ typedef enum {
     LDTM_CREATOR_MINIX,
     LDTM_CREATOR_UFS,
     LDTM_CREATOR_ZFS,
+    LDTM_CREATOR_APFS,
     LDTM_CREATOR_MANUAL,
     LDTM_CREATOR_SWAP
 } LdtmCreator;
@@ -73,6 +74,9 @@ int ldtm_populate_amiga_volume(const char *path, uint8_t dostype,
 int ldtm_verify_amiga_payload(const char *path, uint8_t dostype,
                               const LdtmFragmentProfile *profile,
                               char *detail, size_t detail_capacity);
+int ldtm_format_apfs_volume(const char *path);
+int ldtm_verify_apfs_payload(const char *path,
+                             char *detail, size_t detail_capacity);
 int ldtm_canonicalize_device(const char *input, char *output, size_t output_capacity);
 int ldtm_is_whole_block_device(const char *device);
 int ldtm_is_system_disk(const char *device);

@@ -3,6 +3,7 @@
 #include "affs_native.h"
 #include "sfs_native.h"
 #include "pfs3_native.h"
+#include "apfs_native.h"
 
 #include <fcntl.h>
 #include <stdint.h>
@@ -203,6 +204,66 @@ static int test_pfs3_formatter_and_payload(void) {
     return unlink(path) == 0 ? 0 : 1;
 }
 
+
+static int test_apfs_formatter_and_payload(void) {
+    char path[] = "/tmp/linux-defragger-apfs-media.XXXXXX";
+    char detail[512];
+    char error[512] = {0};
+    ApfsAnalysis analysis;
+    int fd = mkstemp(path);
+    if (fd < 0) return 1;
+    if (ftruncate(fd, (off_t)(128U * LDTM_MIB)) != 0 ||
+        close(fd) != 0) {
+        (void)unlink(path);
+        return 1;
+    }
+    if (ldtm_format_apfs_volume(path) != 0 ||
+        ldtm_verify_apfs_payload(
+            path, detail, sizeof(detail)) != 0 ||
+        apfs_analyse(path, &analysis,
+                     error, sizeof(error)) != 0) {
+        (void)unlink(path);
+        return 1;
+    }
+    if (analysis.block_size != 4096U ||
+        analysis.block_count != 16384U ||
+        analysis.regular_files != 1U ||
+        analysis.fragmented_files != 1U) {
+        apfs_analysis_free(&analysis);
+        (void)unlink(path);
+        return 1;
+    }
+    apfs_analysis_free(&analysis);
+
+    fd = open(path, O_RDWR | O_CLOEXEC);
+    if (fd < 0) {
+        (void)unlink(path);
+        return 1;
+    }
+    unsigned char byte;
+    const off_t payload =
+        (off_t)UINT64_C(512) * 4096;
+    if (pread(fd, &byte, 1U, payload) != 1) {
+        (void)close(fd);
+        (void)unlink(path);
+        return 1;
+    }
+    byte ^= UINT8_C(0x5a);
+    if (pwrite(fd, &byte, 1U, payload) != 1 ||
+        fsync(fd) != 0) {
+        (void)close(fd);
+        (void)unlink(path);
+        return 1;
+    }
+    (void)close(fd);
+    if (ldtm_verify_apfs_payload(
+            path, detail, sizeof(detail)) == 0) {
+        (void)unlink(path);
+        return 1;
+    }
+    return unlink(path) == 0 ? 0 : 1;
+}
+
 int main(void) {
     char script[8192];
     const LdtmFilesystemSpec *fat12 = ldtm_find_spec("fat12");
@@ -257,15 +318,18 @@ int main(void) {
     CHECK(ufs->package_hint != NULL && strcmp(ufs->package_hint, "makefs") == 0);
     CHECK(strstr(ufs->note, "UFS2") != NULL && strstr(ufs->note, "fragmentation is not asserted") != NULL);
     CHECK(zfs->package_hint != NULL && strcmp(zfs->package_hint, "zfsutils-linux") == 0);
-    CHECK(apfs->creator == LDTM_CREATOR_MANUAL && ldtm_creator_program(apfs) == NULL);
+    CHECK(apfs->creator == LDTM_CREATOR_APFS && ldtm_creator_program(apfs) == NULL);
+    CHECK(ldtm_spec_creator_available(apfs, script, sizeof(script)) == 1);
+    CHECK(strstr(script, "Built-in raw C creator") != NULL);
     CHECK(ldtm_is_reserved_partition_label("LD_SFS") == 0);
     CHECK(ldtm_is_reserved_partition_label("LD_PFS3") == 0);
-    CHECK(ldtm_is_reserved_partition_label("LD_APFS") == 1);
+    CHECK(ldtm_is_reserved_partition_label("LD_APFS") == 0);
     CHECK(ldtm_is_reserved_partition_label("LD_OFS") == 0);
     CHECK(ldtm_is_reserved_partition_label("LD_HFSPLUS") == 0);
     CHECK(test_amiga_formatters_and_payload() == 0);
     CHECK(test_sfs_formatter_and_payload() == 0);
     CHECK(test_pfs3_formatter_and_payload() == 0);
+    CHECK(test_apfs_formatter_and_payload() == 0);
 
     CHECK(ldtm_transport_is_field_media(0, "mmc") == 1);
     CHECK(ldtm_transport_is_field_media(0, "usb") == 1);

@@ -39,8 +39,8 @@ static const LdtmFilesystemSpec LDTM_SPECS[LDTM_SPEC_COUNT] = {
      "Creates a genuine UFS2/FFS image with makefs; exact fragmentation is not asserted yet."},
     {"zfs", "LD_ZFS", 4096U, 200U, LDTM_CREATOR_ZFS, "zfsutils-linux",
      "Uses an isolated one-partition pool and exports it after population."},
-    {"apfs", "LD_APFS", 4096U, 200U, LDTM_CREATOR_MANUAL, "",
-     "No Linux APFS creator is assumed; the real partition slot is never faked."},
+    {"apfs", "LD_APFS", 4096U, 1U, LDTM_CREATOR_APFS, "",
+     "Built-in first-party raw C creator manufactures the qualified bounded APFS checkpoint/spaceman/flat-tree fixture with a deliberately fragmented file."},
     {"swap", "LD_SWAP", 1024U, 0U, LDTM_CREATOR_SWAP, "util-linux",
      "Swap contains no files."}
 };
@@ -166,6 +166,7 @@ const char *ldtm_creator_program(const LdtmFilesystemSpec *spec) {
         case LDTM_CREATOR_MINIX: return "mkfs.minix";
         case LDTM_CREATOR_UFS: return "makefs";
         case LDTM_CREATOR_ZFS: return "zpool";
+        case LDTM_CREATOR_APFS: return NULL;
         case LDTM_CREATOR_SWAP: return "mkswap";
         case LDTM_CREATOR_MANUAL: return NULL;
     }
@@ -224,6 +225,11 @@ int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
     if (spec->creator == LDTM_CREATOR_PFS3) {
         (void)snprintf(detail, detail_capacity,
                        "Built-in raw C creator + payload engine: Amiga PFS3, 100-fragment native fixture");
+        return 1;
+    }
+    if (spec->creator == LDTM_CREATOR_APFS) {
+        (void)snprintf(detail, detail_capacity,
+                       "Built-in raw C creator + payload verifier: bounded APFS checkpoint/spaceman/flat-tree fixture");
         return 1;
     }
     if (spec->creator == LDTM_CREATOR_MANUAL) {

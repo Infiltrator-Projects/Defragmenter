@@ -16,7 +16,8 @@ add_library(linux-defragger-test-media-core STATIC
     test_media/test_media_amiga_payload.c
     test_media/test_media_amiga_dispatch.c
     test_media/test_media_sfs.c
-    test_media/test_media_pfs3.c)
+    test_media/test_media_pfs3.c
+    test_media/test_media_apfs.c)
 target_include_directories(linux-defragger-test-media-core PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/test_media"
     "${LD_GENERATED_DIR}")
@@ -24,6 +25,7 @@ target_include_directories(linux-defragger-test-media-core PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/affs/native"
     "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/sfs/native"
     "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/pfs3/native"
+    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/apfs/native"
     "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/ufs/native")
 target_compile_options(linux-defragger-test-media-core PRIVATE ${LD_WARNING_FLAGS})
 target_compile_definitions(linux-defragger-test-media-core PRIVATE
@@ -31,7 +33,8 @@ target_compile_definitions(linux-defragger-test-media-core PRIVATE
 target_link_libraries(linux-defragger-test-media-core PUBLIC OpenSSL::Crypto InfiltratrCommon::Common)
 target_link_libraries(linux-defragger-test-media-core PRIVATE
     linux-defragger-affs-native linux-defragger-sfs-native
-    linux-defragger-pfs3-native linux-defragger-ufs-native)
+    linux-defragger-pfs3-native linux-defragger-apfs-native
+    linux-defragger-ufs-native)
 
 add_executable(linux-defragger-test-media
     test_media/test_media_main.c
@@ -84,13 +87,15 @@ if(BUILD_TESTING)
         "${CMAKE_CURRENT_SOURCE_DIR}/test_media"
         "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/affs/native"
         "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/sfs/native"
-        "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/pfs3/native")
+        "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/pfs3/native"
+        "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/apfs/native")
     target_compile_options(linux-defragger-test-media-test PRIVATE ${LD_WARNING_FLAGS})
     target_compile_definitions(linux-defragger-test-media-test PRIVATE
         _FILE_OFFSET_BITS=64 _GNU_SOURCE)
     target_link_libraries(linux-defragger-test-media-test PRIVATE
         linux-defragger-test-media-core linux-defragger-affs-native
-        linux-defragger-sfs-native linux-defragger-pfs3-native OpenSSL::Crypto)
+        linux-defragger-sfs-native linux-defragger-pfs3-native
+        linux-defragger-apfs-native OpenSSL::Crypto)
     add_test(NAME linux-defragger-test-media-core COMMAND linux-defragger-test-media-test)
     add_test(NAME linux-defragger-test-media-install
         COMMAND "${CMAKE_COMMAND}"

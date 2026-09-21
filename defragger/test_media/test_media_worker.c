@@ -689,6 +689,7 @@ static int format_regular(const LdtmFilesystemSpec *spec, const char *partition)
         }
         case LDTM_CREATOR_PFS3:
         case LDTM_CREATOR_ZFS:
+        case LDTM_CREATOR_APFS:
         case LDTM_CREATOR_MANUAL:
             break;
     }
@@ -990,6 +991,53 @@ static int create_zfs_and_populate(const LdtmFilesystemSpec *spec, const char *p
     return 0;
 }
 
+
+static int create_apfs_and_populate(const LdtmFilesystemSpec *spec,
+                                    const char *partition,
+                                    FILE *state)
+{
+    const char *const wipe_argv[] = {
+        "wipefs", "--all", "--force", partition, NULL
+    };
+    char detail[512] = {0};
+    if (run_process(wipe_argv, NULL, 0) != 0) {
+        emit_status(spec->key, "format-failed",
+                    "could not clear old filesystem signatures");
+        (void)state_write_status(
+            state, spec, "format-failed", "wipefs failed");
+        return 0;
+    }
+    printf("+ built-in raw C APFS fixture creator %s\n", partition);
+    fflush(stdout);
+    if (ldtm_format_apfs_volume(partition) != 0) {
+        emit_status(spec->key, "format-failed",
+                    "built-in C APFS creator failed");
+        (void)state_write_status(
+            state, spec, "format-failed",
+            "built-in C APFS creator failed");
+        return 0;
+    }
+    if (ldtm_verify_apfs_payload(
+            partition, detail, sizeof(detail)) != 0) {
+        emit_status(
+            spec->key, "formatted-unpopulated",
+            detail[0] != '\0'
+                ? detail : "APFS fixture self-check failed");
+        (void)state_write_status(
+            state, spec, "formatted-unpopulated",
+            "APFS fixture self-check failed");
+        return 0;
+    }
+    if (state_write_status(
+            state, spec, "populated",
+            "first-party raw C bounded APFS fragmented fixture created and independently verified") != 0)
+        return -1;
+    emit_status(
+        spec->key, "populated",
+        "first-party raw C bounded APFS fragmented fixture created and independently verified");
+    return 0;
+}
+
 static int recursive_remove(const char *path) {
     DIR *directory = opendir(path);
     struct dirent *entry;
@@ -1077,6 +1125,8 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device) {
         }
         if ((spec->creator == LDTM_CREATOR_AFFS || spec->creator == LDTM_CREATOR_PFS3)) {
             if (create_amiga_and_populate(spec, partition, state) != 0) goto cleanup;
+        } else if (spec->creator == LDTM_CREATOR_APFS) {
+            if (create_apfs_and_populate(spec, partition, state) != 0) goto cleanup;
         } else if (spec->creator == LDTM_CREATOR_UFS) {
             if (create_ufs_and_populate(spec, partition, work, state) != 0) goto cleanup;
         } else if (spec->creator == LDTM_CREATOR_ZFS) {
