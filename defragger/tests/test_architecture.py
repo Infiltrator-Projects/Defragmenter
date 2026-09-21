@@ -441,12 +441,11 @@ def test_infiltratr_common_integration() -> None:
     assert not (GUI / "core" / "transaction.py").exists()
     assert not (ROOT / "tests" / "test_transactions.py").exists()
 
-    # Python remains a read-only compatibility-analysis boundary. Writable
-    # exact-I/O is owned by native C through Common.
-    rawio = (GUI / "engine" / "rawio.py").read_text()
-    assert "os.pwrite" not in rawio
-    assert "write_exact" not in rawio
-    assert "writable" not in rawio
+    # The filesystem-side Python compatibility graph has been removed entirely.
+    # Python is now presentation/glue only; raw filesystem I/O remains native.
+    assert not (GUI / "engine").exists()
+    assert not (GUI / "backends").exists()
+    assert not list((GUI / "filesystems").rglob("*.py"))
 
     for filesystem, worker in (("affs", "affs_worker.c"), ("apfs", "apfs_worker.c"), ("btrfs", "btrfs_worker.c"), ("sfs", "sfs_worker.c"),
                                ("pfs3", "pfs3_worker.c"), ("hfs", "writer.c"),
@@ -473,11 +472,16 @@ def test_core_remains_filesystem_neutral() -> None:
 def test_production_write_safety_is_enforced_at_every_boundary() -> None:
     runtime_header = (ROOT / "src" / "core" / "ld_runtime.h").read_text()
     runtime_source = (ROOT / "src" / "core" / "ld_runtime.c").read_text()
-    engine = (GUI / "engine" / "cli.py").read_text()
+    engine = (ROOT / "native" / "operation_engine.cpp").read_text()
+    helper_policy = (ROOT / "native" / "helper_policy.cpp").read_text()
     planner = (GUI / "ui" / "operation_planner.py").read_text()
-    combined_policy = "\n".join((runtime_header, runtime_source, engine, planner))
+    combined_policy = "\n".join(
+        (runtime_header, runtime_source, engine, helper_policy, planner)
+    )
     assert "UNAUDITED_RAW_WRITES" not in combined_policy
-    assert "require_unmounted(args.device)" in engine
+    assert "ld_path_is_mounted(device.c_str())" in engine
+    assert "validate_operation_args" in helper_policy
+    assert "operation journal must be directly below" in helper_policy
     assert "if volume.mounted:" in planner
 
     native = GUI / "filesystems"
@@ -895,14 +899,16 @@ def test_test_media_companion_is_all_c() -> None:
     architecture_doc = (REPO_ROOT / "docs" / "ARCHITECTURE.md").read_text()
     deb_builder = (ROOT / "packaging" / "build-deb.sh").read_text()
     assert "per-filesystem native C analysers / planners / writers" in architecture_doc
-    assert "Amiga SFS0 and HFS+/HFSX filesystems" in deb_builder
+    assert "Amiga OFS/FFS/SFS/PFS3" in deb_builder
+    assert "UFS and ZFS" in deb_builder
     assert "install(FILES README.md" in cmake
     assert "docs/AUDIT_STATUS.md" not in cmake
 
 
 def main() -> None:
     test_top_level_cmake_owns_native_language_declaration()
-    test_plugin_discovery_and_native_worker_contracts()
+    test_native_registry_is_the_single_capability_authority()
+    test_unqualified_ufs_mutation_is_fail_closed_in_the_installed_worker()
     test_dispatch_is_filesystem_neutral()
     test_single_filesystem_hierarchy_and_c_first_writers()
     test_build_and_path_registry_install_native_workers()
@@ -911,8 +917,8 @@ def main() -> None:
     test_production_write_safety_is_enforced_at_every_boundary()
     test_test_media_companion_is_all_c()
     test_user_facing_branding_is_defragmenter()
-    test_version_and_registry_are_dynamic()
-    print("current C-first single-plugin architecture tests passed")
+    test_version_and_native_registry_ownership()
+    print("current C-first native-registry architecture tests passed")
 
 
 if __name__ == "__main__":
