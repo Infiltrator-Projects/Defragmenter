@@ -206,36 +206,6 @@ static bool same_serial(const NtfsVolume *volume, const char *serial) {
     char current[17]; serial_hex(volume->serial, current); return strcmp(current, serial) == 0;
 }
 
-static char *canonical_path(const char *path, char **error) {
-    char *resolved = realpath(path, NULL);
-    if (resolved == NULL) ntfs_set_error(error, "cannot resolve NTFS target %s: %s", path, strerror(errno));
-    return resolved;
-}
-
-static int target_identity(const char *path, char **identity, uint64_t *size, char **error) {
-    LdDevice target;
-    if (ld_device_try_open(path, false, &target) != 0) {
-        ntfs_set_error(error, "cannot inspect NTFS target: %s", strerror(errno));
-        return -1;
-    }
-    if (target.is_block && target.size_bytes == 0U) {
-        ld_device_close(&target);
-        ntfs_set_error(error, "cannot read NTFS block-device size");
-        return -1;
-    }
-    char text[160];
-    if (ld_device_format_identity(&target, text, sizeof(text)) != 0) {
-        const int failure = errno;
-        ld_device_close(&target);
-        ntfs_set_error(error, "cannot identify NTFS target: %s", strerror(failure));
-        return -1;
-    }
-    *size = target.size_bytes;
-    *identity = ld_xstrdup(text);
-    ld_device_close(&target);
-    return 0;
-}
-
 static int capacity_preflight(const char *journal_path, const NtfsVolume *volume,
                               const NtfsLayout *layout, char **error) {
     char *parent = ld_path_parent_directory(journal_path); struct statvfs info;
@@ -303,13 +273,17 @@ static int create_stage(const char *source_path, const char *stage_path,
 }
 
 static int check_unchanged_target(const char *device, const NtfsJournal *state, char **error) {
-    char *identity = NULL; uint64_t size = 0;
-    if (target_identity(device, &identity, &size, error) != 0) return -1;
-    int result = 0;
-    if (strcmp(identity, state->target_identity) != 0 || size != state->physical_bytes) {
-        ntfs_set_error(error, "NTFS target identity or capacity changed before source commit"); result = -1;
+    char *canonical = NULL, *identity = NULL; uint64_t size = 0;
+    if (ld_device_capture_binding(device, &canonical, &identity, &size) != 0) {
+        ntfs_set_error(error, "cannot rebind NTFS target: %s", strerror(errno));
+        return -1;
     }
-    free(identity); if (result != 0) return result;
+    int result = 0;
+    if (strcmp(canonical, state->device) != 0 ||
+        strcmp(identity, state->target_identity) != 0 || size != state->physical_bytes) {
+        ntfs_set_error(error, "NTFS target path, identity or capacity changed before source commit"); result = -1;
+    }
+    free(canonical); free(identity); if (result != 0) return result;
     NtfsVolume volume;
     if (ntfs_open_volume(device, false, &volume, error) != 0) return -1;
     if (!same_serial(&volume, state->serial) || volume.volume_bytes != state->filesystem_bytes) {
@@ -701,8 +675,10 @@ static int build_and_commit(const char *device, const char *operation, const cha
     NtfsPlacementVec placements = {0}; NtfsVolume staged; NtfsLayout staged_layout; NtfsCatalogue staged_catalogue;
     memset(&staged,0,sizeof(staged)); staged.fd = -1; memset(&staged_layout,0,sizeof(staged_layout)); memset(&staged_catalogue,0,sizeof(staged_catalogue));
 
-    real = canonical_path(device, error); if (real == NULL) goto done;
-    if (target_identity(device, &identity, &physical_bytes, error) != 0) goto done;
+    if (ld_device_capture_binding(device, &real, &identity, &physical_bytes) != 0) {
+        ntfs_set_error(error, "cannot bind NTFS target: %s", strerror(errno));
+        goto done;
+    }
     if (ntfs_open_volume(device, false, &source, error) != 0) goto done;
     if (ntfs_read_layout(&source, false, &source_layout, error) != 0) goto done;
     if (ntfs_scan_catalogue(&source, &source_layout, &source_catalogue, error) != 0) goto done;
@@ -813,8 +789,11 @@ static int recover_transaction(const char *device, const char *journal_path, cha
         journal_free(&state);
         return 1;
     }
-    int result = 1; char *real = canonical_path(device, error), *identity = NULL; uint64_t size = 0;
-    if (real == NULL || target_identity(device, &identity, &size, error) != 0) goto done;
+    int result = 1; char *real = NULL, *identity = NULL; uint64_t size = 0;
+    if (ld_device_capture_binding(device, &real, &identity, &size) != 0) {
+        ntfs_set_error(error, "cannot bind NTFS recovery target: %s", strerror(errno));
+        goto done;
+    }
     if (strcmp(real, state.device) != 0 || strcmp(identity, state.target_identity) != 0 || size != state.physical_bytes) {
         ntfs_set_error(error, "recovery journal belongs to a different NTFS target"); goto done;
     }
