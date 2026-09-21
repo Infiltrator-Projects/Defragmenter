@@ -600,7 +600,7 @@ static int primary_super_token(const char *path, char output[65],
                        output, error, error_size);
 }
 
-static int capture_target(const char *device, UfsJournal *state,
+static int capture_target(const char *device, UFSJournal *state,
                           char *error, size_t error_size)
 {
     state->device = canonical_path(device, error, error_size);
@@ -968,7 +968,7 @@ int main(int argc, char **argv)
     }
     error[0] = '\0';
 
-    UfsJournal state;
+    UFSJournal state;
     memset(&state, 0, sizeof(state));
     infiltratr_copy_string(state.operation, sizeof(state.operation), mode);
     const int capture_result =
