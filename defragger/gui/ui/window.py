@@ -32,7 +32,7 @@ except (ImportError, ValueError) as exc:
     raise SystemExit(1) from exc
 
 from version import BUILD_LABEL, VERSION
-from backends.base import CAP_DEFRAG, CAP_GROWTH_DEFRAG, CAP_RECOVER
+from backends.contracts import CAP_DEFRAG, CAP_GROWTH_DEFRAG, CAP_RECOVER
 
 from .about import LinkStandardWindowView
 from .command_runner import CommandRunner

@@ -529,10 +529,14 @@ install(PROGRAMS
     DESTINATION lib/linux-defragger)
 install(FILES "${LD_GENERATED_DIR}/version.py" DESTINATION lib/linux-defragger)
 
-install(DIRECTORY gui/core gui/engine gui/ui gui/backends gui/filesystems
+install(DIRECTORY gui/core gui/ui
         DESTINATION lib/linux-defragger
         FILES_MATCHING PATTERN "*.py"
         PATTERN "__pycache__" EXCLUDE)
+install(FILES
+        gui/backends/__init__.py
+        gui/backends/contracts.py
+        DESTINATION lib/linux-defragger/backends)
 
 install(PROGRAMS packaging/linux-defragger DESTINATION bin)
 install(FILES packaging/io.github.linuxdefragger.desktop

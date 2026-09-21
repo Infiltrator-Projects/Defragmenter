@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
-from backends.base import (
+from backends.contracts import (
     CAP_ANALYSE,
     CAP_DEFRAG,
     CAP_GROWTH_DEFRAG,

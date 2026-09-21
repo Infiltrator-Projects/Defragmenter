@@ -751,6 +751,14 @@ def test_version_and_registry_are_dynamic() -> None:
     assert "pkgutil.iter_modules" in registry_source
     launcher_lines = (GUI / "linux_defragger_gui.py").read_text().splitlines()
     assert len(launcher_lines) < 20
+    for runtime_module in (
+        GUI / "ui" / "window.py",
+        GUI / "ui" / "operation_planner.py",
+        GUI / "ui" / "map_presenter.py",
+    ):
+        source = runtime_module.read_text()
+        assert "from backends.contracts import" in source
+        assert "from backends.base import" not in source
 
 
 def test_user_facing_branding_is_defragmenter() -> None:
@@ -785,6 +793,15 @@ def test_user_facing_branding_is_defragmenter() -> None:
     install_programs = project_cmake.split("install(PROGRAMS", 1)[1].split(
         "DESTINATION lib/linux-defragger", 1
     )[0]
+    assert "install(DIRECTORY gui/core gui/ui" in project_cmake
+    assert "gui/engine" not in project_cmake.split(
+        "install(DIRECTORY gui/core gui/ui", 1
+    )[1].split("DESTINATION lib/linux-defragger", 1)[0]
+    assert "gui/filesystems" not in project_cmake.split(
+        "install(DIRECTORY gui/core gui/ui", 1
+    )[1].split("DESTINATION lib/linux-defragger", 1)[0]
+    assert "gui/backends/contracts.py" in project_cmake
+    assert "gui/backends/base.py" not in project_cmake
     for legacy_dispatcher in (
         "gui/allocation_mapper.py",
         "gui/privileged_helper.py",

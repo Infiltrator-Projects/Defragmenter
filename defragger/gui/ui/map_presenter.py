@@ -6,7 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from backends.base import CAP_DEFRAG, CAP_GROWTH_DEFRAG, CAP_RECOVER
+from backends.contracts import CAP_DEFRAG, CAP_GROWTH_DEFRAG, CAP_RECOVER
 
 from .formatting import human_bytes
 

@@ -22,7 +22,7 @@ A filesystem writer is complete only when Defragment, exact 10% Growth Defrag an
 - [x] **Minix v1/v2/v3** — exact native analyser plus recoverable native Defragment/Growth Defrag/Recover support, including exact 10% reserve qualification.
 - [ ] **UFS1/UFS2** — make UFS1 allocation mapping exact, decode file fragmentation for both supported variants, then add recoverable native Defragment/Growth Defrag/Recover support.
 - [ ] **ZFS/OpenZFS member** — replace summary mapping with exact allocation/fragmentation analysis for a bounded supported on-disk feature set, then add a recoverable offline writer contract only where pool/member semantics make deterministic safe mutation provable.
-- [ ] **GTK compatibility migration** — finish the staged Python-to-native application-service migration so Python remains presentation/glue only and the temporary duplicate registry/contract representations disappear.
+- [ ] **GTK compatibility migration** — native mapper/operation-dispatch/privileged-helper services are now the only installed control plane and the installed GTK package carries only its minimal Python capability contract; finish removing the remaining source-level duplicate registry/contract representations so Python is presentation/glue only.
 - [x] **Test Media completeness** — every filesystem slot now has an implemented creator path; APFS uses the first-party raw C bounded fixture/verifier rather than a manual reserved partition.
 
 Linux swap is complete by design as analysis-only: defragmentation, Growth Defrag and Recover are not meaningful operations for swap and are therefore not backlog items.
