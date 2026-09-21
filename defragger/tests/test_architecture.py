@@ -350,7 +350,7 @@ def test_infiltratr_common_integration() -> None:
         GUI / "filesystems" / "xfs" / "native" / "xfs_worker.c",
         GUI / "filesystems" / "ext4" / "native" / "ext_worker.c",
         GUI / "filesystems" / "exfat" / "native" / "exfat_worker.c",
-        GUI / "filesystems" / "ntfs" / "native" / "ntfs_worker.c",
+        GUI / "filesystems" / "ntfs" / "native" / "ntfs_transaction.c",
         GUI / "filesystems" / "hfsplus" / "native" / "hfsplus_worker.c",
         GUI / "filesystems" / "exfat" / "native" / "exfat_relayout.c",
     )

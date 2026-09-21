@@ -4,6 +4,7 @@ This changelog records user-visible, compatibility, architecture and validation 
 
 ## Unreleased
 
+- Aligned the Common key/value-parser architecture regression with the NTFS journal split so the invariant now checks `ntfs_transaction.c`, the component that actually owns journal parsing.
 - Updated the Common-integration architecture regression to follow the NTFS journal parser into `ntfs_transaction.c`, matching the completed worker/transaction split without weakening the Common-usage invariant.
 ## 1.8.0-192
 
