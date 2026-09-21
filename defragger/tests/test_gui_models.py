@@ -243,7 +243,7 @@ def test_map_presenter_handles_domain_and_swap_maps() -> None:
 
     swap["used_bytes"] = 4096
     swap["free_bytes"] = 7 * 4096
-    one_page = present_allocation_map(swap, 0)
+    one_page = present_allocation_map(swap)
     assert one_page.files_value == "4.0 KB used · 1 page"
 
 
