@@ -76,8 +76,14 @@ int main() {
 
     const BackendInfo* apfs = backend_by_fstype("apfs");
     ok = check(apfs != nullptr, "APFS lookup") && ok;
-    if (apfs != nullptr)
-        ok = check(apfs->operations.empty(), "APFS remains read-only") && ok;
+    if (apfs != nullptr) {
+        ok = check((apfs->capabilities & CAP_DEFRAG) != 0U,
+                   "APFS advertises bounded defrag") && ok;
+        ok = check(operation_for(*apfs, "growth-defrag") != nullptr,
+                   "APFS growth-defrag operation") && ok;
+        ok = check(operation_for(*apfs, "recover") != nullptr,
+                   "APFS recover operation") && ok;
+    }
 
     const BackendInfo* fat12 = backend_by_fstype("fat12");
     ok = check(fat12 != nullptr, "FAT12 lookup") && ok;
