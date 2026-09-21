@@ -474,6 +474,35 @@ int ld_fd_size_bytes(int fd, uint64_t *size_bytes) {
     return ioctl(fd, BLKGETSIZE64, size_bytes);
 }
 
+int ld_device_format_identity(const LdDevice *device,
+                              char *buffer, size_t buffer_size) {
+    if (device == NULL || device->fd < 0 || buffer == NULL ||
+        buffer_size == 0U) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    int written = 0;
+    if (device->is_block) {
+        written = snprintf(buffer, buffer_size, "block:%u:%u",
+                           major(device->device_number),
+                           minor(device->device_number));
+    } else {
+        written = snprintf(buffer, buffer_size, "file:%llu:%llu",
+                           (unsigned long long)device->host_device,
+                           (unsigned long long)device->inode);
+    }
+    if (written < 0) {
+        errno = EIO;
+        return -1;
+    }
+    if ((size_t)written >= buffer_size) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+    return 0;
+}
+
 bool ld_device_matches_identity(const LdDevice *device,
                                 const char *expected_identity,
                                 uint64_t expected_size) {

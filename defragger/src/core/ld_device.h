@@ -45,6 +45,12 @@ int ld_device_try_open(const char *path, bool writable, LdDevice *device);
 /* Query regular-file length or BLKGETSIZE64 capacity from an already-open fd. */
 int ld_fd_size_bytes(int fd, uint64_t *size_bytes);
 
+/* Render the stable transaction identity of an already-open target.
+ * The caller owns the fixed buffer; no allocation or filesystem policy occurs.
+ */
+int ld_device_format_identity(const LdDevice *device,
+                              char *buffer, size_t buffer_size);
+
 bool ld_device_matches_identity(const LdDevice *device,
                                 const char *expected_identity,
                                 uint64_t expected_size);

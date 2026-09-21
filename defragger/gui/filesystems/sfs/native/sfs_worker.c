@@ -419,35 +419,32 @@ static char *canonical_path(const char *path, char *error, size_t error_size)
 static int target_identity(const char *path, char **identity, uint64_t *size,
                            char *error, size_t error_size)
 {
-    struct stat status;
-    if (stat(path, &status) != 0) {
+    LdDevice target;
+    if (ld_device_try_open(path, false, &target) != 0) {
         worker_error(error, error_size,
-                     "cannot stat SFS target: %s", strerror(errno));
+                     "cannot inspect SFS target: %s", strerror(errno));
         return -1;
     }
-    if (!S_ISBLK(status.st_mode) && !S_ISREG(status.st_mode)) {
-        worker_error(error, error_size,
-                     "SFS target is not a block device or regular image");
-        return -1;
-    }
+
     char text[160];
-    if (S_ISBLK(status.st_mode)) {
-        (void)snprintf(text, sizeof(text), "block:%u:%u",
-                       major(status.st_rdev), minor(status.st_rdev));
-        LdDevice target = ld_device_open(path, false);
-        *size = target.size_bytes;
+    if (target.size_bytes == 0U) {
         ld_device_close(&target);
-    } else {
-        (void)snprintf(text, sizeof(text), "file:%llu:%llu",
-                       (unsigned long long)status.st_dev,
-                       (unsigned long long)status.st_ino);
-        *size = (uint64_t)status.st_size;
-    }
-    if (*size == 0U) {
-        worker_error(error, error_size, "cannot determine SFS target size");
+        worker_error(error, error_size,
+                     "cannot determine SFS target size");
         return -1;
     }
+    if (ld_device_format_identity(&target, text, sizeof(text)) != 0) {
+        const int failure = errno;
+        ld_device_close(&target);
+        worker_error(error, error_size,
+                     "cannot identify SFS target: %s",
+                     strerror(failure));
+        return -1;
+    }
+
+    *size = target.size_bytes;
     *identity = ld_xstrdup(text);
+    ld_device_close(&target);
     return 0;
 }
 

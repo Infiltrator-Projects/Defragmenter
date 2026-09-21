@@ -650,12 +650,18 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
     device_source = (ROOT / "src" / "core" / "ld_device.c").read_text()
     for required in (
         "ld_device_try_open",
+        "ld_device_format_identity",
         "ld_device_matches_identity",
         "ld_fd_matches_identity",
         "ld_device_open_verified_fd",
     ):
         assert required in device_source, (
             f"raw target identity core lost {required}"
+        )
+
+    for name in ("sfs", "pfs3", "minix"):
+        assert "ld_device_format_identity" in sources[name], (
+            f"{name} bypasses shared target identity formatting"
         )
 
     for path in (

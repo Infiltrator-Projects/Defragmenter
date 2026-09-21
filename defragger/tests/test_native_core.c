@@ -103,16 +103,18 @@ int main(void) {
     if (target.fd < 0 || target.is_block || target.size_bytes != 8192U ||
         strcmp(target.path, resolved_target) != 0)
         return fail("raw target canonical identity");
+    char target_identity[160];
+    if (ld_device_format_identity(&target, target_identity,
+                                  sizeof(target_identity)) != 0 ||
+        strncmp(target_identity, "file:", 5U) != 0)
+        return fail("shared target identity format");
+    char too_small[4];
+    errno = 0;
+    if (ld_device_format_identity(&target, too_small, sizeof(too_small)) == 0 ||
+        errno != ENAMETOOLONG)
+        return fail("target identity bounded buffer");
     ld_device_close(&target);
 
-    struct stat target_status;
-    if (stat(target_path, &target_status) != 0)
-        return fail("target identity stat");
-    char target_identity[160];
-    if (snprintf(target_identity, sizeof(target_identity), "file:%llu:%llu",
-                 (unsigned long long)target_status.st_dev,
-                 (unsigned long long)target_status.st_ino) < 0)
-        return fail("target identity format");
     int verified_fd = ld_device_open_verified_fd(
         target_path, false, target_identity, 8192U);
     if (verified_fd < 0) return fail("journal-bound target accepted");
