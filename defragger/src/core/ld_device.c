@@ -511,15 +511,8 @@ bool ld_device_matches_identity(const LdDevice *device,
     if (expected_size != 0U && device->size_bytes != expected_size)
         return false;
     char identity[160];
-    if (device->is_block) {
-        (void)snprintf(identity, sizeof(identity), "block:%u:%u",
-                       major(device->device_number), minor(device->device_number));
-    } else {
-        (void)snprintf(identity, sizeof(identity), "file:%llu:%llu",
-                       (unsigned long long)device->host_device,
-                       (unsigned long long)device->inode);
-    }
-    return strcmp(identity, expected_identity) == 0;
+    return ld_device_format_identity(device, identity, sizeof(identity)) == 0 &&
+           strcmp(identity, expected_identity) == 0;
 }
 
 bool ld_fd_matches_identity(int fd, const char *expected_identity,
@@ -540,16 +533,19 @@ bool ld_fd_matches_identity(int fd, const char *expected_identity,
     }
     if (expected_size != 0U && size != expected_size) return false;
 
+    const LdDevice snapshot = {
+        .fd = fd,
+        .path = NULL,
+        .writable = false,
+        .is_block = block,
+        .size_bytes = size,
+        .device_number = block ? status.st_rdev : 0,
+        .host_device = status.st_dev,
+        .inode = status.st_ino,
+    };
     char identity[160];
-    if (block) {
-        (void)snprintf(identity, sizeof(identity), "block:%u:%u",
-                       major(status.st_rdev), minor(status.st_rdev));
-    } else {
-        (void)snprintf(identity, sizeof(identity), "file:%llu:%llu",
-                       (unsigned long long)status.st_dev,
-                       (unsigned long long)status.st_ino);
-    }
-    return strcmp(identity, expected_identity) == 0;
+    return ld_device_format_identity(&snapshot, identity, sizeof(identity)) == 0 &&
+           strcmp(identity, expected_identity) == 0;
 }
 
 int ld_device_open_verified_fd(const char *path, bool writable,

@@ -659,7 +659,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
             f"raw target identity core lost {required}"
         )
 
-    for name in ("sfs", "pfs3", "minix"):
+    for name in ("affs", "apfs", "btrfs", "sfs", "pfs3", "hfs", "hfsplus", "minix"):
         assert "ld_device_format_identity" in sources[name], (
             f"{name} bypasses shared target identity formatting"
         )
