@@ -6,7 +6,7 @@ Completed: 2026-08-25
 Extended: 2026-09-21
 
 Applies to: release version 1.8.0-192
-Audited source commit: e43c0150fed33fd71c956b20b12a573a478da03f
+Audited source commit: 81576b9fa40bfa6423c41bbb9ddd352b725368b9
 Audited release-governance commit: 4ce08b40e91e47d8ae60450eec86a2840e97232e
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix
@@ -83,7 +83,7 @@ APT publication is likewise a direct reusable-workflow dependency of successful 
 
 Version 1.8.0-192 is the current audited release line. It retains the exact Common 1.19.10 pin and all previously qualified writers while removing the duplicate Python filesystem control plane, making the native C++ manifest the sole capability/operation authority, sharing only filesystem-neutral target-binding mechanics across writers, and splitting NTFS persistent journal representation/durability from its filesystem-specific placement and recovery policy. UFS mutation remains deliberately fail-closed in the installed worker until its roadmap qualification is complete.
 
-The 1.8.0-192 audit extension covers the production/control-plane consolidation through `e43c0150fed33fd71c956b20b12a573a478da03f`. The native registry/mapper/operation engine are now the only filesystem capability and dispatch authority; source-only Python filesystem registries/plugins and duplicate dispatcher/helper paths have been removed. Transaction target identity/capacity binding is shared in the native core while filesystem-specific volume identity, phase meaning, placement ordering and Recover semantics remain local. NTFS persistent journal parsing/publication/cleanup is isolated in its transaction component without moving NTFS placement or recovery policy out of the worker. The hosted sanitizer build/tests passed after the NTFS split boundary fixes, and the exact release head must still pass both permanent hosted quality lanes before publication.
+The 1.8.0-192 audit extension covers the production/control-plane consolidation and restored executable packaging/test contracts through `81576b9fa40bfa6423c41bbb9ddd352b725368b9`. The native registry/mapper/operation engine are now the only filesystem capability and dispatch authority; source-only Python filesystem registries/plugins and duplicate dispatcher/helper paths have been removed. Transaction target identity/capacity binding is shared in the native core while filesystem-specific volume identity, phase meaning, placement ordering and Recover semantics remain local. NTFS persistent journal parsing/publication/cleanup is isolated in its transaction component without moving NTFS placement or recovery policy out of the worker. The hosted sanitizer build/tests passed after the NTFS split boundary fixes, and the exact release head must still pass both permanent hosted quality lanes before publication.
 
 The audited source baseline also strengthens the root-owned trusted-directory walk: supported Linux kernels use `openat2()` with `RESOLVE_BENEATH`, `RESOLVE_NO_SYMLINKS` and `RESOLVE_NO_MAGICLINKS`; older kernels retain the previously audited `openat(O_NOFOLLOW)` component-by-component fallback and the same ownership/mode validation. The obsolete duplicate base-window About implementation has been removed, leaving the LINK-standard presenter as the single concrete About/licence/icon path.
 
