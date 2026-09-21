@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 # ZFS/OpenZFS member identification and summary mapping are native C.
-# Python remains only as the GUI/backend adapter.
 add_library(linux-defragger-zfs-native STATIC
     gui/filesystems/zfs/native/zfs_native.c)
 target_include_directories(linux-defragger-zfs-native PUBLIC

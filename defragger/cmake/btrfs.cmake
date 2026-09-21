@@ -29,10 +29,10 @@ install(TARGETS linux-defragger-btrfs-worker
 if(BUILD_TESTING)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
     add_test(
-        NAME linux-defragger-btrfs-native-python
+        NAME linux-defragger-btrfs-native-integration
         COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_btrfs_native.py")
-    set_tests_properties(linux-defragger-btrfs-native-python PROPERTIES
+    set_tests_properties(linux-defragger-btrfs-native-integration PROPERTIES
         ENVIRONMENT
             "PYTHONDONTWRITEBYTECODE=1;PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/gui:${CMAKE_CURRENT_SOURCE_DIR}/tests;LINUX_DEFRAGGER_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR};LINUX_DEFRAGGER_BTRFS_WORKER=${CMAKE_CURRENT_BINARY_DIR}/linux-defragger-btrfs-worker")
 endif()

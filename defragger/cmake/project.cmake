@@ -219,9 +219,9 @@ target_compile_definitions(linux-defragger-privileged-helper-cpp PRIVATE
 target_link_libraries(linux-defragger-privileged-helper-cpp PRIVATE
     linux-defragger-runtime-cpp linux-defragger-core Threads::Threads)
 
-# FAT remains native C, but it is a private implementation detail of the
-# authoritative gui/filesystems/fat plugin.  There is deliberately no second
-# native filesystem registry or plugin ABI.
+# FAT remains native C and is a private implementation detail behind the
+# authoritative C++ registry. There is deliberately no second filesystem
+# registry or plugin ABI.
 add_executable(linux-defragger-fat-worker
     gui/filesystems/fat/native/writer.c
     gui/filesystems/fat/native/fat_analysis.c
@@ -242,8 +242,7 @@ target_link_libraries(linux-defragger-fat-worker PRIVATE
     linux-defragger-core Threads::Threads)
 
 # APFS exact bounded analysis and the fail-closed offline staged writer share
-# one native checkpoint/spaceman/catalog implementation. Python remains only
-# GUI/registry glue.
+# one native checkpoint/spaceman/catalog implementation.
 add_library(linux-defragger-apfs-native STATIC
     gui/filesystems/apfs/native/apfs_native.c)
 target_include_directories(linux-defragger-apfs-native PUBLIC
@@ -270,7 +269,6 @@ target_link_libraries(linux-defragger-apfs-worker PRIVATE
 find_package(OpenSSL REQUIRED)
 
 # Minix exact analysis, offline staging, mutation and recovery are native C.
-# Python is retained only as the GUI/backend adapter.
 add_library(linux-defragger-minix-native STATIC
     gui/filesystems/minix/native/minix_native.c)
 target_include_directories(linux-defragger-minix-native PUBLIC
@@ -295,7 +293,6 @@ target_link_libraries(linux-defragger-minix-worker PRIVATE
     linux-defragger-minix-native linux-defragger-core OpenSSL::Crypto)
 
 # Linux swap identification, metadata and allocation mapping are native C.
-# Python remains only as a temporary GUI/backend adapter.
 add_library(linux-defragger-swap-native STATIC
     gui/filesystems/swap/native/swap_native.c)
 target_include_directories(linux-defragger-swap-native PUBLIC
@@ -337,7 +334,7 @@ target_link_libraries(linux-defragger-xfs-native PUBLIC
     linux-defragger-core SQLite::SQLite3 OpenSSL::Crypto)
 
 # EXT2/3/4 is implemented directly in native C through the linked libext2fs
-# library.  Filesystem mutation is performed in-process by the plugin worker.
+# library. Filesystem mutation is performed in-process by the native worker.
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(EXT2FS REQUIRED IMPORTED_TARGET ext2fs)
 find_library(COM_ERR_LIBRARY com_err REQUIRED)
@@ -514,10 +511,8 @@ install(TARGETS linux-defragger-hfsplus-worker
 install(TARGETS linux-defragger-hfs-worker
         RUNTIME DESTINATION lib/linux-defragger/filesystems/hfs)
 
-# Native C++ application services are the only installed mapper, operation
-# dispatcher and privileged helper.  The legacy Python dispatcher sources stay
-# in-tree only as migration/parity test fixtures until the GTK compatibility
-# boundary is removed.
+# Native C++ application services are the only mapper, operation dispatcher
+# and privileged helper in both source and installed application.
 install(TARGETS
         linux-defragger-operation-engine-cpp
         linux-defragger-mapper-cpp
@@ -616,10 +611,10 @@ if(BUILD_TESTING)
     target_link_libraries(linux-defragger-apfs-native-test PRIVATE
         linux-defragger-apfs-native linux-defragger-core)
     add_test(NAME linux-defragger-apfs-native COMMAND linux-defragger-apfs-native-test)
-    add_test(NAME linux-defragger-apfs-native-python
+    add_test(NAME linux-defragger-apfs-native-integration
         COMMAND "${LD_HELPER_TEST_PYTHON}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_apfs_native.py")
-    set_tests_properties(linux-defragger-apfs-native-python PROPERTIES
+    set_tests_properties(linux-defragger-apfs-native-integration PROPERTIES
         ENVIRONMENT "LINUX_DEFRAGGER_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}"
         TIMEOUT 120)
 

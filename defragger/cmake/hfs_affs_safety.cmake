@@ -9,10 +9,10 @@ if(BUILD_TESTING)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
     add_test(
-        NAME linux-defragger-affs-native-python
+        NAME linux-defragger-affs-native-integration
         COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_affs_native.py")
-    set_tests_properties(linux-defragger-affs-native-python PROPERTIES
+    set_tests_properties(linux-defragger-affs-native-integration PROPERTIES
         ENVIRONMENT
             "PYTHONDONTWRITEBYTECODE=1;PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/gui:${CMAKE_CURRENT_SOURCE_DIR}/tests;LINUX_DEFRAGGER_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}")
 
@@ -25,10 +25,10 @@ if(BUILD_TESTING)
             "PYTHONDONTWRITEBYTECODE=1")
 
     add_test(
-        NAME linux-defragger-hfsplus-native-python
+        NAME linux-defragger-hfsplus-native-integration
         COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_hfsplus_native.py")
-    set_tests_properties(linux-defragger-hfsplus-native-python PROPERTIES
+    set_tests_properties(linux-defragger-hfsplus-native-integration PROPERTIES
         ENVIRONMENT
             "PYTHONDONTWRITEBYTECODE=1;PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/gui:${CMAKE_CURRENT_SOURCE_DIR}/tests;LINUX_DEFRAGGER_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}")
 endif()

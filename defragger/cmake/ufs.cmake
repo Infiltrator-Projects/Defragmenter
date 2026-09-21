@@ -3,7 +3,6 @@
 # UFS1/UFS2 analysis is native C.  A bounded mutation implementation remains
 # in-tree for continuing qualification, but the installed worker fails closed
 # on Defragment/Growth Defrag/Recover until the roadmap evidence is complete.
-# Python remains only source-level compatibility/test glue.
 add_library(linux-defragger-ufs-native STATIC
     gui/filesystems/ufs/native/ufs_native.c)
 target_include_directories(linux-defragger-ufs-native PUBLIC
