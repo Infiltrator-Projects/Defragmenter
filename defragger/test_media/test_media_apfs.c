@@ -196,8 +196,6 @@ static int apfs_tm_build_node(uint8_t raw[APFS_TM_BLOCK],
     for (uint32_t index = 0U; index < record_count; ++index) {
         const ApfsTmRecord *record = &records[index];
         if (record->key_len == 0U ||
-            record->key_len > UINT16_MAX ||
-            record->value_len > UINT16_MAX ||
             record->value_len > value_cursor ||
             value_cursor - record->value_len < key_cursor ||
             record->key_len >
