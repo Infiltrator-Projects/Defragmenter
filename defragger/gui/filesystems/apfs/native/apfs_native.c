@@ -2390,7 +2390,6 @@ int apfs_build_stage(const char *source_path,
     const uint64_t filesystem_bytes =
         source.reader.block_count *
         (uint64_t)source.reader.block_size;
-    (void)unlink(stage_path);
     int flags = O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC;
 #ifdef O_NOFOLLOW
     flags |= O_NOFOLLOW;

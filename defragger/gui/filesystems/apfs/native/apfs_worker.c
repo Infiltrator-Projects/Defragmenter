@@ -871,6 +871,16 @@ int main(int argc, char **argv)
             "existing APFS recovery artifacts must be recovered or removed before starting");
         goto fail;
     }
+    char *journal_parent = ld_path_parent_directory(journal);
+    if (journal_parent == NULL ||
+        ld_path_ensure_trusted_directory_tree(journal_parent) != 0) {
+        txn_error(error, sizeof(error),
+                  "cannot create APFS recovery directory: %s",
+                  strerror(errno));
+        free(journal_parent);
+        goto fail;
+    }
+    free(journal_parent);
 
     (void)printf("Starting native C APFS %s on %s.\n",
                  growth ? "Growth Defrag" : "Defrag",
