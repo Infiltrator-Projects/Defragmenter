@@ -225,21 +225,24 @@ static void transaction_cleanup(const char *journal, const XfsJournal *state) {
 }
 
 static int target_identity(const char *path, char **identity, uint64_t *size, char **error) {
-    struct stat status;
-    if (stat(path, &status) != 0) { xfs_set_error(error, "cannot stat XFS target: %s", strerror(errno)); return -1; }
-    if (!S_ISREG(status.st_mode) && !S_ISBLK(status.st_mode)) {
-        xfs_set_error(error, "target must be a block device or regular XFS image"); return -1;
+    LdDevice device;
+    if (ld_device_try_open(path, false, &device) != 0) {
+        xfs_set_error(error, "cannot inspect XFS target: %s", strerror(errno));
+        return -1;
     }
-    if (S_ISBLK(status.st_mode) && ld_device_number_is_mounted(status.st_rdev)) {
-        xfs_set_error(error, "refusing raw XFS writing while the target or a related block device is mounted"); return -1;
+    if (device.is_block && ld_device_number_is_mounted(device.device_number)) {
+        ld_device_close(&device);
+        xfs_set_error(error, "refusing raw XFS writing while the target or a related block device is mounted");
+        return -1;
     }
-    LdDevice device = ld_device_open(path, false);
-    *size = device.size_bytes;
     char buffer[160];
-    if (device.is_block)
-        snprintf(buffer, sizeof(buffer), "block:%u:%u", major(device.device_number), minor(device.device_number));
-    else
-        snprintf(buffer, sizeof(buffer), "file:%ju:%ju", (uintmax_t)status.st_dev, (uintmax_t)status.st_ino);
+    if (ld_device_format_identity(&device, buffer, sizeof(buffer)) != 0) {
+        const int failure = errno;
+        ld_device_close(&device);
+        xfs_set_error(error, "cannot identify XFS target: %s", strerror(failure));
+        return -1;
+    }
+    *size = device.size_bytes;
     *identity = ld_xstrdup(buffer);
     ld_device_close(&device);
     return 0;

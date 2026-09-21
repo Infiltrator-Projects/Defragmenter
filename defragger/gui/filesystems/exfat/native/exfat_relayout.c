@@ -848,24 +848,10 @@ static int populate_manifest(ExfatRelayoutManifest *manifest,
                              uint32_t workspace_start,
                              char **error) {
     memset(manifest, 0, sizeof(*manifest));
-    struct stat status;
-    if (fstat(volume->fd, &status) != 0) {
+    if (ld_fd_format_identity(volume->fd, manifest->target_identity,
+                              sizeof(manifest->target_identity)) != 0) {
         exfat_set_error(error, "cannot capture exFAT target identity: %s",
                         strerror(errno));
-        return -1;
-    }
-    if (S_ISBLK(status.st_mode)) {
-        (void)snprintf(manifest->target_identity,
-                       sizeof(manifest->target_identity),
-                       "block:%u:%u", major(status.st_rdev), minor(status.st_rdev));
-    } else if (S_ISREG(status.st_mode)) {
-        (void)snprintf(manifest->target_identity,
-                       sizeof(manifest->target_identity),
-                       "file:%llu:%llu",
-                       (unsigned long long)status.st_dev,
-                       (unsigned long long)status.st_ino);
-    } else {
-        exfat_set_error(error, "exFAT relayout target identity is not raw storage");
         return -1;
     }
     manifest->device_size = volume->device_size;

@@ -213,29 +213,26 @@ static char *canonical_path(const char *path, char **error) {
 }
 
 static int target_identity(const char *path, char **identity, uint64_t *size, char **error) {
-    struct stat status;
-    if (stat(path, &status) != 0) { ntfs_set_error(error, "cannot stat NTFS target: %s", strerror(errno)); return -1; }
-    if (!S_ISBLK(status.st_mode) && !S_ISREG(status.st_mode)) {
-        ntfs_set_error(error, "NTFS target is not a block device or regular image"); return -1;
+    LdDevice target;
+    if (ld_device_try_open(path, false, &target) != 0) {
+        ntfs_set_error(error, "cannot inspect NTFS target: %s", strerror(errno));
+        return -1;
+    }
+    if (target.is_block && target.size_bytes == 0U) {
+        ld_device_close(&target);
+        ntfs_set_error(error, "cannot read NTFS block-device size");
+        return -1;
     }
     char text[160];
-    if (S_ISBLK(status.st_mode)) snprintf(text, sizeof(text), "block:%u:%u", major(status.st_rdev), minor(status.st_rdev));
-    else snprintf(text, sizeof(text), "file:%llu:%llu", (unsigned long long)status.st_dev, (unsigned long long)status.st_ino);
-    *identity = ld_xstrdup(text);
-    if (S_ISBLK(status.st_mode)) {
-        LdDevice target = ld_device_open(path, false);
-        if (target.fd < 0 || target.size_bytes == 0) {
-            ld_device_close(&target);
-            free(*identity);
-            *identity = NULL;
-            ntfs_set_error(error, "cannot read NTFS block-device size");
-            return -1;
-        }
-        *size = target.size_bytes;
+    if (ld_device_format_identity(&target, text, sizeof(text)) != 0) {
+        const int failure = errno;
         ld_device_close(&target);
-    } else {
-        *size = (uint64_t)status.st_size;
+        ntfs_set_error(error, "cannot identify NTFS target: %s", strerror(failure));
+        return -1;
     }
+    *size = target.size_bytes;
+    *identity = ld_xstrdup(text);
+    ld_device_close(&target);
     return 0;
 }
 

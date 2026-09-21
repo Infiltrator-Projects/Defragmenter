@@ -71,6 +71,7 @@ def test_unqualified_ufs_mutation_is_fail_closed_in_the_installed_worker() -> No
     assert refusal < mutation_dispatch
 
     assert not (GUI / "filesystems" / "ufs" / "plugin.py").exists()
+    assert "ld_device_format_identity" in source
 
     runtime = (ROOT / "native" / "runtime.cpp").read_text()
     assert '"ufs", "Solaris/BSD UFS"' in runtime
@@ -659,7 +660,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
             f"raw target identity core lost {required}"
         )
 
-    for name in ("affs", "apfs", "btrfs", "sfs", "pfs3", "hfs", "hfsplus", "minix"):
+    for name in ("ext", "ntfs", "exfat", "xfs", "affs", "apfs", "btrfs", "sfs", "pfs3", "hfs", "hfsplus", "minix"):
         assert "ld_device_format_identity" in sources[name], (
             f"{name} bypasses shared target identity formatting"
         )
@@ -708,6 +709,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
     assert "ld_fd_matches_identity" in exfat_worker
     assert "target_identity" in exfat_relayout
     assert "device_size" in exfat_relayout
+    assert "ld_fd_format_identity" in exfat_relayout
     assert "ld_fd_matches_identity" in exfat_relayout
 
     for path in (

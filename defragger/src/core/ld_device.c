@@ -503,6 +503,33 @@ int ld_device_format_identity(const LdDevice *device,
     return 0;
 }
 
+int ld_fd_format_identity(int fd, char *buffer, size_t buffer_size) {
+    if (fd < 0 || buffer == NULL || buffer_size == 0U) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    struct stat status;
+    if (fstat(fd, &status) != 0) return -1;
+    const bool block = S_ISBLK(status.st_mode);
+    if (!block && !S_ISREG(status.st_mode)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    const LdDevice snapshot = {
+        .fd = fd,
+        .path = NULL,
+        .writable = false,
+        .is_block = block,
+        .size_bytes = 0U,
+        .device_number = block ? status.st_rdev : 0,
+        .host_device = status.st_dev,
+        .inode = status.st_ino,
+    };
+    return ld_device_format_identity(&snapshot, buffer, buffer_size);
+}
+
 bool ld_device_matches_identity(const LdDevice *device,
                                 const char *expected_identity,
                                 uint64_t expected_size) {
@@ -518,33 +545,12 @@ bool ld_device_matches_identity(const LdDevice *device,
 bool ld_fd_matches_identity(int fd, const char *expected_identity,
                             uint64_t expected_size) {
     if (fd < 0 || expected_identity == NULL) return false;
-    struct stat status;
-    if (fstat(fd, &status) != 0) return false;
-
-    bool block = S_ISBLK(status.st_mode);
-    if (!block && !S_ISREG(status.st_mode)) return false;
-
-    uint64_t size = 0;
-    if (block) {
-        if (ioctl(fd, BLKGETSIZE64, &size) != 0) return false;
-    } else {
-        if (status.st_size < 0) return false;
-        size = (uint64_t)status.st_size;
-    }
+    uint64_t size = 0U;
+    if (ld_fd_size_bytes(fd, &size) != 0) return false;
     if (expected_size != 0U && size != expected_size) return false;
 
-    const LdDevice snapshot = {
-        .fd = fd,
-        .path = NULL,
-        .writable = false,
-        .is_block = block,
-        .size_bytes = size,
-        .device_number = block ? status.st_rdev : 0,
-        .host_device = status.st_dev,
-        .inode = status.st_ino,
-    };
     char identity[160];
-    return ld_device_format_identity(&snapshot, identity, sizeof(identity)) == 0 &&
+    return ld_fd_format_identity(fd, identity, sizeof(identity)) == 0 &&
            strcmp(identity, expected_identity) == 0;
 }
 

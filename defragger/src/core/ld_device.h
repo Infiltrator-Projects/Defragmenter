@@ -50,6 +50,7 @@ int ld_fd_size_bytes(int fd, uint64_t *size_bytes);
  */
 int ld_device_format_identity(const LdDevice *device,
                               char *buffer, size_t buffer_size);
+int ld_fd_format_identity(int fd, char *buffer, size_t buffer_size);
 
 bool ld_device_matches_identity(const LdDevice *device,
                                 const char *expected_identity,

@@ -108,6 +108,10 @@ int main(void) {
                                   sizeof(target_identity)) != 0 ||
         strncmp(target_identity, "file:", 5U) != 0)
         return fail("shared target identity format");
+    char fd_identity[160];
+    if (ld_fd_format_identity(target.fd, fd_identity, sizeof(fd_identity)) != 0 ||
+        strcmp(fd_identity, target_identity) != 0)
+        return fail("descriptor target identity format");
     char too_small[4];
     errno = 0;
     if (ld_device_format_identity(&target, too_small, sizeof(too_small)) == 0 ||

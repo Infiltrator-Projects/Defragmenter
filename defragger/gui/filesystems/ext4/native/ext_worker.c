@@ -210,17 +210,23 @@ static char *canonical_path(const char *path, char **error) {
 }
 
 static int target_identity(const char *path, char **identity, uint64_t *size, char **error) {
-    struct stat status;
-    if (stat(path, &status) != 0) { ext_set_error(error, "cannot stat EXT target %s: %s", path, strerror(errno)); return -1; }
+    LdDevice device;
+    if (ld_device_try_open(path, false, &device) != 0) {
+        ext_set_error(error, "cannot inspect EXT target %s: %s", path, strerror(errno));
+        return -1;
+    }
     char buffer[160];
-    if (S_ISBLK(status.st_mode)) {
-        (void)snprintf(buffer, sizeof(buffer), "block:%u:%u", major(status.st_rdev), minor(status.st_rdev));
-    } else if (S_ISREG(status.st_mode)) {
-        (void)snprintf(buffer, sizeof(buffer), "file:%llu:%llu",
-                       (unsigned long long)status.st_dev, (unsigned long long)status.st_ino);
-    } else { ext_set_error(error, "EXT target must be a block device or regular image"); return -1; }
-    LdDevice device = ld_device_open(path, false); *size = device.size_bytes; ld_device_close(&device);
-    *identity = ld_xstrdup(buffer); return 0;
+    if (ld_device_format_identity(&device, buffer, sizeof(buffer)) != 0) {
+        const int failure = errno;
+        ld_device_close(&device);
+        ext_set_error(error, "cannot identify EXT target %s: %s",
+                      path, strerror(failure));
+        return -1;
+    }
+    *size = device.size_bytes;
+    *identity = ld_xstrdup(buffer);
+    ld_device_close(&device);
+    return 0;
 }
 
 static int capacity_preflight(const char *journal_path, const ExtGeometry *geometry, char **error) {

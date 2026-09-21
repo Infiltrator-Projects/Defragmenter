@@ -4,7 +4,7 @@ This changelog records user-visible, compatibility, architecture and validation 
 
 ## Unreleased
 
-- Began the shared transaction-mechanics consolidation without centralising filesystem semantics: Minix, SFS, PFS3, AFFS, APFS, Btrfs, classic HFS and HFS+ now use one filesystem-neutral native target-identity formatter backed by the verified LdDevice open/identity contract; descriptor identity comparison delegates to that same formatter.
+- Began the shared transaction-mechanics consolidation without centralising filesystem semantics: all native worker-level transaction target snapshots now use one filesystem-neutral identity formatter backed by the verified LdDevice contract, descriptor-based exFAT staging uses the same identity representation, and identity comparison delegates to that shared formatter.
 - Removed the final installed Python filesystem-capability contract: GTK now enables operations directly from the immutable native C++ registry manifest, and package installation carries only the GTK/core Python presentation modules.
 - Made the installed UFS worker itself fail closed on Defragment, Growth Defrag and Recover while UFS remains an unfinished roadmap item; developmental mutation code can no longer be reached simply by bypassing the read-only GUI/native registry capability declaration.
 - Corrected the Debian package description so Btrfs, classic HFS, APFS and Minix are no longer incorrectly described as analysis-only.
