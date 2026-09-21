@@ -173,36 +173,6 @@ static void transaction_cleanup(const char *journal, const ExfatJournal *state) 
     unlink_if_exists(journal);
 }
 
-static char *canonical_path(const char *path, char **error) {
-    char *resolved = realpath(path, NULL);
-    if (resolved == NULL) exfat_set_error(error, "cannot resolve exFAT target %s: %s", path, strerror(errno));
-    return resolved;
-}
-
-static int target_identity(const char *path, char **identity, uint64_t *size, char **error) {
-    LdDevice target;
-    if (ld_device_try_open(path, false, &target) != 0) {
-        exfat_set_error(error, "cannot inspect exFAT target: %s", strerror(errno));
-        return -1;
-    }
-    if (target.size_bytes == 0U) {
-        ld_device_close(&target);
-        exfat_set_error(error, "cannot determine exFAT target size");
-        return -1;
-    }
-    char text[160];
-    if (ld_device_format_identity(&target, text, sizeof(text)) != 0) {
-        const int failure = errno;
-        ld_device_close(&target);
-        exfat_set_error(error, "cannot identify exFAT target: %s", strerror(failure));
-        return -1;
-    }
-    *size = target.size_bytes;
-    *identity = ld_xstrdup(text);
-    ld_device_close(&target);
-    return 0;
-}
-
 static int hash_file(const char *path, uint64_t length, char output[65], char **error) {
     int fd = open(path, O_RDONLY | O_CLOEXEC); if (fd < 0) { exfat_set_error(error, "cannot open exFAT stage for hashing: %s", strerror(errno)); return -1; }
     EVP_MD_CTX *context = EVP_MD_CTX_new();
@@ -537,8 +507,11 @@ static int build_and_commit(const char *device, const char *operation, const cha
     if (relayout == EXFAT_RELAYOUT_FAILED) return 1;
     fprintf(stderr,
             "exFAT terminal-workspace fast path is unavailable for this layout; using the verified shadow-image compatibility path.\n");
-    char *real = canonical_path(device, error), *identity = NULL; uint64_t physical = 0;
-    if (real == NULL || target_identity(device, &identity, &physical, error) != 0) { free(real); free(identity); return 1; }
+    char *real = NULL, *identity = NULL; uint64_t physical = 0;
+    if (ld_device_capture_binding(device, &real, &identity, &physical) != 0) {
+        exfat_set_error(error, "cannot bind exFAT target: %s", strerror(errno));
+        free(real); free(identity); return 1;
+    }
     ExfatVolume source; ExfatCatalogue catalogue; ExfatPlan plan; ExfatJournal state; memset(&state, 0, sizeof(state));
     if (exfat_scan(device, false, &source, &catalogue, error) != 0) { free(real); free(identity); return 1; }
     if (exfat_build_plan(&source, &catalogue, growth ? 10U : 0U, &plan, error) != 0) { exfat_catalogue_free(&catalogue); exfat_close_volume(&source); free(real); free(identity); return 1; }
@@ -558,12 +531,13 @@ static int build_and_commit(const char *device, const char *operation, const cha
     if (journal_phase(journal_path, &state, "ready", error) != 0) goto precommit_fail;
     exfat_plan_free(&plan); exfat_catalogue_free(&catalogue); exfat_close_volume(&source);
     if (ld_stop_requested()) goto stopped_after_close;
-    char *now_identity = NULL; uint64_t now_size = 0; ExfatVolume now; ExfatCatalogue now_catalogue;
-    if (target_identity(device, &now_identity, &now_size, error) != 0 || strcmp(now_identity, state.target_identity) != 0 || now_size != state.physical_bytes ||
+    char *now_path = NULL, *now_identity = NULL; uint64_t now_size = 0; ExfatVolume now; ExfatCatalogue now_catalogue;
+    if (ld_device_capture_binding(device, &now_path, &now_identity, &now_size) != 0 ||
+        strcmp(now_path, state.device) != 0 || strcmp(now_identity, state.target_identity) != 0 || now_size != state.physical_bytes ||
         exfat_scan(device, false, &now, &now_catalogue, error) != 0 || now.serial != state.serial) {
-        free(now_identity); if (error != NULL && *error == NULL) exfat_set_error(error, "exFAT target changed before commit"); goto precommit_fail_closed;
+        free(now_path); free(now_identity); if (error != NULL && *error == NULL) exfat_set_error(error, "exFAT target changed before commit"); goto precommit_fail_closed;
     }
-    free(now_identity); exfat_catalogue_free(&now_catalogue); exfat_close_volume(&now);
+    free(now_path); free(now_identity); exfat_catalogue_free(&now_catalogue); exfat_close_volume(&now);
     state.commit_offset = state.boot_length;
     if (journal_phase(journal_path, &state, "committing", error) != 0) goto precommit_fail_closed;
     puts("The internally verified native-C exFAT working image is complete. Starting the persistent source commit."); fflush(stdout);
@@ -622,8 +596,11 @@ static int recover_transaction(const char *device, const char *journal_path,
         journal_free(&state);
         return 1;
     }
-    int result = 1; char *real = canonical_path(device, error), *identity = NULL; uint64_t size = 0;
-    if (real == NULL || target_identity(device, &identity, &size, error) != 0) goto done;
+    int result = 1; char *real = NULL, *identity = NULL; uint64_t size = 0;
+    if (ld_device_capture_binding(device, &real, &identity, &size) != 0) {
+        exfat_set_error(error, "cannot bind exFAT recovery target: %s", strerror(errno));
+        goto done;
+    }
     if (strcmp(real, state.device) != 0 || strcmp(identity, state.target_identity) != 0 || size != state.physical_bytes) { exfat_set_error(error, "recovery journal belongs to a different exFAT target"); goto done; }
     if (strcmp(state.phase, "committing") != 0 && strcmp(state.phase, "verifying-source") != 0) {
         transaction_cleanup(journal_path, &state); puts("Discarded an incomplete exFAT working image; the source was unchanged."); result = 0; goto done;
