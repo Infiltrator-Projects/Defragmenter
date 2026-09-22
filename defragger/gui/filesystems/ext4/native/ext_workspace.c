@@ -35,19 +35,25 @@ static int workspace_sql_exec(sqlite3 *db, const char *sql, char **error) {
     return 0;
 }
 
-static bool original_allocated(ext2_filsys fs, const ExtGeometry *geometry,
-                               uint64_t block) {
-    if (block == 0 || block < geometry->first_data_block) return true;
-    return ext2fs_test_block_bitmap2(fs->block_map, (blk64_t)block) != 0;
+static int original_allocated(ExtFs *fs, const ExtGeometry *geometry,
+                              uint64_t block, bool *allocated, char **error) {
+    if (block == 0U || block < geometry->first_data_block) {
+        *allocated = true;
+        return 0;
+    }
+    return ext_fs_block_allocated(fs, block, allocated, error);
 }
 
-static uint64_t allocated_block_count(ext2_filsys fs,
-                                      const ExtGeometry *geometry) {
-    uint64_t count = 0;
-    for (uint64_t block = 0; block < geometry->total_blocks; ++block) {
-        if (original_allocated(fs, geometry, block)) count++;
+static int allocated_block_count(ExtFs *fs, const ExtGeometry *geometry,
+                                 uint64_t *count, char **error) {
+    *count = 0U;
+    for (uint64_t block = 0U; block < geometry->total_blocks; ++block) {
+        bool allocated = false;
+        if (original_allocated(fs, geometry, block, &allocated, error) != 0)
+            return -1;
+        if (allocated) (*count)++;
     }
-    return count;
+    return 0;
 }
 
 static int plan_range_is_unused(sqlite3 *db, uint64_t start, uint64_t end,
@@ -73,7 +79,7 @@ static int plan_range_is_unused(sqlite3 *db, uint64_t start, uint64_t end,
     return 0;
 }
 
-static int find_high_workspace(ext2_filsys fs, sqlite3 *db,
+static int find_high_workspace(ExtFs *fs, sqlite3 *db,
                                const ExtGeometry *geometry, uint64_t needed,
                                uint64_t *start_out, char **error) {
     if (needed == 0 || needed > geometry->free_blocks) return EXT_WORKSPACE_UNAVAILABLE;
@@ -82,7 +88,10 @@ static int find_high_workspace(ext2_filsys fs, sqlite3 *db,
     bool in_run = false;
     while (cursor > geometry->first_data_block) {
         cursor--;
-        bool free_block = !original_allocated(fs, geometry, cursor);
+        bool allocated = false;
+        if (original_allocated(fs, geometry, cursor, &allocated, error) != 0)
+            return -1;
+        bool free_block = !allocated;
         if (free_block) {
             if (!in_run) {
                 run_end = cursor + 1U;
@@ -174,12 +183,14 @@ static int get_state_u64(sqlite3 *db, const char *key, uint64_t *value,
     return 0;
 }
 
-int ext_workspace_prepare(ext2_filsys fs, sqlite3 *db,
+int ext_workspace_prepare(ExtFs *fs, sqlite3 *db,
                           const ExtGeometry *geometry,
                           uint64_t requested_batch_blocks,
                           ExtWorkspace *workspace, char **error) {
     memset(workspace, 0, sizeof(*workspace));
-    uint64_t needed = allocated_block_count(fs, geometry);
+    uint64_t needed = 0U;
+    if (allocated_block_count(fs, geometry, &needed, error) != 0)
+        return -1;
     uint64_t start = 0;
     int found = find_high_workspace(fs, db, geometry, needed, &start, error);
     if (found != 0) return found;
@@ -201,7 +212,13 @@ int ext_workspace_prepare(ext2_filsys fs, sqlite3 *db,
     }
     uint64_t index = 0;
     for (uint64_t block = 0; block < geometry->total_blocks; ++block) {
-        if (!original_allocated(fs, geometry, block)) continue;
+        bool allocated = false;
+        if (original_allocated(fs, geometry, block, &allocated, error) != 0) {
+            sqlite3_finalize(insert);
+            (void)sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL);
+            return -1;
+        }
+        if (!allocated) continue;
         uint64_t slot = start + index;
         if (block > INT64_MAX || slot > INT64_MAX) {
             sqlite3_finalize(insert);
