@@ -7,7 +7,6 @@
 
 #include "infiltratr/arithmetic.h"
 
-#include <com_err.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <openssl/sha.h>
@@ -57,7 +56,7 @@ static int insert_space(sqlite3_stmt *insert, uint64_t start, uint64_t length,
     return 0;
 }
 
-static int catalog_spaces(ext2_filsys fs, sqlite3 *db,
+static int catalog_spaces(ExtFs *fs, sqlite3 *db,
                           const ExtGeometry *geometry, char **error) {
     sqlite3_stmt *old_stmt = NULL, *insert = NULL;
     if (sqlite3_prepare_v2(db, "SELECT old FROM blocks ORDER BY old", -1, &old_stmt, NULL) != SQLITE_OK ||
@@ -76,7 +75,9 @@ static int catalog_spaces(ext2_filsys fs, sqlite3 *db,
             next_old = old_state == SQLITE_ROW ? (uint64_t)sqlite3_column_int64(old_stmt, 0) : UINT64_MAX;
         }
         bool movable = next_old == block;
-        bool allocated = ext2fs_test_block_bitmap2(fs->block_map, (blk64_t)block) != 0;
+        bool allocated = false;
+        if (ext_fs_block_allocated(fs, block, &allocated, error) != 0)
+            goto rollback;
         bool legal = movable || !allocated;
         if (legal) {
             if (!have_run) {
@@ -116,7 +117,7 @@ fail:
     return -1;
 }
 
-int ext_assign_targets(ext2_filsys fs, sqlite3 *db,
+int ext_assign_targets(ExtFs *fs, sqlite3 *db,
                        const ExtGeometry *geometry, bool growth,
                        char **error) {
     if (catalog_spaces(fs, db, geometry, error) != 0) return -1;
@@ -351,86 +352,88 @@ typedef struct {
     bool mismatch;
 } MappingContext;
 
-static int replace_mapping(ext2_filsys fs, blk64_t *blocknr, e2_blkcnt_t blockcnt,
-                           blk64_t ref_blk, int ref_offset, void *private_data) {
-    (void)fs; (void)ref_blk; (void)ref_offset;
+static int replace_mapping(ExtFs *fs, uint32_t ino, int64_t logical,
+                           uint64_t *physical, bool mutable_mapping,
+                           void *private_data, char **error) {
+    (void)fs; (void)ino; (void)mutable_mapping; (void)error;
     MappingContext *context = private_data;
-    if (*blocknr == 0) return 0;
-    if (context->position >= context->count) { context->mismatch = true; return BLOCK_ABORT; }
-    Mapping *mapping = &context->items[context->position++];
-    if (mapping->logical != (int64_t)blockcnt || mapping->old_block != (uint64_t)*blocknr) {
+    if (context->position >= context->count) {
         context->mismatch = true;
-        return BLOCK_ABORT;
+        return -1;
+    }
+    Mapping *mapping = &context->items[context->position++];
+    if (mapping->logical != logical || mapping->old_block != *physical) {
+        context->mismatch = true;
+        return -1;
     }
     if (!mapping->changed) return 0;
-    *blocknr = (blk64_t)mapping->target;
+    *physical = mapping->target;
     context->changed++;
-    return BLOCK_CHANGED;
+    return 0;
 }
 
-static int reserve_blocks(ext2_filsys fs, sqlite3 *db, bool allocate, char **error) {
-    sqlite3_stmt *stmt = NULL, *is_old = NULL;
-    if (sqlite3_prepare_v2(db, "SELECT start,length FROM reserves", -1, &stmt, NULL) != SQLITE_OK ||
-        sqlite3_prepare_v2(db, "SELECT 1 FROM blocks WHERE old=?", -1, &is_old, NULL) != SQLITE_OK)
-        return sql_error(db, error, "preparing EXT reserve updates");
+static int set_query_allocations(ExtFs *fs, sqlite3 *db, const char *sql,
+                                 bool allocated, char **error) {
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK)
+        return sql_error(db, error, "preparing EXT allocation transition");
     int state;
     while ((state = sqlite3_step(stmt)) == SQLITE_ROW) {
-        uint64_t start = (uint64_t)sqlite3_column_int64(stmt, 0);
-        uint64_t length = (uint64_t)sqlite3_column_int64(stmt, 1);
-        for (uint64_t offset = 0; offset < length; ++offset) {
-            uint64_t block = start + offset;
-            sqlite3_reset(is_old); sqlite3_clear_bindings(is_old); sqlite3_bind_int64(is_old, 1, (sqlite3_int64)block);
-            int old_state = sqlite3_step(is_old);
-            if (old_state == SQLITE_DONE)
-                ext2fs_block_alloc_stats2(fs, (blk64_t)block, allocate ? +1 : -1);
-            else if (old_state != SQLITE_ROW) { sqlite3_finalize(stmt); sqlite3_finalize(is_old); return sql_error(db, error, "checking EXT reserve overlap"); }
+        sqlite3_int64 raw = sqlite3_column_int64(stmt, 0);
+        if (raw < 0 ||
+            ext_fs_set_block_allocated(fs, (uint64_t)raw,
+                                       allocated, error) != 0) {
+            sqlite3_finalize(stmt);
+            return -1;
         }
     }
-    sqlite3_finalize(stmt); sqlite3_finalize(is_old);
-    if (state != SQLITE_DONE) return sql_error(db, error, "reading EXT reserves");
+    sqlite3_finalize(stmt);
+    if (state != SQLITE_DONE)
+        return sql_error(db, error, "reading EXT allocation transition");
     return 0;
 }
 
 static int apply_mappings(const char *stage, sqlite3 *db, bool allow_stop,
                           bool caller_holds_exclusive_lock, char **error) {
-    ext2_filsys fs = NULL;
+    ExtFs *fs = NULL;
     int opened = caller_holds_exclusive_lock
         ? ext_open_fs_under_lock(stage, true, &fs, error)
         : ext_open_fs(stage, true, &fs, error);
     if (opened != 0) return -1;
     int result = -1;
-    sqlite3_stmt *new_targets = NULL;
-    if (sqlite3_prepare_v2(db,
-        "SELECT b.target FROM blocks b LEFT JOIN blocks source ON source.old=b.target WHERE source.old IS NULL",
-        -1, &new_targets, NULL) != SQLITE_OK) { sql_error(db, error, "preparing EXT target allocations"); goto done; }
-    int state;
-    while ((state = sqlite3_step(new_targets)) == SQLITE_ROW)
-        ext2fs_block_alloc_stats2(fs, (blk64_t)sqlite3_column_int64(new_targets, 0), +1);
-    if (state != SQLITE_DONE) { sql_error(db, error, "reading EXT new allocations"); goto done; }
-    if (reserve_blocks(fs, db, true, error) != 0) goto done;
-    errcode_t code = ext2fs_write_bitmaps(fs);
-    if (code != 0) { ext_set_error(error, "allocating EXT target blocks: %s", error_message(code)); goto done; }
-    code = ext2fs_flush(fs);
-    if (code != 0) { ext_set_error(error, "flushing EXT target allocations: %s", error_message(code)); goto done; }
-
     sqlite3_stmt *inodes = NULL, *mappings = NULL;
-    if (sqlite3_prepare_v2(db, "SELECT DISTINCT inode FROM blocks WHERE old<>target ORDER BY inode", -1, &inodes, NULL) != SQLITE_OK ||
-        sqlite3_prepare_v2(db, "SELECT logical,old,target FROM blocks WHERE inode=? ORDER BY sequence", -1, &mappings, NULL) != SQLITE_OK) {
-        sql_error(db, error, "preparing EXT inode remapping"); sqlite3_finalize(inodes); sqlite3_finalize(mappings); goto done;
+    if (sqlite3_prepare_v2(db,
+            "SELECT DISTINCT inode FROM blocks WHERE old<>target ORDER BY inode",
+            -1, &inodes, NULL) != SQLITE_OK ||
+        sqlite3_prepare_v2(db,
+            "SELECT logical,old,target FROM blocks WHERE inode=? ORDER BY sequence",
+            -1, &mappings, NULL) != SQLITE_OK) {
+        sql_error(db, error, "preparing EXT inode remapping");
+        goto done;
     }
-    size_t inode_index = 0;
+
+    size_t inode_index = 0U;
+    int state;
     while ((state = sqlite3_step(inodes)) == SQLITE_ROW) {
-        if (allow_stop && ld_stop_requested()) { ext_set_error(error, "stop requested before EXT source commit"); sqlite3_finalize(inodes); sqlite3_finalize(mappings); goto done; }
-        ext2_ino_t ino = (ext2_ino_t)sqlite3_column_int64(inodes, 0);
-        sqlite3_reset(mappings); sqlite3_clear_bindings(mappings); sqlite3_bind_int64(mappings, 1, (sqlite3_int64)ino);
+        if (allow_stop && ld_stop_requested()) {
+            ext_set_error(error, "stop requested before EXT source commit");
+            goto done;
+        }
+        sqlite3_int64 raw_ino = sqlite3_column_int64(inodes, 0);
+        if (raw_ino <= 0 || raw_ino > UINT32_MAX) {
+            ext_set_error(error, "invalid EXT inode in relocation plan");
+            goto done;
+        }
+        uint32_t ino = (uint32_t)raw_ino;
+        sqlite3_reset(mappings); sqlite3_clear_bindings(mappings);
+        sqlite3_bind_int64(mappings, 1, raw_ino);
         MappingContext context = {0};
         int mstate;
         while ((mstate = sqlite3_step(mappings)) == SQLITE_ROW) {
             if (context.count == SIZE_MAX ||
                 !infiltratr_array_reserve((void **)&context.items,
-                                          &context.capacity,
-                                          sizeof(*context.items),
-                                          context.count + 1U, 32U))
+                    &context.capacity, sizeof(*context.items),
+                    context.count + 1U, 32U))
                 ld_die("cannot grow EXT inode mapping vector");
             Mapping *item = &context.items[context.count++];
             item->logical = sqlite3_column_int64(mappings, 0);
@@ -438,45 +441,64 @@ static int apply_mappings(const char *stage, sqlite3 *db, bool allow_stop,
             item->target = (uint64_t)sqlite3_column_int64(mappings, 2);
             item->changed = item->old_block != item->target;
         }
-        if (mstate != SQLITE_DONE) { free(context.items); sql_error(db, error, "reading EXT inode mappings"); sqlite3_finalize(inodes); sqlite3_finalize(mappings); goto done; }
-        code = ext2fs_block_iterate3(fs, ino, BLOCK_FLAG_DATA_ONLY, NULL,
-                                      replace_mapping, &context);
-        size_t expected_changed = 0;
-        for (size_t index = 0; index < context.count; ++index) if (context.items[index].changed) expected_changed++;
-        if (code != 0 || context.mismatch || context.position != context.count || context.changed != expected_changed) {
+        if (mstate != SQLITE_DONE) {
             free(context.items);
-            ext_set_error(error, "EXT inode %u block mapping changed unexpectedly during native remap", (unsigned)ino);
-            sqlite3_finalize(inodes); sqlite3_finalize(mappings); goto done;
+            sql_error(db, error, "reading EXT inode mappings");
+            goto done;
+        }
+
+        ExtInode inode;
+        if (ext_fs_read_inode(fs, ino, &inode, error) != 0) {
+            free(context.items);
+            goto done;
+        }
+        int iterate = ext_fs_iterate_payload(
+            fs, &inode, true, replace_mapping, &context, error);
+        ext_inode_destroy(&inode);
+        size_t expected_changed = 0U;
+        for (size_t index = 0U; index < context.count; ++index)
+            if (context.items[index].changed) expected_changed++;
+        if (iterate != 0 || context.mismatch ||
+            context.position != context.count ||
+            context.changed != expected_changed) {
+            free(context.items);
+            if (error != NULL && *error == NULL)
+                ext_set_error(error,
+                    "EXT inode %u block mapping changed unexpectedly during native remap",
+                    ino);
+            goto done;
         }
         free(context.items);
         inode_index++;
-        if ((inode_index % 128U) == 0U) {
-            code = ext2fs_flush(fs);
-            if (code != 0) { ext_set_error(error, "flushing EXT inode mappings: %s", error_message(code)); sqlite3_finalize(inodes); sqlite3_finalize(mappings); goto done; }
-        }
     }
-    sqlite3_finalize(inodes); sqlite3_finalize(mappings);
-    if (state != SQLITE_DONE) { sql_error(db, error, "reading EXT remapped inode list"); goto done; }
-    code = ext2fs_flush(fs);
-    if (code != 0) { ext_set_error(error, "flushing all EXT inode mappings: %s", error_message(code)); goto done; }
+    if (state != SQLITE_DONE) {
+        sql_error(db, error, "reading EXT remapped inode list");
+        goto done;
+    }
 
-    sqlite3_stmt *old_blocks = NULL;
-    if (sqlite3_prepare_v2(db,
-        "SELECT b.old FROM blocks b LEFT JOIN blocks target ON target.target=b.old WHERE target.target IS NULL",
-        -1, &old_blocks, NULL) != SQLITE_OK) { sql_error(db, error, "preparing EXT old-allocation release"); goto done; }
-    while ((state = sqlite3_step(old_blocks)) == SQLITE_ROW)
-        ext2fs_block_alloc_stats2(fs, (blk64_t)sqlite3_column_int64(old_blocks, 0), -1);
-    sqlite3_finalize(old_blocks);
-    if (state != SQLITE_DONE) { sql_error(db, error, "reading EXT old allocations"); goto done; }
-    if (reserve_blocks(fs, db, false, error) != 0) goto done;
-    code = ext2fs_write_bitmaps(fs);
-    if (code != 0) { ext_set_error(error, "freeing old EXT data blocks: %s", error_message(code)); goto done; }
-    code = ext2fs_flush(fs);
-    if (code != 0) { ext_set_error(error, "flushing final EXT allocation bitmaps: %s", error_message(code)); goto done; }
+    /*
+     * The target is unmounted and exclusively bound by Defragmenter.  Publish
+     * only the final allocation state: new targets become allocated and old
+     * blocks with no target become free. Growth-reserve blocks remain free
+     * throughout; no allocator runs concurrently that needs them hidden.
+     */
+    if (set_query_allocations(fs, db,
+        "SELECT b.target FROM blocks b LEFT JOIN blocks source "
+        "ON source.old=b.target WHERE source.old IS NULL ORDER BY b.target",
+        true, error) != 0 ||
+        set_query_allocations(fs, db,
+        "SELECT b.old FROM blocks b LEFT JOIN blocks target "
+        "ON target.target=b.old WHERE target.target IS NULL ORDER BY b.old",
+        false, error) != 0 ||
+        ext_fs_flush(fs, error) != 0)
+        goto done;
+
+    (void)inode_index;
     result = 0;
 done:
-    sqlite3_finalize(new_targets);
-    if (ext2fs_close(fs) != 0 && result == 0) { ext_set_error(error, "closing modified EXT working image failed"); result = -1; }
+    sqlite3_finalize(inodes);
+    sqlite3_finalize(mappings);
+    ext_fs_close(fs);
     return result;
 }
 
@@ -501,39 +523,35 @@ typedef struct {
     size_t capacity;
 } ExtDigestContext;
 
-static int collect_digest_block(ext2_filsys fs, blk64_t *blocknr,
-                                e2_blkcnt_t blockcnt, blk64_t ref_blk,
-                                int ref_offset, void *private_data) {
-    (void)fs;
-    (void)ref_blk;
-    (void)ref_offset;
+static int collect_digest_block(ExtFs *fs, uint32_t ino,
+                                int64_t logical, uint64_t *physical,
+                                bool mutable_mapping, void *private_data,
+                                char **error) {
+    (void)fs; (void)ino; (void)mutable_mapping; (void)error;
     ExtDigestContext *context = private_data;
-    if (blockcnt >= 0 && *blocknr != 0) {
-        if (context->count == SIZE_MAX ||
-            !infiltratr_array_reserve((void **)&context->items,
-                                      &context->capacity,
-                                      sizeof(*context->items),
-                                      context->count + 1U, 32U))
-            ld_die("cannot grow EXT digest block vector");
-        context->items[context->count++] = (ExtDigestBlock){
-            .physical = (uint64_t)*blocknr,
-            .logical = (int64_t)blockcnt,
-        };
-    }
+    if (context->count == SIZE_MAX ||
+        !infiltratr_array_reserve((void **)&context->items,
+                                  &context->capacity,
+                                  sizeof(*context->items),
+                                  context->count + 1U, 32U))
+        ld_die("cannot grow EXT digest block vector");
+    context->items[context->count++] = (ExtDigestBlock){
+        .physical = *physical, .logical = logical};
     return 0;
 }
 
-static int digest_inode(ext2_filsys fs, int fd, ext2_ino_t ino,
+static int digest_inode(ExtFs *fs, int fd, uint32_t ino,
                         uint32_t block_size,
                         uint8_t output[SHA256_DIGEST_LENGTH], char **error) {
+    ExtInode inode;
+    if (ext_fs_read_inode(fs, ino, &inode, error) != 0) return -1;
     ExtDigestContext context = {0};
-    errcode_t code = ext2fs_block_iterate3(
-        fs, ino, BLOCK_FLAG_READ_ONLY | BLOCK_FLAG_DATA_ONLY,
-        NULL, collect_digest_block, &context);
-    if (code != 0) {
+    int iterate = ext_fs_iterate_payload(fs, &inode, false,
+                                         collect_digest_block,
+                                         &context, error);
+    ext_inode_destroy(&inode);
+    if (iterate != 0) {
         free(context.items);
-        ext_set_error(error, "reading EXT inode payload for verification: %s",
-                      error_message(code));
         return -1;
     }
     SHA256_CTX digest;
@@ -543,35 +561,30 @@ static int digest_inode(ext2_filsys fs, int fd, ext2_ino_t ino,
         return -1;
     }
     uint8_t *buffer = ld_xmalloc(block_size);
-    for (size_t index = 0; index < context.count; ++index) {
-        ssize_t got = ld_pread_full(
-            fd, buffer, block_size, context.items[index].physical * block_size);
+    for (size_t index = 0U; index < context.count; ++index) {
+        ssize_t got = ld_pread_full(fd, buffer, block_size,
+            context.items[index].physical * block_size);
         if (got < 0 || (size_t)got != block_size) {
-            free(buffer);
-            free(context.items);
+            free(buffer); free(context.items);
             ext_set_error(error, "short read verifying EXT payload");
             return -1;
         }
         uint8_t logical[8];
         uint64_t value = (uint64_t)context.items[index].logical;
-        for (unsigned byte = 0; byte < 8U; ++byte)
+        for (unsigned byte = 0U; byte < 8U; ++byte)
             logical[byte] = (uint8_t)(value >> (byte * 8U));
         if (SHA256_Update(&digest, logical, sizeof(logical)) != 1 ||
             SHA256_Update(&digest, buffer, block_size) != 1) {
-            free(buffer);
-            free(context.items);
+            free(buffer); free(context.items);
             ext_set_error(error, "updating EXT verification digest failed");
             return -1;
         }
     }
+    free(buffer); free(context.items);
     if (SHA256_Final(output, &digest) != 1) {
-        free(buffer);
-        free(context.items);
         ext_set_error(error, "finalizing EXT verification digest failed");
         return -1;
     }
-    free(buffer);
-    free(context.items);
     return 0;
 }
 
@@ -581,17 +594,17 @@ typedef struct {
     bool mismatch;
 } VerifyMapContext;
 
-static int verify_mapping(ext2_filsys fs, blk64_t *blocknr, e2_blkcnt_t blockcnt,
-                          blk64_t ref_blk, int ref_offset, void *private_data) {
-    (void)fs; (void)ref_blk; (void)ref_offset;
-    if (*blocknr == 0) return 0;
+static int verify_mapping(ExtFs *fs, uint32_t ino, int64_t logical,
+                          uint64_t *physical, bool mutable_mapping,
+                          void *private_data, char **error) {
+    (void)fs; (void)ino; (void)mutable_mapping; (void)error;
     VerifyMapContext *context = private_data;
     int state = sqlite3_step(context->expected);
     if (state != SQLITE_ROW ||
-        sqlite3_column_int64(context->expected, 0) != (sqlite3_int64)blockcnt ||
-        (uint64_t)sqlite3_column_int64(context->expected, 1) != (uint64_t)*blocknr) {
+        sqlite3_column_int64(context->expected, 0) != logical ||
+        (uint64_t)sqlite3_column_int64(context->expected, 1) != *physical) {
         context->mismatch = true;
-        return BLOCK_ABORT;
+        return -1;
     }
     context->seen++;
     return 0;
@@ -599,7 +612,7 @@ static int verify_mapping(ext2_filsys fs, blk64_t *blocknr, e2_blkcnt_t blockcnt
 
 int ext_verify_stage(const char *stage, sqlite3 *db, const ExtGeometry *geometry,
                      bool growth, ExtCatalogue *verified, char **error) {
-    ext2_filsys fs = NULL;
+    ExtFs *fs = NULL;
     if (ext_open_fs(stage, false, &fs, error) != 0) return -1;
     int result = -1;
     if (ext_validate_metadata(fs, true, error) != 0) goto done;
@@ -614,27 +627,33 @@ int ext_verify_stage(const char *stage, sqlite3 *db, const ExtGeometry *geometry
     }
     int state;
     while ((state = sqlite3_step(objects)) == SQLITE_ROW) {
-        ext2_ino_t ino = (ext2_ino_t)sqlite3_column_int64(objects, 0);
-        struct ext2_inode_large inode;
-        errcode_t code = ext2fs_read_inode_full(fs, ino, (struct ext2_inode *)&inode, sizeof(inode));
-        if (code != 0) { ext_set_error(error, "reading EXT inode %u during verification: %s", (unsigned)ino, error_message(code)); goto finalize; }
+        sqlite3_int64 raw_ino = sqlite3_column_int64(objects, 0);
+        if (raw_ino <= 0 || raw_ino > UINT32_MAX) {
+            ext_set_error(error, "invalid EXT inode in verification plan"); goto finalize;
+        }
+        uint32_t ino = (uint32_t)raw_ino;
+        ExtInode inode;
+        if (ext_fs_read_inode(fs, ino, &inode, error) != 0) goto finalize;
         uint16_t mode = (uint16_t)sqlite3_column_int(objects, 1);
         uint16_t links = (uint16_t)sqlite3_column_int(objects, 2);
         uint64_t size = (uint64_t)sqlite3_column_int64(objects, 3);
         uint64_t expected_allocations = (uint64_t)sqlite3_column_int64(objects, 5);
-        uint64_t actual_size = ((unsigned)inode.i_mode & LINUX_S_IFMT) == LINUX_S_IFREG ?
-                               EXT2_I_SIZE((struct ext2_inode *)&inode) : inode.i_size;
-        if (inode.i_mode != mode || inode.i_links_count != links || actual_size != size) {
-            ext_set_error(error, "EXT inode %u metadata verification failed", (unsigned)ino); goto finalize;
+        uint64_t actual_size = inode.size;
+        if (inode.mode != mode || inode.links != links || actual_size != size) {
+            ext_inode_destroy(&inode);
+            ext_set_error(error, "EXT inode %u metadata verification failed", ino); goto finalize;
         }
         sqlite3_reset(expected); sqlite3_clear_bindings(expected); sqlite3_bind_int64(expected, 1, (sqlite3_int64)ino);
         VerifyMapContext context = {.expected = expected};
-        code = ext2fs_block_iterate3(fs, ino,
-                                      BLOCK_FLAG_READ_ONLY | BLOCK_FLAG_DATA_ONLY,
-                                      NULL, verify_mapping, &context);
+        int iterate = ext_fs_iterate_payload(fs, &inode, false,
+                                             verify_mapping, &context, error);
         int trailing = sqlite3_step(expected);
-        if (code != 0 || context.mismatch || context.seen != expected_allocations || trailing != SQLITE_DONE) {
-            ext_set_error(error, "EXT inode %u canonical allocation verification failed", (unsigned)ino); goto finalize;
+        ext_inode_destroy(&inode);
+        if (iterate != 0 || context.mismatch ||
+            context.seen != expected_allocations || trailing != SQLITE_DONE) {
+            if (error != NULL && *error == NULL)
+                ext_set_error(error, "EXT inode %u canonical allocation verification failed", ino);
+            goto finalize;
         }
         uint8_t digest[SHA256_DIGEST_LENGTH];
         if (digest_inode(fs, fd, ino, geometry->block_size, digest, error) != 0) goto finalize;
@@ -653,8 +672,15 @@ int ext_verify_stage(const char *stage, sqlite3 *db, const ExtGeometry *geometry
             uint64_t start = (uint64_t)sqlite3_column_int64(reserves, 0);
             uint64_t length = (uint64_t)sqlite3_column_int64(reserves, 1);
             for (uint64_t offset = 0; offset < length; ++offset) {
-                if (ext2fs_test_block_bitmap2(fs->block_map, (blk64_t)(start + offset))) {
-                    sqlite3_finalize(reserves); ext_set_error(error, "EXT Growth Defrag reserve block is allocated"); goto finalize;
+                bool allocated = false;
+                if (ext_fs_block_allocated(fs, start + offset,
+                                           &allocated, error) != 0) {
+                    sqlite3_finalize(reserves); goto finalize;
+                }
+                if (allocated) {
+                    sqlite3_finalize(reserves);
+                    ext_set_error(error, "EXT Growth Defrag reserve block is allocated");
+                    goto finalize;
                 }
             }
         }
@@ -679,6 +705,6 @@ finalize:
 close_fd:
     close(fd);
 done:
-    (void)ext2fs_close(fs);
+    ext_fs_close(fs);
     return result;
 }
