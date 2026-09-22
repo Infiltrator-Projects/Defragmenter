@@ -4,13 +4,9 @@
 #include "ld_runtime.h"
 
 #include "infiltratr/arithmetic.h"
-#include "infiltratr/endian.h"
-#include "infiltratr/posix_io.h"
 
-#include <com_err.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <inttypes.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -118,186 +114,99 @@ int ext_read_geometry(const char *path, ExtGeometry *geometry, char **error) {
     memset(geometry, 0, sizeof(*geometry));
     uint64_t physical_bytes = 0;
     if (physical_size(path, &physical_bytes, error) != 0) return -1;
-    int fd = open(path, O_RDONLY | O_CLOEXEC);
-    if (fd < 0) {
-        ext_set_error(error, "cannot open EXT target %s: %s", path, strerror(errno));
-        return -1;
-    }
-    uint8_t sb[1024];
-    int got = infiltratr_pread_full(fd, sb, sizeof(sb), 1024U);
-    int saved = errno;
-    (void)close(fd);
-    if (got != 0) {
-        ext_set_error(error, "cannot read EXT superblock from %s: %s", path,
-                      strerror(saved));
-        return -1;
-    }
-    if (infiltratr_load_le16(sb + 56) != EXT2_SUPER_MAGIC) {
-        ext_set_error(error, "not an EXT2/EXT3/EXT4 filesystem");
-        return -1;
-    }
-    uint32_t log_block = infiltratr_load_le32(sb + 24);
-    if (log_block > 6U) {
-        ext_set_error(error, "unsupported EXT block size exponent %u", log_block);
-        return -1;
-    }
-    uint32_t block_size = 1024U << log_block;
-    uint32_t incompat = infiltratr_load_le32(sb + 96);
-    uint32_t compat = infiltratr_load_le32(sb + 92);
-    uint32_t ro_compat = infiltratr_load_le32(sb + 100);
-    uint64_t blocks = infiltratr_load_le32(sb + 4);
-    uint64_t free_blocks = infiltratr_load_le32(sb + 12);
-    if ((incompat & EXT4_FEATURE_INCOMPAT_64BIT) != 0U) {
-        blocks |= (uint64_t)infiltratr_load_le32(sb + 0x150) << 32;
-        free_blocks |= (uint64_t)infiltratr_load_le32(sb + 0x158) << 32;
-    }
-    if (blocks == 0 || free_blocks > blocks || blocks > physical_bytes / block_size) {
+
+    ExtFs *fs = NULL;
+    if (ext_fs_open(path, false, &fs, error) != 0) return -1;
+    uint32_t block_size = ext_fs_block_size(fs);
+    uint64_t blocks = ext_fs_blocks_count(fs);
+    uint64_t free_blocks = ext_fs_free_blocks(fs);
+    uint64_t physical_blocks = physical_bytes / block_size;
+    if (blocks == 0U || free_blocks > blocks || blocks > physical_blocks) {
+        ext_fs_close(fs);
         ext_set_error(error, "EXT filesystem geometry exceeds the target device");
         return -1;
     }
-    uint64_t physical_blocks = physical_bytes / block_size;
+
     geometry->block_size = block_size;
     geometry->total_blocks = blocks;
     geometry->free_blocks = free_blocks;
     geometry->physical_blocks = physical_blocks;
     geometry->physical_bytes = physical_bytes;
-    geometry->first_data_block = infiltratr_load_le32(sb + 20);
-    geometry->ro_compat = ro_compat;
-    geometry->incompat = incompat;
-    geometry->compat = compat;
-    memcpy(geometry->uuid, sb + 104, sizeof(geometry->uuid));
-    if ((incompat & ~EXT3_INCOMPAT_MASK) != 0U ||
-        (ro_compat & ~EXT3_RO_COMPAT_MASK) != 0U) {
+    geometry->first_data_block = ext_fs_first_data_block(fs);
+    geometry->ro_compat = ext_fs_ro_compat(fs);
+    geometry->incompat = ext_fs_incompat(fs);
+    geometry->compat = ext_fs_compat(fs);
+    memcpy(geometry->uuid, ext_fs_uuid(fs), sizeof(geometry->uuid));
+
+    if ((geometry->incompat & ~EXT3_INCOMPAT_MASK) != 0U ||
+        (geometry->ro_compat & ~EXT3_RO_COMPAT_MASK) != 0U) {
         memcpy(geometry->filesystem, "ext4", 5U);
-    } else if ((compat & EXT3_FEATURE_COMPAT_HAS_JOURNAL) != 0U) {
+    } else if ((geometry->compat & EXT_FEATURE_COMPAT_HAS_JOURNAL) != 0U) {
         memcpy(geometry->filesystem, "ext3", 5U);
     } else {
         memcpy(geometry->filesystem, "ext2", 5U);
     }
+    ext_fs_close(fs);
     return 0;
 }
 
-static int ext_open_fs_mode(const char *path, bool writable, bool exclusive,
-                            ext2_filsys *fs, char **error) {
-    int flags = EXT2_FLAG_64BITS | EXT2_FLAG_SOFTSUPP_FEATURES;
-    if (writable) {
-        flags |= EXT2_FLAG_RW;
-        if (exclusive) flags |= EXT2_FLAG_EXCLUSIVE;
-    }
-    errcode_t code = ext2fs_open(path, flags, 0, 0, unix_io_manager, fs);
-    if (code != 0) {
-        ext_set_error(error, "opening EXT filesystem %s: %s", path, error_message(code));
-        return -1;
-    }
-    code = ext2fs_read_bitmaps(*fs);
-    if (code != 0) {
-        ext_set_error(error, "reading EXT allocation bitmaps: %s", error_message(code));
-        (void)ext2fs_close(*fs);
-        *fs = NULL;
-        return -1;
-    }
-    return 0;
+int ext_open_fs(const char *path, bool writable, ExtFs **fs, char **error) {
+    return ext_fs_open(path, writable, fs, error);
 }
 
-int ext_open_fs(const char *path, bool writable, ext2_filsys *fs, char **error) {
-    return ext_open_fs_mode(path, writable, true, fs, error);
-}
-
-int ext_open_fs_under_lock(const char *path, bool writable, ext2_filsys *fs,
+int ext_open_fs_under_lock(const char *path, bool writable, ExtFs **fs,
                            char **error) {
-    return ext_open_fs_mode(path, writable, false, fs, error);
+    /*
+     * The caller already owns the Defragmenter descriptor lock.  Unlike the
+     * former libext2fs wrapper there is no second path-based O_EXCL authority.
+     */
+    return ext_fs_open(path, writable, fs, error);
 }
 
-int ext_validate_metadata(ext2_filsys fs, bool verify_inodes, char **error) {
-    if (!ext2fs_verify_csum_type(fs, fs->super) ||
-        !ext2fs_superblock_csum_verify(fs, fs->super)) {
-        ext_set_error(error, "EXT superblock checksum verification failed");
-        return -1;
-    }
-    errcode_t code = ext2fs_check_desc(fs);
-    if (code != 0) {
-        ext_set_error(error, "EXT group-descriptor validation failed: %s", error_message(code));
-        return -1;
-    }
-    char *bitmap = ld_xmalloc(fs->blocksize);
-    for (dgrp_t group = 0; group < fs->group_desc_count; ++group) {
-        if (!ext2fs_group_desc_csum_verify(fs, group)) {
-            ext_set_error(error, "EXT group %u descriptor checksum failed", (unsigned)group);
-            free(bitmap);
-            return -1;
-        }
-        if (!ext2fs_bg_flags_test(fs, group, EXT2_BG_BLOCK_UNINIT)) {
-            blk64_t block_bitmap = ext2fs_block_bitmap_loc(fs, group);
-            errcode_t bitmap_code = io_channel_read_blk64(fs->io, block_bitmap, 1, bitmap);
-            int block_bitmap_bytes = (int)((EXT2_CLUSTERS_PER_GROUP(fs->super) + 7U) / 8U);
-            if (bitmap_code != 0 || !ext2fs_block_bitmap_csum_verify(
-                    fs, group, bitmap, block_bitmap_bytes)) {
-                ext_set_error(error, "EXT group %u block-bitmap checksum failed", (unsigned)group);
-                free(bitmap);
-                return -1;
-            }
-        }
-        if (!ext2fs_bg_flags_test(fs, group, EXT2_BG_INODE_UNINIT)) {
-            blk64_t inode_bitmap = ext2fs_inode_bitmap_loc(fs, group);
-            errcode_t bitmap_code = io_channel_read_blk64(fs->io, inode_bitmap, 1, bitmap);
-            int inode_bitmap_bytes = (int)((EXT2_INODES_PER_GROUP(fs->super) + 7U) / 8U);
-            if (bitmap_code != 0 || !ext2fs_inode_bitmap_csum_verify(
-                    fs, group, bitmap, inode_bitmap_bytes)) {
-                ext_set_error(error, "EXT group %u inode-bitmap checksum failed", (unsigned)group);
-                free(bitmap);
-                return -1;
-            }
-        }
-    }
-    free(bitmap);
-    if (!verify_inodes) return 0;
-    ext2_inode_scan scan = NULL;
-    code = ext2fs_open_inode_scan(fs, 0, &scan);
-    if (code != 0) {
-        ext_set_error(error, "opening EXT inode checksum scan: %s", error_message(code));
-        return -1;
-    }
-    int result = 0;
-    size_t inode_bytes = fs->super->s_inode_size;
-    unsigned char *inode_buffer = ld_xmalloc(inode_bytes);
-    ext2_ino_t ino = 0;
-    while ((code = ext2fs_get_next_inode_full(scan, &ino,
-             (struct ext2_inode *)inode_buffer, (int)inode_bytes)) == 0 && ino != 0) {
-        struct ext2_inode_large *inode = (struct ext2_inode_large *)inode_buffer;
-        if (inode->i_mode == 0 || inode->i_links_count == 0) continue;
-        if (!ext2fs_inode_csum_verify(fs, ino, inode)) {
-            ext_set_error(error, "EXT inode %u checksum failed", (unsigned)ino);
-            result = -1;
-            break;
-        }
-    }
-    free(inode_buffer);
-    if (code != 0 && result == 0) {
-        ext_set_error(error, "reading EXT inode during checksum scan: %s", error_message(code));
-        result = -1;
-    }
-    ext2fs_close_inode_scan(scan);
-    return result;
+int ext_validate_metadata(ExtFs *fs, bool verify_inodes, char **error) {
+    return ext_fs_validate_metadata(fs, verify_inodes, error);
 }
 
-int ext_validate_writer_support(ext2_filsys fs, const ExtGeometry *geometry,
+int ext_validate_writer_support(ExtFs *fs, const ExtGeometry *geometry,
                                 char **error) {
-    if ((geometry->ro_compat & EXT4_FEATURE_RO_COMPAT_BIGALLOC) != 0U) {
-        ext_set_error(error, "EXT bigalloc filesystems are not yet supported by the native raw writer");
+    if ((geometry->ro_compat & EXT_FEATURE_RO_COMPAT_BIGALLOC) != 0U) {
+        ext_set_error(error,
+            "EXT bigalloc filesystems are outside the bounded native writer");
         return -1;
     }
-    if ((geometry->incompat & EXT2_FEATURE_INCOMPAT_META_BG) != 0U) {
-        ext_set_error(error, "EXT meta_bg filesystems are not yet supported by the native raw writer");
+    if ((geometry->incompat & EXT_FEATURE_INCOMPAT_META_BG) != 0U) {
+        ext_set_error(error,
+            "EXT meta_bg analysis is supported, but raw relayout remains fail-closed until descriptor-backup mutation is qualified");
         return -1;
     }
-    if ((fs->super->s_state & EXT2_VALID_FS) == 0U) {
-        ext_set_error(error, "EXT filesystem is not marked clean; refusing raw mutation");
+    if ((geometry->incompat &
+         (EXT_FEATURE_INCOMPAT_COMPRESSION |
+          EXT_FEATURE_INCOMPAT_RECOVER |
+          EXT_FEATURE_INCOMPAT_JOURNAL_DEV |
+          EXT_FEATURE_INCOMPAT_DIRDATA)) != 0U) {
+        ext_set_error(error,
+            "EXT filesystem has an incompatible state outside the bounded raw writer");
+        return -1;
+    }
+    if ((geometry->ro_compat &
+         (EXT_FEATURE_RO_COMPAT_HAS_SNAPSHOT |
+          EXT_FEATURE_RO_COMPAT_READONLY |
+          EXT_FEATURE_RO_COMPAT_SHARED_BLOCKS |
+          EXT_FEATURE_RO_COMPAT_ORPHAN_PRESENT)) != 0U) {
+        ext_set_error(error,
+            "EXT filesystem has read-only/snapshot/shared/orphan state outside the bounded raw writer");
+        return -1;
+    }
+    if ((ext_fs_state(fs) & EXT_VALID_FS) == 0U) {
+        ext_set_error(error,
+            "EXT filesystem is not marked clean; refusing raw mutation");
         return -1;
     }
     if (geometry->physical_blocks > geometry->total_blocks + 255U) {
         ext_set_error(error,
-            "EXT active filesystem does not span the target; Defragmenter no longer shells out to resize tools and will not resize it implicitly");
+            "EXT active filesystem does not span the target; Defragmenter will not resize it implicitly");
         return -1;
     }
     return ext_validate_metadata(fs, true, error);
 }
+
