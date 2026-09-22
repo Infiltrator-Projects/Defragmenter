@@ -1298,7 +1298,7 @@ static int collect_file_tree(ZfsContext *context,
             return -1;
         }
         if (dva.offset > context->summary.top_vdev_asize ||
-            dva.length > context->summary.top_vdev_asize - dva.offset) {
+            dva.asize > context->summary.top_vdev_asize - dva.offset) {
             errno = EINVAL;
             set_error(error, error_size,
                       "ZFS file extent escapes the qualified top vdev");
