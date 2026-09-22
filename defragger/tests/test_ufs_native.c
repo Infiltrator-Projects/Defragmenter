@@ -164,6 +164,135 @@ static void write_cylinder_group(int fd, uint32_t group, uint32_t fragments,
     write_all(fd, cg, sizeof(cg), (off_t)offset);
 }
 
+
+static void put_le16(uint8_t *data, uint16_t value)
+{
+    data[0] = (uint8_t)value;
+    data[1] = (uint8_t)(value >> 8);
+}
+
+static void build_fragmented_writer_fixture(int fd, bool ufs1)
+{
+    clear_image(fd);
+
+    uint8_t superblock[UFS_DISK_STRUCT_BYTES];
+    memset(superblock, 0, sizeof(superblock));
+    put_le32(superblock + 8U, 8U);
+    put_le32(superblock + 12U, 16U);
+    put_le32(superblock + 16U, 80U);
+    put_le32(superblock + 20U, 96U);
+    put_le32(superblock + 24U, 0U);
+    put_le32(superblock + 28U, 0U);
+    put_le32(superblock + 44U, 1U);
+    put_le32(superblock + 48U, 8192U);
+    put_le32(superblock + 52U, 1024U);
+    put_le32(superblock + 56U, 8U);
+    put_le32(superblock + 116U, ufs1 ? 2048U : 1024U);
+    put_le32(superblock + 120U, ufs1 ? 64U : 32U);
+    put_le32(superblock + 160U, 1024U);
+    put_le32(superblock + 184U, 64U);
+    put_le32(superblock + 188U, 256U);
+    superblock[209U] = 1U;
+    if (ufs1) {
+        put_le32(superblock + 36U, 256U);
+        put_le32(superblock + 40U, 160U);
+        put_le32(superblock + 196U, 18U);
+        put_le32(superblock + 204U, 0U);
+        put_le32(superblock + UFS_DISK_MAGIC_OFFSET, 0x00011954U);
+    } else {
+        put_le64(superblock + 1016U, 18U);
+        put_le64(superblock + 1032U, 0U);
+        put_le64(superblock + 1080U, 256U);
+        put_le64(superblock + 1088U, 160U);
+        put_le32(superblock + UFS_DISK_MAGIC_OFFSET, 0x19540119U);
+    }
+    write_all(fd, superblock, sizeof(superblock), 8192);
+
+    uint8_t cg[1024];
+    memset(cg, 0, sizeof(cg));
+    put_le32(cg + 4U, 0x00090255U);
+    put_le32(cg + 12U, 0U);
+    put_le32(cg + 20U, 256U);
+    put_le32(cg + 28U, 18U);
+    put_le32(cg + 36U, 0U);
+    put_le32(cg + 92U, 168U);
+    put_le32(cg + 96U, 176U);
+    cg[168U] |= (uint8_t)(1U << 2U);
+    for (uint32_t fragment = 96U; fragment < 256U; ++fragment) {
+        if ((fragment >= 104U && fragment < 112U) ||
+            (fragment >= 120U && fragment < 128U))
+            continue;
+        set_free(cg + 176U, fragment);
+    }
+    write_all(fd, cg, sizeof(cg), 16 * 1024);
+
+    const size_t inode_size = ufs1 ? 128U : 256U;
+    uint8_t inode[256];
+    memset(inode, 0, sizeof(inode));
+    put_le16(inode, UINT16_C(0100644));
+    if (ufs1) {
+        put_le64(inode + 8U, UINT64_C(16384));
+        put_le32(inode + 40U, 104U);
+        put_le32(inode + 44U, 120U);
+    } else {
+        put_le64(inode + 16U, UINT64_C(16384));
+        put_le64(inode + 112U, 104U);
+        put_le64(inode + 120U, 120U);
+    }
+    const off_t inode_offset = (off_t)(80U * 1024U + 2U * inode_size);
+    write_all(fd, inode, inode_size, inode_offset);
+
+    uint8_t block[8192];
+    memset(block, 0x3a, sizeof(block));
+    write_all(fd, block, sizeof(block), 104 * 1024);
+    memset(block, 0xc5, sizeof(block));
+    write_all(fd, block, sizeof(block), 120 * 1024);
+}
+
+static void test_fragmented_writer_variant(int fd, const char *path, bool ufs1)
+{
+    build_fragmented_writer_fixture(fd, ufs1);
+
+    LdUfsAnalysis analysis;
+    LdUfsMapCell cells[8];
+    char error[256] = {0};
+    CHECK(ufs_analyse_allocation(path, &analysis, cells, 8U,
+                                 error, sizeof(error)) == 0);
+    CHECK(ufs_version(&analysis.summary) == (ufs1 ? 1U : 2U));
+    CHECK(analysis.regular_files == 1U);
+    CHECK(analysis.fragmented_files == 1U);
+    CHECK(analysis.free_fragments_exact == 144U);
+    CHECK(analysis.used_fragments_exact == 112U);
+    CHECK(ufs_verify_layout(path, false, 10U, error, sizeof(error)) != 0);
+
+    char stage[512];
+    CHECK(snprintf(stage, sizeof(stage), "%s.%s-stage",
+                   path, ufs1 ? "ufs1" : "ufs2") > 0);
+    (void)unlink(stage);
+    uint64_t commit_bytes = 0U;
+    CHECK(ufs_build_stage(path, stage, false, 10U, false, &commit_bytes,
+                          error, sizeof(error)) == 0);
+    CHECK(commit_bytes == UINT64_C(256) * UINT64_C(1024));
+    CHECK(ufs_verify_layout(stage, false, 10U, error, sizeof(error)) == 0);
+    CHECK(ufs_analyse_allocation(stage, &analysis, NULL, 0U,
+                                 error, sizeof(error)) == 0);
+    CHECK(analysis.fragmented_files == 0U);
+    CHECK(unlink(stage) == 0);
+
+    build_fragmented_writer_fixture(fd, ufs1);
+    CHECK(snprintf(stage, sizeof(stage), "%s.%s-growth-stage",
+                   path, ufs1 ? "ufs1" : "ufs2") > 0);
+    (void)unlink(stage);
+    commit_bytes = 0U;
+    CHECK(ufs_build_stage(path, stage, true, 10U, false, &commit_bytes,
+                          error, sizeof(error)) == 0);
+    CHECK(ufs_verify_layout(stage, true, 10U, error, sizeof(error)) == 0);
+    CHECK(ufs_analyse_allocation(stage, &analysis, NULL, 0U,
+                                 error, sizeof(error)) == 0);
+    CHECK(analysis.fragmented_files == 0U);
+    CHECK(unlink(stage) == 0);
+}
+
 static void test_ufs2_exact_allocation(int fd, const char *path)
 {
     clear_image(fd);
@@ -224,6 +353,8 @@ int main(void)
 
     test_ufs2_recorded_allocation(fd, path);
     test_ufs2_exact_allocation(fd, path);
+    test_fragmented_writer_variant(fd, path, true);
+    test_fragmented_writer_variant(fd, path, false);
 
     clear_image(fd);
     static const uint8_t junk[4] = {0xdeU, 0xadU, 0xbeU, 0xefU};
@@ -236,6 +367,6 @@ int main(void)
 
     CHECK(close(fd) == 0);
     CHECK(unlink(path) == 0);
-    (void)puts("UFS native summary and exact UFS2 allocation tests passed");
+    (void)puts("UFS1/UFS2 exact allocation, fragmentation, Defragment and Growth Defrag tests passed");
     return 0;
 }
