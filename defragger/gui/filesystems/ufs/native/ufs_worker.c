@@ -37,7 +37,11 @@ static void usage(FILE *stream)
 {
     (void)fprintf(stream,
                   "Usage: %s --version | identify DEVICE | analyse-json DEVICE | "
-                  "map DEVICE --cells COUNT\n",
+                  "map DEVICE --cells COUNT | "
+                  "defrag DEVICE --write --confirm DEVICE --journal PATH | "
+                  "growth-defrag DEVICE --write --confirm DEVICE --journal PATH "
+                  "--growth-percent 10 | "
+                  "recover DEVICE --write --confirm DEVICE --journal PATH\n",
                   PROG);
 }
 
@@ -193,7 +197,7 @@ static void print_summary_map(const LdUfsSummary *summary, uint64_t size_bytes,
     (void)printf("],\"details\":{\"variant\":\"%s\","
                  "\"version\":%u,\"byte_order\":\"%s\","
                  "\"allocation_totals\":\"%s\","
-                 "\"note\":\"UFS1 is identified read-only; physical cylinder-group allocation mapping is currently implemented for validated UFS2 only\"}}\n",
+                 "\"note\":\"Exact mapping is used whenever validated UFS1/UFS2 cylinder-group geometry is available; this summary is only the fallback for incomplete geometry\"}}\n",
                  ufs_variant_name(summary), ufs_version(summary),
                  ufs_byte_order_name(summary),
                  summary->allocation_totals_known ? "recorded-superblock" : "unknown");
@@ -845,22 +849,6 @@ int main(int argc, char **argv)
             print_summary_json(&summary, 1);
         }
         return 0;
-    }
-    /* UFS mutation is deliberately kept behind the product qualification
-     * boundary.  Development code may exist below while UFS1 exact allocation,
-     * file-fragmentation coverage and destructive recovery qualification are
-     * still incomplete, but the installed worker must not expose a write path
-     * merely because the native implementation is present in the source tree. */
-    if (argc >= 2 &&
-        (strcmp(argv[1], "defrag") == 0 ||
-         strcmp(argv[1], "growth-defrag") == 0 ||
-         strcmp(argv[1], "recover") == 0)) {
-        (void)fprintf(
-            stderr,
-            "%s: UFS mutation is not production-qualified; "
-            "Defragment, Growth Defrag and Recover remain disabled\n",
-            PROG);
-        return 2;
     }
     if (argc < 3) { usage(stderr); return 2; }
 
