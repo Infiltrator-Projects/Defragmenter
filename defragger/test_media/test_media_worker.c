@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "test_media.h"
 #include "ufs_native.h"
+#include "zfs_native.h"
 
 #include "infiltratr/arithmetic.h"
 #include "infiltratr/core.h"
@@ -882,6 +883,17 @@ static int ufs2_summary_ok(const char *path) {
            summary.variant == LD_UFS_VARIANT_UFS2_LE;
 }
 
+static int zfs_exact_analysis_ok(const char *path) {
+    LdZfsAnalysis analysis;
+    char error[256] = {0};
+    if (zfs_analyse_exact(path, &analysis, error, sizeof(error)) != 0)
+        return 0;
+    const int ok = analysis.exact_allocation && analysis.exact_fragmentation &&
+                   analysis.unknown_bytes == 0U;
+    zfs_analysis_destroy(&analysis);
+    return ok;
+}
+
 static int create_ufs_and_populate(const LdtmFilesystemSpec *spec, const char *partition,
                                    const char *work, FILE *state) {
     char source[PATH_MAX];
@@ -965,7 +977,8 @@ static int create_zfs_and_populate(const LdtmFilesystemSpec *spec, const char *p
     {
         const char *const argv[] = {
             "zpool", "create", "-f", "-R", altroot, "-m", "/ldtest",
-            "-o", "cachefile=none", pool, partition, NULL
+            "-o", "cachefile=none", "-o", "version=28",
+            pool, partition, NULL
         };
         if (run_process(argv, NULL, 0) != 0) {
             emit_status(spec->key, "format-failed", "zpool create failed");
@@ -984,10 +997,19 @@ static int create_zfs_and_populate(const LdtmFilesystemSpec *spec, const char *p
         const char *const export_argv[] = {"zpool", "export", pool, NULL};
         if (run_process(export_argv, NULL, 0) != 0) return -1;
     }
-    if (state_write_status(state, spec, "populated", "fragmented deterministic ZFS payload created") != 0 ||
+    if (!zfs_exact_analysis_ok(partition)) {
+        emit_status(spec->key, "format-failed",
+                    "native exact analyser rejected the exported ZFS v28 pool");
+        (void)state_write_status(
+            state, spec, "format-failed",
+            "native exact analyser rejected the exported ZFS v28 pool");
+        return 0;
+    }
+    if (state_write_status(state, spec, "populated", "fragmented deterministic ZFS v28 payload created and accepted by the native exact analyser") != 0 ||
         fprintf(state, "pool\t%s\t%s\n", spec->key, pool) < 0 || fflush(state) != 0 ||
         state_write_targets(state, spec, records, record_count, directory_entries) != 0) return -1;
-    emit_status(spec->key, "populated", "fragmented deterministic ZFS payload created");
+    emit_status(spec->key, "populated",
+                "fragmented deterministic ZFS v28 payload created and accepted by the native exact analyser");
     return 0;
 }
 
