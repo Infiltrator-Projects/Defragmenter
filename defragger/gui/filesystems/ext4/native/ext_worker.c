@@ -755,7 +755,7 @@ static int build_and_commit(const char *device, const char *operation,
     if (ld_path_is_mounted(device)) { ext_set_error(error, "refusing EXT mutation while the block device is mounted"); return 1; }
     char *identity = NULL, *real = NULL; uint64_t physical_bytes = 0;
     ExtGeometry source_geometry, staged_geometry; ExtCatalogue verified = {0};
-    ExtFs * source_fs = NULL, stage_fs = NULL; sqlite3 *db = NULL;
+    ExtFs *source_fs = NULL, *stage_fs = NULL; sqlite3 *db = NULL;
     ExtJournal state = {0}; int result = 1;
     if (ld_device_capture_binding(device, &real, &identity, &physical_bytes) != 0) {
         ext_set_error(error, "cannot bind EXT target %s: %s", device, strerror(errno));
@@ -767,7 +767,7 @@ static int build_and_commit(const char *device, const char *operation,
     ext_fs_close(source_fs); source_fs = NULL;
     state.device = ld_xstrdup(real); state.target_identity = ld_xstrdup(identity);
     uuid_hex(source_geometry.uuid, state.uuid); infiltratr_copy_string(state.source_type, sizeof(state.source_type), source_geometry.filesystem);
-    snprintf(state.operation, sizeof(state.operation), "%s", operation); snprintf(state.phase, sizeof(state.phase), "preflight");
+    infiltratr_copy_string(state.operation, sizeof(state.operation), operation); infiltratr_copy_string(state.phase, sizeof(state.phase), "preflight");
     state.stage = ld_path_append_suffix(journal_path, ".ext-stage.img"); state.plan = ld_path_append_suffix(journal_path, ".ext-plan.sqlite");
     state.physical_bytes = physical_bytes; state.filesystem_bytes = source_geometry.total_blocks * source_geometry.block_size;
     if (journal_save(journal_path, &state, error) != 0) goto done;
