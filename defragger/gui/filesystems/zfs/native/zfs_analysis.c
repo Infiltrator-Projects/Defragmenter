@@ -38,6 +38,7 @@
 #define ZFS_COMPRESS_LZJB 3U
 #define ZFS_COMPRESS_LZ4 15U
 #define ZFS_POOL_VERSION_LAST_LEGACY 28U
+#define ZFS_POOL_VERSION_FEATURES 5000U
 #define ZFS_SM_DEBUG_PREFIX 2U
 #define ZFS_SM2_PREFIX 3U
 #define ZFS_SM_NO_VDEVID (UINT64_C(1) << 24)
@@ -929,10 +930,24 @@ static int context_open(const char *path, ZfsContext *context,
         return -1;
     }
     if (context->summary.uberblock_version == 0U ||
-        context->summary.uberblock_version > ZFS_POOL_VERSION_LAST_LEGACY) {
+        (context->summary.uberblock_version > ZFS_POOL_VERSION_LAST_LEGACY &&
+         context->summary.uberblock_version != ZFS_POOL_VERSION_FEATURES)) {
         errno = ENOTSUP;
         set_error(error, error_size,
-                  "ZFS exact analysis currently requires legacy pool version 1-28; feature-flag pools remain summary-only");
+                  "unsupported ZFS pool version for exact native analysis");
+        return -1;
+    }
+    if (context->summary.uberblock_version == ZFS_POOL_VERSION_FEATURES &&
+        !context->summary.mos_features_supported) {
+        errno = ENOTSUP;
+        if (error != NULL && error_size != 0U) {
+            (void)snprintf(
+                error, error_size,
+                "unsupported ZFS MOS feature required for reading: %s",
+                context->summary.unsupported_mos_feature[0] != '\0'
+                    ? context->summary.unsupported_mos_feature
+                    : "unknown");
+        }
         return -1;
     }
     if (context->summary.top_vdev_asize == 0U ||
