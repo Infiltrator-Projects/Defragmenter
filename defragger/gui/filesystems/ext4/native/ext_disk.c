@@ -31,6 +31,7 @@
 #define EXT_INODE_EXTRA_ISIZE_OFFSET 128U
 #define EXT_INODE_CSUM_HI_OFFSET 130U
 #define EXT_CRC32C_TYPE 1U
+#define EXT_MAX_GROUP_DESCRIPTOR_BYTES (UINT64_C(256) * 1024U * 1024U)
 
 struct ExtFs {
     int fd;
@@ -559,7 +560,14 @@ static int load_inode_bitmap(ExtFs *fs, uint32_t group, char **error)
 
 static int read_group_descriptors(ExtFs *fs, char **error)
 {
-    size_t total = (size_t)fs->group_count * fs->desc_size;
+    uint64_t total64 = 0U;
+    if (!infiltratr_u64_mul_checked(fs->group_count, fs->desc_size, &total64) ||
+        total64 == 0U || total64 > SIZE_MAX ||
+        total64 > EXT_MAX_GROUP_DESCRIPTOR_BYTES) {
+        set_error(error, "EXT group descriptor table exceeds the bounded native reader");
+        return -1;
+    }
+    size_t total = (size_t)total64;
     fs->group_descs = ld_xmalloc(total);
     uint8_t *block = ld_xmalloc(fs->block_size);
     uint32_t loaded_descriptor_block = UINT32_MAX;
@@ -1085,6 +1093,13 @@ static int visit_payload(ExtWalk *walk, int64_t logical,
         set_error(error, "EXT inode payload points outside the filesystem");
         return -1;
     }
+    bool allocated = false;
+    if (ext_fs_block_allocated(walk->fs, *physical, &allocated, error) != 0)
+        return -1;
+    if (!allocated) {
+        set_error(error, "EXT inode payload references a block marked free");
+        return -1;
+    }
     if (walk->have_previous && logical <= walk->previous_logical) {
         set_error(error, "EXT inode payload mapping is not strictly ordered");
         return -1;
@@ -1175,6 +1190,14 @@ static int walk_extent_node(ExtWalk *walk, uint8_t *node, size_t node_size,
                 set_error(error, "EXT extent index points outside filesystem");
                 return -1;
             }
+            bool child_allocated = false;
+            if (ext_fs_block_allocated(walk->fs, child, &child_allocated,
+                                       error) != 0)
+                return -1;
+            if (!child_allocated) {
+                set_error(error, "EXT extent index references a block marked free");
+                return -1;
+            }
             uint8_t *child_block = ld_xmalloc(walk->fs->block_size);
             if (read_block(walk->fs, child, child_block, error) != 0) {
                 free(child_block);
@@ -1205,6 +1228,14 @@ static int walk_indirect(ExtWalk *walk, uint64_t block, unsigned level,
 {
     if (block == 0U)
         return 0;
+    bool allocated = false;
+    if (!valid_fs_block(walk->fs, block) ||
+        ext_fs_block_allocated(walk->fs, block, &allocated, error) != 0)
+        return -1;
+    if (!allocated) {
+        set_error(error, "EXT indirect tree references a block marked free");
+        return -1;
+    }
     uint8_t *buffer = ld_xmalloc(walk->fs->block_size);
     if (read_block(walk->fs, block, buffer, error) != 0) {
         free(buffer);
