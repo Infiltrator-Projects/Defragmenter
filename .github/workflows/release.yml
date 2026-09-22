@@ -107,7 +107,7 @@ jobs:
           sudo apt-get install -y \
             build-essential cmake dpkg-dev pkg-config python3 python3-gi python3-cairo \
             gir1.2-gtk-3.0 libgtk-3-dev policykit-1 udisks2 util-linux makefs \
-            libext2fs-dev libsqlite3-dev libssl-dev
+            libsqlite3-dev libssl-dev
 
       - name: Validate release packaging and local installer
         shell: bash
@@ -120,7 +120,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION=$(tr -d '\r\n' < VERSION)
-          ./packaging/build-deb.sh
+          LD_BUILD_TESTING=OFF ./packaging/build-deb.sh
           ./packaging/build-local-run.sh "Defragmenter-${VERSION}-local-folder.run"
           test -f "Defragmenter-${VERSION}-amd64.deb"
           test -f "Defragmenter-${VERSION}-local-folder.run"
