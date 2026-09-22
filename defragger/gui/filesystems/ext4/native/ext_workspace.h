@@ -15,7 +15,7 @@ typedef struct {
     uint32_t block_size;
 } ExtWorkspace;
 
-int ext_workspace_prepare(ext2_filsys fs, sqlite3 *db,
+int ext_workspace_prepare(ExtFs *fs, sqlite3 *db,
                           const ExtGeometry *geometry,
                           uint64_t requested_batch_blocks,
                           ExtWorkspace *workspace, char **error);
