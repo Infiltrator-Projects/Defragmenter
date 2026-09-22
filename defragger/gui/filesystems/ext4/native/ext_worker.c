@@ -14,7 +14,6 @@
 #include "ld_stop.h"
 #include "version.h"
 
-#include <com_err.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -250,14 +249,18 @@ static int create_stage(const char *source_path, const char *stage_path,
     if (ftruncate(stage, (off_t)geometry->physical_bytes) != 0) {
         ext_set_error(error, "cannot size EXT working image: %s", strerror(errno)); close(stage); ld_device_close(&source); unlink_if_exists(stage_path); return -1;
     }
-    ext2_filsys fs = NULL;
+    ExtFs * fs = NULL;
     if (ext_open_fs(source_path, false, &fs, error) != 0) { close(stage); ld_device_close(&source); unlink_if_exists(stage_path); return -1; }
     uint8_t *buffer = ld_xmalloc(COPY_CHUNK);
     uint64_t run_start = 0, run_length = 0, copied = 0;
     int result = 0;
     for (uint64_t block = 0; block < geometry->total_blocks; ++block) {
-        bool allocated = block < geometry->first_data_block ||
-            ext2fs_test_block_bitmap2(fs->block_map, (blk64_t)block) != 0;
+        bool allocated = block < geometry->first_data_block;
+        if (!allocated &&
+            ext_fs_block_allocated(fs, block, &allocated, error) != 0) {
+            result = -1;
+            break;
+        }
         if (allocated) {
             if (run_length == 0) run_start = block;
             run_length++;
@@ -273,7 +276,7 @@ static int create_stage(const char *source_path, const char *stage_path,
             if (ld_stop_requested()) { ext_set_error(error, "stop requested before EXT source commit"); result = -2; break; }
         }
     }
-    free(buffer); (void)ext2fs_close(fs);
+    free(buffer); ext_fs_close(fs);
     if (result == 0 && fsync(stage) != 0) { ext_set_error(error, "cannot sync EXT working image: %s", strerror(errno)); result = -1; }
     close(stage); ld_device_close(&source);
     if (result != 0) unlink_if_exists(stage_path);
@@ -307,15 +310,20 @@ static int check_unchanged_target(const char *device, const ExtJournal *state,
 static int collect_allocated_ranges(const char *stage_path, const ExtGeometry *geometry,
                                     ExtRangeVec *ranges, uint64_t *allocated_blocks,
                                     char **error) {
-    ext2_filsys fs = NULL;
+    ExtFs * fs = NULL;
     memset(ranges, 0, sizeof(*ranges));
     *allocated_blocks = 0;
     if (ext_open_fs(stage_path, false, &fs, error) != 0) return -1;
 
     uint64_t run_start = 0, run_length = 0;
     for (uint64_t block = 0; block < geometry->total_blocks; ++block) {
-        bool allocated = block < geometry->first_data_block ||
-            ext2fs_test_block_bitmap2(fs->block_map, (blk64_t)block) != 0;
+        bool allocated = block < geometry->first_data_block;
+        if (!allocated &&
+            ext_fs_block_allocated(fs, block, &allocated, error) != 0) {
+            ext_fs_close(fs);
+            ext_range_free(ranges);
+            return -1;
+        }
         if (allocated) {
             if (run_length == 0) run_start = block;
             run_length++;
@@ -327,7 +335,7 @@ static int collect_allocated_ranges(const char *stage_path, const ExtGeometry *g
             run_length = 0;
         }
     }
-    (void)ext2fs_close(fs);
+    ext_fs_close(fs);
     return 0;
 }
 
@@ -521,10 +529,10 @@ static void discard_plan_files(const char *plan) {
 }
 
 static int validate_restored_ext(const char *device, char **error) {
-    ext2_filsys fs = NULL;
+    ExtFs * fs = NULL;
     if (ext_open_fs(device, false, &fs, error) != 0) return -1;
     int result = ext_validate_metadata(fs, true, error);
-    (void)ext2fs_close(fs);
+    ext_fs_close(fs);
     return result;
 }
 
@@ -537,7 +545,7 @@ static int try_workspace_relayout(const char *device, const char *operation,
                                   ExtJournal *state,
                                   const ExtGeometry *source_geometry,
                                   char **error) {
-    ext2_filsys fs = NULL;
+    ExtFs * fs = NULL;
     sqlite3 *db = NULL;
     int fd = -1;
     ExtWorkspace workspace = {0};
@@ -572,7 +580,7 @@ static int try_workspace_relayout(const char *device, const char *operation,
         bool okay = !growth || current.growth_10_satisfied;
         ext_catalogue_free(&current);
         if (okay) {
-            (void)ext2fs_close(fs); fs = NULL;
+            ext_fs_close(fs); fs = NULL;
             (void)flock(fd, LOCK_UN); close(fd); fd = -1;
             sqlite3_close(db); db = NULL;
             transaction_cleanup(journal_path, state);
@@ -588,7 +596,7 @@ static int try_workspace_relayout(const char *device, const char *operation,
                                          &workspace, error);
     if (prepared == EXT_WORKSPACE_UNAVAILABLE) goto fallback;
     if (prepared != 0) goto fail_clean;
-    (void)ext2fs_close(fs); fs = NULL;
+    ext_fs_close(fs); fs = NULL;
 
     if (journal_phase(journal_path, state, "direct-staging", error) != 0)
         goto fail_clean;
@@ -717,7 +725,7 @@ fail_restore:
     goto fail_clean;
 
 fallback:
-    if (fs != NULL) { (void)ext2fs_close(fs); fs = NULL; }
+    if (fs != NULL) { ext_fs_close(fs); fs = NULL; }
     if (fd >= 0) { (void)flock(fd, LOCK_UN); close(fd); fd = -1; }
     if (db != NULL) { sqlite3_close(db); db = NULL; }
     discard_plan_files(state->plan);
@@ -726,14 +734,14 @@ fallback:
     return 2;
 
 fail_clean:
-    if (fs != NULL) (void)ext2fs_close(fs);
+    if (fs != NULL) ext_fs_close(fs);
     if (fd >= 0) { (void)flock(fd, LOCK_UN); close(fd); }
     if (db != NULL) sqlite3_close(db);
     transaction_cleanup(journal_path, state);
     return -1;
 
 keep_recovery:
-    if (fs != NULL) (void)ext2fs_close(fs);
+    if (fs != NULL) ext_fs_close(fs);
     if (fd >= 0) { (void)flock(fd, LOCK_UN); close(fd); }
     if (db != NULL) sqlite3_close(db);
     puts("EXT direct relayout needs Recover; the durable workspace and plan have been retained.");
@@ -747,7 +755,7 @@ static int build_and_commit(const char *device, const char *operation,
     if (ld_path_is_mounted(device)) { ext_set_error(error, "refusing EXT mutation while the block device is mounted"); return 1; }
     char *identity = NULL, *real = NULL; uint64_t physical_bytes = 0;
     ExtGeometry source_geometry, staged_geometry; ExtCatalogue verified = {0};
-    ext2_filsys source_fs = NULL, stage_fs = NULL; sqlite3 *db = NULL;
+    ExtFs * source_fs = NULL, stage_fs = NULL; sqlite3 *db = NULL;
     ExtJournal state = {0}; int result = 1;
     if (ld_device_capture_binding(device, &real, &identity, &physical_bytes) != 0) {
         ext_set_error(error, "cannot bind EXT target %s: %s", device, strerror(errno));
@@ -756,7 +764,7 @@ static int build_and_commit(const char *device, const char *operation,
     if (ext_read_geometry(device, &source_geometry, error) != 0) goto done;
     if (ext_open_fs(device, false, &source_fs, error) != 0) goto done;
     if (ext_validate_writer_support(source_fs, &source_geometry, error) != 0) goto done;
-    (void)ext2fs_close(source_fs); source_fs = NULL;
+    ext_fs_close(source_fs); source_fs = NULL;
     state.device = ld_xstrdup(real); state.target_identity = ld_xstrdup(identity);
     uuid_hex(source_geometry.uuid, state.uuid); infiltratr_copy_string(state.source_type, sizeof(state.source_type), source_geometry.filesystem);
     snprintf(state.operation, sizeof(state.operation), "%s", operation); snprintf(state.phase, sizeof(state.phase), "preflight");
@@ -787,7 +795,7 @@ static int build_and_commit(const char *device, const char *operation,
     close(stage_fd);
     if (ext_assign_targets(stage_fs, db, &staged_geometry, strcmp(operation, "growth-defrag") == 0, error) != 0 ||
         ext_plan_move_count(db, &state.move_blocks, error) != 0) goto precommit_fail;
-    (void)ext2fs_close(stage_fs); stage_fs = NULL;
+    ext_fs_close(stage_fs); stage_fs = NULL;
     if (state.move_blocks == 0) {
         ExtCatalogue already = {0};
         ExtGeometry current;
@@ -834,8 +842,8 @@ commit_fail:
     /* Keep the verified stage, plan and journal for Recover. */
     goto done;
 done:
-    if (source_fs != NULL) (void)ext2fs_close(source_fs);
-    if (stage_fs != NULL) (void)ext2fs_close(stage_fs);
+    if (source_fs != NULL) ext_fs_close(source_fs);
+    if (stage_fs != NULL) ext_fs_close(stage_fs);
     if (db != NULL) sqlite3_close(db);
     ext_catalogue_free(&verified); free(identity); free(real); journal_free(&state);
     return result;
