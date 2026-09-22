@@ -31,9 +31,21 @@ static void print_summary_json(const LdZfsSummary *summary, int detailed)
     (void)printf("{\"filesystem\":\"zfs\",\"byte_order\":\"%s\"",
                  zfs_byte_order_name(summary));
     if (detailed != 0) {
-        (void)printf(",\"uberblock_magic_offset\":%llu,\"size_bytes\":%llu",
-                     (unsigned long long)summary->uberblock_magic_offset,
-                     (unsigned long long)summary->size_bytes);
+        (void)printf(
+            ",\"size_bytes\":%llu,\"label_index\":%u,"
+            "\"uberblock_slot\":%u,\"uberblock_magic_offset\":%llu,"
+            "\"uberblock_version\":%llu,\"uberblock_txg\":%llu,"
+            "\"uberblock_guid_sum\":%llu,\"uberblock_timestamp\":%llu,"
+            "\"candidate_uberblocks\":%u",
+            (unsigned long long)summary->size_bytes,
+            summary->label_index,
+            summary->uberblock_slot,
+            (unsigned long long)summary->uberblock_magic_offset,
+            (unsigned long long)summary->uberblock_version,
+            (unsigned long long)summary->uberblock_txg,
+            (unsigned long long)summary->uberblock_guid_sum,
+            (unsigned long long)summary->uberblock_timestamp,
+            summary->candidate_uberblocks);
     }
     (void)puts("}");
 }
@@ -78,11 +90,20 @@ static void print_map_json(const LdZfsSummary *summary, uint64_t requested_cells
                      (unsigned long long)length);
     }
 
-    (void)printf("],\"details\":{\"uberblock_magic_offset\":%llu,"
-                 "\"byte_order\":\"%s\","
-                 "\"note\":\"ZFS member detected; exact allocation requires pool-wide metaslab and space-map traversal\"}}\n",
-                 (unsigned long long)summary->uberblock_magic_offset,
-                 zfs_byte_order_name(summary));
+    (void)printf(
+        "],\"details\":{\"uberblock_magic_offset\":%llu,"
+        "\"uberblock_txg\":%llu,\"uberblock_version\":%llu,"
+        "\"label_index\":%u,\"uberblock_slot\":%u,"
+        "\"candidate_uberblocks\":%u,\"byte_order\":\"%s\","
+        "\"label_basis\":\"four OpenZFS leaf-vdev labels and 128-entry uberblock rings\","
+        "\"note\":\"Committed ZFS label/uberblock parsed natively; exact allocation still requires MOS, metaslab and space-map traversal\"}}\n",
+        (unsigned long long)summary->uberblock_magic_offset,
+        (unsigned long long)summary->uberblock_txg,
+        (unsigned long long)summary->uberblock_version,
+        summary->label_index,
+        summary->uberblock_slot,
+        summary->candidate_uberblocks,
+        zfs_byte_order_name(summary));
 }
 
 int main(int argc, char **argv)
