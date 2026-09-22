@@ -5,8 +5,8 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-09-22
 
-Applies to: release version 1.8.0-193
-Audited source commit: 9d5777a0847cb78d7b7e6327b03e765863c05446
+Applies to: release version 1.8.0-194
+Audited source commit: 3aa39a63a730d7dce4b994d72995231a49c37f8d
 Audited release-governance commit: 9d5777a0847cb78d7b7e6327b03e765863c05446
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
@@ -15,7 +15,7 @@ This document records the current release safety case. Historical audit-developm
 
 ## Qualification evidence
 
-The audited production baseline compiles with warnings as errors and passed the complete hosted 44-test native/filesystem/GUI/release suite. The hosted ASan/UBSan build and sanitizer-visible filesystem tests also passed. The only remaining quality-gate failure at that source baseline was the intentionally stale 1.8.0-192 audit pointer; this audit advances that pointer without changing audited production/build/package source. The exact 1.8.0-193 release head must repeat both hosted lanes before publication.
+The audited production baseline compiles with warnings as errors and passed the complete hosted 44-test native/filesystem/GUI/release suite. The hosted ASan/UBSan build and sanitizer-visible filesystem tests also passed. The only remaining quality-gate failure at that source baseline was the intentionally stale prior audit pointer; this audit advances that pointer after the Common checked-arithmetic reuse and removal of the unreachable legacy APFS map adapter. The exact 1.8.0-194 release head must repeat both hosted lanes before publication.
 
 The malformed-media matrix, transaction/recovery tests, native integration fixtures, GUI contract tests, release/package tests and architecture ownership checks remain part of the permanent **Project quality gate**. Environment-dependent destructive media evidence is supplementary and is not represented as hosted-CI proof.
 
