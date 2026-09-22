@@ -122,7 +122,7 @@ def test_single_filesystem_hierarchy_and_c_first_writers() -> None:
         "minix": {"minix_native.h", "minix_native.c", "minix_worker.c"},
         "swap": {"swap_native.h", "swap_native.c", "swap_worker.c"},
         "ufs": {"ufs_native.h", "ufs_native.c", "ufs_worker.c"},
-        "zfs": {"zfs_native.h", "zfs_native.c", "zfs_worker.c"},
+        "zfs": {"zfs_native.h", "zfs_native.c", "zfs_analysis.c", "zfs_worker.c"},
         "sfs": {"sfs_native.h", "sfs_native.c", "sfs_worker.c"},
         "pfs3": {"pfs3_native.h", "pfs3_native.c", "pfs3_worker.c"},
         "hfs": {"analyser.c", "writer.c"},
