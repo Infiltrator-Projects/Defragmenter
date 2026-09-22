@@ -74,4 +74,4 @@ PY
 check_variant 1
 check_variant 2
 
-printf '%s\n' 'makefs UFS1/UFS2 images accepted with exact allocation and inode-tree fragmentation mapping; qualified mutation dispatch remains fail-closed to the native writer subset.'
+printf '%s\n' 'makefs UFS1/UFS2 images accepted with exact allocation and inode-tree fragmentation mapping; qualified native mutation dispatch is enabled and remains fail-closed outside the supported writer subset.'
