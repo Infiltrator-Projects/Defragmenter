@@ -34,6 +34,10 @@ typedef struct {
     bool root_embedded;
     bool config_known;
     bool single_leaf_supported;
+    bool mos_features_present;
+    bool mos_features_supported;
+    uint32_t mos_feature_count;
+    char unsupported_mos_feature[64];
     uint64_t pool_guid;
     uint64_t leaf_guid;
     uint64_t top_guid;
