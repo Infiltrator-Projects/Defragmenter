@@ -333,13 +333,11 @@ target_compile_definitions(linux-defragger-xfs-native PRIVATE
 target_link_libraries(linux-defragger-xfs-native PUBLIC
     linux-defragger-core SQLite::SQLite3 OpenSSL::Crypto)
 
-# EXT2/3/4 is implemented directly in native C through the linked libext2fs
-# library. Filesystem mutation is performed in-process by the native worker.
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(EXT2FS REQUIRED IMPORTED_TARGET ext2fs)
-find_library(COM_ERR_LIBRARY com_err REQUIRED)
-
+# EXT2/3/4 production parsing, allocation accounting and mapping mutation are
+# first-party native C. libext2fs is retained only below as an independent
+# BUILD_TESTING fixture/oracle and is not a production/runtime dependency.
 add_library(linux-defragger-ext-native STATIC
+    gui/filesystems/ext4/native/ext_disk.c
     gui/filesystems/ext4/native/ext_common.c
     gui/filesystems/ext4/native/ext_catalog.c
     gui/filesystems/ext4/native/ext_plan.c
@@ -353,7 +351,7 @@ target_compile_options(linux-defragger-ext-native PRIVATE
 target_compile_definitions(linux-defragger-ext-native PRIVATE
     _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(linux-defragger-ext-native PUBLIC
-    linux-defragger-core SQLite::SQLite3 OpenSSL::Crypto PkgConfig::EXT2FS ${COM_ERR_LIBRARY})
+    linux-defragger-core SQLite::SQLite3 OpenSSL::Crypto)
 
 add_executable(linux-defragger-ext-worker
     gui/filesystems/ext4/native/ext_worker.c)
@@ -366,7 +364,7 @@ target_compile_options(linux-defragger-ext-worker PRIVATE
 target_compile_definitions(linux-defragger-ext-worker PRIVATE
     _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(linux-defragger-ext-worker PRIVATE
-    linux-defragger-ext-native linux-defragger-core SQLite::SQLite3 OpenSSL::Crypto PkgConfig::EXT2FS ${COM_ERR_LIBRARY})
+    linux-defragger-ext-native linux-defragger-core SQLite::SQLite3 OpenSSL::Crypto)
 
 add_library(linux-defragger-ntfs-native STATIC
     gui/filesystems/ntfs/native/ntfs_common.c
@@ -673,6 +671,13 @@ if(BUILD_TESTING)
     target_link_libraries(linux-defragger-xfs-native-test PRIVATE
         linux-defragger-xfs-native linux-defragger-core SQLite::SQLite3 OpenSSL::Crypto)
     add_test(NAME linux-defragger-xfs-native COMMAND linux-defragger-xfs-native-test)
+
+    # libext2fs is a test-only independent fixture/oracle. A production build
+    # with BUILD_TESTING=OFF must configure and link without e2fsprogs headers
+    # or libraries.
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(EXT2FS REQUIRED IMPORTED_TARGET ext2fs)
+    find_library(COM_ERR_LIBRARY com_err REQUIRED)
 
     add_executable(linux-defragger-ext-fixture tests/make_ext4_image.c)
     target_compile_options(linux-defragger-ext-fixture PRIVATE
