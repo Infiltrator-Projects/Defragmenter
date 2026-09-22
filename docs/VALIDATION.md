@@ -1,89 +1,58 @@
-# Defragmenter source tree
+# Validation
 
-This directory contains the application implementation and build root. Product overview, engineering ethos, release policy and current safety status are maintained in the [repository README](../README.md) and [Audit Status](../docs/AUDIT_STATUS.md) rather than duplicated here.
+## Purpose
 
-The current software version is defined by [VERSION](VERSION).
+Validation distinguishes implemented behaviour from behaviour that has actually been demonstrated. A successful build proves compilation; it does not by itself prove filesystem correctness, crash consistency or safe recovery.
 
-## Compatibility naming
+Defragmenter therefore uses stronger evidence for destructive operations than for read-only analysis. The current release-specific safety decision and exact audited baselines are recorded in [AUDIT_STATUS.md](AUDIT_STATUS.md).
 
-The user-facing product is **Defragmenter**. The Debian/APT package identity is `infiltrator-defragmenter`. Established executable, desktop application ID, runtime/configuration paths and recovery/journal identities retain their `linux-defragger` compatibility names so upgrades and persisted state continue to work.
+## Automated evidence
 
-## Filesystem support
+The project quality gate combines:
 
-| Filesystem | Analyse / Map | Defragment | Growth Defrag | Recover |
-|---|---|---|---|---|
-| FAT12 / FAT16 / FAT32 | Exact | Native C | Native C, exact 10% reserve | Yes |
-| exFAT | Exact | Native C | Native C, exact 10% reserve | Yes |
-| NTFS | Exact | Native C, fail-closed preflight | Native C, exact 10% reserve | Yes |
-| ext2 / ext3 / ext4 | Exact | Native C staged writer | Native C, exact 10% reserve | Yes |
-| XFS v5 | Exact | Native C raw userspace writer | Native C, exact 10% reserve | Yes |
-| Amiga OFS / FFS | Exact | Native C | Native C, exact 10% reserve | Yes |
-| Amiga SFS0 | Exact allocation + file-extent analysis | Native C supported-subset relayout | Exact 10% reserve | Yes |
-| Amiga SFS2 | Exact allocation + 48-bit file/32-bit extent analysis | Native C supported-subset relayout | Native C, exact 10% reserve | Yes |
-| Amiga PFS3 | Exact allocation + anode-chain analysis for qualified subset | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
-| HFS+ / HFSX | Exact | Native C, fail-closed preflight | Native C, exact 10% reserve | Yes |
-| Classic Macintosh HFS | Exact, native C | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
-| Btrfs | Exact raw single-device analysis | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
-| APFS | Exact native C analysis for bounded checkpoint/spaceman subset | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
-| Minix v1 / v2 / v3 | Exact, native C | Native C, fail-closed staged relayout | Native C, exact 10% reserve | Yes |
-| UFS1 | Exact allocation + inode-tree fragmentation analysis | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
-| UFS2 | Exact allocation + inode-tree fragmentation analysis | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
-| ZFS / OpenZFS member | Bounded exact allocation + file-fragmentation analysis, native C | Not applicable by design | Not applicable by design | No |
-| Linux swap | Exact inactive / aggregate active analysis | Not applicable | Not applicable | No |
+- warnings-as-errors native builds;
+- parser, geometry, checksum and allocation-model tests;
+- a deterministic malformed-image matrix that drives every installed native filesystem identifier with empty, truncated, all-ones and seeded-noise media and rejects hangs, signals or accidental acceptance;
+- disposable filesystem-image mutation tests;
+- target-safety, privilege, Stop and transaction regressions, including mounted-image hard-link identity and native privileged-helper tests that launch controlled children and verify SIGINT, delayed safe completion and reaping on Stop, control EOF and broken output;
+- GUI/service and typed worker-protocol tests, plus C++ mapper contract checks and real-fixture parity against native filesystem analysis;
+- architecture/Common/release-contract tests;
+- AddressSanitizer and UndefinedBehaviorSanitizer qualification;
+- package/native-installer construction from the exact tested source.
 
-Unsupported or structurally ambiguous layouts fail closed.
+Automated checks cover ordinary behaviour, important boundaries, malformed/error cases and release/package contracts appropriate to the affected subsystem.
 
-## Source layout
+The native supervisor fixtures exercise the production supervision code through a test-only child resolver; they do not themselves write a filesystem. Real disposable-image worker tests separately verify payload, layout and recovery. Mapper regressions include generic FAT identification for FAT12/FAT16 and an 800,000-cell FAT32 map exceeding 64 MiB, plus rejection beyond the GUI's 1,048,576-cell maximum. GUI lifecycle tests verify that image mutation and Recover use the protected privileged journal path.
 
-- `gui/ui/` — GTK presentation, coordinators and user interaction.
-- `gui/core/` — Python presentation-side protocol, device-discovery and path contracts.
-- `gui/filesystems/<format>/native/` — authoritative per-filesystem native implementations.
-- `native/` — authoritative C++17 registry, mapper, operation dispatcher and privileged session.
-- `src/core/` — filesystem-neutral native safety/runtime services.
-- `test_media/` — separate destructive sacrificial-media utility.
-- `tests/` — native, filesystem, GUI, safety and release regressions.
-- `packaging/` — Debian and native local installer construction.
-- `shared/infiltratr-common/` — exact pinned Common dependency.
+## Destructive-path evidence
 
-Detailed ownership and transaction rules are in [Architecture](../docs/ARCHITECTURE.md).
+A write-capable change is expected to demonstrate more than process success. Where the filesystem contract permits it, tests manufacture a known fragmented image, invoke the production worker, reopen the result and verify payload identity plus the required allocation layout.
 
-## Production operations
+Recovery tests inject failure around durable transaction boundaries and accept only three classes of result: no authoritative source write occurred, the filesystem is already valid, or durable state remains sufficient for Recover.
 
-**Defragment** places supported movable allocations into the earliest legal canonical layout. **Growth Defrag** applies the same placement model while reserving exactly 10% of each regular file's allocated length immediately after that file. **Recover** resumes or completes an interrupted supported transaction when its recovery contract permits it.
+Growth Defrag tests verify the exact 10% post-file reserve rather than treating "some free space" as equivalent.
 
-Stop is cooperative and takes effect only at a filesystem-safe boundary.
+Minix qualification uses an independently manufactured fragmented v3 image to exercise the production native worker end to end. It verifies canonical Defragment, exact 10% Growth Defrag idempotence, durable Recover after a source-open failure, and fail-closed rejection of a recovery stage whose persisted SHA-256 no longer matches the journal. The native unit suite separately reopens staged images, verifies logical payload identity across relocated zones and rejects a Growth layout as a packed Defragment layout.
 
-## Test Media
+SFS2 qualification extends the existing SFS0 evidence with deterministic structure-version-4 fixtures exercised through production Defragment, exact 10% Growth Defrag and Recover. A separate sparse image is larger than 4 GiB and contains an extent longer than 65,535 blocks, forcing the native analyser to decode SFS2's 48-bit file-size and 32-bit extent-count fields; this prevents an SFS0-width implementation from passing the SFS2 gate accidentally.
 
-The package includes **Defragmenter Test Media**, a separate all-C GTK utility for manufacturing sacrificial test filesystems. It repeats destructive-target checks after privilege elevation and must never be pointed at a system disk or irreplaceable media.
+PFS3 qualification uses independently constructed on-disk structures rather than a mounted host filesystem: a PFS root block, reserved bitmap, bitmap-index/allocation-bitmap hierarchy, anode index/blocks and directory block describe a deliberately fragmented regular file. The native and transaction suites exercise production Defragment, exact 10% Growth Defrag and durable Recover and reject unsupported superindex state. The separate first-party Test Media creator builds a 1 GiB PFS3 image with a deterministic 25 MiB file in 100 extents, verifies the production analyser sees the expected allocation/fragmentation state and then proves the payload verifier detects deliberate data corruption. The writer remains fail-closed outside its qualified 512-byte-sector, 1 KiB-reserved-block, split-anode, small-index, root-regular-file subset.
 
-Formatting utilities used by Test Media are fixture-generation tools only; they are not part of production defragmentation. OFS/FFS, SFS, bounded PFS3 and bounded APFS qualification media are manufactured by first-party raw C creators.
+Classic HFS qualification starts from an independently manufactured MDB, allocation bitmap, Extents Overflow B-tree, Catalog B-tree and deliberately fragmented file fork. The production binary performs exact analysis and the same parser is compiled into the write path, avoiding a second HFS decoder. The mutation regression verifies byte-for-byte file payload identity after canonical Defragment and exact 10% Growth Defrag, confirms the post-fork reserve remains free in the allocation bitmap, exercises durable Recover from a verified staged image after deliberate source corruption, and proves an uncleanly-unmounted volume is rejected without source modification. The writer remains fail-closed when a regular-file data/resource fork requires Extents Overflow records, when the classic-HFS wrapper embeds HFS+/HFSX, or when the volume is inconsistent or write-locked.
 
-## Build and test
+Btrfs qualification uses an independently constructed CRC32C-valid single-device image containing a system chunk, one unprofiled mixed data/metadata chunk, level-0 root/extent/filesystem/device/checksum trees, skinny metadata references and a NODATASUM regular file deliberately split across two physical extents. The production writer must reconstruct a contiguous placement from those native records, preserve the byte payload, advance and checksum the affected metadata generation, invalidate stale free-space-cache state and independently reopen the result through the exact analyser. The regression covers Defragment, exact 10% Growth Defrag, durable Recover after a source-open failure and fail-closed encoded-extent rejection. Multi-device/striped layouts, snapshots/subvolumes, qgroups, active log/balance/device-replace state, checksummed/shared/sparse/encoded external extents, deeper mutable roots and unsupported feature bits remain outside the writer contract.
 
-```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DLD_ENABLE_WERROR=ON
-cmake --build build --parallel
-ctest --test-dir build --output-on-failure
-```
+APFS qualification uses two independently expressed fixture paths: the Python on-disk constructor used by the native worker regression and the first-party all-C Test Media creator/verifier. Both manufacture the bounded Fletcher-valid contract: block-zero plus a single active two-object checkpoint, checkpoint-map resolution of the ephemeral spaceman, one direct chunk-info block/allocation bitmap, container and volume object maps, one unencrypted snapshot-free volume, flat catalog/extent-reference roots and a deliberately fragmented regular-file data stream. The native writer stages the whole bounded filesystem, preserves file payload bytes, repacks supported extents contiguously, updates catalog/physical-extent references and the spaceman bitmap, recomputes Fletcher checksums, and independently reopens the result. The regression verifies Defragment, exact 10% Growth Defrag reserve, durable Recover, payload identity, Test Media corruption detection, and fail-closed rejection of stale checkpoint history and shared extents. Multiple volumes, encryption/sealing, snapshots, sparse/cloned/shared/encoded state, deeper mutable trees, indirect CIB/CAB layouts, internal-pool allocation and pending spaceman free queues remain outside the writer contract.
 
-The aggregate suite covers native/filesystem behaviour, GUI/service contracts, safety/transaction invariants, packaging and release gates. Hosted CI also runs ASan/UBSan qualification.
+The XFS metadata white-box suite includes the field-shaped allocation-tree pressure case in which the final free-space map needs 40 bnobt/cntbt blocks while only 13 tree/AGFL blocks are initially available. The regression verifies safe reserve growth from source-free/final-free blocks, preservation of protected Growth Defrag runs and regeneration of XFS AG-owner reverse mappings. This is structural disposable-test evidence; the user's physical 2 GB XFS device remains separate live-media evidence.
 
-## Packaging
+GUI contract tests also treat typography as release behaviour rather than decoration. They verify that the main application and Test Media reference only the MB Corpo A/S families, that the package still installs the A Condensed, S Regular and S Bold font files, and that generic/system font fallbacks or a forced host monospace log cannot be silently reintroduced.
 
-A numbered release publishes the generic amd64 Debian artifact, the hardware-native local compile/install `.run` artifact and `RELEASE_SHA256SUMS.txt`. GitHub supplies its standard tag source archives automatically.
+Common-integration regressions additionally bind CMake, the local installer and the submodule to the exact released Common 1.19.22 revision. They verify that C++ JSON real conversion uses Common's locale-independent parser, local allocation wrappers use Common checked size arithmetic, native recovery/relayout readers use Common's key=value parser, shared lexical path construction uses Common path contracts, Test Media obtains typography/metrics and the semantic palette roles through the native design API, and the GTK token generator plus font packager derive their shared design/provenance data from the pinned Common source rather than duplicated constants. The generated Python palette must equal Common's complete Day/Night maps and the About dialog may not carry private palette literals. Filesystem I/O, mapping and mutation are now wholly native, while Python is restricted to GTK presentation/glue.
 
-The package/install contract is described in the repository [README](../README.md); exact release qualification is recorded in [Audit Status](../docs/AUDIT_STATUS.md).
+Branding validation likewise treats the Defragmenter icon as an exact release asset. The architecture test verifies the approved 96×96 PNG's Git object identity, dimensions, complete chunk boundaries and CRCs and checks that packaging installs it consistently for the desktop icon theme, Mint app-install catalogue and About/window private path.
 
-## Documentation map
-
-- [Documentation index](../docs/README.md)
-- [Architecture](../docs/ARCHITECTURE.md)
-- [Design](../docs/DESIGN.md)
-- [Decisions](../docs/DECISIONS.md)
-- [Validation](../docs/VALIDATION.md)
-- [Audit status](../docs/AUDIT_STATUS.md)
-- [References](../docs/REFERENCES.md)
+The mutation path is not accepted as its own sole oracle where a separate structural or payload check can be used.
 
 
 ZFS qualification uses both independently constructed synthetic on-disk
@@ -99,3 +68,40 @@ production registry deliberately exposes no ZFS Defragment/Growth Defrag/Recover
 operations; ADR-008 records why raw ZFS mutation is outside the product
 contract.
 
+## Block-layer crash replay
+
+`defragger/tests/destructive/run_dm_log_writes_replay.sh` is an opt-in
+sacrificial-media harness for Linux `dm-log-writes` plus the upstream
+`replay-log` utility. It copies a prepared filesystem image through the
+logging target, marks that exact state as the baseline, runs the production
+Defragmenter worker and then reconstructs/replays the operation while invoking
+a caller-supplied read-only checker at every FLUSH or FUA boundary.
+
+This evidence is deliberately separate from the normal hosted quality gate:
+it requires root, two disposable block devices and a kernel exposing the
+`log-writes` target. It validates block-layer write ordering of the source
+filesystem. It does not pretend to replay persistence of the external recovery
+journal; the transaction/fault-injection suites remain the evidence for that
+cross-filesystem recovery contract.
+
+## Manual and environment-dependent evidence
+
+Synthetic images and hosted runners cannot prove every storage-controller, kernel, privilege-manager or real-media interaction. Live testing on sacrificial media is therefore separate evidence for environment-dependent behaviour.
+
+Manual evidence must be described at the level actually observed. A fixture, simulator or mocked failure is not physical-media proof.
+
+## Release criterion
+
+The exact revision intended for release must pass the required Project quality gate. Release assets must be derived from that revision, the audit must name the current version and exact audited source/governance baselines, and documentation must not advertise known-failing or merely planned write support as complete.
+
+A release gate also verifies the exact pinned Common dependency and rejects audited production or workflow drift beyond the recorded baselines. The audited production set explicitly includes the C++ application-service sources under `defragger/native/`.
+
+## Regression rule
+
+Every reproducible defect should gain the narrowest useful permanent regression. Changes to a writer should update the evidence for the affected safety boundary, including a fail-closed case and interruption/recovery coverage when the transaction boundary changes.
+
+Tests are part of the product contract, not disposable scaffolding.
+
+## Limits
+
+The evidence is not a mathematical proof and does not establish correctness for untested feature combinations, compromised privileged environments, or hardware/firmware that falsely acknowledges persistence. Those limits are why unsupported states fail closed and destructive qualification uses verified backups or sacrificial media.
