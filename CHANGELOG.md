@@ -5,6 +5,11 @@ This changelog records user-visible, compatibility, architecture and validation 
 
 ## Unreleased
 
+- Completed UFS1/UFS2 qualification and aligned the runtime, package metadata, Test Media notes and support documentation with the enabled bounded native Defragment/Growth Defrag/Recover contract.
+- Replaced ZFS summary-only detection with bounded exact native analysis: four-label/uberblock selection, packed-XDR topology, MOS/dnode traversal, verified Fletcher4/off blocks, LZJB/LZ4 metadata decoding, metaslab space-map replay and regular-file physical-fragmentation mapping for the qualified single-disk subset.
+- Extended bounded ZFS exact analysis to compatible feature-flag pools, rejecting unknown MOS-required features and active log-space-map state rather than misreporting incomplete allocation data as exact.
+- Finalised ZFS/OpenZFS as analysis-only by architectural decision: raw Defragment/Growth Defrag/Recover are not exposed because Defragmenter does not implement a parallel ZFS TXG/CoW transaction engine and its exact persistent 10% post-file reserve is not a stable ZFS placement contract.
+
 - Standardise Defragmenter About on the System Monitor native GTK contract: remove forced dialog geometry/private About CSS and the redundant product tagline, expose the build identity in the normal comments block, and use the common Website / Credits / Licence / Close hierarchy.
 
 ## Unreleased
