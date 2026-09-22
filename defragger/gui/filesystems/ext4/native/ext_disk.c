@@ -5,6 +5,7 @@
 #include "ld_runtime.h"
 
 #include "infiltratr/arithmetic.h"
+#include "infiltratr/core.h"
 #include "infiltratr/endian.h"
 
 #include <errno.h>
@@ -561,7 +562,7 @@ static int load_inode_bitmap(ExtFs *fs, uint32_t group, char **error)
 static int read_group_descriptors(ExtFs *fs, char **error)
 {
     uint64_t total64 = 0U;
-    if (!infiltratr_u64_mul_checked(fs->group_count, fs->desc_size, &total64) ||
+    if (!infiltratr_u64_multiply_checked(fs->group_count, fs->desc_size, &total64) ||
         total64 == 0U || total64 > SIZE_MAX ||
         total64 > EXT_MAX_GROUP_DESCRIPTOR_BYTES) {
         set_error(error, "EXT group descriptor table exceeds the bounded native reader");
@@ -664,10 +665,10 @@ static int inode_offset(const ExtFs *fs, uint32_t ino,
     uint64_t found = 0U;
     uint64_t filesystem_bytes = 0U;
     if (table >= fs->blocks_count ||
-        !infiltratr_u64_mul_checked(table, fs->block_size, &table_byte) ||
-        !infiltratr_u64_mul_checked(index, fs->inode_size, &index_byte) ||
+        !infiltratr_u64_multiply_checked(table, fs->block_size, &table_byte) ||
+        !infiltratr_u64_multiply_checked(index, fs->inode_size, &index_byte) ||
         !infiltratr_u64_add_checked(table_byte, index_byte, &found) ||
-        !infiltratr_u64_mul_checked(fs->blocks_count, fs->block_size,
+        !infiltratr_u64_multiply_checked(fs->blocks_count, fs->block_size,
                                     &filesystem_bytes) ||
         found > filesystem_bytes ||
         fs->inode_size > filesystem_bytes - found) {
