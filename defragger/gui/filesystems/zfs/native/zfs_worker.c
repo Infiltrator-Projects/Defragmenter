@@ -36,7 +36,12 @@ static void print_summary_json(const LdZfsSummary *summary, int detailed)
             "\"uberblock_slot\":%u,\"uberblock_magic_offset\":%llu,"
             "\"uberblock_version\":%llu,\"uberblock_txg\":%llu,"
             "\"uberblock_guid_sum\":%llu,\"uberblock_timestamp\":%llu,"
-            "\"candidate_uberblocks\":%u",
+            "\"candidate_uberblocks\":%u,"
+            "\"root_vdev\":%llu,\"root_offset\":%llu,"
+            "\"root_asize\":%llu,\"root_lsize\":%llu,\"root_psize\":%llu,"
+            "\"root_logical_birth\":%llu,\"root_compression\":%u,"
+            "\"root_checksum\":%u,\"root_type\":%u,\"root_level\":%u,"
+            "\"root_embedded\":%s",
             (unsigned long long)summary->size_bytes,
             summary->label_index,
             summary->uberblock_slot,
@@ -45,7 +50,18 @@ static void print_summary_json(const LdZfsSummary *summary, int detailed)
             (unsigned long long)summary->uberblock_txg,
             (unsigned long long)summary->uberblock_guid_sum,
             (unsigned long long)summary->uberblock_timestamp,
-            summary->candidate_uberblocks);
+            summary->candidate_uberblocks,
+            (unsigned long long)summary->root_vdev,
+            (unsigned long long)summary->root_offset,
+            (unsigned long long)summary->root_asize,
+            (unsigned long long)summary->root_lsize,
+            (unsigned long long)summary->root_psize,
+            (unsigned long long)summary->root_logical_birth,
+            summary->root_compression,
+            summary->root_checksum,
+            summary->root_type,
+            summary->root_level,
+            summary->root_embedded ? "true" : "false");
     }
     (void)puts("}");
 }
@@ -95,6 +111,10 @@ static void print_map_json(const LdZfsSummary *summary, uint64_t requested_cells
         "\"uberblock_txg\":%llu,\"uberblock_version\":%llu,"
         "\"label_index\":%u,\"uberblock_slot\":%u,"
         "\"candidate_uberblocks\":%u,\"byte_order\":\"%s\","
+        "\"mos_root\":{\"vdev\":%llu,\"offset\":%llu,\"asize\":%llu,"
+        "\"lsize\":%llu,\"psize\":%llu,\"birth_txg\":%llu,"
+        "\"compression\":%u,\"checksum\":%u,\"type\":%u,\"level\":%u,"
+        "\"embedded\":%s},"
         "\"label_basis\":\"four OpenZFS leaf-vdev labels and 128-entry uberblock rings\","
         "\"note\":\"Committed ZFS label/uberblock parsed natively; exact allocation still requires MOS, metaslab and space-map traversal\"}}\n",
         (unsigned long long)summary->uberblock_magic_offset,
@@ -103,7 +123,18 @@ static void print_map_json(const LdZfsSummary *summary, uint64_t requested_cells
         summary->label_index,
         summary->uberblock_slot,
         summary->candidate_uberblocks,
-        zfs_byte_order_name(summary));
+        zfs_byte_order_name(summary),
+        (unsigned long long)summary->root_vdev,
+        (unsigned long long)summary->root_offset,
+        (unsigned long long)summary->root_asize,
+        (unsigned long long)summary->root_lsize,
+        (unsigned long long)summary->root_psize,
+        (unsigned long long)summary->root_logical_birth,
+        summary->root_compression,
+        summary->root_checksum,
+        summary->root_type,
+        summary->root_level,
+        summary->root_embedded ? "true" : "false");
 }
 
 int main(int argc, char **argv)
