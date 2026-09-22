@@ -102,6 +102,33 @@ static uint64_t label_offset(uint64_t psize, uint32_t label)
         : psize - (uint64_t)ZFS_VDEV_LABELS * ZFS_VDEV_LABEL_SIZE + ordinal;
 }
 
+static void decode_root_block_pointer(const uint8_t *uberblock,
+                                      LdZfsByteOrder byte_order,
+                                      LdZfsSummary *summary)
+{
+    const uint8_t *root = uberblock + 40U;
+    const uint64_t dva_word0 = load_u64(root + 0U, byte_order);
+    const uint64_t dva_word1 = load_u64(root + 8U, byte_order);
+    const uint64_t prop = load_u64(root + 48U, byte_order);
+
+    summary->root_asize = (dva_word0 & UINT64_C(0xffffff)) << 9U;
+    summary->root_vdev = (dva_word0 >> 32U) & UINT64_C(0xffffff);
+    summary->root_offset =
+        (dva_word1 & UINT64_C(0x7fffffffffffffff)) << 9U;
+    summary->root_embedded = ((prop >> 39U) & 1U) != 0U;
+    if (!summary->root_embedded) {
+        summary->root_lsize =
+            (((prop >> 0U) & UINT64_C(0xffff)) + 1U) << 9U;
+        summary->root_psize =
+            (((prop >> 16U) & UINT64_C(0xffff)) + 1U) << 9U;
+    }
+    summary->root_compression = (uint32_t)((prop >> 32U) & UINT64_C(0x7f));
+    summary->root_checksum = (uint32_t)((prop >> 40U) & UINT64_C(0xff));
+    summary->root_type = (uint32_t)((prop >> 48U) & UINT64_C(0xff));
+    summary->root_level = (uint32_t)((prop >> 56U) & UINT64_C(0x1f));
+    summary->root_logical_birth = load_u64(root + 80U, byte_order);
+}
+
 static bool better_uberblock(uint64_t txg, uint64_t timestamp,
                              const LdZfsSummary *summary)
 {
@@ -153,6 +180,7 @@ static int scan_labels(int fd, uint64_t psize, LdZfsSummary *summary)
             summary->label_index = label;
             summary->uberblock_slot = slot;
             summary->byte_order = byte_order;
+            decode_root_block_pointer(bytes, byte_order, summary);
         }
     }
     return summary->candidate_uberblocks == 0U ? 1 : 0;
