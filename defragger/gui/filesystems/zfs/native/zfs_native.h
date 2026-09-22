@@ -33,6 +33,7 @@ typedef struct {
     uint32_t root_level;
     bool root_embedded;
     bool config_known;
+    bool single_leaf_supported;
     uint64_t pool_guid;
     uint64_t leaf_guid;
     uint64_t top_guid;
