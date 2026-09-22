@@ -55,7 +55,10 @@ treating one third-party implementation as infallible.
   other feature combinations for which deterministic direct mutation is not
   qualified.
 - **UFS/FFS** - BSD Fast File System literature and current FreeBSD filesystem
-  sources are corroborating references. UFS write support is not enabled.
+  sources are corroborating references. Defragmenter owns the native UFS1/UFS2
+  parser and bounded offline writer; the qualified writer remains fail-closed to
+  clean, non-journalled, snapshot-free layouts with fully understood allocation
+  and regular-file block trees.
 - **Amiga OFS/FFS/SFS/PFS3** - public format descriptions, first-party deterministic
   fixtures and cross-checks against known images are used together. The original
   SmartFilesystem source is used as the primary implementation reference for
