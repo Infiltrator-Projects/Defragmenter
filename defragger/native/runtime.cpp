@@ -256,7 +256,11 @@ const std::vector<BackendInfo>& backend_registry() {
             read, "summary", "swap-native", MapAdapter::NativeMap, {}});
         result.push_back({
             "ufs", "Solaris/BSD UFS", {"ufs", "ufs1", "ufs2", "4.2bsd"},
-            read, "variant-dependent", "ufs-native", MapAdapter::NativeMap, {}});
+            write, "exact", "ufs-native", MapAdapter::NativeMap,
+            standard_write_ops(
+                "ufs-native",
+                "UFS1/UFS2 writing uses Defragmenter's offline first-party native C engine and is fail-closed to clean, non-journalled, snapshot-free filesystems whose regular-file allocation is fully understood.",
+                "UFS Growth Defrag uses the same staged native engine and leaves an exact 10% free-fragment reserve after every supported regular file.")});
         result.push_back({
             "xfs", "XFS", {"xfs"}, write, "exact",
             "xfs-native", MapAdapter::Xfs,
