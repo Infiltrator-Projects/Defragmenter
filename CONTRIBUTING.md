@@ -16,7 +16,7 @@ Defragmenter combines GTK orchestration, filesystem-neutral safety/runtime code 
 
 ## Language and dependency policy
 
-C is the default for on-disk codecs, fixed-layout structures and direct storage work. Use C++17 when RAII, scoped ownership, stronger value types or explicit process/protocol ownership make a filesystem-neutral native component safer or clearer; do not introduce class hierarchies merely because C++ is available, and do not rewrite strong C for uniformity. Python is limited to the GTK presentation/compatibility boundary during the staged migration and must not become the authority for filesystem mutation or privileged process safety.
+C is the default for on-disk codecs, fixed-layout structures and direct storage work. Use C++17 when RAII, scoped ownership, stronger value types or explicit process/protocol ownership make a filesystem-neutral native component safer or clearer; do not introduce class hierarchies merely because C++ is available, and do not rewrite strong C for uniformity. Python is limited to GTK presentation/glue and must not become the authority for filesystem capability, mapping, mutation, recovery or privileged process safety.
 
 Platform/system libraries are acceptable when their documented contract is the stronger engineering choice. Convenience alone is not a reason to move Defragmenter-owned semantics into a dependency.
 
