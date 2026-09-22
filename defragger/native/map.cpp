@@ -35,10 +35,6 @@ std::uint64_t required_u64(const Json& object, std::string_view key) {
     return object.at(key).unsigned_value();
 }
 
-std::string required_string(const Json& object, std::string_view key) {
-    return std::string(object.at(key).string());
-}
-
 Json parse_worker_json(const CommandResult& result, const char* action) {
     if (result.return_code != 0) {
         const std::string detail = !result.standard_error.empty()
