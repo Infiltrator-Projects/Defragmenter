@@ -1596,7 +1596,7 @@ static int analyse_file_dnode(ZfsContext *context, const uint8_t raw[512],
         dnode_destroy(&dnode);
         errno = ENOTSUP;
         set_error(error, error_size,
-                  "large ZFS dnodes are outside the legacy exact-fragmentation subset");
+                  "large ZFS dnodes are outside the bounded exact-fragmentation subset");
         return -1;
     }
 
@@ -1738,7 +1738,7 @@ static int scan_dataset_objset(ZfsContext *context,
                 dnode_destroy(&meta);
                 errno = ENOTSUP;
                 set_error(error, error_size,
-                          "large ZFS dnode encountered in legacy exact subset");
+                          "large ZFS dnode encountered in bounded exact subset");
                 return -1;
             }
             if (raw[0] == ZFS_DMU_OT_PLAIN_FILE_CONTENTS &&
@@ -1809,7 +1809,7 @@ static int scan_exact_fragmentation(ZfsContext *context,
                 free(block);
                 errno = ENOTSUP;
                 set_error(error, error_size,
-                          "large ZFS MOS dnode encountered in legacy exact subset");
+                          "large ZFS MOS dnode encountered in bounded exact subset");
                 return -1;
             }
             const uint8_t nblkptr = raw[3];
