@@ -14,6 +14,13 @@ typedef enum {
 typedef struct {
     uint64_t size_bytes;
     uint64_t uberblock_magic_offset;
+    uint64_t uberblock_txg;
+    uint64_t uberblock_version;
+    uint64_t uberblock_guid_sum;
+    uint64_t uberblock_timestamp;
+    uint32_t label_index;
+    uint32_t uberblock_slot;
+    uint32_t candidate_uberblocks;
     LdZfsByteOrder byte_order;
 } LdZfsSummary;
 
