@@ -30,7 +30,7 @@ check_variant()
 
     IDENTIFY=$($UFS_WORKER identify "$image")
     printf '%s\n' "$IDENTIFY" \
-        | grep -q "^\{\"filesystem\":\"ufs\",\"variant\":\"${variant}\",\"version\":${version},\"byte_order\":\"little\"\}$"
+        | grep -q "^\{\"filesystem\":\"ufs\",\"variant\":\"${variant}\",\"version\":${version},\"byte_order\":\"little\"}$"
 
     ANALYSE=$($UFS_WORKER analyse-json "$image")
     printf '%s\n' "$ANALYSE" \
