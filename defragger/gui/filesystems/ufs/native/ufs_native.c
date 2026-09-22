@@ -464,15 +464,18 @@ int ufs_analyse_allocation(const char *path, LdUfsAnalysis *analysis,
             summary->variant == LD_UFS_VARIANT_UFS1_BE) {
             const uint32_t mask = (uint32_t)summary->old_cylinder_mask;
             const uint64_t rotational = (uint64_t)(group & ~mask);
+            const uint32_t cylinder_offset =
+                (uint32_t)summary->old_cylinder_offset;
             if (summary->old_cylinder_offset < 0 ||
-                rotational > UINT64_MAX / (uint32_t)summary->old_cylinder_offset) {
+                (cylinder_offset != 0U &&
+                 rotational > UINT64_MAX / cylinder_offset)) {
                 free(cg);
                 (void)close(fd);
                 ufs_error(error, error_size,
                           "UFS1 cylinder-group rotational offset overflows");
                 return -1;
             }
-            group_start += rotational * (uint32_t)summary->old_cylinder_offset;
+            group_start += rotational * cylinder_offset;
         }
         const uint64_t cg_fragment =
             group_start + summary->cylinder_block_fragment;
