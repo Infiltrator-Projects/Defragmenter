@@ -113,7 +113,7 @@ def test_single_filesystem_hierarchy_and_c_first_writers() -> None:
     assert not (GUI / "xfs_engine.py").exists()
 
     required_native = {
-        "ext4": {"ext_native.h", "ext_common.c", "ext_catalog.c", "ext_plan.c", "ext_worker.c"},
+        "ext4": {"ext_disk.h", "ext_disk.c", "ext_native.h", "ext_common.c", "ext_catalog.c", "ext_plan.c", "ext_worker.c"},
         "ntfs": {"ntfs_native.h", "ntfs_common.c", "ntfs_catalog.c", "ntfs_plan.c", "ntfs_plan_db.cpp", "ntfs_transaction.h", "ntfs_transaction.c", "ntfs_worker.c"},
         "exfat": {"exfat_native.h", "exfat_common.c", "exfat_plan.c", "exfat_worker.c"},
         "xfs": {"xfs_native.h", "xfs_common.c", "xfs_catalog.c", "xfs_plan.c", "xfs_metadata.c", "xfs_worker.c"},
@@ -167,6 +167,39 @@ def test_single_filesystem_hierarchy_and_c_first_writers() -> None:
     hfs_source = hfs_analyser.read_text()
     assert "libhfs" not in hfs_source
     assert "vendor/" not in _cmake_source()
+
+
+def test_ext_production_is_first_party_and_libext2fs_is_test_only() -> None:
+    ext_native = GUI / "filesystems" / "ext4" / "native"
+    for path in ext_native.glob("*"):
+        if path.suffix not in {".c", ".h"}:
+            continue
+        source = path.read_text(encoding="utf-8", errors="replace")
+        assert "ext2fs/" not in source, f"{path.name} reintroduced ext2fs headers"
+        assert "ext2fs_" not in source, f"{path.name} reintroduced libext2fs calls"
+        assert "ext2_filsys" not in source, f"{path.name} reintroduced libext2fs types"
+
+    project = (ROOT / "cmake" / "project.cmake").read_text()
+    metadata = (ROOT / "cmake" / "ext_metadata_map.cmake").read_text()
+    ext_target = project.split("add_library(linux-defragger-ext-native STATIC", 1)[1].split(
+        "add_library(linux-defragger-ntfs-native STATIC", 1
+    )[0]
+    assert "ext_disk.c" in ext_target
+    assert "PkgConfig::EXT2FS" not in ext_target
+    assert "COM_ERR_LIBRARY" not in ext_target
+    assert "PkgConfig::EXT2FS" not in metadata
+    assert "COM_ERR_LIBRARY" not in metadata
+
+    fixture = project.split("add_executable(linux-defragger-ext-fixture", 1)[1]
+    assert "PkgConfig::EXT2FS" in fixture
+    assert project.index("if(BUILD_TESTING)") < project.index(
+        "pkg_check_modules(EXT2FS REQUIRED IMPORTED_TARGET ext2fs)"
+    )
+
+    deb = (ROOT / "packaging" / "build-deb.sh").read_text()
+    native_header = (ROOT / "packaging" / "local-run-header.sh.in").read_text()
+    assert "libext2fs2" not in deb
+    assert "libext2fs-dev" not in native_header
 
 
 def test_build_and_path_registry_install_native_workers() -> None:
@@ -949,6 +982,7 @@ def main() -> None:
     test_native_registry_is_the_single_capability_authority()
     test_unqualified_ufs_mutation_is_fail_closed_in_the_installed_worker()
     test_dispatch_is_filesystem_neutral()
+    test_ext_production_is_first_party_and_libext2fs_is_test_only()
     test_single_filesystem_hierarchy_and_c_first_writers()
     test_build_and_path_registry_install_native_workers()
     test_infiltratr_common_integration()
