@@ -468,6 +468,8 @@ bool native_accuracy_matches(const BackendInfo& backend,
     if (backend.id == "btrfs") return accuracy == "exact-single-device";
     if (backend.id == "swap")
         return accuracy == "summary" || accuracy == "exact";
+    if (backend.id == "zfs")
+        return accuracy == "summary" || accuracy == "exact";
     if (backend.id == "ufs")
         return accuracy == "summary" || accuracy == "exact-allocation" ||
                accuracy == "exact";
