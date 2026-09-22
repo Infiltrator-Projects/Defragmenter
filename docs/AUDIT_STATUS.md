@@ -2,6 +2,8 @@
 
 Status: **complete**
 
+Current `main`: **audit refresh required before release** — current development has advanced beyond the audited 1.8.0-192 production-source baseline, including qualified UFS1/UFS2 mutation and bounded-exact ZFS analysis. Those post-baseline changes are not retroactively claimed by this release audit.
+
 Completed: 2026-08-25  
 Extended: 2026-09-22
 
@@ -81,7 +83,7 @@ The quality gate now owns the release handoff as a direct dependent reusable-wor
 
 APT publication is likewise a direct reusable-workflow dependency of successful release publication, with manual `workflow_dispatch` retained only as a retry path. It verifies the immutable release tag/SHA before dispatching the central repository refresh, so release or APT retries cannot lose their handoff through `workflow_run` semantics. A release-head retry may contain documentation or release metadata only after the audited source commit; the exact-head gate still rejects any production/build/package drift.
 
-Version 1.8.0-192 is the current audited release line. It retains the exact Common 1.19.22 pin and all previously qualified writers while removing the duplicate Python filesystem control plane, making the native C++ manifest the sole capability/operation authority, sharing only filesystem-neutral target-binding mechanics across writers, and splitting NTFS persistent journal representation/durability from its filesystem-specific placement and recovery policy. UFS mutation remains deliberately fail-closed in the installed worker until its roadmap qualification is complete.
+Version 1.8.0-192 is the current audited release line. It retains the exact Common 1.19.22 pin and all writers listed in the audited writer IDs above while removing the duplicate Python filesystem control plane, making the native C++ manifest the sole capability/operation authority, sharing only filesystem-neutral target-binding mechanics across writers, and splitting NTFS persistent journal representation/durability from its filesystem-specific placement and recovery policy. Current `main` has since enabled qualified UFS1/UFS2 mutation and added bounded-exact ZFS analysis; those changes require a new audit baseline before a later release may be published.
 
 The 1.8.0-192 audit extension covers the production/control-plane consolidation and restored executable packaging/test contracts through `b867588dcf2597d6f9ff45f69e7e867c3512242f`. The native registry/mapper/operation engine are now the only filesystem capability and dispatch authority; source-only Python filesystem registries/plugins and duplicate dispatcher/helper paths have been removed. Transaction target identity/capacity binding is shared in the native core while filesystem-specific volume identity, phase meaning, placement ordering and Recover semantics remain local. NTFS persistent journal parsing/publication/cleanup is isolated in its transaction component without moving NTFS placement or recovery policy out of the worker. The hosted sanitizer build/tests passed after the NTFS split boundary fixes, and the exact release head must still pass both permanent hosted quality lanes before publication.
 
