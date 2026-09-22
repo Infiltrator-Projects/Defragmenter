@@ -433,7 +433,7 @@ int main(void)
     LdZfsAnalysis analysis;
     CHECK(zfs_analyse_exact(path, &analysis, error, sizeof(error)) == 0);
     CHECK(analysis.exact_allocation);
-    CHECK(!analysis.exact_fragmentation);
+    CHECK(analysis.exact_fragmentation);
     CHECK(analysis.size_bytes == IMAGE_BYTES);
     CHECK(analysis.free_bytes ==
           UINT64_C(8) * 1024U * 1024U - UINT64_C(12) * 4096U);
