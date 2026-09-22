@@ -2,17 +2,16 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
-## Unreleased
+## 1.8.0-193
 
-- Replaced the production EXT2/3/4 libext2fs dependency with a narrow first-party native on-disk engine owning superblock/group/bitmap/inode validation, extent and legacy-indirect traversal, allocation accounting, physical-reference mutation and metadata checksums. libext2fs remains test-only as an independent fixture/oracle.
-- Replaced production EXT2/EXT3/EXT4 dependence on libext2fs with a bounded first-party native on-disk layer for superblock/group-descriptor validation, allocation bitmaps, inode scanning/checksums, extent/legacy-indirect traversal and physical-reference mutation; e2fsprogs/libext2fs remains test-only fixture/oracle evidence.
-- Completed UFS1/UFS2 qualification and aligned the runtime, package metadata, Test Media notes and support documentation with the enabled bounded native Defragment/Growth Defrag/Recover contract.
-- Replaced ZFS summary-only detection with bounded exact native analysis: four-label/uberblock selection, packed-XDR topology, MOS/dnode traversal, verified Fletcher4/off blocks, LZJB/LZ4 metadata decoding, metaslab space-map replay and regular-file physical-fragmentation mapping for the qualified single-disk subset.
-- Extended bounded ZFS exact analysis to compatible feature-flag pools, rejecting unknown MOS-required features and active log-space-map state rather than misreporting incomplete allocation data as exact.
-- Finalised ZFS/OpenZFS as analysis-only by architectural decision: raw Defragment/Growth Defrag/Recover are not exposed because Defragmenter does not implement a parallel ZFS TXG/CoW transaction engine and its exact persistent 10% post-file reserve is not a stable ZFS placement contract.
-- Standardise Defragmenter About on the System Monitor native GTK contract: remove forced dialog geometry/private About CSS and the redundant product tagline, expose the build identity in the normal comments block, and use the common Website / Credits / Licence / Close hierarchy.
-- Realigned write-safety architecture regressions with current ownership: XFS mounted-device refusal asserts the shared `LdDevice` block-device identity path, while NTFS durable journal publication and trusted-parent traversal are checked in `ntfs_transaction.c`.
-- Aligned the Common key=value-parser and Common-integration regressions with the NTFS transaction split without weakening their ownership invariants.
+- Replaced the production EXT2/EXT3/EXT4 libext2fs dependency with a bounded first-party native on-disk engine owning superblock/group-descriptor validation, allocation bitmaps, inode scanning/checksums, extent and legacy-indirect traversal, allocation accounting and physical-reference mutation; e2fsprogs/libext2fs remains test-only independent fixture/oracle evidence.
+- Completed UFS1/UFS2 qualification and enabled the bounded clean/non-journalled/snapshot-free native Defragment, exact 10% Growth Defrag and Recover contract with genuine makefs integration coverage.
+- Replaced ZFS summary-only detection with bounded exact native analysis across labels/uberblocks, packed-XDR topology, MOS/dnodes, supported checksum/compression, metaslab space maps and regular-file physical fragmentation; ZFS mutation remains deliberately outside product scope.
+- Advanced the exact Infiltratr Common dependency to released 1.19.23 at commit `a9cf2957cffeefe6001830916b8a32c2ef58a551` across the submodule, CMake, installer, tests and current architecture/design/validation documentation.
+- Fixed release-qualification defects exposed by warnings-as-errors and sanitizers: EXT checked-arithmetic integration and opaque handle ownership, UFS1 zero rotational-offset division, and bounded ZFS string copying.
+- Restored the ZFS multi-uberblock selection fixture so candidate counting and same-TXG timestamp tie-breaking are both exercised rather than weakening the assertions.
+- Clarified UFS, ZFS, APFS and Btrfs native ownership/fail-closed boundaries in source comments without duplicating filesystem specifications or narrating syntax.
+- Standardised Defragmenter About on the shared native GTK presentation contract and realigned XFS/NTFS/Common ownership regressions with the current source decomposition.
 
 ## 1.8.0-192
 
