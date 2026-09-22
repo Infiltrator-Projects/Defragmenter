@@ -14,6 +14,7 @@
 #define UBER_SIZE 1024U
 #define VDEV_PHYS_OFFSET (16U * 1024U)
 #define VDEV_PHYS_SIZE (112U * 1024U)
+#define DATA_TYPE_BOOLEAN 1U
 #define DATA_TYPE_UINT64 8U
 #define DATA_TYPE_STRING 9U
 #define DATA_TYPE_NVLIST 19U
@@ -139,6 +140,12 @@ static void xw_nvlist_end(XdrWriter *writer)
     xw_u32(writer, 0U);
 }
 
+static void xw_boolean_pair(XdrWriter *writer, const char *name)
+{
+    const size_t start = xw_pair_begin(writer, name, DATA_TYPE_BOOLEAN, 0U);
+    xw_pair_end(writer, start);
+}
+
 static void xw_uint64_pair(XdrWriter *writer, const char *name, uint64_t value)
 {
     const size_t start = xw_pair_begin(writer, name, DATA_TYPE_UINT64, 1U);
@@ -153,7 +160,8 @@ static void xw_string_pair(XdrWriter *writer, const char *name, const char *valu
     xw_pair_end(writer, start);
 }
 
-static void write_label_config(int fd, unsigned label)
+static void write_label_config(int fd, unsigned label,
+                               const char *mos_feature)
 {
     uint8_t config[VDEV_PHYS_SIZE];
     memset(config, 0, sizeof(config));
@@ -167,6 +175,15 @@ static void write_label_config(int fd, unsigned label)
     xw_uint64_pair(&writer, "pool_guid", UINT64_C(0x1111222233334444));
     xw_uint64_pair(&writer, "guid", UINT64_C(0x5555666677778888));
     xw_uint64_pair(&writer, "top_guid", UINT64_C(0x9999aaaabbbbcccc));
+
+    if (mos_feature != NULL) {
+        size_t features =
+            xw_pair_begin(&writer, "features_for_read", DATA_TYPE_NVLIST, 1U);
+        xw_nvlist_begin(&writer);
+        xw_boolean_pair(&writer, mos_feature);
+        xw_nvlist_end(&writer);
+        xw_pair_end(&writer, features);
+    }
 
     size_t vdev_tree = xw_pair_begin(&writer, "vdev_tree", DATA_TYPE_NVLIST, 1U);
     xw_nvlist_begin(&writer);
@@ -407,7 +424,7 @@ static off_t write_uber(int fd, unsigned label, unsigned slot, int big,
     put64(uber + 48U, dva1);
     put64(uber + 88U, root_prop);
     put64(uber + 120U, txg);
-    if (!big && version <= 28U) {
+    if (!big) {
         uint8_t mos[4096];
         const ssize_t count = pread(fd, mos, sizeof(mos),
             (off_t)(VDEV_DATA_START + MOS_ROOT_LOGICAL_OFFSET));
@@ -433,7 +450,7 @@ int main(void)
     char error[256];
 
     reset_image(fd);
-    write_label_config(fd, 0U);
+    write_label_config(fd, 0U, NULL);
     write_exact_fixture(fd);
     const off_t first = write_uber(fd, 0U, 3U, 0, 28U, 10U, 77U, 1000U);
     CHECK(zfs_read_summary(path, &summary, error, sizeof(error)) == 0);
@@ -489,6 +506,46 @@ int main(void)
     CHECK(analysis.range_count == 7U);
     zfs_analysis_destroy(&analysis);
 
+
+    /*
+     * Feature-flag pools use the same MOS/metaslab machinery when every
+     * read-critical MOS feature is one the bounded reader understands.
+     */
+    reset_image(fd);
+    write_label_config(fd, 0U, "com.delphix:hole_birth");
+    write_exact_fixture(fd);
+    (void)write_uber(fd, 0U, 11U, 0, 5000U, 50U, 123U, 4000U);
+    CHECK(zfs_read_summary(path, &summary, error, sizeof(error)) == 0);
+    CHECK(summary.uberblock_version == 5000U);
+    CHECK(summary.mos_features_present);
+    CHECK(summary.mos_features_supported);
+    CHECK(summary.mos_feature_count == 1U);
+    CHECK(summary.single_leaf_supported);
+    CHECK(zfs_analyse_exact(path, &analysis, error, sizeof(error)) == 0);
+    CHECK(analysis.exact_allocation);
+    CHECK(analysis.exact_fragmentation);
+    CHECK(analysis.fragmented_files == 1U);
+    zfs_analysis_destroy(&analysis);
+
+    /*
+     * Unknown MOS-format features must not be guessed. Identification remains
+     * available, but exact traversal is refused.
+     */
+    reset_image(fd);
+    write_label_config(fd, 0U, "com.example:future_mos");
+    write_exact_fixture(fd);
+    (void)write_uber(fd, 0U, 12U, 0, 5000U, 51U, 124U, 4001U);
+    CHECK(zfs_read_summary(path, &summary, error, sizeof(error)) == 0);
+    CHECK(summary.mos_features_present);
+    CHECK(!summary.mos_features_supported);
+    CHECK(strcmp(summary.unsupported_mos_feature,
+                 "com.example:future_mos") == 0);
+    CHECK(!summary.single_leaf_supported);
+    CHECK(zfs_analyse_exact(path, &analysis, error, sizeof(error)) != 0);
+
+    reset_image(fd);
+    write_label_config(fd, 0U, NULL);
+    write_exact_fixture(fd);
     const off_t best = write_uber(fd, 3U, 127U, 1, 5000U, 42U, 99U, 2000U);
     (void)write_uber(fd, 1U, 8U, 0, 28U, 20U, 88U, 1500U);
     CHECK(zfs_read_summary(path, &summary, error, sizeof(error)) == 0);
