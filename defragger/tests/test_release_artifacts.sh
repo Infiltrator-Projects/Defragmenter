@@ -16,6 +16,14 @@ sh -n "$ROOT/packaging/build-deb.sh"
 sh -n "$ROOT/packaging/build-local-run.sh"
 grep -Fq 'OUTPUT=${OUTPUT_PATH:-"$ROOT/Defragmenter-${PACKAGE_VERSION}-${ARCH}.deb"}' "$ROOT/packaging/build-deb.sh"
 grep -Fq 'libstdc++6' "$ROOT/packaging/build-deb.sh"
+if grep -Fq 'libext2fs2' "$ROOT/packaging/build-deb.sh"; then
+    printf '%s\n' 'Production Debian package must not depend on libext2fs.' >&2
+    exit 1
+fi
+if grep -Fq 'libext2fs-dev' "$ROOT/packaging/local-run-header.sh.in"; then
+    printf '%s\n' 'Native production build must not require libext2fs headers.' >&2
+    exit 1
+fi
 grep -Fq 'StartupWMClass=io.github.linuxdefragger' \
     "$ROOT/packaging/io.github.linuxdefragger.desktop"
 grep -Fq 'OUTPUT=${1:-"$ROOT/Defragmenter-${VERSION}-local-folder.run"}' "$ROOT/packaging/build-local-run.sh"
