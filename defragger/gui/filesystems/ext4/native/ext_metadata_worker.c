@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include <com_err.h>
-#include <ext2fs/ext2fs.h>
+#include "ext_native.h"
 
 #include <inttypes.h>
 #include <stdbool.h>
@@ -11,156 +10,131 @@
 
 #define PROGRAM_NAME "linux-defragger-ext-metadata-worker"
 
+#ifndef LINUX_S_IFMT
+#define LINUX_S_IFMT 0170000
+#endif
+#ifndef LINUX_S_IFDIR
+#define LINUX_S_IFDIR 0040000
+#endif
+#ifndef LINUX_S_IFREG
+#define LINUX_S_IFREG 0100000
+#endif
+
 typedef struct {
-    ext2fs_block_bitmap bitmap;
-    uint64_t total_blocks;
-} MarkContext;
+    ExtRangeVec ranges;
+    bool in_run;
+    uint64_t start;
+    uint64_t previous;
+} PayloadRanges;
 
 static void usage(FILE *stream)
 {
-    (void)fprintf(stream,
-                  "Usage: %s analyse-json DEVICE\n",
-                  PROGRAM_NAME);
+    (void)fprintf(stream, "Usage: %s analyse-json DEVICE\n", PROGRAM_NAME);
 }
 
-static void mark_block(MarkContext *context, uint64_t block)
+static void flush_payload_run(PayloadRanges *payload)
 {
-    if (block < context->total_blocks)
-        ext2fs_mark_block_bitmap2(context->bitmap, (blk64_t)block);
+    if (!payload->in_run) return;
+    ext_range_push(&payload->ranges, payload->start, payload->previous + 1U);
+    payload->in_run = false;
 }
 
-static int mark_inode_block(ext2_filsys fs, blk64_t *blocknr,
-                            e2_blkcnt_t blockcnt, blk64_t ref_blk,
-                            int ref_offset, void *private_data)
+static int collect_payload_block(ExtFs *fs, uint32_t ino, int64_t logical,
+                                 uint64_t *physical, bool mutable_mapping,
+                                 void *private_data, char **error)
 {
     (void)fs;
-    (void)blockcnt;
-    (void)ref_blk;
-    (void)ref_offset;
-    MarkContext *context = private_data;
-    if (*blocknr != 0)
-        mark_block(context, (uint64_t)*blocknr);
+    (void)ino;
+    (void)logical;
+    (void)mutable_mapping;
+    (void)error;
+    PayloadRanges *payload = private_data;
+    if (!payload->in_run) {
+        payload->start = *physical;
+        payload->previous = *physical;
+        payload->in_run = true;
+    } else if (*physical == payload->previous + 1U) {
+        payload->previous = *physical;
+    } else {
+        flush_payload_run(payload);
+        payload->start = *physical;
+        payload->previous = *physical;
+        payload->in_run = true;
+    }
     return 0;
 }
 
-static int mark_system_inode(ext2_filsys fs, ext2_ino_t ino,
-                             MarkContext *context)
+static int collect_user_inode(ExtFs *fs, ExtInode *inode,
+                              void *private_data, char **error)
 {
-    if (ino == 0U || ino > fs->super->s_inodes_count || ino == EXT2_ROOT_INO)
+    if (inode->mode == 0U || inode->links == 0U) return 0;
+    unsigned kind = (unsigned)inode->mode & LINUX_S_IFMT;
+    if (kind != LINUX_S_IFREG && kind != LINUX_S_IFDIR) return 0;
+    if (inode->number < ext_fs_first_inode(fs) &&
+        inode->number != EXT_ROOT_INO)
         return 0;
 
-    struct ext2_inode_large inode;
-    memset(&inode, 0, sizeof(inode));
-    errcode_t code = ext2fs_read_inode_full(
-        fs, ino, (struct ext2_inode *)&inode, (int)sizeof(inode));
-    if (code != 0)
-        return (int)code;
-    if (inode.i_mode == 0U || inode.i_links_count == 0U)
-        return 0;
-
-    code = ext2fs_block_iterate3(fs, ino, BLOCK_FLAG_READ_ONLY, NULL,
-                                 mark_inode_block, context);
-    return (int)code;
-}
-
-static int build_metadata_bitmap(ext2_filsys fs, ext2fs_block_bitmap *metadata)
-{
-    errcode_t code = ext2fs_allocate_block_bitmap(
-        fs, "Defragmenter EXT metadata map", metadata);
-    if (code != 0)
-        return (int)code;
-
-    MarkContext context = {
-        .bitmap = *metadata,
-        .total_blocks = (uint64_t)ext2fs_blocks_count(fs->super),
-    };
-
-    for (uint64_t block = 0U; block < (uint64_t)fs->super->s_first_data_block;
-         ++block) {
-        mark_block(&context, block);
-    }
-
-    for (dgrp_t group = 0; group < fs->group_desc_count; ++group) {
-        (void)ext2fs_reserve_super_and_bgd(fs, group, *metadata);
-
-        mark_block(&context, (uint64_t)ext2fs_block_bitmap_loc(fs, group));
-        mark_block(&context, (uint64_t)ext2fs_inode_bitmap_loc(fs, group));
-
-        const uint64_t table = (uint64_t)ext2fs_inode_table_loc(fs, group);
-        for (uint64_t index = 0U;
-             index < (uint64_t)fs->inode_blocks_per_group; ++index) {
-            if (table > UINT64_MAX - index)
-                break;
-            mark_block(&context, table + index);
-        }
-    }
-
-    ext2_ino_t first_normal = fs->super->s_first_ino;
-    if (first_normal == 0U)
-        first_normal = EXT2_GOOD_OLD_FIRST_INO;
-    for (ext2_ino_t ino = 1U; ino < first_normal; ++ino) {
-        if (ino == EXT2_ROOT_INO)
-            continue;
-        int result = mark_system_inode(fs, ino, &context);
-        if (result != 0)
-            return result;
-    }
-
-    const ext2_ino_t special_inodes[] = {
-        (ext2_ino_t)fs->super->s_journal_inum,
-        (ext2_ino_t)fs->super->s_snapshot_inum,
-        (ext2_ino_t)fs->super->s_usr_quota_inum,
-        (ext2_ino_t)fs->super->s_grp_quota_inum,
-        (ext2_ino_t)fs->super->s_prj_quota_inum,
-        (ext2_ino_t)fs->super->s_orphan_file_inum,
-    };
-    for (size_t index = 0U;
-         index < sizeof(special_inodes) / sizeof(special_inodes[0]); ++index) {
-        const ext2_ino_t ino = special_inodes[index];
-        if (ino < first_normal)
-            continue;
-        int result = mark_system_inode(fs, ino, &context);
-        if (result != 0)
-            return result;
-    }
-
+    PayloadRanges *payload = private_data;
+    flush_payload_run(payload);
+    if (ext_fs_iterate_payload(fs, inode, false, collect_payload_block,
+                               payload, error) != 0)
+        return -1;
+    flush_payload_run(payload);
     return 0;
 }
 
-static bool is_allocated(ext2_filsys fs, uint64_t block)
+static bool payload_contains(const ExtRangeVec *ranges, size_t *index,
+                             uint64_t block)
 {
-    if (block < (uint64_t)fs->super->s_first_data_block)
-        return true;
-    return ext2fs_test_block_bitmap2(fs->block_map, (blk64_t)block) != 0;
+    while (*index < ranges->count && ranges->items[*index].end <= block)
+        (*index)++;
+    return *index < ranges->count &&
+           ranges->items[*index].start <= block &&
+           block < ranges->items[*index].end;
 }
 
-static void emit_metadata_ranges(ext2_filsys fs,
-                                 ext2fs_block_bitmap metadata)
+static int emit_metadata_ranges(ExtFs *fs, char **error)
 {
-    const uint64_t total_blocks = (uint64_t)ext2fs_blocks_count(fs->super);
+    PayloadRanges payload = {0};
+    if (ext_fs_foreach_inode(fs, collect_user_inode, &payload, error) != 0) {
+        ext_range_free(&payload.ranges);
+        return -1;
+    }
+    flush_payload_run(&payload);
+    ext_range_sort_merge(&payload.ranges);
+
     bool first = true;
     bool in_run = false;
     uint64_t run_start = 0U;
+    size_t payload_index = 0U;
+    uint64_t total_blocks = ext_fs_blocks_count(fs);
+    uint64_t first_data = ext_fs_first_data_block(fs);
 
     (void)putchar('[');
     for (uint64_t block = 0U; block < total_blocks; ++block) {
-        const bool marked =
-            ext2fs_test_block_bitmap2(metadata, (blk64_t)block) != 0 &&
-            is_allocated(fs, block);
+        bool allocated = block < first_data;
+        if (!allocated &&
+            ext_fs_block_allocated(fs, block, &allocated, error) != 0) {
+            ext_range_free(&payload.ranges);
+            return -1;
+        }
+        bool marked = allocated &&
+            !payload_contains(&payload.ranges, &payload_index, block);
         if (marked && !in_run) {
             run_start = block;
             in_run = true;
         }
         if (in_run && (!marked || block + 1U == total_blocks)) {
-            const uint64_t run_end = marked ? block + 1U : block;
-            if (!first)
-                (void)putchar(',');
+            uint64_t run_end = marked ? block + 1U : block;
+            if (!first) (void)putchar(',');
             first = false;
             (void)printf("[%" PRIu64 ",%" PRIu64 "]", run_start, run_end);
             in_run = false;
         }
     }
     (void)putchar(']');
+    ext_range_free(&payload.ranges);
+    return 0;
 }
 
 int main(int argc, char **argv)
@@ -170,40 +144,28 @@ int main(int argc, char **argv)
         return 2;
     }
 
-    ext2_filsys fs = NULL;
-    const int flags = EXT2_FLAG_64BITS | EXT2_FLAG_SOFTSUPP_FEATURES;
-    errcode_t code = ext2fs_open(argv[2], flags, 0, 0, unix_io_manager, &fs);
-    if (code != 0) {
-        (void)fprintf(stderr, "%s: opening EXT filesystem: %s\n",
-                      PROGRAM_NAME, error_message(code));
-        return 1;
-    }
-    code = ext2fs_read_bitmaps(fs);
-    if (code != 0) {
-        (void)fprintf(stderr, "%s: reading EXT allocation bitmaps: %s\n",
-                      PROGRAM_NAME, error_message(code));
-        (void)ext2fs_close(fs);
-        return 1;
-    }
-
-    ext2fs_block_bitmap metadata = NULL;
-    const int metadata_result = build_metadata_bitmap(fs, &metadata);
-    if (metadata_result != 0) {
-        (void)fprintf(stderr, "%s: classifying EXT metadata: %s\n",
-                      PROGRAM_NAME, error_message((errcode_t)metadata_result));
-        if (metadata != NULL)
-            ext2fs_free_block_bitmap(metadata);
-        (void)ext2fs_close(fs);
+    char *error = NULL;
+    ExtFs *fs = NULL;
+    if (ext_fs_open(argv[2], false, &fs, &error) != 0 ||
+        ext_fs_validate_metadata(fs, false, &error) != 0) {
+        (void)fprintf(stderr, "%s: %s\n", PROGRAM_NAME,
+                      error != NULL ? error : "cannot open EXT filesystem");
+        free(error);
+        ext_fs_close(fs);
         return 1;
     }
 
     (void)printf("{\"block_size\":%u,\"total_blocks\":%" PRIu64
                  ",\"metadata_ranges\":",
-                 fs->blocksize, (uint64_t)ext2fs_blocks_count(fs->super));
-    emit_metadata_ranges(fs, metadata);
+                 ext_fs_block_size(fs), ext_fs_blocks_count(fs));
+    if (emit_metadata_ranges(fs, &error) != 0) {
+        (void)fprintf(stderr, "%s: %s\n", PROGRAM_NAME,
+                      error != NULL ? error : "cannot classify EXT metadata");
+        free(error);
+        ext_fs_close(fs);
+        return 1;
+    }
     (void)puts("}");
-
-    ext2fs_free_block_bitmap(metadata);
-    (void)ext2fs_close(fs);
+    ext_fs_close(fs);
     return 0;
 }
