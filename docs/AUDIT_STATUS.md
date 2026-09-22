@@ -2,7 +2,7 @@
 
 Status: **complete**
 
-Current `main`: **audit refresh required before release** — current development has advanced beyond the audited 1.8.0-192 production-source baseline, including qualified UFS1/UFS2 mutation and bounded-exact ZFS analysis. Those post-baseline changes are not retroactively claimed by this release audit.
+Current `main`: **audit refresh required before release** — current development has advanced beyond the audited 1.8.0-192 production-source baseline, including qualified UFS1/UFS2 mutation, bounded-exact ZFS analysis and replacement of production EXT2/3/4 libext2fs ownership with the first-party native on-disk engine. Those post-baseline changes are not retroactively claimed by this release audit.
 
 Completed: 2026-08-25  
 Extended: 2026-09-22
