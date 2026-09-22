@@ -182,11 +182,11 @@ def main() -> None:
     assert "*.py[cod]" in gitignore
 
     common_contract = (
-        ('COMMON_TAG="v1.19.23"', 'INFILTRATR_COMMON_TAG "v1.19.23"'),
-        ('COMMON_VERSION="1.19.23"', 'INFILTRATR_COMMON_EXPECTED_VERSION "1.19.23"'),
+        ('COMMON_TAG="v1.19.24"', 'INFILTRATR_COMMON_TAG "v1.19.24"'),
+        ('COMMON_VERSION="1.19.24"', 'INFILTRATR_COMMON_EXPECTED_VERSION "1.19.24"'),
         (
-            'COMMON_COMMIT="a9cf2957cffeefe6001830916b8a32c2ef58a551"',
-            'a9cf2957cffeefe6001830916b8a32c2ef58a551',
+            'COMMON_COMMIT="748e089ae175329471d4cf375522c44081371bd5"',
+            '748e089ae175329471d4cf375522c44081371bd5',
         ),
     )
     for local_required, cmake_required in common_contract:
@@ -200,8 +200,8 @@ def main() -> None:
         assert f"v{stale_version}" not in local_run
         assert f'COMMON_VERSION="{stale_version}"' not in local_run
         assert f"Infiltratr Common {stale_version}" not in design
-    assert "Infiltratr Common 1.19.23" in design
-    assert "a9cf2957cffeefe6001830916b8a32c2ef58a551" in design
+    assert "Infiltratr Common 1.19.24" in design
+    assert "748e089ae175329471d4cf375522c44081371bd5" in design
 
     for required in (
         "Status: **complete**",
