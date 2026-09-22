@@ -2,6 +2,7 @@
 #include "zfs_native.h"
 
 #include "ld_io.h"
+#include "infiltratr/core.h"
 #include "infiltratr/endian.h"
 
 #include <errno.h>
@@ -259,7 +260,7 @@ static bool zfs_parse_nvpair(ZfsXdr *xdr, unsigned depth,
         if (!xdr_string(xdr, value, sizeof(value)))
             return false;
         if (strcmp(name, "type") == 0)
-            (void)snprintf(fields->type, sizeof(fields->type), "%s", value);
+            infiltratr_copy_string(fields->type, sizeof(fields->type), value);
     } else if (type == 19U && elements == 1U) {
         const bool child_feature_scope =
             feature_scope || strcmp(name, "features_for_read") == 0;
