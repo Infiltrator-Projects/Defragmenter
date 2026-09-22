@@ -318,6 +318,8 @@ int main(void) {
     CHECK(ufs->package_hint != NULL && strcmp(ufs->package_hint, "makefs") == 0);
     CHECK(strstr(ufs->note, "UFS2") != NULL && strstr(ufs->note, "fragmentation is not asserted") != NULL);
     CHECK(zfs->package_hint != NULL && strcmp(zfs->package_hint, "zfsutils-linux") == 0);
+    CHECK(strstr(zfs->note, "ZFS v28") != NULL &&
+          strstr(zfs->note, "native exact analyser") != NULL);
     CHECK(apfs->creator == LDTM_CREATOR_APFS && ldtm_creator_program(apfs) == NULL);
     CHECK(ldtm_spec_creator_available(apfs, script, sizeof(script)) == 1);
     CHECK(strstr(script, "Built-in raw C creator") != NULL);
