@@ -32,6 +32,16 @@ typedef struct {
     uint32_t root_type;
     uint32_t root_level;
     bool root_embedded;
+    bool config_known;
+    uint64_t pool_guid;
+    uint64_t leaf_guid;
+    uint64_t top_guid;
+    uint64_t top_vdev_id;
+    uint64_t ashift;
+    uint64_t metaslab_array;
+    uint64_t metaslab_shift;
+    uint32_t metaslab_vdevs;
+    char top_vdev_type[16];
     LdZfsByteOrder byte_order;
 } LdZfsSummary;
 
