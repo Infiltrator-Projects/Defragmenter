@@ -316,7 +316,8 @@ int main(void) {
     CHECK(pfs3->creator == LDTM_CREATOR_PFS3 && strstr(pfs3->note, "PFS3") != NULL);
     CHECK(strcmp(ldtm_creator_program(ufs), "makefs") == 0);
     CHECK(ufs->package_hint != NULL && strcmp(ufs->package_hint, "makefs") == 0);
-    CHECK(strstr(ufs->note, "UFS2") != NULL && strstr(ufs->note, "fragmentation is not asserted") != NULL);
+    CHECK(strstr(ufs->note, "UFS2") != NULL &&
+          strstr(ufs->note, "exact allocation/fragmentation") != NULL);
     CHECK(zfs->package_hint != NULL && strcmp(zfs->package_hint, "zfsutils-linux") == 0);
     CHECK(strstr(zfs->note, "ZFS v28") != NULL &&
           strstr(zfs->note, "native exact analyser") != NULL);
