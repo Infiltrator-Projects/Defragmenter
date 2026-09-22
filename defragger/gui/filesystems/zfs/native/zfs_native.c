@@ -287,11 +287,21 @@ static void parse_label_config(int fd, uint64_t psize, LdZfsSummary *summary)
         .length = sizeof(config),
         .position = 4U,
     };
-    if (zfs_parse_nvlist(&xdr, 0U, summary))
+    if (zfs_parse_nvlist(&xdr, 0U, summary)) {
         summary->config_known = summary->pool_guid != 0U &&
                                 summary->leaf_guid != 0U &&
                                 summary->top_guid != 0U &&
                                 summary->metaslab_vdevs != 0U;
+        summary->single_leaf_supported =
+            summary->config_known &&
+            summary->metaslab_vdevs == 1U &&
+            strcmp(summary->top_vdev_type, "disk") == 0 &&
+            summary->top_vdev_id != UINT64_MAX &&
+            summary->root_vdev == summary->top_vdev_id &&
+            summary->ashift >= 9U && summary->ashift <= 16U &&
+            summary->metaslab_shift >= summary->ashift &&
+            summary->metaslab_shift < 63U;
+    }
 }
 
 static uint64_t load_u64(const uint8_t *data, LdZfsByteOrder byte_order)
