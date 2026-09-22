@@ -4,6 +4,7 @@
 #include "ld_io.h"
 #include "ld_runtime.h"
 
+#include "infiltratr/arithmetic.h"
 #include "infiltratr/endian.h"
 
 #include <errno.h>
@@ -491,6 +492,12 @@ static void synthesize_uninit_block_bitmap(const ExtFs *fs, uint32_t group,
 
     if (fs->mmp_block != 0U)
         mark_if_local(fs, group, bitmap, fs->mmp_block);
+
+    /* Materialising BLOCK_UNINIT must reserve bits beyond the real final
+       partial group; otherwise a later allocator could select past EOF. */
+    uint64_t actual = group_last_block_exclusive(fs, group) - first;
+    for (uint64_t bit = actual; bit < fs->blocks_per_group; ++bit)
+        bit_set(bitmap, bit, true);
 }
 
 static int flush_block_bitmap_cache(ExtFs *fs, char **error)
@@ -637,12 +644,30 @@ static int write_old_layout_descriptor_backups(ExtFs *fs, char **error)
     return 0;
 }
 
-static uint64_t inode_offset(const ExtFs *fs, uint32_t ino)
+static int inode_offset(const ExtFs *fs, uint32_t ino,
+                        uint64_t *offset, char **error)
 {
     uint32_t group = (ino - 1U) / fs->inodes_per_group;
     uint32_t index = (ino - 1U) % fs->inodes_per_group;
-    return inode_table_block(fs, group) * (uint64_t)fs->block_size +
-           (uint64_t)index * fs->inode_size;
+    uint64_t table = group < fs->group_count
+        ? inode_table_block(fs, group) : UINT64_MAX;
+    uint64_t table_byte = 0U;
+    uint64_t index_byte = 0U;
+    uint64_t found = 0U;
+    uint64_t filesystem_bytes = 0U;
+    if (table >= fs->blocks_count ||
+        !infiltratr_u64_mul_checked(table, fs->block_size, &table_byte) ||
+        !infiltratr_u64_mul_checked(index, fs->inode_size, &index_byte) ||
+        !infiltratr_u64_add_checked(table_byte, index_byte, &found) ||
+        !infiltratr_u64_mul_checked(fs->blocks_count, fs->block_size,
+                                    &filesystem_bytes) ||
+        found > filesystem_bytes ||
+        fs->inode_size > filesystem_bytes - found) {
+        set_error(error, "EXT inode table location is outside the filesystem");
+        return -1;
+    }
+    *offset = found;
+    return 0;
 }
 
 static bool inode_has_checksum_hi(const ExtFs *fs, const uint8_t *raw)
@@ -931,10 +956,13 @@ int ext_fs_read_inode(ExtFs *fs, uint32_t ino, ExtInode *inode, char **error)
         return -1;
     }
     memset(inode, 0, sizeof(*inode));
+    uint64_t offset = 0U;
+    if (inode_offset(fs, ino, &offset, error) != 0)
+        return -1;
     inode->raw = ld_xmalloc(fs->inode_size);
     inode->raw_size = fs->inode_size;
     ssize_t got = ld_pread_full(fs->fd, inode->raw, fs->inode_size,
-                                inode_offset(fs, ino));
+                                offset);
     if (got < 0 || (size_t)got != fs->inode_size) {
         ext_inode_destroy(inode);
         set_error_errno(error, "cannot read EXT inode");
@@ -970,9 +998,12 @@ int ext_fs_write_inode(ExtFs *fs, ExtInode *inode, char **error)
         set_error(error, "invalid EXT inode write request");
         return -1;
     }
+    uint64_t offset = 0U;
+    if (inode_offset(fs, inode->number, &offset, error) != 0)
+        return -1;
     set_inode_checksum(fs, inode);
     ssize_t wrote = ld_pwrite_full(fs->fd, inode->raw, fs->inode_size,
-                                   inode_offset(fs, inode->number));
+                                   offset);
     if (wrote < 0 || (size_t)wrote != fs->inode_size) {
         set_error_errno(error, "cannot write EXT inode");
         return -1;
