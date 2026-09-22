@@ -604,6 +604,9 @@ int main(void)
     reset_image(fd);
     write_label_config(fd, 0U, NULL);
     write_exact_fixture(fd, 0);
+    /* Exercise selection across three committed candidates before the
+       same-TXG timestamp tie-breaker below adds a fourth. */
+    (void)write_uber(fd, 0U, 2U, 0, 28U, 9U, 77U, 1000U);
     const off_t best = write_uber(fd, 3U, 127U, 1, 5000U, 42U, 99U, 2000U);
     (void)write_uber(fd, 1U, 8U, 0, 28U, 20U, 88U, 1500U);
     CHECK(zfs_read_summary(path, &summary, error, sizeof(error)) == 0);
