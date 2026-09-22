@@ -18,6 +18,11 @@
 #define DATA_TYPE_STRING 9U
 #define DATA_TYPE_NVLIST 19U
 #define DATA_TYPE_NVLIST_ARRAY 20U
+#define VDEV_DATA_START (4U * 1024U * 1024U)
+#define MOS_ROOT_LOGICAL_OFFSET (UINT64_C(0x1234) << 9U)
+#define META_DNODE_LOGICAL_OFFSET (3U * 1024U * 1024U)
+#define METASLAB_ARRAY_LOGICAL_OFFSET (4U * 1024U * 1024U)
+#define SPACE_MAP_LOGICAL_OFFSET (5U * 1024U * 1024U)
 
 #define CHECK(expr)                                                           \
     do {                                                                      \
@@ -171,8 +176,8 @@ static void write_label_config(int fd, unsigned label)
     xw_uint64_pair(&writer, "id", 3U);
     xw_uint64_pair(&writer, "guid", UINT64_C(0x5555666677778888));
     xw_uint64_pair(&writer, "ashift", 12U);
-    xw_uint64_pair(&writer, "metaslab_array", 42U);
-    xw_uint64_pair(&writer, "metaslab_shift", 29U);
+    xw_uint64_pair(&writer, "metaslab_array", 2U);
+    xw_uint64_pair(&writer, "metaslab_shift", 22U);
     xw_uint64_pair(&writer, "asize", UINT64_C(8) * 1024U * 1024U);
     xw_nvlist_end(&writer);
     xw_pair_end(&writer, children);
@@ -190,6 +195,143 @@ static off_t label_base(unsigned label)
         return (off_t)(label * LABEL_SIZE);
     return (off_t)IMAGE_BYTES -
            (off_t)((4U - label) * LABEL_SIZE);
+}
+
+static void put16(uint8_t *data, uint16_t value, int big)
+{
+    if (big) {
+        data[0] = (uint8_t)(value >> 8U);
+        data[1] = (uint8_t)value;
+    } else {
+        data[0] = (uint8_t)value;
+        data[1] = (uint8_t)(value >> 8U);
+    }
+}
+
+static void fletcher4(const uint8_t *data, size_t length, int big,
+                      uint64_t words[4])
+{
+    CHECK((length & 3U) == 0U);
+    uint64_t a = 0U, b = 0U, csum = 0U, d = 0U;
+    for (size_t offset = 0U; offset < length; offset += 4U) {
+        uint32_t value;
+        if (big) {
+            value = ((uint32_t)data[offset] << 24U) |
+                    ((uint32_t)data[offset + 1U] << 16U) |
+                    ((uint32_t)data[offset + 2U] << 8U) |
+                    (uint32_t)data[offset + 3U];
+        } else {
+            value = (uint32_t)data[offset] |
+                    ((uint32_t)data[offset + 1U] << 8U) |
+                    ((uint32_t)data[offset + 2U] << 16U) |
+                    ((uint32_t)data[offset + 3U] << 24U);
+        }
+        a += value;
+        b += a;
+        csum += b;
+        d += csum;
+    }
+    words[0] = a;
+    words[1] = b;
+    words[2] = csum;
+    words[3] = d;
+}
+
+static void encode_bp(uint8_t bp[128], int big, uint64_t logical_offset,
+                      uint32_t type, const uint8_t *data, size_t data_size)
+{
+    CHECK(data_size != 0U && (data_size % 512U) == 0U);
+    memset(bp, 0, 128U);
+    void (*put64)(uint8_t *, uint64_t) = big ? put_be64 : put_le64;
+    const uint64_t sectors = data_size / 512U;
+    const uint64_t word0 = sectors | (UINT64_C(3) << 32U);
+    const uint64_t word1 = logical_offset >> 9U;
+    const uint64_t prop =
+        (sectors - 1U) |
+        ((sectors - 1U) << 16U) |
+        (UINT64_C(2) << 32U) |
+        (UINT64_C(7) << 40U) |
+        ((uint64_t)type << 48U) |
+        (big ? 0U : (UINT64_C(1) << 63U));
+    put64(bp + 0U, word0);
+    put64(bp + 8U, word1);
+    put64(bp + 48U, prop);
+    put64(bp + 80U, 10U);
+    uint64_t checksum[4];
+    fletcher4(data, data_size, big, checksum);
+    for (size_t index = 0U; index < 4U; ++index)
+        put64(bp + 96U + index * 8U, checksum[index]);
+}
+
+static void make_dnode(uint8_t dnode[512], int big, uint8_t type,
+                       uint8_t bonus_type, uint16_t data_sectors,
+                       uint16_t bonus_length, uint64_t max_block_id,
+                       const uint8_t bp[128])
+{
+    memset(dnode, 0, 512U);
+    void (*put64)(uint8_t *, uint64_t) = big ? put_be64 : put_le64;
+    dnode[0] = type;
+    dnode[1] = 14U;
+    dnode[2] = 1U;
+    dnode[3] = 1U;
+    dnode[4] = bonus_type;
+    dnode[5] = 7U;
+    dnode[6] = 2U;
+    put16(dnode + 8U, data_sectors, big);
+    put16(dnode + 10U, bonus_length, big);
+    put64(dnode + 16U, max_block_id);
+    put64(dnode + 24U, (uint64_t)data_sectors << 9U);
+    memcpy(dnode + 64U, bp, 128U);
+}
+
+static void write_exact_fixture(int fd)
+{
+    uint8_t space_map_data[4096];
+    memset(space_map_data, 0, sizeof(space_map_data));
+    const uint64_t alloc_entry = UINT64_C(15);
+    const uint64_t free_entry =
+        (UINT64_C(4) << 16U) | (UINT64_C(1) << 15U) | UINT64_C(3);
+    put_le64(space_map_data + 0U, alloc_entry);
+    put_le64(space_map_data + 8U, free_entry);
+    write_all(fd, space_map_data, sizeof(space_map_data),
+              (off_t)(VDEV_DATA_START + SPACE_MAP_LOGICAL_OFFSET));
+
+    uint8_t space_map_bp[128];
+    encode_bp(space_map_bp, 0, SPACE_MAP_LOGICAL_OFFSET, 8U,
+              space_map_data, sizeof(space_map_data));
+
+    uint8_t metaslab_array_data[4096];
+    memset(metaslab_array_data, 0, sizeof(metaslab_array_data));
+    put_le64(metaslab_array_data + 0U, 3U);
+    put_le64(metaslab_array_data + 8U, 0U);
+    write_all(fd, metaslab_array_data, sizeof(metaslab_array_data),
+              (off_t)(VDEV_DATA_START + METASLAB_ARRAY_LOGICAL_OFFSET));
+
+    uint8_t metaslab_array_bp[128];
+    encode_bp(metaslab_array_bp, 0, METASLAB_ARRAY_LOGICAL_OFFSET, 2U,
+              metaslab_array_data, sizeof(metaslab_array_data));
+
+    uint8_t dnode_block[16384];
+    memset(dnode_block, 0, sizeof(dnode_block));
+    make_dnode(dnode_block + 2U * 512U, 0, 2U, 0U, 8U, 0U, 0U,
+               metaslab_array_bp);
+    make_dnode(dnode_block + 3U * 512U, 0, 8U, 7U, 8U, 24U, 0U,
+               space_map_bp);
+    put_le64(dnode_block + 3U * 512U + 192U + 8U, 16U);
+    put_le64(dnode_block + 3U * 512U + 192U + 16U,
+             UINT64_C(12) * 4096U);
+    write_all(fd, dnode_block, sizeof(dnode_block),
+              (off_t)(VDEV_DATA_START + META_DNODE_LOGICAL_OFFSET));
+
+    uint8_t meta_bp[128];
+    encode_bp(meta_bp, 0, META_DNODE_LOGICAL_OFFSET, 10U,
+              dnode_block, sizeof(dnode_block));
+
+    uint8_t mos[4096];
+    memset(mos, 0, sizeof(mos));
+    make_dnode(mos, 0, 10U, 0U, 32U, 0U, 0U, meta_bp);
+    write_all(fd, mos, sizeof(mos),
+              (off_t)(VDEV_DATA_START + MOS_ROOT_LOGICAL_OFFSET));
 }
 
 static off_t write_uber(int fd, unsigned label, unsigned slot, int big,
@@ -216,11 +358,22 @@ static off_t write_uber(int fd, unsigned label, unsigned slot, int big,
         (UINT64_C(7) << 16U) |
         (UINT64_C(2) << 32U) |
         (UINT64_C(7) << 40U) |
-        (UINT64_C(11) << 48U);
+        (UINT64_C(11) << 48U) |
+        (big ? 0U : (UINT64_C(1) << 63U));
     put64(uber + 40U, dva0);
     put64(uber + 48U, dva1);
     put64(uber + 88U, root_prop);
     put64(uber + 120U, txg);
+    if (!big && version <= 28U) {
+        uint8_t mos[4096];
+        const ssize_t count = pread(fd, mos, sizeof(mos),
+            (off_t)(VDEV_DATA_START + MOS_ROOT_LOGICAL_OFFSET));
+        CHECK(count == (ssize_t)sizeof(mos));
+        uint64_t checksum[4];
+        fletcher4(mos, sizeof(mos), 0, checksum);
+        for (size_t index = 0U; index < 4U; ++index)
+            put64(uber + 40U + 96U + index * 8U, checksum[index]);
+    }
     const off_t offset = label_base(label) + UBER_RING_OFFSET +
                          (off_t)slot * UBER_SIZE;
     write_all(fd, uber, sizeof(uber), offset);
@@ -238,12 +391,13 @@ int main(void)
 
     reset_image(fd);
     write_label_config(fd, 0U);
-    const off_t first = write_uber(fd, 0U, 3U, 0, 5000U, 10U, 77U, 1000U);
+    write_exact_fixture(fd);
+    const off_t first = write_uber(fd, 0U, 3U, 0, 28U, 10U, 77U, 1000U);
     CHECK(zfs_read_summary(path, &summary, error, sizeof(error)) == 0);
     CHECK(summary.size_bytes == IMAGE_BYTES);
     CHECK(summary.uberblock_magic_offset == (uint64_t)first);
     CHECK(summary.uberblock_txg == 10U);
-    CHECK(summary.uberblock_version == 5000U);
+    CHECK(summary.uberblock_version == 28U);
     CHECK(summary.uberblock_guid_sum == 77U);
     CHECK(summary.uberblock_timestamp == 1000U);
     CHECK(summary.label_index == 0U);
@@ -269,12 +423,25 @@ int main(void)
     CHECK(summary.metaslab_vdevs == 1U);
     CHECK(summary.top_vdev_id == 3U);
     CHECK(summary.ashift == 12U);
-    CHECK(summary.metaslab_array == 42U);
-    CHECK(summary.metaslab_shift == 29U);
+    CHECK(summary.metaslab_array == 2U);
+    CHECK(summary.metaslab_shift == 22U);
     CHECK(summary.top_vdev_asize == UINT64_C(8) * 1024U * 1024U);
     CHECK(strcmp(summary.top_vdev_type, "disk") == 0);
     CHECK(strcmp(zfs_byte_order_name(&summary), "little") == 0);
     CHECK(zfs_probe(path));
+
+    LdZfsAnalysis analysis;
+    CHECK(zfs_analyse_exact(path, &analysis, error, sizeof(error)) == 0);
+    CHECK(analysis.exact_allocation);
+    CHECK(!analysis.exact_fragmentation);
+    CHECK(analysis.size_bytes == IMAGE_BYTES);
+    CHECK(analysis.free_bytes ==
+          UINT64_C(8) * 1024U * 1024U - UINT64_C(12) * 4096U);
+    CHECK(analysis.used_bytes == analysis.size_bytes - analysis.free_bytes);
+    CHECK(analysis.unknown_bytes == 0U);
+    CHECK(analysis.allocated_extents == 2U);
+    CHECK(analysis.range_count == 5U);
+    zfs_analysis_destroy(&analysis);
 
     const off_t best = write_uber(fd, 3U, 127U, 1, 5000U, 42U, 99U, 2000U);
     (void)write_uber(fd, 1U, 8U, 0, 28U, 20U, 88U, 1500U);
