@@ -175,7 +175,7 @@ static void print_summary_map(const LdZfsSummary *summary,
         "\"metaslab_shift\":%llu,\"top_vdev_asize\":%llu,"
         "\"metaslab_vdevs\":%u,\"type\":\"%s\"},"
         "\"label_basis\":\"four OpenZFS leaf-vdev labels and 128-entry uberblock rings\","
-        "\"note\":\"Exact native allocation and file-fragmentation analysis is bounded to qualified single-disk legacy pool versions 1-28; other OpenZFS feature sets remain summary-only\"}}\n",
+        "\"note\":\"Exact native allocation and file-fragmentation analysis supports qualified single-disk legacy pools and feature-flag pools whose MOS-required features and encountered block forms are understood; unsupported layouts fail closed\"}}\n",
         (unsigned long long)summary->uberblock_magic_offset,
         (unsigned long long)summary->uberblock_txg,
         (unsigned long long)summary->uberblock_version,
@@ -300,7 +300,7 @@ static void print_exact_map(const LdZfsSummary *summary,
         "\"fragmented_bytes\":%llu,"
         "\"allocation_basis\":\"MOS metaslab_array plus replayed per-metaslab space maps\","
         "\"fragmentation_basis\":\"head-dataset plain-file dnode block-pointer trees\","
-        "\"bounded_subset\":\"single top-level disk, legacy pool version 1-28, verified Fletcher4/off checksums and off/LZJB/LZ4 metadata compression\"}}\n",
+        "\"bounded_subset\":\"single top-level disk, legacy or compatible feature-flag pool, verified Fletcher4/off checksums and off/LZJB/LZ4 metadata compression\"}}\n",
         (unsigned long long)summary->uberblock_version,
         (unsigned long long)summary->uberblock_txg,
         (unsigned long long)summary->top_vdev_id,
