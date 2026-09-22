@@ -150,7 +150,7 @@ int ext_assign_targets(ExtFs *fs, sqlite3 *db,
         uint64_t data_count = (uint64_t)sqlite3_column_int64(objects, 2);
         uint64_t allocation_count = (uint64_t)sqlite3_column_int64(objects, 3);
         if (allocation_count == 0) continue;
-        bool ordinary_file = kind != NULL && strcmp(kind, "file") == 0 && inode >= EXT2_GOOD_OLD_FIRST_INO;
+        bool ordinary_file = kind != NULL && strcmp(kind, "file") == 0 && inode >= EXT_GOOD_OLD_FIRST_INO;
         uint64_t reserve_count = growth && ordinary_file && data_count != 0 ? (data_count + 9U) / 10U : 0U;
         uint64_t required = allocation_count + reserve_count;
         if (required > INT64_MAX) { ext_set_error(error, "EXT object allocation is too large"); goto rollback; }
