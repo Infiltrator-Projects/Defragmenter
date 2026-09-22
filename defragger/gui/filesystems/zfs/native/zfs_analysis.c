@@ -213,6 +213,26 @@ static int range_add(ZfsRangeSet *set, uint64_t start, uint64_t length)
     return 0;
 }
 
+static bool range_contains(const ZfsRangeSet *set,
+                           uint64_t start, uint64_t length)
+{
+    if (length == 0U)
+        return true;
+    if (start > UINT64_MAX - length)
+        return false;
+    const uint64_t end = start + length;
+    for (size_t index = 0U; index < set->count; ++index) {
+        if (set->items[index].start > start)
+            return false;
+        if (set->items[index].start <= start &&
+            set->items[index].end >= end)
+            return true;
+        if (set->items[index].end > start)
+            return false;
+    }
+    return false;
+}
+
 static int range_remove(ZfsRangeSet *set, uint64_t start, uint64_t length)
 {
     if (length == 0U)
@@ -1140,6 +1160,13 @@ static int replay_space_map(ZfsContext *context, uint64_t metaslab_id,
                 goto cleanup;
             }
         } else {
+            if (!range_contains(allocated, start, run)) {
+                free(words);
+                errno = EINVAL;
+                set_error(error, error_size,
+                          "ZFS space map frees a range that is not allocated");
+                goto cleanup;
+            }
             if (range_remove(allocated, start, run) != 0) {
                 free(words);
                 goto cleanup;
