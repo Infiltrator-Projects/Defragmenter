@@ -19,10 +19,12 @@
 #define DATA_TYPE_NVLIST 19U
 #define DATA_TYPE_NVLIST_ARRAY 20U
 #define VDEV_DATA_START (4U * 1024U * 1024U)
-#define MOS_ROOT_LOGICAL_OFFSET (UINT64_C(0x1234) << 9U)
+#define MOS_ROOT_LOGICAL_OFFSET (2U * 1024U * 1024U)
 #define META_DNODE_LOGICAL_OFFSET (3U * 1024U * 1024U)
 #define METASLAB_ARRAY_LOGICAL_OFFSET (4U * 1024U * 1024U)
 #define SPACE_MAP_LOGICAL_OFFSET (5U * 1024U * 1024U)
+#define DATASET_ROOT_LOGICAL_OFFSET (6U * 1024U * 1024U)
+#define DATASET_DNODE_LOGICAL_OFFSET (7U * 1024U * 1024U)
 
 #define CHECK(expr)                                                           \
     do {                                                                      \
@@ -311,6 +313,39 @@ static void write_exact_fixture(int fd)
     encode_bp(metaslab_array_bp, 0, METASLAB_ARRAY_LOGICAL_OFFSET, 2U,
               metaslab_array_data, sizeof(metaslab_array_data));
 
+    uint8_t dummy_file_data[4096];
+    memset(dummy_file_data, 0, sizeof(dummy_file_data));
+    uint8_t file_bp0[128];
+    uint8_t file_bp1[128];
+    encode_bp(file_bp0, 0, 0U, 19U,
+              dummy_file_data, sizeof(dummy_file_data));
+    encode_bp(file_bp1, 0, 32U * 1024U, 19U,
+              dummy_file_data, sizeof(dummy_file_data));
+
+    uint8_t dataset_dnodes[16384];
+    memset(dataset_dnodes, 0, sizeof(dataset_dnodes));
+    make_dnode(dataset_dnodes + 512U, 0, 19U, 0U, 8U, 0U, 1U,
+               file_bp0);
+    dataset_dnodes[512U + 3U] = 2U;
+    memcpy(dataset_dnodes + 512U + 192U, file_bp1, sizeof(file_bp1));
+    write_all(fd, dataset_dnodes, sizeof(dataset_dnodes),
+              (off_t)(VDEV_DATA_START + DATASET_DNODE_LOGICAL_OFFSET));
+
+    uint8_t dataset_meta_bp[128];
+    encode_bp(dataset_meta_bp, 0, DATASET_DNODE_LOGICAL_OFFSET, 10U,
+              dataset_dnodes, sizeof(dataset_dnodes));
+
+    uint8_t dataset_objset[4096];
+    memset(dataset_objset, 0, sizeof(dataset_objset));
+    make_dnode(dataset_objset, 0, 10U, 0U, 32U, 0U, 0U,
+               dataset_meta_bp);
+    write_all(fd, dataset_objset, sizeof(dataset_objset),
+              (off_t)(VDEV_DATA_START + DATASET_ROOT_LOGICAL_OFFSET));
+
+    uint8_t dataset_root_bp[128];
+    encode_bp(dataset_root_bp, 0, DATASET_ROOT_LOGICAL_OFFSET, 11U,
+              dataset_objset, sizeof(dataset_objset));
+
     uint8_t dnode_block[16384];
     memset(dnode_block, 0, sizeof(dnode_block));
     make_dnode(dnode_block + 2U * 512U, 0, 2U, 0U, 8U, 0U, 0U,
@@ -320,6 +355,14 @@ static void write_exact_fixture(int fd)
     put_le64(dnode_block + 3U * 512U + 192U + 8U, 16U);
     put_le64(dnode_block + 3U * 512U + 192U + 16U,
              UINT64_C(12) * 4096U);
+
+    uint8_t dataset_hole_bp[128];
+    memset(dataset_hole_bp, 0, sizeof(dataset_hole_bp));
+    make_dnode(dnode_block + 4U * 512U, 0, 16U, 16U, 8U, 256U, 0U,
+               dataset_hole_bp);
+    memcpy(dnode_block + 4U * 512U + 192U + 128U,
+           dataset_root_bp, sizeof(dataset_root_bp));
+
     write_all(fd, dnode_block, sizeof(dnode_block),
               (off_t)(VDEV_DATA_START + META_DNODE_LOGICAL_OFFSET));
 
@@ -350,7 +393,7 @@ static off_t write_uber(int fd, unsigned label, unsigned slot, int big,
     /* MOS root block pointer: one DVA plus ordinary non-embedded properties. */
     const uint64_t root_asize_units = 8U;
     const uint64_t root_vdev = 3U;
-    const uint64_t root_offset_units = 0x1234U;
+    const uint64_t root_offset_units = MOS_ROOT_LOGICAL_OFFSET >> 9U;
     const uint64_t dva0 = root_asize_units | (root_vdev << 32U);
     const uint64_t dva1 = root_offset_units;
     const uint64_t root_prop =
@@ -405,7 +448,7 @@ int main(void)
     CHECK(summary.candidate_uberblocks == 1U);
     CHECK(summary.byte_order == LD_ZFS_BYTE_ORDER_LITTLE);
     CHECK(summary.root_vdev == 3U);
-    CHECK(summary.root_offset == (UINT64_C(0x1234) << 9U));
+    CHECK(summary.root_offset == MOS_ROOT_LOGICAL_OFFSET);
     CHECK(summary.root_asize == (UINT64_C(8) << 9U));
     CHECK(summary.root_lsize == 4096U);
     CHECK(summary.root_psize == 4096U);
@@ -440,7 +483,10 @@ int main(void)
     CHECK(analysis.used_bytes == analysis.size_bytes - analysis.free_bytes);
     CHECK(analysis.unknown_bytes == 0U);
     CHECK(analysis.allocated_extents == 2U);
-    CHECK(analysis.range_count == 5U);
+    CHECK(analysis.files_seen == 1U);
+    CHECK(analysis.fragmented_files == 1U);
+    CHECK(analysis.fragmented_bytes == 8192U);
+    CHECK(analysis.range_count == 7U);
     zfs_analysis_destroy(&analysis);
 
     const off_t best = write_uber(fd, 3U, 127U, 1, 5000U, 42U, 99U, 2000U);
