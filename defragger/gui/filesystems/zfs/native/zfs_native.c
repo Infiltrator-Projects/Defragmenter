@@ -2,26 +2,35 @@
 #include "zfs_native.h"
 
 #include "ld_io.h"
+#include "infiltratr/endian.h"
 
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/fs.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
-#define ZFS_WINDOW_BYTES (4U * 1024U * 1024U)
-
-static const uint8_t ZFS_MAGIC_LE[8] = {
-    0x0cU, 0xb1U, 0xbaU, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
-};
-static const uint8_t ZFS_MAGIC_BE[8] = {
-    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0xbaU, 0xb1U, 0x0cU,
-};
+/*
+ * OpenZFS leaf-vdev label geometry.  These constants intentionally describe
+ * only the stable on-disk label/uberblock envelope that Defragmenter needs.
+ * OpenZFS source is a corroborating reference; production parsing remains
+ * first-party and does not link libzfs/libzpool.
+ */
+#define ZFS_VDEV_PAD_SIZE (8U << 10)
+#define ZFS_VDEV_PHYS_SIZE (112U << 10)
+#define ZFS_UBERBLOCK_RING_SIZE (128U << 10)
+#define ZFS_UBERBLOCK_SIZE (1U << 10)
+#define ZFS_VDEV_LABEL_SIZE (ZFS_VDEV_PAD_SIZE * 2U + ZFS_VDEV_PHYS_SIZE + ZFS_UBERBLOCK_RING_SIZE)
+#define ZFS_VDEV_LABELS 4U
+#define ZFS_UBERBLOCK_RING_OFFSET (ZFS_VDEV_PAD_SIZE * 2U + ZFS_VDEV_PHYS_SIZE)
+#define ZFS_UBERBLOCK_SLOTS (ZFS_UBERBLOCK_RING_SIZE / ZFS_UBERBLOCK_SIZE)
+#define ZFS_UBERBLOCK_MAGIC UINT64_C(0x00bab10c)
+#define ZFS_SPA_VERSION_FEATURES UINT64_C(5000)
 
 static void zfs_error(char *error, size_t error_size, const char *message)
 {
@@ -50,51 +59,103 @@ static int size_bytes_for_fd(int fd, const struct stat *status, uint64_t *size_b
     return -1;
 }
 
-static bool find_bytes(const uint8_t *data, size_t length,
-                       const uint8_t magic[8], size_t *position)
+static uint64_t load_u64(const uint8_t *data, LdZfsByteOrder byte_order)
 {
-    if (length < 8U)
-        return false;
-    for (size_t index = 0U; index <= length - 8U; ++index) {
-        if (memcmp(data + index, magic, 8U) == 0) {
-            *position = index;
-            return true;
-        }
-    }
-    return false;
+    return byte_order == LD_ZFS_BYTE_ORDER_LITTLE
+        ? infiltratr_load_le64(data)
+        : infiltratr_load_be64(data);
 }
 
-static int scan_window(int fd, uint64_t offset, size_t length,
-                       LdZfsSummary *summary)
+static bool decode_uberblock(const uint8_t bytes[ZFS_UBERBLOCK_SIZE],
+                             LdZfsByteOrder *byte_order,
+                             uint64_t *version, uint64_t *txg,
+                             uint64_t *guid_sum, uint64_t *timestamp)
 {
-    if (length < 8U)
-        return 1;
+    const uint64_t little_magic = infiltratr_load_le64(bytes);
+    const uint64_t big_magic = infiltratr_load_be64(bytes);
+    if (little_magic == ZFS_UBERBLOCK_MAGIC)
+        *byte_order = LD_ZFS_BYTE_ORDER_LITTLE;
+    else if (big_magic == ZFS_UBERBLOCK_MAGIC)
+        *byte_order = LD_ZFS_BYTE_ORDER_BIG;
+    else
+        return false;
 
-    uint8_t *window = malloc(length);
-    if (window == NULL)
-        return -1;
-    const ssize_t count = ld_pread_full(fd, window, length, offset);
-    if (count < 0) {
-        free(window);
-        return -1;
-    }
+    *version = load_u64(bytes + 8U, *byte_order);
+    *txg = load_u64(bytes + 16U, *byte_order);
+    *guid_sum = load_u64(bytes + 24U, *byte_order);
+    *timestamp = load_u64(bytes + 32U, *byte_order);
 
-    const size_t actual = (size_t)count;
-    size_t position = 0U;
-    if (find_bytes(window, actual, ZFS_MAGIC_LE, &position)) {
-        summary->uberblock_magic_offset = offset + (uint64_t)position;
-        summary->byte_order = LD_ZFS_BYTE_ORDER_LITTLE;
-        free(window);
-        return 0;
+    /*
+     * A bare magic word is not enough to identify a member.  Real committed
+     * uberblocks carry a non-zero transaction group and a recognised SPA
+     * version (legacy versions or feature-flags version 5000).
+     */
+    return *version != 0U && *version <= ZFS_SPA_VERSION_FEATURES &&
+           *txg != 0U;
+}
+
+static uint64_t label_offset(uint64_t psize, uint32_t label)
+{
+    const uint64_t ordinal = (uint64_t)label * ZFS_VDEV_LABEL_SIZE;
+    return label < (ZFS_VDEV_LABELS / 2U)
+        ? ordinal
+        : psize - (uint64_t)ZFS_VDEV_LABELS * ZFS_VDEV_LABEL_SIZE + ordinal;
+}
+
+static bool better_uberblock(uint64_t txg, uint64_t timestamp,
+                             const LdZfsSummary *summary)
+{
+    if (summary->candidate_uberblocks == 0U)
+        return true;
+    if (txg != summary->uberblock_txg)
+        return txg > summary->uberblock_txg;
+    return timestamp > summary->uberblock_timestamp;
+}
+
+static int scan_labels(int fd, uint64_t psize, LdZfsSummary *summary)
+{
+    uint8_t bytes[ZFS_UBERBLOCK_SIZE];
+
+    for (uint32_t label = 0U; label < ZFS_VDEV_LABELS; ++label) {
+        const uint64_t base = label_offset(psize, label);
+        const uint64_t ring = base + ZFS_UBERBLOCK_RING_OFFSET;
+        for (uint32_t slot = 0U; slot < ZFS_UBERBLOCK_SLOTS; ++slot) {
+            const uint64_t offset =
+                ring + (uint64_t)slot * ZFS_UBERBLOCK_SIZE;
+            const ssize_t count =
+                ld_pread_full(fd, bytes, sizeof(bytes), offset);
+            if (count < 0)
+                return -1;
+            if ((size_t)count != sizeof(bytes)) {
+                errno = EIO;
+                return -1;
+            }
+
+            LdZfsByteOrder byte_order = LD_ZFS_BYTE_ORDER_LITTLE;
+            uint64_t version = 0U;
+            uint64_t txg = 0U;
+            uint64_t guid_sum = 0U;
+            uint64_t timestamp = 0U;
+            if (!decode_uberblock(bytes, &byte_order, &version, &txg,
+                                  &guid_sum, &timestamp))
+                continue;
+
+            if (summary->candidate_uberblocks != UINT32_MAX)
+                summary->candidate_uberblocks++;
+            if (!better_uberblock(txg, timestamp, summary))
+                continue;
+
+            summary->uberblock_magic_offset = offset;
+            summary->uberblock_txg = txg;
+            summary->uberblock_version = version;
+            summary->uberblock_guid_sum = guid_sum;
+            summary->uberblock_timestamp = timestamp;
+            summary->label_index = label;
+            summary->uberblock_slot = slot;
+            summary->byte_order = byte_order;
+        }
     }
-    if (find_bytes(window, actual, ZFS_MAGIC_BE, &position)) {
-        summary->uberblock_magic_offset = offset + (uint64_t)position;
-        summary->byte_order = LD_ZFS_BYTE_ORDER_BIG;
-        free(window);
-        return 0;
-    }
-    free(window);
-    return 1;
+    return summary->candidate_uberblocks == 0U ? 1 : 0;
 }
 
 int zfs_read_summary(const char *path, LdZfsSummary *summary,
@@ -104,6 +165,7 @@ int zfs_read_summary(const char *path, LdZfsSummary *summary,
         zfs_error(error, error_size, "invalid ZFS summary request");
         return -1;
     }
+    memset(summary, 0, sizeof(*summary));
 
     const int fd = open(path, O_RDONLY | O_CLOEXEC);
     if (fd < 0) {
@@ -123,19 +185,16 @@ int zfs_read_summary(const char *path, LdZfsSummary *summary,
         return -1;
     }
 
-    const uint64_t first_length_u64 =
-        summary->size_bytes < ZFS_WINDOW_BYTES ? summary->size_bytes : ZFS_WINDOW_BYTES;
-    const size_t first_length = (size_t)first_length_u64;
-    int result = scan_window(fd, 0U, first_length, summary);
-    if (result == 1) {
-        const uint64_t last_offset =
-            summary->size_bytes > ZFS_WINDOW_BYTES
-                ? summary->size_bytes - ZFS_WINDOW_BYTES
-                : 0U;
-        const uint64_t last_length_u64 =
-            summary->size_bytes < ZFS_WINDOW_BYTES ? summary->size_bytes : ZFS_WINDOW_BYTES;
-        result = scan_window(fd, last_offset, (size_t)last_length_u64, summary);
-    }
+    /*
+     * OpenZFS aligns the physical vdev size to the 256 KiB label size before
+     * calculating the two end labels.  Mirror that rule without requiring the
+     * backing regular file or block device itself to end on that boundary.
+     */
+    const uint64_t psize =
+        summary->size_bytes - (summary->size_bytes % ZFS_VDEV_LABEL_SIZE);
+    int result = 1;
+    if (psize >= (uint64_t)ZFS_VDEV_LABELS * ZFS_VDEV_LABEL_SIZE)
+        result = scan_labels(fd, psize, summary);
 
     const int saved_errno = errno;
     (void)close(fd);
@@ -143,11 +202,13 @@ int zfs_read_summary(const char *path, LdZfsSummary *summary,
 
     if (result < 0) {
         if (error != NULL && error_size != 0U)
-            (void)snprintf(error, error_size, "read: %s", strerror(errno));
+            (void)snprintf(error, error_size,
+                           "cannot read ZFS vdev labels: %s", strerror(errno));
         return -1;
     }
     if (result != 0) {
-        zfs_error(error, error_size, "not a recognised ZFS member");
+        zfs_error(error, error_size,
+                  "not a recognised ZFS member with a committed label uberblock");
         return -1;
     }
     if (error != NULL && error_size != 0U)
