@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -464,10 +465,15 @@ static void synthesize_uninit_block_bitmap(const ExtFs *fs, uint32_t group,
 
     if ((fs->incompat & EXT_FEATURE_INCOMPAT_META_BG) != 0U) {
         uint32_t meta_size = fs->desc_per_block;
-        uint32_t position = group % meta_size;
-        if (position == 0U || position == 1U || position + 1U == meta_size) {
-            uint32_t descriptor_block = group / meta_size;
-            if (descriptor_block >= fs->first_meta_bg)
+        uint32_t meta_group = group / meta_size;
+        if (group_has_super(fs, group) && meta_group < fs->first_meta_bg) {
+            /* meta_bg retains the old descriptor prefix before first_meta_bg. */
+            mark_range_if_local(fs, group, bitmap, first + 1U,
+                                fs->first_meta_bg);
+        } else if (meta_group >= fs->first_meta_bg) {
+            uint32_t position = group % meta_size;
+            if (position == 0U || position == 1U ||
+                position + 1U == meta_size)
                 mark_if_local(fs, group, bitmap,
                               first + (group_has_super(fs, group) ? 1U : 0U));
         }
@@ -774,9 +780,18 @@ int ext_fs_open(const char *path, bool writable, ExtFs **out, char **error)
 
     if (fs->blocks_per_group == 0U || fs->inodes_per_group == 0U ||
         fs->inode_size < 128U || fs->inode_size > fs->block_size ||
+        fs->blocks_per_group > fs->block_size * 8U ||
+        fs->inodes_per_group > fs->block_size * 8U ||
         fs->blocks_count <= fs->first_data_block ||
         fs->free_blocks > fs->blocks_count) {
         set_error(error, "invalid EXT superblock geometry");
+        ext_fs_close(fs);
+        return -1;
+    }
+
+    if ((fs->ro_compat & EXT_FEATURE_RO_COMPAT_BIGALLOC) != 0U) {
+        set_error(error,
+            "EXT bigalloc cluster bitmaps are outside the current exact native analyser");
         ext_fs_close(fs);
         return -1;
     }
@@ -971,7 +986,11 @@ int ext_fs_foreach_inode(ExtFs *fs, ExtInodeVisitor visitor,
     for (uint32_t group = 0U; group < fs->group_count; ++group) {
         if (load_inode_bitmap(fs, group, error) != 0)
             return -1;
-        uint32_t first = group * fs->inodes_per_group + 1U;
+        uint64_t first64 =
+            (uint64_t)group * fs->inodes_per_group + 1U;
+        if (first64 > fs->inodes_count)
+            break;
+        uint32_t first = (uint32_t)first64;
         uint32_t count = fs->inodes_per_group;
         if ((uint64_t)first + count - 1U > fs->inodes_count)
             count = fs->inodes_count - first + 1U;
