@@ -38,7 +38,7 @@ static const LdtmFilesystemSpec LDTM_SPECS[LDTM_SPEC_COUNT] = {
     {"ufs", "LD_UFS", 2048U, 200U, LDTM_CREATOR_UFS, "makefs",
      "Creates a genuine UFS2/FFS image with makefs; exact fragmentation is not asserted yet."},
     {"zfs", "LD_ZFS", 4096U, 200U, LDTM_CREATOR_ZFS, "zfsutils-linux",
-     "Uses an isolated one-partition pool and exports it after population."},
+     "Creates an isolated single-disk ZFS v28 pool, exports it after population and requires the native exact analyser to accept it."},
     {"apfs", "LD_APFS", 4096U, 1U, LDTM_CREATOR_APFS, "",
      "Built-in first-party raw C creator manufactures the qualified bounded APFS checkpoint/spaceman/flat-tree fixture with a deliberately fragmented file."},
     {"swap", "LD_SWAP", 1024U, 0U, LDTM_CREATOR_SWAP, "util-linux",
