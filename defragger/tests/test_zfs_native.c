@@ -173,6 +173,7 @@ static void write_label_config(int fd, unsigned label)
     xw_uint64_pair(&writer, "ashift", 12U);
     xw_uint64_pair(&writer, "metaslab_array", 42U);
     xw_uint64_pair(&writer, "metaslab_shift", 29U);
+    xw_uint64_pair(&writer, "asize", UINT64_C(8) * 1024U * 1024U);
     xw_nvlist_end(&writer);
     xw_pair_end(&writer, children);
     xw_nvlist_end(&writer);
@@ -205,18 +206,17 @@ static off_t write_uber(int fd, unsigned label, unsigned slot, int big,
     put64(uber + 32U, timestamp);
 
     /* MOS root block pointer: one DVA plus ordinary non-embedded properties. */
-    const uint64_t root_asize_units = 16U;
+    const uint64_t root_asize_units = 8U;
     const uint64_t root_vdev = 3U;
     const uint64_t root_offset_units = 0x1234U;
     const uint64_t dva0 = root_asize_units | (root_vdev << 32U);
     const uint64_t dva1 = root_offset_units;
     const uint64_t root_prop =
-        UINT64_C(31) |
-        (UINT64_C(15) << 16U) |
+        UINT64_C(7) |
+        (UINT64_C(7) << 16U) |
         (UINT64_C(2) << 32U) |
-        (UINT64_C(8) << 40U) |
-        (UINT64_C(11) << 48U) |
-        (UINT64_C(1) << 56U);
+        (UINT64_C(7) << 40U) |
+        (UINT64_C(11) << 48U);
     put64(uber + 40U, dva0);
     put64(uber + 48U, dva1);
     put64(uber + 88U, root_prop);
@@ -252,14 +252,14 @@ int main(void)
     CHECK(summary.byte_order == LD_ZFS_BYTE_ORDER_LITTLE);
     CHECK(summary.root_vdev == 3U);
     CHECK(summary.root_offset == (UINT64_C(0x1234) << 9U));
-    CHECK(summary.root_asize == (UINT64_C(16) << 9U));
-    CHECK(summary.root_lsize == (UINT64_C(32) << 9U));
-    CHECK(summary.root_psize == (UINT64_C(16) << 9U));
+    CHECK(summary.root_asize == (UINT64_C(8) << 9U));
+    CHECK(summary.root_lsize == 4096U);
+    CHECK(summary.root_psize == 4096U);
     CHECK(summary.root_logical_birth == 10U);
     CHECK(summary.root_compression == 2U);
-    CHECK(summary.root_checksum == 8U);
+    CHECK(summary.root_checksum == 7U);
     CHECK(summary.root_type == 11U);
-    CHECK(summary.root_level == 1U);
+    CHECK(summary.root_level == 0U);
     CHECK(!summary.root_embedded);
     CHECK(summary.config_known);
     CHECK(summary.single_leaf_supported);
@@ -271,6 +271,7 @@ int main(void)
     CHECK(summary.ashift == 12U);
     CHECK(summary.metaslab_array == 42U);
     CHECK(summary.metaslab_shift == 29U);
+    CHECK(summary.top_vdev_asize == UINT64_C(8) * 1024U * 1024U);
     CHECK(strcmp(summary.top_vdev_type, "disk") == 0);
     CHECK(strcmp(zfs_byte_order_name(&summary), "little") == 0);
     CHECK(zfs_probe(path));
