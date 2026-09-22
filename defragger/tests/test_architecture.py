@@ -980,7 +980,7 @@ def test_test_media_companion_is_all_c() -> None:
 def main() -> None:
     test_top_level_cmake_owns_native_language_declaration()
     test_native_registry_is_the_single_capability_authority()
-    test_unqualified_ufs_mutation_is_fail_closed_in_the_installed_worker()
+    test_qualified_ufs_writer_is_registered_and_fail_closed_by_format()
     test_dispatch_is_filesystem_neutral()
     test_ext_production_is_first_party_and_libext2fs_is_test_only()
     test_single_filesystem_hierarchy_and_c_first_writers()
