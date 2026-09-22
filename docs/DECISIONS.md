@@ -1,86 +1,215 @@
-# Defragmenter source tree
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+# Architectural decision record
 
-This directory contains the application implementation and build root. Product overview, engineering ethos, release policy and current safety status are maintained in the [repository README](../README.md) and [Audit Status](../docs/AUDIT_STATUS.md) rather than duplicated here.
+## Purpose
 
-The current software version is defined by [VERSION](VERSION).
+This document records the small set of architectural decisions that materially
+shape Defragmenter. [ARCHITECTURE.md](ARCHITECTURE.md) states the current system
+contracts, [DESIGN.md](DESIGN.md) states the first-principles rationale, and this
+record preserves the alternatives considered, selected approach and consequences.
 
-## Compatibility naming
+These decisions are intentionally few. Routine implementation choices belong in
+source comments, tests or Git history rather than being promoted into permanent
+architecture records.
 
-The user-facing product is **Defragmenter**. The Debian/APT package identity is `infiltrator-defragmenter`. Established executable, desktop application ID, runtime/configuration paths and recovery/journal identities retain their `linux-defragger` compatibility names so upgrades and persisted state continue to work.
+## ADR-001 — Use direct offline userspace mutation
 
-## Filesystem support
+**Context.** The project needs deterministic physical placement, explicit
+recovery boundaries and independent post-operation verification across multiple
+filesystems.
 
-| Filesystem | Analyse / Map | Defragment | Growth Defrag | Recover |
-|---|---|---|---|---|
-| FAT12 / FAT16 / FAT32 | Exact | Native C | Native C, exact 10% reserve | Yes |
-| exFAT | Exact | Native C | Native C, exact 10% reserve | Yes |
-| NTFS | Exact | Native C, fail-closed preflight | Native C, exact 10% reserve | Yes |
-| ext2 / ext3 / ext4 | Exact | Native C staged writer | Native C, exact 10% reserve | Yes |
-| XFS v5 | Exact | Native C raw userspace writer | Native C, exact 10% reserve | Yes |
-| Amiga OFS / FFS | Exact | Native C | Native C, exact 10% reserve | Yes |
-| Amiga SFS0 | Exact allocation + file-extent analysis | Native C supported-subset relayout | Exact 10% reserve | Yes |
-| Amiga SFS2 | Exact allocation + 48-bit file/32-bit extent analysis | Native C supported-subset relayout | Native C, exact 10% reserve | Yes |
-| Amiga PFS3 | Exact allocation + anode-chain analysis for qualified subset | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
-| HFS+ / HFSX | Exact | Native C, fail-closed preflight | Native C, exact 10% reserve | Yes |
-| Classic Macintosh HFS | Exact, native C | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
-| Btrfs | Exact raw single-device analysis | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
-| APFS | Exact native C analysis for bounded checkpoint/spaceman subset | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
-| Minix v1 / v2 / v3 | Exact, native C | Native C, fail-closed staged relayout | Native C, exact 10% reserve | Yes |
-| UFS1 | Exact allocation + inode-tree fragmentation analysis | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
-| UFS2 | Exact allocation + inode-tree fragmentation analysis | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
-| ZFS / OpenZFS member | Bounded exact allocation + file-fragmentation analysis, native C | Not applicable by design | Not applicable by design | No |
-| Linux swap | Exact inactive / aggregate active analysis | Not applicable | Not applicable | No |
+**Alternatives considered.**
 
-Unsupported or structurally ambiguous layouts fail closed.
+- invoke filesystem-specific external defragmentation/repair utilities;
+- mount the filesystem and request relocation through the kernel driver;
+- implement placement and metadata mutation directly in first-party userspace
+  engines.
 
-## Source layout
+**Decision.** Write-capable engines operate on unmounted targets and own
+filesystem parsing, placement, staging, metadata updates, recovery and final
+verification. System libraries may be linked in-process where their semantics
+are understood, but external mutation commands are not part of the production
+write path.
 
-- `gui/ui/` — GTK presentation, coordinators and user interaction.
-- `gui/core/` — Python presentation-side protocol, device-discovery and path contracts.
-- `gui/filesystems/<format>/native/` — authoritative per-filesystem native implementations.
-- `native/` — authoritative C++17 registry, mapper, operation dispatcher and privileged session.
-- `src/core/` — filesystem-neutral native safety/runtime services.
-- `test_media/` — separate destructive sacrificial-media utility.
-- `tests/` — native, filesystem, GUI, safety and release regressions.
-- `packaging/` — Debian and native local installer construction.
-- `shared/infiltratr-common/` — exact pinned Common dependency.
+**Consequences.** Placement is deterministic and auditable, but the write
+support matrix is deliberately narrower and implementation/verification effort
+is materially higher. Unsupported feature combinations must fail closed rather
+than falling back to opaque external behaviour.
 
-Detailed ownership and transaction rules are in [Architecture](../docs/ARCHITECTURE.md).
+## ADR-002 — Treat uncertainty as a pre-write failure
 
-## Production operations
+**Context.** A storage tool cannot safely infer intent or metadata meaning when
+geometry, feature flags, transaction state or target identity are ambiguous.
 
-**Defragment** places supported movable allocations into the earliest legal canonical layout. **Growth Defrag** applies the same placement model while reserving exactly 10% of each regular file's allocated length immediately after that file. **Recover** resumes or completes an interrupted supported transaction when its recovery contract permits it.
+**Alternatives considered.**
 
-Stop is cooperative and takes effect only at a filesystem-safe boundary.
+- best-effort continuation with warnings;
+- automatic repair or feature downgrading;
+- rejection until the state is explicitly supported and validated.
 
-## Test Media
+**Decision.** Unknown or contradictory state rejects mutation before the
+affected structure becomes authoritative.
 
-The package includes **Defragmenter Test Media**, a separate all-C GTK utility for manufacturing sacrificial test filesystems. It repeats destructive-target checks after privilege elevation and must never be pointed at a system disk or irreplaceable media.
+**Consequences.** Some valid but unsupported filesystems are refused. This is
+accepted in exchange for a smaller, reviewable safety envelope and a clear
+interpretation of every enabled write path.
 
-Formatting utilities used by Test Media are fixture-generation tools only; they are not part of production defragmentation. OFS/FFS, SFS, bounded PFS3 and bounded APFS qualification media are manufactured by first-party raw C creators.
+## ADR-003 — Define Growth Defrag as an exact postcondition
 
-## Build and test
+**Context.** A vague policy such as "leave some free space" is difficult to test,
+compare across filesystems or recover deterministically.
 
-```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DLD_ENABLE_WERROR=ON
-cmake --build build --parallel
-ctest --test-dir build --output-on-failure
-```
+**Alternatives considered.**
 
-The aggregate suite covers native/filesystem behaviour, GUI/service contracts, safety/transaction invariants, packaging and release gates. Hosted CI also runs ASan/UBSan qualification.
+- percentage targets applied approximately at volume level;
+- heuristic gaps based on file size or available space;
+- an exact per-file reserve.
 
-## Packaging
+**Decision.** Growth Defrag requires exactly 10% of the regular file's allocated
+length to remain free immediately after that file, subject only to the documented
+fixed-metadata boundary rule.
 
-A numbered release publishes the generic amd64 Debian artifact, the hardware-native local compile/install `.run` artifact and `RELEASE_SHA256SUMS.txt`. GitHub supplies its standard tag source archives automatically.
+**Consequences.** The operation has a precise oracle and consistent semantics
+across writers, but layouts that cannot satisfy the exact reserve are rejected
+instead of receiving a weaker approximation.
 
-The package/install contract is described in the repository [README](../README.md); exact release qualification is recorded in [Audit Status](../docs/AUDIT_STATUS.md).
+## ADR-004 — Persist recovery state before authoritative source mutation
 
-## Documentation map
+**Context.** Process termination, Stop requests and host interruption can occur
+between writes. Anonymous memory cannot be the only source of recovery truth
+after the source filesystem may have changed.
 
-- [Documentation index](../docs/README.md)
-- [Architecture](../docs/ARCHITECTURE.md)
-- [Design](../docs/DESIGN.md)
-- [Decisions](../docs/DECISIONS.md)
-- [Validation](../docs/VALIDATION.md)
-- [Audit status](../docs/AUDIT_STATUS.md)
-- [References](../docs/REFERENCES.md)
+**Alternatives considered.**
+
+- in-memory rollback state;
+- best-effort reconstruction after a crash;
+- a durable, phase-checked transaction record plus verified staging/workspace
+  material.
+
+**Decision.** Before entering a phase from which authoritative writes may require
+recovery, sufficient transaction state is durably published. Phase transitions
+are monotonic, recovery artefacts are path-bound to the selected journal, and
+cleanup occurs only after final verification.
+
+**Consequences.** Operations incur extra I/O and temporary-storage cost, but
+interruption states are constrained to unchanged, valid or explicitly
+recoverable states.
+
+## ADR-005 — Keep generic mechanics in Common and filesystem policy local
+
+**Context.** Defragmenter shares generic primitives with other Infiltrator
+projects, but filesystem safety semantics must remain reviewable in the owning
+engine.
+
+**Alternatives considered.**
+
+- duplicate all helpers in Defragmenter;
+- move broad storage policy into Common;
+- share only semantics-neutral mechanics.
+
+**Decision.** Common owns generic parsing, checked arithmetic, array growth,
+byte order, escaping, path/string helpers, exact I/O, generic durable-file
+publication/removal and neutral design contracts where semantics match.
+Defragmenter's native core owns product-local filesystem-neutral target safety
+and transaction-binding mechanics. Filesystem engines retain volume identity,
+geometry, placement, transaction stages, recovery meaning and fail-closed
+policy. Python is presentation/glue only and carries no filesystem control-plane
+or mutation/durability implementation.
+
+**Consequences.** Generic code is reused without obscuring the safety boundary.
+A smaller codebase is not treated as a sufficient reason to move
+application-specific policy into Common.
+
+## ADR-006 — Bind release publication to the exact qualified commit
+
+**Context.** A green test result is not meaningful for release assurance if the
+published source can differ from the tested source.
+
+**Alternatives considered.**
+
+- mutable release branches;
+- manual publication after an earlier CI run;
+- exact-head qualification and immutable version tags.
+
+**Decision.** A release is eligible only from a versioned release commit whose
+exact head passes the permanent quality gate and matches the active audit
+baselines. Published tags/releases are immutable; APT publication resolves the
+same release identity.
+
+**Consequences.** Release administration is stricter and occasionally requires
+an explicit audit-baseline advance, but there is a traceable chain from source
+commit to tests, safety decision and distributed artifacts.
+
+## ADR-007 — Use C++17 for filesystem-neutral application services without rewriting strong C engines
+
+**Context.** The raw filesystem engines are deliberately C-oriented and already
+match fixed-layout data and low-level storage interfaces well. The application
+layer also needs typed registry data, JSON/protocol ownership, process lifetime
+management and a persistent privileged session, where scoped C++ ownership
+removes cleanup and post-`fork` hazards that are awkward to express safely in
+the previous Python orchestration.
+
+**Alternatives considered.**
+
+- retain Python as the permanent production application/control layer;
+- rewrite the filesystem engines into C++ for language uniformity;
+- keep the filesystem/storage boundary in C and move only the
+  filesystem-neutral application services to C++17.
+
+**Decision.** C remains authoritative for raw filesystem parsing, planning,
+mutation and the storage-safety core. C++17 owns selected application services:
+the native registry, map translation, operation dispatch, process/protocol
+values and privileged-helper lifetime. The privileged helper uses
+`posix_spawn` and explicit process-group ownership. The GTK/Python layer is a
+staged compatibility boundary until migrated, with automated parity checks
+where contracts temporarily exist in both languages.
+
+**Consequences.** The project gains stronger scoped ownership without imposing
+an object model on disk algorithms. During migration some compatibility
+metadata exists in both Python and C++; parity tests are mandatory until the
+Python representation is removed. Language choice remains evidence-driven
+rather than a purity rule.
+
+
+## ADR-008 — Keep ZFS mutation inside the ZFS transaction engine
+
+**Context.** Defragmenter can parse a bounded ZFS/OpenZFS subset deeply enough
+to reconstruct exact allocation and regular-file physical fragmentation.
+Mutation is different: relocating a ZFS block changes a copy-on-write graph
+whose authoritative publication is a transaction-group operation. References
+may also be retained by snapshots, clones, deduplication/block-cloning state,
+indirect vdev mappings or other pool features. Defragmenter's Growth Defrag
+contract additionally requires an exact 10% physical reserve immediately after
+each file and requires that reserve to be a meaningful postcondition.
+
+**Alternatives considered.**
+
+- implement an independent raw ZFS transaction-group writer;
+- invoke an external OpenZFS rewrite command as Defragmenter's production
+  mutation path;
+- keep ZFS analysis native and exact where provable, while leaving ZFS
+  relocation to the filesystem's own transaction engine.
+
+**Decision.** ZFS/OpenZFS is analysis-only in Defragmenter. The native reader
+may advertise exact allocation/fragmentation only inside its explicitly
+qualified single-disk feature subset and must fall back or fail closed whenever
+the current allocator state cannot be reconstructed exactly. Defragment,
+Growth Defrag and Recover are not exposed for ZFS. Defragmenter will not
+implement a parallel raw ZFS transaction engine and will not weaken ADR-001 by
+silently delegating its write contract to an external command.
+
+**Consequences.** ZFS receives useful first-party physical-layout analysis
+without creating a second implementation of TXG publication, snapshot/reference
+accounting and pool recovery. The generic 10% Growth Defrag operation is
+intentionally unavailable because ZFS's allocator owns future physical
+placement, so an adjacent physical reserve is not a stable filesystem
+postcondition. If a future in-process ZFS interface can provide Defragmenter's
+full deterministic placement and recovery contract, this decision may be
+revisited.
+
+## Review rule
+
+A future change should add or amend an ADR only when it changes one of these
+architectural choices or introduces another decision with similarly broad,
+long-lived consequences. Implementation details and historical release notes
+should not accumulate here.
