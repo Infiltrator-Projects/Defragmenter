@@ -28,7 +28,7 @@ The user-facing product is **Defragmenter**. The Debian/APT package identity is 
 | Minix v1 / v2 / v3 | Exact, native C | Native C, fail-closed staged relayout | Native C, exact 10% reserve | Yes |
 | UFS1 | Exact allocation + inode-tree fragmentation analysis | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
 | UFS2 | Exact allocation + inode-tree fragmentation analysis | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
-| ZFS / OpenZFS member | Summary read-only analysis, native C | Not implemented | Not implemented | No |
+| ZFS / OpenZFS member | Bounded exact allocation + file-fragmentation analysis, native C | Not applicable by design | Not applicable by design | No |
 | Linux swap | Exact inactive / aggregate active analysis | Not applicable | Not applicable | No |
 
 Unsupported or structurally ambiguous layouts fail closed.
