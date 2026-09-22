@@ -28,6 +28,10 @@
 #define ZFS_DMU_OT_SPACE_MAP_HEADER 7U
 #define ZFS_DMU_OT_SPACE_MAP 8U
 #define ZFS_DMU_OT_OBJSET 11U
+#define ZFS_DMU_OT_DSL_DATASET 16U
+#define ZFS_DMU_OT_PLAIN_FILE_CONTENTS 19U
+#define ZFS_DSL_DATASET_BP_OFFSET 128U
+#define ZFS_DSL_DATASET_NUM_CHILDREN_OFFSET 40U
 #define ZFS_CHECKSUM_OFF 2U
 #define ZFS_CHECKSUM_FLETCHER4 7U
 #define ZFS_COMPRESS_OFF 2U
@@ -1207,6 +1211,475 @@ cleanup:
     return result;
 }
 
+typedef struct {
+    uint64_t block_id;
+    uint64_t start;
+    uint64_t length;
+} ZfsFileExtent;
+
+typedef struct {
+    ZfsFileExtent *items;
+    size_t count;
+    size_t capacity;
+} ZfsFileExtentList;
+
+static void file_extent_destroy(ZfsFileExtentList *list)
+{
+    free(list->items);
+    memset(list, 0, sizeof(*list));
+}
+
+static int file_extent_append(ZfsFileExtentList *list, uint64_t block_id,
+                              uint64_t start, uint64_t length)
+{
+    if (list->count == list->capacity) {
+        size_t capacity = list->capacity == 0U ? 8U : list->capacity;
+        if (capacity > SIZE_MAX / 2U) {
+            errno = EOVERFLOW;
+            return -1;
+        }
+        capacity *= 2U;
+        if (capacity > SIZE_MAX / sizeof(*list->items)) {
+            errno = EOVERFLOW;
+            return -1;
+        }
+        ZfsFileExtent *items =
+            realloc(list->items, capacity * sizeof(*items));
+        if (items == NULL)
+            return -1;
+        list->items = items;
+        list->capacity = capacity;
+    }
+    list->items[list->count].block_id = block_id;
+    list->items[list->count].start = start;
+    list->items[list->count].length = length;
+    list->count++;
+    return 0;
+}
+
+static int primary_dva(const ZfsContext *context,
+                       const ZfsBlockPointer *bp, ZfsDva *dva)
+{
+    if (bp->embedded || bp->uses_crypt) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    for (size_t index = 0U; index < 3U; ++index) {
+        if (bp->dva[index].asize == 0U ||
+            bp->dva[index].vdev != context->summary.top_vdev_id)
+            continue;
+        if (bp->dva[index].gang) {
+            errno = ENOTSUP;
+            return -1;
+        }
+        *dva = bp->dva[index];
+        return 0;
+    }
+    errno = EINVAL;
+    return -1;
+}
+
+static int collect_file_tree(ZfsContext *context,
+                             const ZfsBlockPointer *bp,
+                             unsigned int level, uint64_t base_block,
+                             uint64_t max_block_id,
+                             uint64_t entries_per_indirect,
+                             ZfsFileExtentList *extents,
+                             char *error, size_t error_size)
+{
+    if (base_block > max_block_id || bp->hole)
+        return 0;
+
+    if (level == 0U) {
+        ZfsDva dva;
+        if (primary_dva(context, bp, &dva) != 0) {
+            set_error(error, error_size,
+                      "ZFS file extent uses unsupported gang/encrypted/foreign-vdev storage");
+            return -1;
+        }
+        if (dva.offset > context->summary.top_vdev_asize ||
+            dva.length > context->summary.top_vdev_asize - dva.offset) {
+            errno = EINVAL;
+            set_error(error, error_size,
+                      "ZFS file extent escapes the qualified top vdev");
+            return -1;
+        }
+        return file_extent_append(extents, base_block,
+                                  dva.offset, dva.asize);
+    }
+
+    uint8_t *indirect = NULL;
+    size_t indirect_length = 0U;
+    if (read_block_pointer_data(context, bp, &indirect, &indirect_length,
+                                error, error_size) != 0)
+        return -1;
+    if (indirect_length == 0U ||
+        (indirect_length % ZFS_BP_SIZE) != 0U) {
+        free(indirect);
+        errno = EINVAL;
+        set_error(error, error_size,
+                  "invalid ZFS file indirect block");
+        return -1;
+    }
+
+    uint64_t child_span = 0U;
+    if (power_u64(entries_per_indirect, level - 1U, &child_span) != 0) {
+        free(indirect);
+        return -1;
+    }
+    const size_t children = indirect_length / ZFS_BP_SIZE;
+    for (size_t index = 0U; index < children; ++index) {
+        if ((uint64_t)index > UINT64_MAX / child_span) {
+            free(indirect);
+            errno = EOVERFLOW;
+            return -1;
+        }
+        const uint64_t delta = (uint64_t)index * child_span;
+        if (base_block > UINT64_MAX - delta) {
+            free(indirect);
+            errno = EOVERFLOW;
+            return -1;
+        }
+        const uint64_t child_base = base_block + delta;
+        if (child_base > max_block_id)
+            break;
+        ZfsBlockPointer child;
+        decode_block_pointer(indirect + index * ZFS_BP_SIZE,
+                             bp->data_order, &child);
+        if (collect_file_tree(context, &child, level - 1U,
+                              child_base, max_block_id,
+                              entries_per_indirect, extents,
+                              error, error_size) != 0) {
+            free(indirect);
+            return -1;
+        }
+    }
+    free(indirect);
+    return 0;
+}
+
+static int collect_file_extents(ZfsContext *context,
+                                const ZfsDnode *dnode,
+                                ZfsFileExtentList *extents,
+                                char *error, size_t error_size)
+{
+    if (dnode->nlevels == 0U)
+        return 0;
+    if (dnode->nlevels > ZFS_DNODE_MAX_LEVELS ||
+        dnode->nblkptr == 0U ||
+        dnode->indblkshift < ZFS_DNODE_MIN_INDBLKSHIFT ||
+        dnode->indblkshift > ZFS_DNODE_MAX_INDBLKSHIFT) {
+        errno = ENOTSUP;
+        set_error(error, error_size,
+                  "unsupported ZFS file dnode geometry");
+        return -1;
+    }
+    const uint64_t entries_per_indirect =
+        UINT64_C(1) << (dnode->indblkshift - 7U);
+    uint64_t root_span = 0U;
+    if (power_u64(entries_per_indirect, dnode->nlevels - 1U,
+                  &root_span) != 0)
+        return -1;
+
+    for (size_t index = 0U; index < dnode->nblkptr; ++index) {
+        if ((uint64_t)index > UINT64_MAX / root_span) {
+            errno = EOVERFLOW;
+            return -1;
+        }
+        const uint64_t base = (uint64_t)index * root_span;
+        if (base > dnode->maxblkid)
+            break;
+        ZfsBlockPointer bp;
+        if (dnode_bp(dnode, index, &bp) != 0)
+            return -1;
+        if (collect_file_tree(context, &bp, dnode->nlevels - 1U,
+                              base, dnode->maxblkid,
+                              entries_per_indirect, extents,
+                              error, error_size) != 0)
+            return -1;
+    }
+    return 0;
+}
+
+static int analyse_file_dnode(ZfsContext *context, const uint8_t raw[512],
+                              LdZfsByteOrder order,
+                              ZfsRangeSet *fragmented,
+                              LdZfsAnalysis *analysis,
+                              char *error, size_t error_size)
+{
+    uint8_t *copy = malloc(ZFS_DNODE_SIZE);
+    if (copy == NULL)
+        return -1;
+    memcpy(copy, raw, ZFS_DNODE_SIZE);
+
+    ZfsDnode dnode;
+    if (dnode_attach_raw(&dnode, copy, ZFS_DNODE_SIZE, order) != 0) {
+        free(copy);
+        return -1;
+    }
+    if (dnode.extra_slots != 0U) {
+        dnode_destroy(&dnode);
+        errno = ENOTSUP;
+        set_error(error, error_size,
+                  "large ZFS dnodes are outside the legacy exact-fragmentation subset");
+        return -1;
+    }
+
+    analysis->files_seen++;
+    ZfsFileExtentList extents = {0};
+    if (collect_file_extents(context, &dnode, &extents,
+                             error, error_size) != 0) {
+        file_extent_destroy(&extents);
+        dnode_destroy(&dnode);
+        return -1;
+    }
+
+    bool is_fragmented = false;
+    for (size_t index = 1U; index < extents.count; ++index) {
+        const ZfsFileExtent *previous = &extents.items[index - 1U];
+        const ZfsFileExtent *current = &extents.items[index];
+        if (current->block_id == previous->block_id + 1U &&
+            (previous->start > UINT64_MAX - previous->length ||
+             current->start != previous->start + previous->length)) {
+            is_fragmented = true;
+            break;
+        }
+    }
+
+    if (is_fragmented) {
+        analysis->fragmented_files++;
+        for (size_t index = 0U; index < extents.count; ++index) {
+            if (range_add(fragmented, extents.items[index].start,
+                          extents.items[index].length) != 0) {
+                file_extent_destroy(&extents);
+                dnode_destroy(&dnode);
+                return -1;
+            }
+        }
+    }
+
+    file_extent_destroy(&extents);
+    dnode_destroy(&dnode);
+    return 0;
+}
+
+static int scan_dataset_objset(ZfsContext *context,
+                               const ZfsBlockPointer *root,
+                               ZfsRangeSet *fragmented,
+                               LdZfsAnalysis *analysis,
+                               char *error, size_t error_size)
+{
+    if (root->type != ZFS_DMU_OT_OBJSET || root->level != 0U ||
+        root->embedded || root->uses_crypt) {
+        errno = ENOTSUP;
+        set_error(error, error_size,
+                  "unsupported ZFS dataset root block pointer");
+        return -1;
+    }
+
+    uint8_t *objset = NULL;
+    size_t objset_size = 0U;
+    if (read_block_pointer_data(context, root, &objset, &objset_size,
+                                error, error_size) != 0)
+        return -1;
+    if (objset_size < ZFS_DNODE_SIZE) {
+        free(objset);
+        errno = EINVAL;
+        set_error(error, error_size, "ZFS dataset objset is too small");
+        return -1;
+    }
+
+    uint8_t *meta_raw = malloc(ZFS_DNODE_SIZE);
+    if (meta_raw == NULL) {
+        free(objset);
+        return -1;
+    }
+    memcpy(meta_raw, objset, ZFS_DNODE_SIZE);
+    ZfsDnode meta;
+    if (dnode_attach_raw(&meta, meta_raw, ZFS_DNODE_SIZE,
+                         root->data_order) != 0) {
+        free(meta_raw);
+        free(objset);
+        return -1;
+    }
+    free(objset);
+
+    if (meta.type != 10U || meta.extra_slots != 0U) {
+        dnode_destroy(&meta);
+        errno = ENOTSUP;
+        set_error(error, error_size,
+                  "unsupported ZFS dataset metadnode");
+        return -1;
+    }
+    if (meta.datablkszsec == 0U) {
+        dnode_destroy(&meta);
+        errno = EINVAL;
+        return -1;
+    }
+    const uint64_t block_size = (uint64_t)meta.datablkszsec << 9U;
+    if (block_size == 0U || block_size > ZFS_MAX_BLOCK_SIZE ||
+        (block_size % ZFS_DNODE_SIZE) != 0U) {
+        dnode_destroy(&meta);
+        errno = EINVAL;
+        set_error(error, error_size,
+                  "invalid ZFS dataset dnode-block size");
+        return -1;
+    }
+
+    for (uint64_t block_id = 0U; block_id <= meta.maxblkid; ++block_id) {
+        ZfsBlockPointer bp;
+        if (object_lookup_bp(context, &meta, block_id, &bp,
+                             error, error_size) != 0) {
+            dnode_destroy(&meta);
+            return -1;
+        }
+        if (bp.hole)
+            continue;
+
+        uint8_t *block = NULL;
+        size_t block_length = 0U;
+        if (read_block_pointer_data(context, &bp, &block, &block_length,
+                                    error, error_size) != 0) {
+            dnode_destroy(&meta);
+            return -1;
+        }
+        if (block_length != block_size ||
+            (block_length % ZFS_DNODE_SIZE) != 0U) {
+            free(block);
+            dnode_destroy(&meta);
+            errno = EINVAL;
+            set_error(error, error_size,
+                      "invalid ZFS dataset dnode block");
+            return -1;
+        }
+
+        for (size_t offset = 0U; offset < block_length;
+             offset += ZFS_DNODE_SIZE) {
+            const uint8_t *raw = block + offset;
+            if (raw[0] == 0U)
+                continue;
+            if (raw[12] != 0U) {
+                free(block);
+                dnode_destroy(&meta);
+                errno = ENOTSUP;
+                set_error(error, error_size,
+                          "large ZFS dnode encountered in legacy exact subset");
+                return -1;
+            }
+            if (raw[0] == ZFS_DMU_OT_PLAIN_FILE_CONTENTS &&
+                analyse_file_dnode(context, raw, bp.data_order,
+                                   fragmented, analysis,
+                                   error, error_size) != 0) {
+                free(block);
+                dnode_destroy(&meta);
+                return -1;
+            }
+        }
+        free(block);
+
+        if (block_id == UINT64_MAX)
+            break;
+    }
+
+    dnode_destroy(&meta);
+    return 0;
+}
+
+static int scan_exact_fragmentation(ZfsContext *context,
+                                    ZfsRangeSet *fragmented,
+                                    LdZfsAnalysis *analysis,
+                                    char *error, size_t error_size)
+{
+    if (context->meta_dnode.datablkszsec == 0U) {
+        errno = EINVAL;
+        return -1;
+    }
+    const uint64_t block_size =
+        (uint64_t)context->meta_dnode.datablkszsec << 9U;
+    if (block_size == 0U || block_size > ZFS_MAX_BLOCK_SIZE ||
+        (block_size % ZFS_DNODE_SIZE) != 0U) {
+        errno = EINVAL;
+        set_error(error, error_size, "invalid ZFS MOS dnode-block size");
+        return -1;
+    }
+
+    for (uint64_t block_id = 0U;
+         block_id <= context->meta_dnode.maxblkid; ++block_id) {
+        ZfsBlockPointer bp;
+        if (object_lookup_bp(context, &context->meta_dnode,
+                             block_id, &bp, error, error_size) != 0)
+            return -1;
+        if (bp.hole)
+            continue;
+
+        uint8_t *block = NULL;
+        size_t block_length = 0U;
+        if (read_block_pointer_data(context, &bp, &block, &block_length,
+                                    error, error_size) != 0)
+            return -1;
+        if (block_length != block_size ||
+            (block_length % ZFS_DNODE_SIZE) != 0U) {
+            free(block);
+            errno = EINVAL;
+            set_error(error, error_size, "invalid ZFS MOS dnode block");
+            return -1;
+        }
+
+        for (size_t offset = 0U; offset < block_length;
+             offset += ZFS_DNODE_SIZE) {
+            const uint8_t *raw = block + offset;
+            if (raw[0] == 0U)
+                continue;
+            if (raw[12] != 0U) {
+                free(block);
+                errno = ENOTSUP;
+                set_error(error, error_size,
+                          "large ZFS MOS dnode encountered in legacy exact subset");
+                return -1;
+            }
+            const uint8_t nblkptr = raw[3];
+            const size_t bonus_offset =
+                ZFS_DNODE_CORE_SIZE + (size_t)nblkptr * ZFS_BP_SIZE;
+            if (raw[4] != ZFS_DMU_OT_DSL_DATASET ||
+                bonus_offset > ZFS_DNODE_SIZE ||
+                ZFS_DSL_DATASET_BP_OFFSET + ZFS_BP_SIZE >
+                    ZFS_DNODE_SIZE - bonus_offset)
+                continue;
+
+            const uint16_t bonus_length =
+                load_u16(raw + 10U, bp.data_order);
+            if (bonus_length <
+                ZFS_DSL_DATASET_BP_OFFSET + ZFS_BP_SIZE)
+                continue;
+            const uint8_t *bonus = raw + bonus_offset;
+            const uint64_t num_children =
+                load_u64_order(
+                    bonus + ZFS_DSL_DATASET_NUM_CHILDREN_OFFSET,
+                    bp.data_order);
+            if (num_children != 0U)
+                continue;
+
+            ZfsBlockPointer dataset_root;
+            decode_block_pointer(
+                bonus + ZFS_DSL_DATASET_BP_OFFSET,
+                bp.data_order, &dataset_root);
+            if (dataset_root.hole)
+                continue;
+            if (scan_dataset_objset(context, &dataset_root,
+                                    fragmented, analysis,
+                                    error, error_size) != 0) {
+                free(block);
+                return -1;
+            }
+        }
+        free(block);
+
+        if (block_id == UINT64_MAX)
+            break;
+    }
+    return 0;
+}
+
 static int append_analysis_range(LdZfsAnalysis *analysis,
                                  uint64_t start, uint64_t length,
                                  uint32_t flags)
@@ -1253,10 +1726,21 @@ int zfs_analyse_exact(const char *path, LdZfsAnalysis *analysis,
         return -1;
 
     ZfsRangeSet allocated = {0};
+    ZfsRangeSet fragmented = {0};
     if (load_exact_allocation(&context, &allocated,
                               error, error_size) != 0) {
         const int saved_errno = errno;
         range_destroy(&allocated);
+        range_destroy(&fragmented);
+        context_close(&context);
+        errno = saved_errno;
+        return -1;
+    }
+    if (scan_exact_fragmentation(&context, &fragmented, analysis,
+                                 error, error_size) != 0) {
+        const int saved_errno = errno;
+        range_destroy(&allocated);
+        range_destroy(&fragmented);
         context_close(&context);
         errno = saved_errno;
         return -1;
@@ -1265,6 +1749,7 @@ int zfs_analyse_exact(const char *path, LdZfsAnalysis *analysis,
     const uint64_t allocated_bytes = range_total(&allocated);
     if (allocated_bytes > context.summary.top_vdev_asize) {
         range_destroy(&allocated);
+        range_destroy(&fragmented);
         context_close(&context);
         errno = EINVAL;
         set_error(error, error_size,
@@ -1276,7 +1761,8 @@ int zfs_analyse_exact(const char *path, LdZfsAnalysis *analysis,
     analysis->free_bytes =
         context.summary.top_vdev_asize - allocated_bytes;
     analysis->exact_allocation = true;
-    analysis->exact_fragmentation = false;
+    analysis->exact_fragmentation = true;
+    analysis->fragmented_bytes = range_total(&fragmented);
 
     if (append_analysis_range(analysis, 0U,
                               ZFS_VDEV_LABEL_START_SIZE,
@@ -1319,12 +1805,22 @@ int zfs_analyse_exact(const char *path, LdZfsAnalysis *analysis,
                               LD_ZFS_RANGE_RESERVED) != 0)
         goto fail;
 
+    for (size_t index = 0U; index < fragmented.count; ++index) {
+        if (append_analysis_range(
+                analysis,
+                ZFS_VDEV_LABEL_START_SIZE + fragmented.items[index].start,
+                fragmented.items[index].end - fragmented.items[index].start,
+                LD_ZFS_RANGE_FRAGMENTED) != 0)
+            goto fail;
+    }
+
     analysis->used_bytes = analysis->size_bytes - analysis->free_bytes;
     analysis->unknown_bytes = 0U;
     if (error != NULL && error_size != 0U)
         error[0] = '\0';
 
     range_destroy(&allocated);
+    range_destroy(&fragmented);
     context_close(&context);
     return 0;
 
@@ -1332,6 +1828,7 @@ fail: {
         const int saved_errno = errno;
         zfs_analysis_destroy(analysis);
         range_destroy(&allocated);
+        range_destroy(&fragmented);
         context_close(&context);
         errno = saved_errno;
         return -1;
