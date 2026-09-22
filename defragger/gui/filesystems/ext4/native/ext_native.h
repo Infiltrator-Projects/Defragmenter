@@ -6,7 +6,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include <ext2fs/ext2fs.h>
+#include "ext_disk.h"
 #include <sqlite3.h>
 /*
  * Native EXT2/3/4 representation contract.
@@ -62,21 +62,21 @@ void ext_range_free(ExtRangeVec *vec);
 void ext_range_sort_merge(ExtRangeVec *vec);
 
 int ext_read_geometry(const char *path, ExtGeometry *geometry, char **error);
-int ext_open_fs(const char *path, bool writable, ext2_filsys *fs, char **error);
-int ext_open_fs_under_lock(const char *path, bool writable, ext2_filsys *fs,
+int ext_open_fs(const char *path, bool writable, ExtFs **fs, char **error);
+int ext_open_fs_under_lock(const char *path, bool writable, ExtFs **fs,
                            char **error);
-int ext_validate_metadata(ext2_filsys fs, bool verify_inodes, char **error);
+int ext_validate_metadata(ExtFs *fs, bool verify_inodes, char **error);
 int ext_scan_catalogue(const char *path, ExtGeometry *geometry,
                        ExtCatalogue *catalogue, char **error);
 void ext_catalogue_free(ExtCatalogue *catalogue);
-int ext_validate_writer_support(ext2_filsys fs, const ExtGeometry *geometry,
+int ext_validate_writer_support(ExtFs *fs, const ExtGeometry *geometry,
                                 char **error);
 
 int ext_open_plan_db(const char *path, bool create, sqlite3 **db, char **error);
-int ext_catalog_plan(ext2_filsys fs, int raw_fd, sqlite3 *db,
+int ext_catalog_plan(ExtFs *fs, int raw_fd, sqlite3 *db,
                      const ExtGeometry *geometry, uint64_t *movable,
                      char **error);
-int ext_assign_targets(ext2_filsys fs, sqlite3 *db,
+int ext_assign_targets(ExtFs *fs, sqlite3 *db,
                        const ExtGeometry *geometry, bool growth,
                        char **error);
 int ext_plan_move_count(sqlite3 *db, uint64_t *count, char **error);
