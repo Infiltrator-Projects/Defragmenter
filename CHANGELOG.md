@@ -2,6 +2,13 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-194
+
+- Replaced the C++ allocation mapper's private uint64 overflow multiplication logic with the exact pinned Common `infiltratr_u64_multiply_checked()` contract while retaining Defragmenter's exception/context policy.
+- Removed the unreachable legacy APFS map adapter and its stale summary-only `spaceman allocation map not yet decoded` path; APFS remains routed through the qualified first-party native exact-map contract.
+- Removed the mapper string helper made obsolete by that dead APFS path and added a direct architecture regression that rejects reintroduction of either the private arithmetic implementation or legacy APFS adapter.
+- Re-ran the complete hosted 44-test suite, warnings-as-errors build, architecture/release invariants and ASan/UBSan qualification against the updated production baseline.
+
 ## 1.8.0-193
 
 - Replaced the production EXT2/EXT3/EXT4 libext2fs dependency with a bounded first-party native on-disk engine owning superblock/group-descriptor validation, allocation bitmaps, inode scanning/checksums, extent and legacy-indirect traversal, allocation accounting and physical-reference mutation; e2fsprogs/libext2fs remains test-only independent fixture/oracle evidence.
