@@ -5,8 +5,8 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-09-22
 
-Applies to: release version 1.8.0-194
-Audited source commit: 3aa39a63a730d7dce4b994d72995231a49c37f8d
+Applies to: release version 1.8.0-195
+Audited source commit: b0bfbf14d8fd2e2519a33d0d96ebca4d74c30c05
 Audited release-governance commit: 9d5777a0847cb78d7b7e6327b03e765863c05446
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
@@ -15,7 +15,9 @@ This document records the current release safety case. Historical audit-developm
 
 ## Qualification evidence
 
-The audited production baseline compiles with warnings as errors and passed the complete hosted 44-test native/filesystem/GUI/release suite. The hosted ASan/UBSan build and sanitizer-visible filesystem tests also passed. The only remaining quality-gate failure at that source baseline was the intentionally stale prior audit pointer; this audit advances that pointer after the Common checked-arithmetic reuse and removal of the unreachable legacy APFS map adapter. The exact 1.8.0-194 release head must repeat both hosted lanes before publication.
+The incremental dependency and packaging audit is bound to source commit `b0bfbf14d8fd2e2519a33d0d96ebca4d74c30c05`. In [Project quality gate run 35792024919](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/35792024919), that revision passed the warnings-as-errors build, all 44 CTest tests, the Btrfs architecture guard, and the separate hosted ASan/UBSan lane. The run remained red because the release guard correctly detected that this document still named the pre-upgrade source baseline. The exact 1.8.0-195 release head must pass both hosted lanes and the complete release guard before publication.
+
+The reviewed delta from the previous source baseline changes the Common pin from 1.19.23 to 1.19.24 and its matching CMake/installer declarations, repairs the misplaced Git submodule, restores script executable modes, and adds a committed-dependency-layout regression. Common's changed implementation is confined to graphics clipping and overlapping surface operations. The filesystem-engine source is unchanged; its existing safety case is carried forward rather than represented as a new line-by-line engine audit.
 
 The malformed-media matrix, transaction/recovery tests, native integration fixtures, GUI contract tests, release/package tests and architecture ownership checks remain part of the permanent **Project quality gate**. Environment-dependent destructive media evidence is supplementary and is not represented as hosted-CI proof.
 

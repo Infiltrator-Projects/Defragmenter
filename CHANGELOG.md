@@ -2,6 +2,13 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-195
+
+- Correct the Common 1.19.24 Git submodule at the actual project dependency path and remove the stray root entry that prevented recursive checkout.
+- Restore executable modes on the local installer builder and release-gate script.
+- Verify the committed dependency path and revision against the CMake requirement, preventing a partial pin update from appearing complete.
+- Record the incremental dependency/packaging review and its exact 44-test and sanitizer evidence; final release publication remains conditional on the complete gate.
+
 ## 1.8.0-194
 
 - Replaced the C++ allocation mapper's private uint64 overflow multiplication logic with the exact pinned Common `infiltratr_u64_multiply_checked()` contract while retaining Defragmenter's exception/context policy.
