@@ -21,6 +21,17 @@ typedef struct {
     uint32_t label_index;
     uint32_t uberblock_slot;
     uint32_t candidate_uberblocks;
+    uint64_t root_vdev;
+    uint64_t root_offset;
+    uint64_t root_asize;
+    uint64_t root_lsize;
+    uint64_t root_psize;
+    uint64_t root_logical_birth;
+    uint32_t root_compression;
+    uint32_t root_checksum;
+    uint32_t root_type;
+    uint32_t root_level;
+    bool root_embedded;
     LdZfsByteOrder byte_order;
 } LdZfsSummary;
 
