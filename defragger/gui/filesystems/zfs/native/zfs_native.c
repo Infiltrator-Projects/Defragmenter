@@ -149,7 +149,24 @@ static bool xdr_string(ZfsXdr *xdr, char *destination, size_t capacity)
 }
 
 static bool zfs_parse_nvlist(ZfsXdr *xdr, unsigned depth,
+                             bool feature_scope,
                              LdZfsSummary *summary);
+
+static bool supported_mos_feature(const char *name)
+{
+    /*
+     * These features can alter MOS-visible structures, but the bounded reader
+     * either already understands the changed form or independently refuses the
+     * affected construct (embedded/gang blocks) when it is encountered.
+     *
+     * Device-removal and RAIDZ-family MOS features are deliberately absent:
+     * their DVA/topology translation rules are outside the single-leaf reader.
+     */
+    return strcmp(name, "com.delphix:hole_birth") == 0 ||
+           strcmp(name, "com.delphix:embedded_data") == 0 ||
+           strcmp(name, "com.klarasystems:vdev_zaps_v2") == 0 ||
+           strcmp(name, "com.klarasystems:dynamic_gang_header") == 0;
+}
 
 static void record_vdev_fields(const ZfsVdevFields *fields,
                                LdZfsSummary *summary)
@@ -173,6 +190,7 @@ static void record_vdev_fields(const ZfsVdevFields *fields,
 }
 
 static bool zfs_parse_nvpair(ZfsXdr *xdr, unsigned depth,
+                             bool feature_scope,
                              LdZfsSummary *summary, ZfsVdevFields *fields)
 {
     const size_t pair_start = xdr->position;
@@ -194,7 +212,18 @@ static bool zfs_parse_nvpair(ZfsXdr *xdr, unsigned depth,
         xdr->position > pair_end)
         return false;
 
-    if (type == 8U && elements == 1U) {
+    if (feature_scope && type == 1U && elements == 0U) {
+        summary->mos_features_present = true;
+        if (summary->mos_feature_count != UINT32_MAX)
+            summary->mos_feature_count++;
+        if (!supported_mos_feature(name)) {
+            summary->mos_features_supported = false;
+            if (summary->unsupported_mos_feature[0] == '\0')
+                (void)snprintf(summary->unsupported_mos_feature,
+                               sizeof(summary->unsupported_mos_feature),
+                               "%s", name);
+        }
+    } else if (type == 8U && elements == 1U) {
         uint64_t value = 0U;
         if (!xdr_u64(xdr, &value))
             return false;
@@ -232,13 +261,18 @@ static bool zfs_parse_nvpair(ZfsXdr *xdr, unsigned depth,
         if (strcmp(name, "type") == 0)
             (void)snprintf(fields->type, sizeof(fields->type), "%s", value);
     } else if (type == 19U && elements == 1U) {
-        if (depth >= 8U || !zfs_parse_nvlist(xdr, depth + 1U, summary))
+        const bool child_feature_scope =
+            feature_scope || strcmp(name, "features_for_read") == 0;
+        if (depth >= 8U ||
+            !zfs_parse_nvlist(xdr, depth + 1U,
+                              child_feature_scope, summary))
             return false;
     } else if (type == 20U) {
         if (depth >= 8U || elements > 256U)
             return false;
         for (uint32_t index = 0U; index < elements; ++index)
-            if (!zfs_parse_nvlist(xdr, depth + 1U, summary))
+            if (!zfs_parse_nvlist(xdr, depth + 1U,
+                                  feature_scope, summary))
                 return false;
     }
 
@@ -249,6 +283,7 @@ static bool zfs_parse_nvpair(ZfsXdr *xdr, unsigned depth,
 }
 
 static bool zfs_parse_nvlist(ZfsXdr *xdr, unsigned depth,
+                             bool feature_scope,
                              LdZfsSummary *summary)
 {
     uint32_t version = 0U;
@@ -272,7 +307,8 @@ static bool zfs_parse_nvlist(ZfsXdr *xdr, unsigned depth,
             xdr->position += 8U;
             break;
         }
-        if (!zfs_parse_nvpair(xdr, depth, summary, &fields))
+        if (!zfs_parse_nvpair(xdr, depth, feature_scope,
+                              summary, &fields))
             return false;
     }
     record_vdev_fields(&fields, summary);
@@ -293,7 +329,8 @@ static void parse_label_config(int fd, uint64_t psize, LdZfsSummary *summary)
         .length = sizeof(config),
         .position = 4U,
     };
-    if (zfs_parse_nvlist(&xdr, 0U, summary)) {
+    summary->mos_features_supported = true;
+    if (zfs_parse_nvlist(&xdr, 0U, false, summary)) {
         summary->config_known = summary->pool_guid != 0U &&
                                 summary->leaf_guid != 0U &&
                                 summary->top_guid != 0U &&
@@ -307,7 +344,8 @@ static void parse_label_config(int fd, uint64_t psize, LdZfsSummary *summary)
             summary->ashift >= 9U && summary->ashift <= 16U &&
             summary->metaslab_shift >= summary->ashift &&
             summary->metaslab_shift < 63U &&
-            summary->top_vdev_asize != 0U;
+            summary->top_vdev_asize != 0U &&
+            summary->mos_features_supported;
     }
 }
 
