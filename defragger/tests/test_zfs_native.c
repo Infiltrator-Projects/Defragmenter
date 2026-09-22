@@ -58,6 +58,8 @@ static void put_be64(uint8_t *data, uint64_t value)
         data[7U - index] = (uint8_t)(value >> (index * 8U));
 }
 
+static off_t label_base(unsigned label);
+
 typedef struct {
     uint8_t *data;
     size_t capacity;
