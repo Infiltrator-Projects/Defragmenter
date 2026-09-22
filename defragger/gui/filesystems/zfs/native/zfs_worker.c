@@ -41,7 +41,12 @@ static void print_summary_json(const LdZfsSummary *summary, int detailed)
             "\"root_asize\":%llu,\"root_lsize\":%llu,\"root_psize\":%llu,"
             "\"root_logical_birth\":%llu,\"root_compression\":%u,"
             "\"root_checksum\":%u,\"root_type\":%u,\"root_level\":%u,"
-            "\"root_embedded\":%s",
+            "\"root_embedded\":%s,\"config_known\":%s,"
+            "\"single_leaf_supported\":%s,\"pool_guid\":%llu,"
+            "\"leaf_guid\":%llu,\"top_guid\":%llu,\"top_vdev_id\":%llu,"
+            "\"ashift\":%llu,\"metaslab_array\":%llu,"
+            "\"metaslab_shift\":%llu,\"metaslab_vdevs\":%u,"
+            "\"top_vdev_type\":\"%s\"",
             (unsigned long long)summary->size_bytes,
             summary->label_index,
             summary->uberblock_slot,
@@ -61,7 +66,18 @@ static void print_summary_json(const LdZfsSummary *summary, int detailed)
             summary->root_checksum,
             summary->root_type,
             summary->root_level,
-            summary->root_embedded ? "true" : "false");
+            summary->root_embedded ? "true" : "false",
+            summary->config_known ? "true" : "false",
+            summary->single_leaf_supported ? "true" : "false",
+            (unsigned long long)summary->pool_guid,
+            (unsigned long long)summary->leaf_guid,
+            (unsigned long long)summary->top_guid,
+            (unsigned long long)summary->top_vdev_id,
+            (unsigned long long)summary->ashift,
+            (unsigned long long)summary->metaslab_array,
+            (unsigned long long)summary->metaslab_shift,
+            summary->metaslab_vdevs,
+            summary->top_vdev_type);
     }
     (void)puts("}");
 }
@@ -115,6 +131,10 @@ static void print_map_json(const LdZfsSummary *summary, uint64_t requested_cells
         "\"lsize\":%llu,\"psize\":%llu,\"birth_txg\":%llu,"
         "\"compression\":%u,\"checksum\":%u,\"type\":%u,\"level\":%u,"
         "\"embedded\":%s},"
+        "\"topology\":{\"known\":%s,\"single_leaf_supported\":%s,"
+        "\"pool_guid\":%llu,\"leaf_guid\":%llu,\"top_guid\":%llu,"
+        "\"top_vdev_id\":%llu,\"ashift\":%llu,\"metaslab_array\":%llu,"
+        "\"metaslab_shift\":%llu,\"metaslab_vdevs\":%u,\"type\":\"%s\"},"
         "\"label_basis\":\"four OpenZFS leaf-vdev labels and 128-entry uberblock rings\","
         "\"note\":\"Committed ZFS label/uberblock parsed natively; exact allocation still requires MOS, metaslab and space-map traversal\"}}\n",
         (unsigned long long)summary->uberblock_magic_offset,
@@ -134,7 +154,18 @@ static void print_map_json(const LdZfsSummary *summary, uint64_t requested_cells
         summary->root_checksum,
         summary->root_type,
         summary->root_level,
-        summary->root_embedded ? "true" : "false");
+        summary->root_embedded ? "true" : "false",
+        summary->config_known ? "true" : "false",
+        summary->single_leaf_supported ? "true" : "false",
+        (unsigned long long)summary->pool_guid,
+        (unsigned long long)summary->leaf_guid,
+        (unsigned long long)summary->top_guid,
+        (unsigned long long)summary->top_vdev_id,
+        (unsigned long long)summary->ashift,
+        (unsigned long long)summary->metaslab_array,
+        (unsigned long long)summary->metaslab_shift,
+        summary->metaslab_vdevs,
+        summary->top_vdev_type);
 }
 
 int main(int argc, char **argv)
