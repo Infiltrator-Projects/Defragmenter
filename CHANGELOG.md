@@ -4,6 +4,7 @@ This changelog records user-visible, compatibility, architecture and validation 
 
 ## Unreleased
 
+- Replaced the production EXT2/3/4 libext2fs dependency with a narrow first-party native on-disk engine owning superblock/group/bitmap/inode validation, extent and legacy-indirect traversal, allocation accounting, physical-reference mutation and metadata checksums. libext2fs remains test-only as an independent fixture/oracle.
 - Replaced production EXT2/EXT3/EXT4 dependence on libext2fs with a bounded first-party native on-disk layer for superblock/group-descriptor validation, allocation bitmaps, inode scanning/checksums, extent/legacy-indirect traversal and physical-reference mutation; e2fsprogs/libext2fs remains test-only fixture/oracle evidence.
 - Completed UFS1/UFS2 qualification and aligned the runtime, package metadata, Test Media notes and support documentation with the enabled bounded native Defragment/Growth Defrag/Recover contract.
 - Replaced ZFS summary-only detection with bounded exact native analysis: four-label/uberblock selection, packed-XDR topology, MOS/dnode traversal, verified Fletcher4/off blocks, LZJB/LZ4 metadata decoding, metaslab space-map replay and regular-file physical-fragmentation mapping for the qualified single-disk subset.
