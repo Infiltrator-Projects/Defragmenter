@@ -32,6 +32,18 @@ Recovery tests inject failure around durable transaction boundaries and accept o
 
 Growth Defrag tests verify the exact 10% post-file reserve rather than treating "some free space" as equivalent.
 
+EXT2/3/4 qualification deliberately keeps e2fsprogs/libext2fs on the
+opposite side of the production boundary. The test-only `make_ext4_image.c`
+fixture uses libext2fs to manufacture a checksummed fragmented EXT4 image,
+including an external extent-tree block. Production analysis, metadata
+classification, Defragment and Growth Defrag then run exclusively through
+Defragmenter's first-party `ext_disk.c` parser/mutator. The end-to-end
+regression reopens the result through that production engine, verifies UUID and
+fragmentation state, and verifies the exact 10% Growth layout. Architecture and
+release regressions additionally forbid libext2fs headers, types, calls, runtime
+linkage and package dependencies from the production EXT path while permitting
+the independent test fixture/oracle.
+
 Minix qualification uses an independently manufactured fragmented v3 image to exercise the production native worker end to end. It verifies canonical Defragment, exact 10% Growth Defrag idempotence, durable Recover after a source-open failure, and fail-closed rejection of a recovery stage whose persisted SHA-256 no longer matches the journal. The native unit suite separately reopens staged images, verifies logical payload identity across relocated zones and rejects a Growth layout as a packed Defragment layout.
 
 SFS2 qualification extends the existing SFS0 evidence with deterministic structure-version-4 fixtures exercised through production Defragment, exact 10% Growth Defrag and Recover. A separate sparse image is larger than 4 GiB and contains an extent longer than 65,535 blocks, forcing the native analyser to decode SFS2's 48-bit file-size and 32-bit extent-count fields; this prevents an SFS0-width implementation from passing the SFS2 gate accidentally.
