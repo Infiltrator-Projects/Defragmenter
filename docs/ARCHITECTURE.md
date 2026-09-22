@@ -28,7 +28,7 @@ per-filesystem native C analysers / planners / writers
         ↓
 raw image or unmounted block device
 
-Infiltratr Common 1.19.10
+Infiltratr Common 1.19.22
         ↓
 checked arithmetic / parsing / endian / path / exact-I/O /
 allocation-growth / JSON / durable-file primitives
@@ -110,7 +110,7 @@ The project assumes the kernel, libc, required libraries and storage hardware ho
 
 ## Common
 
-`shared/infiltratr-common` is pinned to Infiltratr Common 1.19.10 at exact commit `33e69c0a462b56d388881d89c4eb49f72fa0b0fe`.
+`shared/infiltratr-common` is pinned to Infiltratr Common 1.19.22 at exact commit `302c44eb7436803dee020667453a9a0681da8bbf`.
 
 Common is authoritative for reusable mechanisms whose semantics are genuinely generic. If Defragmenter has a stronger implementation of a generic primitive, the preferred direction is to improve Common until its contract preserves that correctness, performance and resilience, then remove the local duplicate.
 

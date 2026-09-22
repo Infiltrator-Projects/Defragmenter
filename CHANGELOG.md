@@ -36,7 +36,7 @@ This changelog records user-visible, compatibility, architecture and validation 
 - Removed the obsolete second GTK About implementation from the base window view; the LINK-standard About presenter is now the single concrete About/licence/icon implementation.
 - Added a deterministic fail-closed malformed-media matrix across all 15 installed native filesystem identifiers, including classic HFS, rejecting hangs, signal termination and accidental identification of empty/truncated/seeded garbage; the matrix is a first-class CTest so it also runs under the hosted ASan/UBSan qualification lane.
 - Added an opt-in `dm-log-writes`/`replay-log` sacrificial-media harness for validating source-filesystem structure at each FLUSH or FUA durability boundary without conflating that evidence with external recovery-journal persistence.
-- Retained the exact released Infiltratr Common 1.19.10 pin and the existing filesystem-specific mutation/recovery ownership boundary.
+- Advanced the exact released Infiltratr Common pin to 1.19.22 while retaining the existing filesystem-specific mutation/recovery ownership boundary.
 
 ## 1.8.0-190
 
