@@ -12,6 +12,12 @@
 #define LABEL_SIZE (256U * 1024U)
 #define UBER_RING_OFFSET (128U * 1024U)
 #define UBER_SIZE 1024U
+#define VDEV_PHYS_OFFSET (16U * 1024U)
+#define VDEV_PHYS_SIZE (112U * 1024U)
+#define DATA_TYPE_UINT64 8U
+#define DATA_TYPE_STRING 9U
+#define DATA_TYPE_NVLIST 19U
+#define DATA_TYPE_NVLIST_ARRAY 20U
 
 #define CHECK(expr)                                                           \
     do {                                                                      \
@@ -50,6 +56,129 @@ static void put_be64(uint8_t *data, uint64_t value)
 {
     for (unsigned int index = 0U; index < 8U; ++index)
         data[7U - index] = (uint8_t)(value >> (index * 8U));
+}
+
+typedef struct {
+    uint8_t *data;
+    size_t capacity;
+    size_t position;
+} XdrWriter;
+
+static void xw_u32(XdrWriter *writer, uint32_t value)
+{
+    CHECK(writer->position + 4U <= writer->capacity);
+    writer->data[writer->position++] = (uint8_t)(value >> 24U);
+    writer->data[writer->position++] = (uint8_t)(value >> 16U);
+    writer->data[writer->position++] = (uint8_t)(value >> 8U);
+    writer->data[writer->position++] = (uint8_t)value;
+}
+
+static void xw_u64(XdrWriter *writer, uint64_t value)
+{
+    xw_u32(writer, (uint32_t)(value >> 32U));
+    xw_u32(writer, (uint32_t)value);
+}
+
+static void xw_string(XdrWriter *writer, const char *text)
+{
+    const size_t length = strlen(text);
+    CHECK(length <= UINT32_MAX);
+    xw_u32(writer, (uint32_t)length);
+    CHECK(writer->position + ((length + 3U) & ~(size_t)3U) <= writer->capacity);
+    memcpy(writer->data + writer->position, text, length);
+    writer->position += length;
+    while ((writer->position & 3U) != 0U)
+        writer->data[writer->position++] = 0U;
+}
+
+static size_t xw_pair_begin(XdrWriter *writer, const char *name,
+                            uint32_t type, uint32_t elements)
+{
+    const size_t start = writer->position;
+    xw_u32(writer, 0U);
+    xw_u32(writer, 0U);
+    xw_string(writer, name);
+    xw_u32(writer, type);
+    xw_u32(writer, elements);
+    return start;
+}
+
+static void xw_pair_end(XdrWriter *writer, size_t start)
+{
+    const size_t encoded = writer->position - start;
+    CHECK(encoded <= UINT32_MAX);
+    const uint32_t value = (uint32_t)encoded;
+    writer->data[start + 0U] = (uint8_t)(value >> 24U);
+    writer->data[start + 1U] = (uint8_t)(value >> 16U);
+    writer->data[start + 2U] = (uint8_t)(value >> 8U);
+    writer->data[start + 3U] = (uint8_t)value;
+    writer->data[start + 4U] = writer->data[start + 0U];
+    writer->data[start + 5U] = writer->data[start + 1U];
+    writer->data[start + 6U] = writer->data[start + 2U];
+    writer->data[start + 7U] = writer->data[start + 3U];
+}
+
+static void xw_nvlist_begin(XdrWriter *writer)
+{
+    xw_u32(writer, 0U);
+    xw_u32(writer, 0U);
+}
+
+static void xw_nvlist_end(XdrWriter *writer)
+{
+    xw_u32(writer, 0U);
+    xw_u32(writer, 0U);
+}
+
+static void xw_uint64_pair(XdrWriter *writer, const char *name, uint64_t value)
+{
+    const size_t start = xw_pair_begin(writer, name, DATA_TYPE_UINT64, 1U);
+    xw_u64(writer, value);
+    xw_pair_end(writer, start);
+}
+
+static void xw_string_pair(XdrWriter *writer, const char *name, const char *value)
+{
+    const size_t start = xw_pair_begin(writer, name, DATA_TYPE_STRING, 1U);
+    xw_string(writer, value);
+    xw_pair_end(writer, start);
+}
+
+static void write_label_config(int fd, unsigned label)
+{
+    uint8_t config[VDEV_PHYS_SIZE];
+    memset(config, 0, sizeof(config));
+    config[0] = 1U; /* NV_ENCODE_XDR */
+    XdrWriter writer = {
+        .data = config,
+        .capacity = sizeof(config),
+        .position = 4U,
+    };
+    xw_nvlist_begin(&writer);
+    xw_uint64_pair(&writer, "pool_guid", UINT64_C(0x1111222233334444));
+    xw_uint64_pair(&writer, "guid", UINT64_C(0x5555666677778888));
+    xw_uint64_pair(&writer, "top_guid", UINT64_C(0x9999aaaabbbbcccc));
+
+    size_t vdev_tree = xw_pair_begin(&writer, "vdev_tree", DATA_TYPE_NVLIST, 1U);
+    xw_nvlist_begin(&writer);
+    xw_string_pair(&writer, "type", "root");
+    size_t children =
+        xw_pair_begin(&writer, "children", DATA_TYPE_NVLIST_ARRAY, 1U);
+    xw_nvlist_begin(&writer);
+    xw_string_pair(&writer, "type", "disk");
+    xw_uint64_pair(&writer, "id", 3U);
+    xw_uint64_pair(&writer, "guid", UINT64_C(0x5555666677778888));
+    xw_uint64_pair(&writer, "ashift", 12U);
+    xw_uint64_pair(&writer, "metaslab_array", 42U);
+    xw_uint64_pair(&writer, "metaslab_shift", 29U);
+    xw_nvlist_end(&writer);
+    xw_pair_end(&writer, children);
+    xw_nvlist_end(&writer);
+    xw_pair_end(&writer, vdev_tree);
+    xw_nvlist_end(&writer);
+
+    write_all(fd, config, sizeof(config),
+              label_base(label) + VDEV_PHYS_OFFSET);
 }
 
 static off_t label_base(unsigned label)
@@ -106,6 +235,7 @@ int main(void)
     char error[256];
 
     reset_image(fd);
+    write_label_config(fd, 0U);
     const off_t first = write_uber(fd, 0U, 3U, 0, 5000U, 10U, 77U, 1000U);
     CHECK(zfs_read_summary(path, &summary, error, sizeof(error)) == 0);
     CHECK(summary.size_bytes == IMAGE_BYTES);
@@ -129,6 +259,16 @@ int main(void)
     CHECK(summary.root_type == 11U);
     CHECK(summary.root_level == 1U);
     CHECK(!summary.root_embedded);
+    CHECK(summary.config_known);
+    CHECK(summary.pool_guid == UINT64_C(0x1111222233334444));
+    CHECK(summary.leaf_guid == UINT64_C(0x5555666677778888));
+    CHECK(summary.top_guid == UINT64_C(0x9999aaaabbbbcccc));
+    CHECK(summary.metaslab_vdevs == 1U);
+    CHECK(summary.top_vdev_id == 3U);
+    CHECK(summary.ashift == 12U);
+    CHECK(summary.metaslab_array == 42U);
+    CHECK(summary.metaslab_shift == 29U);
+    CHECK(strcmp(summary.top_vdev_type, "disk") == 0);
     CHECK(strcmp(zfs_byte_order_name(&summary), "little") == 0);
     CHECK(zfs_probe(path));
 
