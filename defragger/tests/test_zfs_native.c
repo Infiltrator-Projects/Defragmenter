@@ -262,6 +262,7 @@ int main(void)
     CHECK(summary.root_level == 1U);
     CHECK(!summary.root_embedded);
     CHECK(summary.config_known);
+    CHECK(summary.single_leaf_supported);
     CHECK(summary.pool_guid == UINT64_C(0x1111222233334444));
     CHECK(summary.leaf_guid == UINT64_C(0x5555666677778888));
     CHECK(summary.top_guid == UINT64_C(0x9999aaaabbbbcccc));
