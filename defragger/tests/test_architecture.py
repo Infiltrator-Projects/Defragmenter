@@ -977,25 +977,6 @@ def test_test_media_companion_is_all_c() -> None:
     assert "docs/AUDIT_STATUS.md" not in cmake
 
 
-def main() -> None:
-    test_top_level_cmake_owns_native_language_declaration()
-    test_native_registry_is_the_single_capability_authority()
-    test_qualified_ufs_writer_is_registered_and_fail_closed_by_format()
-    test_dispatch_is_filesystem_neutral()
-    test_ext_production_is_first_party_and_libext2fs_is_test_only()
-    test_single_filesystem_hierarchy_and_c_first_writers()
-    test_build_and_path_registry_install_native_workers()
-    test_infiltratr_common_integration()
-    test_core_remains_filesystem_neutral()
-    test_production_write_safety_is_enforced_at_every_boundary()
-    test_test_media_companion_is_all_c()
-    test_user_facing_branding_is_defragmenter()
-    test_version_and_native_registry_ownership()
-    print("current C-first native-registry architecture tests passed")
-
-
-if __name__ == "__main__":
-    main()
 
 def test_cpp_mapper_reuses_common_arithmetic_and_has_no_legacy_apfs_adapter() -> None:
     mapper = (ROOT / "native" / "map.cpp").read_text()
@@ -1013,3 +994,24 @@ def test_cpp_mapper_reuses_common_arithmetic_and_has_no_legacy_apfs_adapter() ->
     apfs_entry = runtime.split('"apfs", "Apple APFS"', 1)[1].split("result.push_back", 1)[0]
     assert "MapAdapter::NativeMap" in apfs_entry
 
+
+def main() -> None:
+    test_top_level_cmake_owns_native_language_declaration()
+    test_native_registry_is_the_single_capability_authority()
+    test_qualified_ufs_writer_is_registered_and_fail_closed_by_format()
+    test_dispatch_is_filesystem_neutral()
+    test_ext_production_is_first_party_and_libext2fs_is_test_only()
+    test_single_filesystem_hierarchy_and_c_first_writers()
+    test_build_and_path_registry_install_native_workers()
+    test_infiltratr_common_integration()
+    test_core_remains_filesystem_neutral()
+    test_production_write_safety_is_enforced_at_every_boundary()
+    test_test_media_companion_is_all_c()
+    test_cpp_mapper_reuses_common_arithmetic_and_has_no_legacy_apfs_adapter()
+    test_user_facing_branding_is_defragmenter()
+    test_version_and_native_registry_ownership()
+    print("current C-first native-registry architecture tests passed")
+
+
+if __name__ == "__main__":
+    main()
