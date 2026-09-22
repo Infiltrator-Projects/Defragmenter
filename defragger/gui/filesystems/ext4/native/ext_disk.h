@@ -79,7 +79,7 @@ typedef struct {
     size_t raw_size;
 } ExtInode;
 
-typedef int (*ExtInodeVisitor)(ExtFs *fs, const ExtInode *inode,
+typedef int (*ExtInodeVisitor)(ExtFs *fs, ExtInode *inode,
                                void *context, char **error);
 
 /*
