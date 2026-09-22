@@ -32,7 +32,6 @@ struct OperationSpec {
 enum class MapAdapter {
     NativeMap,
     Affs,
-    Apfs,
     Exfat,
     Ext,
     Fat,

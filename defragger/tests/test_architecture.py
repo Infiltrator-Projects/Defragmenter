@@ -996,3 +996,20 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+def test_cpp_mapper_reuses_common_arithmetic_and_has_no_legacy_apfs_adapter() -> None:
+    mapper = (ROOT / "native" / "map.cpp").read_text()
+    runtime_header = (ROOT / "native" / "runtime.hpp").read_text()
+    runtime = (ROOT / "native" / "runtime.cpp").read_text()
+
+    assert "#include <infiltratr/arithmetic.h>" in mapper
+    assert "infiltratr_u64_multiply_checked" in mapper
+    assert "std::numeric_limits<std::uint64_t>::max() / left" not in mapper
+    assert "checked_multiply(" not in mapper
+
+    assert "MapAdapter::Apfs" not in mapper
+    assert "\n    Apfs,\n" not in runtime_header
+    assert "APFS spaceman allocation map not yet decoded" not in mapper
+    apfs_entry = runtime.split('"apfs", "Apple APFS"', 1)[1].split("result.push_back", 1)[0]
+    assert "MapAdapter::NativeMap" in apfs_entry
+

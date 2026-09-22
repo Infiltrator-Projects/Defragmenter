@@ -2,6 +2,8 @@
 #include "map.hpp"
 #include "process.hpp"
 
+#include <infiltratr/arithmetic.h>
+
 #include <algorithm>
 #include <limits>
 #include <stdexcept>
@@ -10,13 +12,13 @@
 namespace defragger {
 namespace {
 
-std::uint64_t checked_multiply(std::uint64_t left, std::uint64_t right,
-                               const char* context) {
-    if (left != 0U &&
-        right > std::numeric_limits<std::uint64_t>::max() / left) {
+std::uint64_t multiply_or_throw(std::uint64_t left, std::uint64_t right,
+                                const char* context) {
+    std::uint64_t product = 0U;
+    if (!infiltratr_u64_multiply_checked(left, right, &product)) {
         throw std::runtime_error(std::string(context) + " overflows uint64");
     }
-    return left * right;
+    return product;
 }
 
 std::uint64_t cell_boundary(std::size_t index, std::uint64_t total,
@@ -195,31 +197,6 @@ Json map_affs(const BackendInfo& backend, const std::string& path,
     return generic_free_range_map(
         backend, payload, cells, total, size, "affs",
         std::move(details), false, "blocks");
-}
-
-Json map_apfs(const BackendInfo& backend, const std::string& path,
-              std::size_t cells) {
-    Json payload = parse_worker_json(
-        worker(backend, "analyse-json", path), "native APFS analyser");
-    if (payload.at("filesystem").string_or() != "apfs")
-        throw std::runtime_error("native APFS analyser returned wrong identity");
-    const std::uint64_t size = required_u64(payload, "block_size");
-    const std::uint64_t total = required_u64(payload, "block_count");
-    const std::string uuid = required_string(payload, "container_uuid");
-    if (size < 4096U || (size & (size - 1U)) != 0U || total == 0U)
-        throw std::runtime_error("native APFS analyser returned invalid geometry");
-    if (uuid.size() != 32U)
-        throw std::runtime_error("native APFS analyser returned invalid UUID");
-
-    Json::Object details;
-    details["container_uuid"] = Json(uuid);
-    details["note"] = Json("APFS spaceman allocation map not yet decoded");
-    std::vector<StateRange> ranges;
-    ranges.push_back({0U, std::min<std::uint64_t>(1U, total), 1U});
-    if (total > 1U) ranges.push_back({1U, total, 2U});
-    return aggregate_ranges(
-        total, cells, size, "apfs", std::move(ranges),
-        backend.map_accuracy, std::move(details));
 }
 
 Json map_exfat(const BackendInfo& backend, const std::string& path,
@@ -687,16 +664,16 @@ Json aggregate_ranges(
     result["cell_count"] =
         Json::unsigned_integer(static_cast<std::uint64_t>(cell_count));
     result["total_bytes"] =
-        Json::unsigned_integer(checked_multiply(
+        Json::unsigned_integer(multiply_or_throw(
             total_units, unit_size, "filesystem capacity"));
     result["free_bytes"] =
-        Json::unsigned_integer(checked_multiply(
+        Json::unsigned_integer(multiply_or_throw(
             totals[0], unit_size, "free-space total"));
     result["used_bytes"] =
-        Json::unsigned_integer(checked_multiply(
+        Json::unsigned_integer(multiply_or_throw(
             totals[1], unit_size, "used-space total"));
     result["unknown_bytes"] =
-        Json::unsigned_integer(checked_multiply(
+        Json::unsigned_integer(multiply_or_throw(
             totals[2] + totals[3], unit_size, "unknown-space total"));
     result["cells"] = Json(std::move(result_cells));
     if (!details.empty()) result["details"] = Json(std::move(details));
@@ -759,8 +736,6 @@ Json map_backend(const BackendInfo& backend, const std::string& path,
         return map_native(backend, path, cells);
     case MapAdapter::Affs:
         return map_affs(backend, path, cells);
-    case MapAdapter::Apfs:
-        return map_apfs(backend, path, cells);
     case MapAdapter::Exfat:
         return map_exfat(backend, path, cells);
     case MapAdapter::Ext:
