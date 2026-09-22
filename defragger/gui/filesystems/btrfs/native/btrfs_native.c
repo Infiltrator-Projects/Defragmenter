@@ -21,6 +21,19 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+/*
+ * Shared Btrfs analyser/writer model for the qualified raw subset.
+ *
+ * Chunk mapping, root/tree decoding and extent ownership are intentionally
+ * shared by read and write paths.  Mutation is limited to the single-device
+ * CRC32C, level-0 mixed data/metadata contract: supported unshared NODATASUM
+ * regular-file extents are staged, metadata generations/checksums are rebuilt,
+ * stale free-space-cache state is invalidated, and the result is reopened
+ * through the same exact analyser.  Multi-device/striped, snapshot/qgroup,
+ * active-log, shared/sparse/encoded/checksummed and deeper mutable layouts fail
+ * closed before authoritative writes.
+ */
+
 #define BTRFS_SUPER_OFFSET (64ULL * 1024ULL)
 #define BTRFS_SUPER_SIZE 4096U
 #define BTRFS_HEADER_SIZE 101U

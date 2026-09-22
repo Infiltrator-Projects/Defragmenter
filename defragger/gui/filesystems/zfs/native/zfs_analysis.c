@@ -14,6 +14,18 @@
 #include <string.h>
 #include <unistd.h>
 
+/*
+ * Exact-bounded, read-only ZFS allocation/fragmentation engine.
+ *
+ * zfs_native.c selects and validates the committed leaf-vdev label/uberblock
+ * and packed-XDR topology.  This unit consumes that identity, validates every
+ * block-pointer form it follows, verifies supported checksums/compression,
+ * resolves MOS/dnodes, replays per-metaslab space maps, and walks regular-file
+ * block trees.  "Exact" is emitted only when those proofs cover the qualified
+ * single-disk topology; unsupported features or transaction state fail closed
+ * instead of being approximated.  No source-mutation path belongs in this file.
+ */
+
 #define ZFS_VDEV_LABEL_START_SIZE (UINT64_C(4) << 20)
 #define ZFS_VDEV_LABEL_END_SIZE (UINT64_C(512) << 10)
 #define ZFS_MAX_BLOCK_SIZE (UINT64_C(32) << 20)

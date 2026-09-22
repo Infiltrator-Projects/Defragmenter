@@ -20,6 +20,19 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+/*
+ * Native UFS1/UFS2 ownership boundary.
+ *
+ * Geometry is accepted only after candidate-superblock decoding and cross-field
+ * bounds validation; later allocation and inode traversal therefore operate in
+ * decoded fragment/cylinder-group units rather than guessed byte offsets.
+ * Analysis treats validated cylinder-group free maps and inode block trees as
+ * authoritative.  The writer shares this decoder and fails closed before stage
+ * publication when the volume falls outside the qualified clean,
+ * non-journalled, snapshot-free subset.  Generic checked arithmetic and I/O
+ * remain in Common/Defragmenter core rather than being reimplemented here.
+ */
+
 #define UFS_WINDOW_BYTES 8192U
 #define UFS_MIN_WINDOW 512U
 #define UFS_DISK_STRUCT_BYTES 1376U

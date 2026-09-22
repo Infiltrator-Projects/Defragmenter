@@ -22,6 +22,19 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+/*
+ * Shared APFS bounded-format model.
+ *
+ * Analysis and mutation deliberately use one checkpoint/spaceman/object-map/
+ * catalog decoder so the writer cannot silently diverge from the analyser's
+ * interpretation of ownership.  The writer_* half stages the complete
+ * qualified filesystem image, repacks only supported regular-file extents,
+ * updates allocation/catalog/extent-reference metadata and Fletcher checksums,
+ * then relies on independent reopen/verification before publication.  Multiple
+ * volumes, encryption/sealing, snapshots, shared/cloned/sparse state, deeper
+ * mutable trees and unsupported spaceman layouts fail closed.
+ */
+
 #define APFS_MIN_BLOCK_SIZE 4096U
 #define APFS_MAX_BLOCK_SIZE 65536U
 #define APFS_OBJ_HEADER 32U
