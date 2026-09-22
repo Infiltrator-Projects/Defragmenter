@@ -160,14 +160,14 @@ the previous Python orchestration.
 mutation and the storage-safety core. C++17 owns selected application services:
 the native registry, map translation, operation dispatch, process/protocol
 values and privileged-helper lifetime. The privileged helper uses
-`posix_spawn` and explicit process-group ownership. The GTK/Python layer is a
-staged compatibility boundary until migrated, with automated parity checks
-where contracts temporarily exist in both languages.
+`posix_spawn` and explicit process-group ownership. The GTK/Python layer is now presentation/glue only; the former duplicated
+filesystem registry, dispatcher and privileged-process compatibility contracts
+have been removed after their native replacements reached parity.
 
 **Consequences.** The project gains stronger scoped ownership without imposing
-an object model on disk algorithms. During migration some compatibility
-metadata exists in both Python and C++; parity tests are mandatory until the
-Python representation is removed. Language choice remains evidence-driven
+an object model on disk algorithms. The completed migration leaves filesystem capability, mapping, operation and
+privileged-process authority in native code; Python no longer carries a second
+representation of those contracts. Language choice remains evidence-driven
 rather than a purity rule.
 
 
