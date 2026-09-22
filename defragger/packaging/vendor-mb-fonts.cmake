@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Consume Common 1.19.22's canonical MB Corpo build-asset provenance.
+# Consume Common 1.19.23's canonical MB Corpo build-asset provenance.
 if(NOT DEFINED LD_ROOT OR NOT DEFINED LD_FONT_ARCHIVE)
     message(FATAL_ERROR "LD_ROOT and LD_FONT_ARCHIVE are required")
 endif()

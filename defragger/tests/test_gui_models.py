@@ -495,7 +495,7 @@ def test_theme_modes_are_persistent_and_shared_across_windows() -> None:
         "accent_hover",
     ):
         assert f'p["{role}"]' in theme_source, (
-            f"GTK theme does not consume Common 1.19.22 role {role}"
+            f"GTK theme does not consume Common 1.19.23 role {role}"
         )
     for role in (
         "titlebar_rgb",

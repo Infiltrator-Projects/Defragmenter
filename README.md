@@ -26,7 +26,7 @@ The project prefers the strongest justified method, not automatically the newest
 
 ## Appearance
 
-The main GTK application supports **Follow system**, **Day** and **Night** appearance modes. Follow system detects the host GTK/Mint light/dark preference and resolves it to the exact Common Day or Night palette; it does not inherit an unrelated toolkit palette. Common 1.19.22 supplies the complete layered Linux MBLINK reference face for Night — including titlebar, connection, heading, summary, detail, note, state-border and hover-accent roles — while Day supplies the matching white semantic palette. Defragmenter maps those neutral roles into its GTK selectors without redefining a private palette. The selected mode is persisted per user and synchronised across open windows.
+The main GTK application supports **Follow system**, **Day** and **Night** appearance modes. Follow system detects the host GTK/Mint light/dark preference and resolves it to the exact Common Day or Night palette; it does not inherit an unrelated toolkit palette. Common 1.19.23 supplies the complete layered Linux MBLINK reference face for Night — including titlebar, connection, heading, summary, detail, note, state-border and hover-accent roles — while Day supplies the matching white semantic palette. Defragmenter maps those neutral roles into its GTK selectors without redefining a private palette. The selected mode is persisted per user and synchronised across open windows.
 
 Typography is deliberately closed to the three packaged MB Corpo faces: MB Corpo A Condensed for primary titles, MB Corpo S Regular for normal interface text and MB Corpo S Bold for emphasis. Defragmenter and Test Media do not request generic system or monospace fallback families; the Debian and local installers ship and register the same verified font bundle used by MBLINK.
 
@@ -53,7 +53,7 @@ Filesystem implementations are organised below `defragger/gui/filesystems/<forma
 
 The operating system supplies raw block I/O, but filesystem parsing, placement planning, staging and metadata updates are owned by the project. Architecture and regression tests reject known external filesystem mutation/repair orchestration and duplicate implementation paths.
 
-Shared first-party primitives are consumed from the exact pinned Common 1.19.22 dependency; filesystem-specific rules remain in Defragmenter. Common supplies the generic numeric, arithmetic, byte-order, exact-I/O, durable-file, design/typography and font-provenance contracts used here, while Defragmenter keeps filesystem interpretation, target safety, placement and recovery semantics local. The forensic Common pass also removed an unused Python transaction/journal implementation and unused Python raw-write path so mutation has one authoritative native durability/I/O stack instead of a second compatibility implementation.
+Shared first-party primitives are consumed from the exact pinned Common 1.19.23 dependency; filesystem-specific rules remain in Defragmenter. Common supplies the generic numeric, arithmetic, byte-order, exact-I/O, durable-file, design/typography and font-provenance contracts used here, while Defragmenter keeps filesystem interpretation, target safety, placement and recovery semantics local. The forensic Common pass also removed an unused Python transaction/journal implementation and unused Python raw-write path so mutation has one authoritative native durability/I/O stack instead of a second compatibility implementation.
 
 ## Build and test
 
