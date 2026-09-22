@@ -75,11 +75,13 @@ typedef struct {
     bool has_ashift;
     bool has_metaslab_array;
     bool has_metaslab_shift;
+    bool has_asize;
     uint64_t id;
     uint64_t guid;
     uint64_t ashift;
     uint64_t metaslab_array;
     uint64_t metaslab_shift;
+    uint64_t asize;
     char type[16];
 } ZfsVdevFields;
 
@@ -164,6 +166,7 @@ static void record_vdev_fields(const ZfsVdevFields *fields,
     summary->metaslab_array = fields->metaslab_array;
     summary->metaslab_shift =
         fields->has_metaslab_shift ? fields->metaslab_shift : 0U;
+    summary->top_vdev_asize = fields->has_asize ? fields->asize : 0U;
     if (fields->type[0] != '\0')
         (void)snprintf(summary->top_vdev_type,
                        sizeof(summary->top_vdev_type), "%s", fields->type);
@@ -218,6 +221,9 @@ static bool zfs_parse_nvpair(ZfsXdr *xdr, unsigned depth,
         } else if (strcmp(name, "metaslab_shift") == 0) {
             fields->has_metaslab_shift = true;
             fields->metaslab_shift = value;
+        } else if (strcmp(name, "asize") == 0) {
+            fields->has_asize = true;
+            fields->asize = value;
         }
     } else if (type == 9U && elements == 1U) {
         char value[32];
@@ -300,7 +306,8 @@ static void parse_label_config(int fd, uint64_t psize, LdZfsSummary *summary)
             summary->root_vdev == summary->top_vdev_id &&
             summary->ashift >= 9U && summary->ashift <= 16U &&
             summary->metaslab_shift >= summary->ashift &&
-            summary->metaslab_shift < 63U;
+            summary->metaslab_shift < 63U &&
+            summary->top_vdev_asize != 0U;
     }
 }
 
