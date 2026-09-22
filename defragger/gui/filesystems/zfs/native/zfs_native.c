@@ -61,6 +61,8 @@ static int size_bytes_for_fd(int fd, const struct stat *status, uint64_t *size_b
     return -1;
 }
 
+static uint64_t label_offset(uint64_t psize, uint32_t label);
+
 typedef struct {
     const uint8_t *data;
     size_t length;
