@@ -26,8 +26,8 @@ The user-facing product is **Defragmenter**. The Debian/APT package identity is 
 | Btrfs | Exact raw single-device analysis | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
 | APFS | Exact native C analysis for bounded checkpoint/spaceman subset | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
 | Minix v1 / v2 / v3 | Exact, native C | Native C, fail-closed staged relayout | Native C, exact 10% reserve | Yes |
-| UFS1 | Summary read-only analysis, native C | Not implemented | Not implemented | No |
-| UFS2 | Exact allocation read-only analysis, native C | Not implemented | Not implemented | No |
+| UFS1 | Exact allocation + inode-tree fragmentation analysis | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
+| UFS2 | Exact allocation + inode-tree fragmentation analysis | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
 | ZFS / OpenZFS member | Summary read-only analysis, native C | Not implemented | Not implemented | No |
 | Linux swap | Exact inactive / aggregate active analysis | Not applicable | Not applicable | No |
 
