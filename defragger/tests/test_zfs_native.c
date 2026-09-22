@@ -26,6 +26,9 @@
 #define SPACE_MAP_LOGICAL_OFFSET (5U * 1024U * 1024U)
 #define DATASET_ROOT_LOGICAL_OFFSET (6U * 1024U * 1024U)
 #define DATASET_DNODE_LOGICAL_OFFSET (7U * 1024U * 1024U)
+#define POOL_DIRECTORY_LOGICAL_OFFSET (1U * 1024U * 1024U)
+#define FEATURES_WRITE_LOGICAL_OFFSET (1536U * 1024U)
+#define ZBT_MICRO (UINT64_C(1) << 63U | UINT64_C(3))
 
 #define CHECK(expr)                                                           \
     do {                                                                      \
@@ -303,7 +306,25 @@ static void make_dnode(uint8_t dnode[512], int big, uint8_t type,
     memcpy(dnode + 64U, bp, 128U);
 }
 
-static void write_exact_fixture(int fd)
+static void make_microzap(uint8_t block[4096],
+                          const char *name1, uint64_t value1,
+                          const char *name2, uint64_t value2)
+{
+    memset(block, 0, 4096U);
+    put_le64(block, ZBT_MICRO);
+    if (name1 != NULL) {
+        CHECK(strlen(name1) < 50U);
+        put_le64(block + 64U, value1);
+        memcpy(block + 64U + 14U, name1, strlen(name1) + 1U);
+    }
+    if (name2 != NULL) {
+        CHECK(strlen(name2) < 50U);
+        put_le64(block + 128U, value2);
+        memcpy(block + 128U + 14U, name2, strlen(name2) + 1U);
+    }
+}
+
+static void write_exact_fixture(int fd, int log_spacemap)
 {
     uint8_t space_map_data[4096];
     memset(space_map_data, 0, sizeof(space_map_data));
@@ -363,8 +384,29 @@ static void write_exact_fixture(int fd)
     encode_bp(dataset_root_bp, 0, DATASET_ROOT_LOGICAL_OFFSET, 11U,
               dataset_objset, sizeof(dataset_objset));
 
+    uint8_t pool_directory[4096];
+    make_microzap(pool_directory, "features_for_write", 5U, NULL, 0U);
+    write_all(fd, pool_directory, sizeof(pool_directory),
+              (off_t)(VDEV_DATA_START + POOL_DIRECTORY_LOGICAL_OFFSET));
+    uint8_t pool_directory_bp[128];
+    encode_bp(pool_directory_bp, 0, POOL_DIRECTORY_LOGICAL_OFFSET, 1U,
+              pool_directory, sizeof(pool_directory));
+
+    uint8_t feature_directory[4096];
+    make_microzap(feature_directory,
+                  "com.delphix:spacemap_v2", 1U,
+                  log_spacemap ? "com.delphix:log_spacemap" : NULL,
+                  log_spacemap ? 1U : 0U);
+    write_all(fd, feature_directory, sizeof(feature_directory),
+              (off_t)(VDEV_DATA_START + FEATURES_WRITE_LOGICAL_OFFSET));
+    uint8_t feature_directory_bp[128];
+    encode_bp(feature_directory_bp, 0, FEATURES_WRITE_LOGICAL_OFFSET, 1U,
+              feature_directory, sizeof(feature_directory));
+
     uint8_t dnode_block[16384];
     memset(dnode_block, 0, sizeof(dnode_block));
+    make_dnode(dnode_block + 1U * 512U, 0, 1U, 0U, 8U, 0U, 0U,
+               pool_directory_bp);
     make_dnode(dnode_block + 2U * 512U, 0, 2U, 0U, 8U, 0U, 0U,
                metaslab_array_bp);
     make_dnode(dnode_block + 3U * 512U, 0, 8U, 7U, 8U, 24U, 0U,
@@ -379,6 +421,8 @@ static void write_exact_fixture(int fd)
                dataset_hole_bp);
     memcpy(dnode_block + 4U * 512U + 192U + 128U,
            dataset_root_bp, sizeof(dataset_root_bp));
+    make_dnode(dnode_block + 5U * 512U, 0, 1U, 0U, 8U, 0U, 0U,
+               feature_directory_bp);
 
     write_all(fd, dnode_block, sizeof(dnode_block),
               (off_t)(VDEV_DATA_START + META_DNODE_LOGICAL_OFFSET));
@@ -451,7 +495,7 @@ int main(void)
 
     reset_image(fd);
     write_label_config(fd, 0U, NULL);
-    write_exact_fixture(fd);
+    write_exact_fixture(fd, 0);
     const off_t first = write_uber(fd, 0U, 3U, 0, 28U, 10U, 77U, 1000U);
     CHECK(zfs_read_summary(path, &summary, error, sizeof(error)) == 0);
     CHECK(summary.size_bytes == IMAGE_BYTES);
@@ -513,7 +557,7 @@ int main(void)
      */
     reset_image(fd);
     write_label_config(fd, 0U, "com.delphix:hole_birth");
-    write_exact_fixture(fd);
+    write_exact_fixture(fd, 0);
     (void)write_uber(fd, 0U, 11U, 0, 5000U, 50U, 123U, 4000U);
     CHECK(zfs_read_summary(path, &summary, error, sizeof(error)) == 0);
     CHECK(summary.uberblock_version == 5000U);
@@ -533,7 +577,7 @@ int main(void)
      */
     reset_image(fd);
     write_label_config(fd, 0U, "com.example:future_mos");
-    write_exact_fixture(fd);
+    write_exact_fixture(fd, 0);
     (void)write_uber(fd, 0U, 12U, 0, 5000U, 51U, 124U, 4001U);
     CHECK(zfs_read_summary(path, &summary, error, sizeof(error)) == 0);
     CHECK(summary.mos_features_present);
@@ -543,9 +587,23 @@ int main(void)
     CHECK(!summary.single_leaf_supported);
     CHECK(zfs_analyse_exact(path, &analysis, error, sizeof(error)) != 0);
 
+    /*
+     * log_spacemap can leave newer allocations only in the pool log map.
+     * Until that log is replayed, claiming per-metaslab allocation exactness
+     * would be wrong, so modern exact analysis must fail closed.
+     */
+    reset_image(fd);
+    write_label_config(fd, 0U, "com.delphix:hole_birth");
+    write_exact_fixture(fd, 1);
+    (void)write_uber(fd, 0U, 13U, 0, 5000U, 52U, 125U, 4002U);
+    CHECK(zfs_read_summary(path, &summary, error, sizeof(error)) == 0);
+    CHECK(summary.single_leaf_supported);
+    CHECK(zfs_analyse_exact(path, &analysis, error, sizeof(error)) != 0);
+    CHECK(strstr(error, "log_spacemap") != NULL);
+
     reset_image(fd);
     write_label_config(fd, 0U, NULL);
-    write_exact_fixture(fd);
+    write_exact_fixture(fd, 0);
     const off_t best = write_uber(fd, 3U, 127U, 1, 5000U, 42U, 99U, 2000U);
     (void)write_uber(fd, 1U, 8U, 0, 28U, 20U, 88U, 1500U);
     CHECK(zfs_read_summary(path, &summary, error, sizeof(error)) == 0);
