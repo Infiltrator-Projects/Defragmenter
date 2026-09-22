@@ -29,8 +29,11 @@ check_variant()
         "$image" "$WORK/source" >/dev/null
 
     IDENTIFY=$($UFS_WORKER identify "$image")
-    printf '%s\n' "$IDENTIFY" \
-        | grep -q "^\{\"filesystem\":\"ufs\",\"variant\":\"${variant}\",\"version\":${version},\"byte_order\":\"little\"}$"
+    EXPECTED="{\"filesystem\":\"ufs\",\"variant\":\"${variant}\",\"version\":${version},\"byte_order\":\"little\"}"
+    [ "$IDENTIFY" = "$EXPECTED" ] || {
+        printf '%s\n' "unexpected UFS${version} identity: $IDENTIFY" >&2
+        exit 1
+    }
 
     ANALYSE=$($UFS_WORKER analyse-json "$image")
     printf '%s\n' "$ANALYSE" \
