@@ -29,6 +29,7 @@ NATIVE_WRITERS = {
     "hfs": "hfs-native",
     "hfsplus": "hfsplus-native",
     "minix": "minix-native",
+    "ufs": "ufs-native",
 }
 
 
@@ -60,24 +61,32 @@ def test_native_registry_is_the_single_capability_authority() -> None:
     assert "operation_for(*backend, operation)" in operation_engine
     for filesystem, worker in NATIVE_WRITERS.items():
         assert f'"{worker}"' in runtime, f"{filesystem} lost native worker {worker}"
-    for readonly in ("ufs", "zfs", "swap"):
+    for readonly in ("zfs", "swap"):
         marker = f'"{readonly}"'
         assert marker in runtime
 
-def test_unqualified_ufs_mutation_is_fail_closed_in_the_installed_worker() -> None:
+def test_qualified_ufs_writer_is_registered_and_fail_closed_by_format() -> None:
     source = (GUI / "filesystems" / "ufs" / "native" / "ufs_worker.c").read_text()
-    refusal = source.index("UFS mutation is not production-qualified")
-    mutation_dispatch = source.index("const char *mode = argv[1]")
-    assert refusal < mutation_dispatch
+    native = (GUI / "filesystems" / "ufs" / "native" / "ufs_native.c").read_text()
 
+    assert "UFS mutation is not production-qualified" not in source
     assert not (GUI / "filesystems" / "ufs" / "plugin.py").exists()
     assert source.count("ld_device_capture_binding(") >= 2
+    assert "--write" in source and "--confirm" in source
+    assert "writer_supported" in native
+    for required in (
+        "clean, non-journalled, snapshot-free",
+        "whole filesystem-block allocation",
+        "shared or overlapping regular-file data",
+        "one cylinder group",
+    ):
+        assert required in native
 
     runtime = (ROOT / "native" / "runtime.cpp").read_text()
     assert '"ufs", "Solaris/BSD UFS"' in runtime
     ufs_entry = runtime.split('"ufs", "Solaris/BSD UFS"', 1)[1].split("result.push_back", 1)[0]
-    assert 'read, "variant-dependent", "ufs-native"' in ufs_entry
-    assert "standard_write_ops" not in ufs_entry
+    assert 'write, "exact", "ufs-native"' in ufs_entry
+    assert "standard_write_ops" in ufs_entry
 
 
 def test_dispatch_is_filesystem_neutral() -> None:
@@ -377,6 +386,7 @@ def test_infiltratr_common_integration() -> None:
         GUI / "filesystems" / "affs" / "native" / "affs_worker.c",
         GUI / "filesystems" / "sfs" / "native" / "sfs_worker.c",
         GUI / "filesystems" / "hfsplus" / "native" / "hfsplus_worker.c",
+        GUI / "filesystems" / "ufs" / "native" / "ufs_worker.c",
     )
     for path in result_workers:
         source = path.read_text()
@@ -510,6 +520,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
         "hfs": native / "hfs" / "native" / "writer.c",
         "hfsplus": native / "hfsplus" / "native" / "hfsplus_worker.c",
         "minix": native / "minix" / "native" / "minix_worker.c",
+        "ufs": native / "ufs" / "native" / "ufs_worker.c",
     }
     sources = {name: path.read_text() for name, path in workers.items()}
     for name, source in sources.items():
@@ -550,6 +561,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
     assert "ld_path_is_mounted(device)" in sources["hfs"]
     assert "ld_path_is_mounted(device)" in sources["hfsplus"]
     assert "ld_path_is_mounted(device)" in sources["minix"]
+    assert "ld_path_is_mounted(device)" in sources["ufs"]
 
     recovery_bindings = {
         "ext": (".ext-stage.img", ".ext-plan.sqlite"),
@@ -564,6 +576,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
         "hfs": (".hfs-stage",),
         "hfsplus": (".hfsplus-stage",),
         "minix": (".minix-stage",),
+        "ufs": (".ufs-stage",),
     }
     for name, suffixes in recovery_bindings.items():
         assert "ld_path_is_derived_from" in sources[name]
@@ -584,6 +597,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
         "hfs": workers["hfs"],
         "hfsplus": workers["hfsplus"],
         "minix": workers["minix"],
+        "ufs": workers["ufs"],
     }
     for name, path in journal_sources.items():
         assert "infiltratr_atomic_file_write" in path.read_text(), (
@@ -614,6 +628,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
         native / "hfs" / "native" / "writer.c",
         native / "hfsplus" / "native" / "hfsplus_native.c",
         native / "minix" / "native" / "minix_native.c",
+        native / "ufs" / "native" / "ufs_native.c",
     ):
         stage_source = path.read_text()
         assert "O_EXCL" in stage_source, (
@@ -646,7 +661,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
 
     journal_workers = (
         workers["ext"], native / "ntfs" / "native" / "ntfs_transaction.c", workers["exfat"], workers["xfs"],
-        workers["affs"], workers["apfs"], workers["btrfs"], workers["sfs"], workers["pfs3"], workers["hfs"], workers["hfsplus"], workers["minix"],
+        workers["affs"], workers["apfs"], workers["btrfs"], workers["sfs"], workers["pfs3"], workers["hfs"], workers["hfsplus"], workers["minix"], workers["ufs"],
         native / "exfat" / "native" / "exfat_relayout.c",
     )
     for path in journal_workers:
@@ -675,14 +690,14 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
         assert "ld_device_format_identity" in sources[name], (
             f"{name} bypasses shared target identity formatting"
         )
-    for name in ("ntfs", "ext", "exfat", "affs", "apfs", "btrfs", "sfs", "pfs3", "hfs", "hfsplus", "minix"):
+    for name in ("ntfs", "ext", "exfat", "affs", "apfs", "btrfs", "sfs", "pfs3", "hfs", "hfsplus", "minix", "ufs"):
         assert "ld_device_capture_binding" in sources[name], (
             f"{name} bypasses one-open shared transaction binding"
         )
 
     for path in (
         workers["ext"], workers["ntfs"], workers["affs"], workers["apfs"], workers["btrfs"],
-        workers["sfs"], workers["pfs3"], workers["hfs"], workers["hfsplus"], workers["minix"],
+        workers["sfs"], workers["pfs3"], workers["hfs"], workers["hfsplus"], workers["minix"], workers["ufs"],
         native / "ntfs" / "native" / "ntfs_plan.c",
         native / "exfat" / "native" / "exfat_relayout.c",
     ):
@@ -729,7 +744,7 @@ def test_production_write_safety_is_enforced_at_every_boundary() -> None:
 
     for path in (
         workers["ext"], workers["ntfs"], workers["affs"], workers["apfs"], workers["btrfs"],
-        workers["sfs"], workers["pfs3"], workers["hfs"], workers["hfsplus"], workers["minix"],
+        workers["sfs"], workers["pfs3"], workers["hfs"], workers["hfsplus"], workers["minix"], workers["ufs"],
     ):
         source = path.read_text()
         assert "open(device, O_RDWR | O_CLOEXEC)" not in source
