@@ -118,6 +118,19 @@ int main() {
                    "APFS recover operation") && ok;
     }
 
+    const BackendInfo* zfs = backend_by_fstype("zfs");
+    ok = check(zfs != nullptr, "ZFS lookup") && ok;
+    if (zfs != nullptr) {
+        ok = check(zfs->map_accuracy == "exact-bounded",
+                   "ZFS advertises bounded exact analysis") && ok;
+        ok = check((zfs->capabilities & CAP_DEFRAG) == 0U &&
+                   (zfs->capabilities & CAP_GROWTH_DEFRAG) == 0U &&
+                   (zfs->capabilities & CAP_RECOVER) == 0U,
+                   "ZFS mutation remains out of product scope") && ok;
+        ok = check(zfs->operations.empty(),
+                   "ZFS exposes no raw mutation operations") && ok;
+    }
+
     const BackendInfo* fat12 = backend_by_fstype("fat12");
     ok = check(fat12 != nullptr, "FAT12 lookup") && ok;
     if (fat12 != nullptr) {
