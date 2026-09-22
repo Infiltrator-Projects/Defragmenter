@@ -43,7 +43,9 @@ static void print_summary_json(const LdZfsSummary *summary, int detailed)
             "\"root_logical_birth\":%llu,\"root_compression\":%u,"
             "\"root_checksum\":%u,\"root_type\":%u,\"root_level\":%u,"
             "\"root_embedded\":%s,\"config_known\":%s,"
-            "\"single_leaf_supported\":%s,\"pool_guid\":%llu,"
+            "\"single_leaf_supported\":%s,\"mos_features_present\":%s,"
+            "\"mos_features_supported\":%s,\"mos_feature_count\":%u,"
+            "\"pool_guid\":%llu,"
             "\"leaf_guid\":%llu,\"top_guid\":%llu,\"top_vdev_id\":%llu,"
             "\"ashift\":%llu,\"metaslab_array\":%llu,"
             "\"metaslab_shift\":%llu,\"top_vdev_asize\":%llu,"
@@ -70,6 +72,9 @@ static void print_summary_json(const LdZfsSummary *summary, int detailed)
             summary->root_embedded ? "true" : "false",
             summary->config_known ? "true" : "false",
             summary->single_leaf_supported ? "true" : "false",
+            summary->mos_features_present ? "true" : "false",
+            summary->mos_features_supported ? "true" : "false",
+            summary->mos_feature_count,
             (unsigned long long)summary->pool_guid,
             (unsigned long long)summary->leaf_guid,
             (unsigned long long)summary->top_guid,
@@ -170,6 +175,8 @@ static void print_summary_map(const LdZfsSummary *summary,
         "\"compression\":%u,\"checksum\":%u,\"type\":%u,\"level\":%u,"
         "\"embedded\":%s},"
         "\"topology\":{\"known\":%s,\"single_leaf_supported\":%s,"
+        "\"mos_features_present\":%s,\"mos_features_supported\":%s,"
+        "\"mos_feature_count\":%u,"
         "\"pool_guid\":%llu,\"leaf_guid\":%llu,\"top_guid\":%llu,"
         "\"top_vdev_id\":%llu,\"ashift\":%llu,\"metaslab_array\":%llu,"
         "\"metaslab_shift\":%llu,\"top_vdev_asize\":%llu,"
@@ -196,6 +203,9 @@ static void print_summary_map(const LdZfsSummary *summary,
         summary->root_embedded ? "true" : "false",
         summary->config_known ? "true" : "false",
         summary->single_leaf_supported ? "true" : "false",
+        summary->mos_features_present ? "true" : "false",
+        summary->mos_features_supported ? "true" : "false",
+        summary->mos_feature_count,
         (unsigned long long)summary->pool_guid,
         (unsigned long long)summary->leaf_guid,
         (unsigned long long)summary->top_guid,
@@ -300,7 +310,7 @@ static void print_exact_map(const LdZfsSummary *summary,
         "\"fragmented_bytes\":%llu,"
         "\"allocation_basis\":\"MOS metaslab_array plus replayed per-metaslab space maps\","
         "\"fragmentation_basis\":\"head-dataset plain-file dnode block-pointer trees\","
-        "\"bounded_subset\":\"single top-level disk, legacy or compatible feature-flag pool, verified Fletcher4/off checksums and off/LZJB/LZ4 metadata compression\"}}\n",
+        "\"bounded_subset\":\"single top-level disk, legacy or compatible feature-flag pool, no active log_spacemap, verified Fletcher4/off checksums and off/LZJB/LZ4 metadata compression\"}}\n",
         (unsigned long long)summary->uberblock_version,
         (unsigned long long)summary->uberblock_txg,
         (unsigned long long)summary->top_vdev_id,
