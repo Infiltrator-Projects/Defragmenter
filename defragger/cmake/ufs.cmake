@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-# UFS1/UFS2 analysis is native C.  A bounded mutation implementation remains
-# in-tree for continuing qualification, but the installed worker fails closed
-# on Defragment/Growth Defrag/Recover until the roadmap evidence is complete.
+# UFS1/UFS2 analysis and the qualified bounded mutation path are native C.
+# The writer remains fail-closed outside clean, non-journalled, snapshot-free
+# layouts whose allocation and regular-file block trees are fully understood.
 add_library(linux-defragger-ufs-native STATIC
     gui/filesystems/ufs/native/ufs_native.c)
 target_include_directories(linux-defragger-ufs-native PUBLIC
