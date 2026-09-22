@@ -28,9 +28,11 @@ treating one third-party implementation as infallible.
   Mapping-pair decoding and Update Sequence Array handling are additionally
   validated against generated and real fixtures.
 - **ext2/ext3/ext4** - Linux kernel documentation, *The ext4 Filesystem*:
-  <https://docs.kernel.org/filesystems/ext4/>. The native writer also uses the
-  system `libext2fs` API in-process; no external mutation command is part of
-  the production path.
+  <https://docs.kernel.org/filesystems/ext4/>, corroborated against the public
+  e2fsprogs/libext2fs implementation. Production parsing, allocation accounting,
+  extent/indirect mapping updates and checksum maintenance are first-party native
+  C; libext2fs is retained only by the independent test fixture/oracle and is not
+  a production or runtime dependency.
 - **XFS** - Linux kernel XFS documentation and the xfsprogs reference source:
   <https://docs.kernel.org/filesystems/xfs/index.html> and
   <https://git.kernel.org/pub/scm/fs/xfs/xfsprogs-dev.git/>. Mutation is
