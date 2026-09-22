@@ -27,7 +27,9 @@
 #define ZFS_UBERBLOCK_SIZE (1U << 10)
 #define ZFS_VDEV_LABEL_SIZE (ZFS_VDEV_PAD_SIZE * 2U + ZFS_VDEV_PHYS_SIZE + ZFS_UBERBLOCK_RING_SIZE)
 #define ZFS_VDEV_LABELS 4U
+#define ZFS_VDEV_PHYS_OFFSET (ZFS_VDEV_PAD_SIZE * 2U)
 #define ZFS_UBERBLOCK_RING_OFFSET (ZFS_VDEV_PAD_SIZE * 2U + ZFS_VDEV_PHYS_SIZE)
+#define ZFS_NVLIST_BYTES ZFS_VDEV_PHYS_SIZE
 #define ZFS_UBERBLOCK_SLOTS (ZFS_UBERBLOCK_RING_SIZE / ZFS_UBERBLOCK_SIZE)
 #define ZFS_UBERBLOCK_MAGIC UINT64_C(0x00bab10c)
 #define ZFS_SPA_VERSION_FEATURES UINT64_C(5000)
@@ -57,6 +59,237 @@ static int size_bytes_for_fd(int fd, const struct stat *status, uint64_t *size_b
     }
     errno = EINVAL;
     return -1;
+}
+
+typedef struct {
+    const uint8_t *data;
+    size_t length;
+    size_t position;
+} ZfsXdr;
+
+typedef struct {
+    bool has_id;
+    bool has_guid;
+    bool has_ashift;
+    bool has_metaslab_array;
+    bool has_metaslab_shift;
+    uint64_t id;
+    uint64_t guid;
+    uint64_t ashift;
+    uint64_t metaslab_array;
+    uint64_t metaslab_shift;
+    char type[16];
+} ZfsVdevFields;
+
+static uint32_t xdr_be32(const uint8_t *data)
+{
+    return ((uint32_t)data[0] << 24U) |
+           ((uint32_t)data[1] << 16U) |
+           ((uint32_t)data[2] << 8U) |
+           (uint32_t)data[3];
+}
+
+static uint64_t xdr_be64(const uint8_t *data)
+{
+    return ((uint64_t)xdr_be32(data) << 32U) |
+           (uint64_t)xdr_be32(data + 4U);
+}
+
+static bool xdr_take(ZfsXdr *xdr, size_t bytes, const uint8_t **out)
+{
+    if (bytes > xdr->length - xdr->position)
+        return false;
+    *out = xdr->data + xdr->position;
+    xdr->position += bytes;
+    return true;
+}
+
+static bool xdr_u32(ZfsXdr *xdr, uint32_t *value)
+{
+    const uint8_t *data = NULL;
+    if (!xdr_take(xdr, 4U, &data))
+        return false;
+    *value = xdr_be32(data);
+    return true;
+}
+
+static bool xdr_u64(ZfsXdr *xdr, uint64_t *value)
+{
+    const uint8_t *data = NULL;
+    if (!xdr_take(xdr, 8U, &data))
+        return false;
+    *value = xdr_be64(data);
+    return true;
+}
+
+static bool xdr_string(ZfsXdr *xdr, char *destination, size_t capacity)
+{
+    uint32_t length = 0U;
+    if (!xdr_u32(xdr, &length) || length > xdr->length - xdr->position)
+        return false;
+    const size_t padded = ((size_t)length + 3U) & ~(size_t)3U;
+    const uint8_t *data = NULL;
+    if (padded > xdr->length - xdr->position ||
+        !xdr_take(xdr, padded, &data))
+        return false;
+    if (destination != NULL && capacity != 0U) {
+        size_t copy = length;
+        if (copy != 0U && data[copy - 1U] == 0U)
+            copy--;
+        if (copy >= capacity)
+            copy = capacity - 1U;
+        memcpy(destination, data, copy);
+        destination[copy] = '\0';
+    }
+    return true;
+}
+
+static bool zfs_parse_nvlist(ZfsXdr *xdr, unsigned depth,
+                             LdZfsSummary *summary);
+
+static void record_vdev_fields(const ZfsVdevFields *fields,
+                               LdZfsSummary *summary)
+{
+    if (!fields->has_metaslab_array)
+        return;
+    if (summary->metaslab_vdevs != UINT32_MAX)
+        summary->metaslab_vdevs++;
+    if (summary->metaslab_vdevs != 1U)
+        return;
+
+    summary->top_vdev_id = fields->has_id ? fields->id : UINT64_MAX;
+    summary->ashift = fields->has_ashift ? fields->ashift : 0U;
+    summary->metaslab_array = fields->metaslab_array;
+    summary->metaslab_shift =
+        fields->has_metaslab_shift ? fields->metaslab_shift : 0U;
+    if (fields->type[0] != '\0')
+        (void)snprintf(summary->top_vdev_type,
+                       sizeof(summary->top_vdev_type), "%s", fields->type);
+}
+
+static bool zfs_parse_nvpair(ZfsXdr *xdr, unsigned depth,
+                             LdZfsSummary *summary, ZfsVdevFields *fields)
+{
+    const size_t pair_start = xdr->position;
+    uint32_t encoded = 0U;
+    uint32_t decoded = 0U;
+    if (!xdr_u32(xdr, &encoded) || !xdr_u32(xdr, &decoded))
+        return false;
+    if (encoded == 0U && decoded == 0U)
+        return true;
+    if (encoded < 20U || encoded > xdr->length - pair_start)
+        return false;
+    const size_t pair_end = pair_start + encoded;
+
+    char name[64];
+    uint32_t type = 0U;
+    uint32_t elements = 0U;
+    if (!xdr_string(xdr, name, sizeof(name)) ||
+        !xdr_u32(xdr, &type) || !xdr_u32(xdr, &elements) ||
+        xdr->position > pair_end)
+        return false;
+
+    if (type == 8U && elements == 1U) {
+        uint64_t value = 0U;
+        if (!xdr_u64(xdr, &value))
+            return false;
+        if (depth == 0U) {
+            if (strcmp(name, "pool_guid") == 0)
+                summary->pool_guid = value;
+            else if (strcmp(name, "guid") == 0)
+                summary->leaf_guid = value;
+            else if (strcmp(name, "top_guid") == 0)
+                summary->top_guid = value;
+        }
+        if (strcmp(name, "id") == 0) {
+            fields->has_id = true;
+            fields->id = value;
+        } else if (strcmp(name, "guid") == 0) {
+            fields->has_guid = true;
+            fields->guid = value;
+        } else if (strcmp(name, "ashift") == 0) {
+            fields->has_ashift = true;
+            fields->ashift = value;
+        } else if (strcmp(name, "metaslab_array") == 0) {
+            fields->has_metaslab_array = true;
+            fields->metaslab_array = value;
+        } else if (strcmp(name, "metaslab_shift") == 0) {
+            fields->has_metaslab_shift = true;
+            fields->metaslab_shift = value;
+        }
+    } else if (type == 9U && elements == 1U) {
+        char value[32];
+        if (!xdr_string(xdr, value, sizeof(value)))
+            return false;
+        if (strcmp(name, "type") == 0)
+            (void)snprintf(fields->type, sizeof(fields->type), "%s", value);
+    } else if (type == 19U && elements == 1U) {
+        if (depth >= 8U || !zfs_parse_nvlist(xdr, depth + 1U, summary))
+            return false;
+    } else if (type == 20U) {
+        if (depth >= 8U || elements > 256U)
+            return false;
+        for (uint32_t index = 0U; index < elements; ++index)
+            if (!zfs_parse_nvlist(xdr, depth + 1U, summary))
+                return false;
+    }
+
+    if (xdr->position > pair_end)
+        return false;
+    xdr->position = pair_end;
+    return true;
+}
+
+static bool zfs_parse_nvlist(ZfsXdr *xdr, unsigned depth,
+                             LdZfsSummary *summary)
+{
+    uint32_t version = 0U;
+    uint32_t flags = 0U;
+    if (!xdr_u32(xdr, &version) || !xdr_u32(xdr, &flags) ||
+        version != 0U)
+        return false;
+    (void)flags;
+
+    ZfsVdevFields fields;
+    memset(&fields, 0, sizeof(fields));
+    for (;;) {
+        const size_t before = xdr->position;
+        uint32_t encoded = 0U;
+        uint32_t decoded = 0U;
+        if (before > xdr->length - 8U)
+            return false;
+        encoded = xdr_be32(xdr->data + before);
+        decoded = xdr_be32(xdr->data + before + 4U);
+        if (encoded == 0U && decoded == 0U) {
+            xdr->position += 8U;
+            break;
+        }
+        if (!zfs_parse_nvpair(xdr, depth, summary, &fields))
+            return false;
+    }
+    record_vdev_fields(&fields, summary);
+    return true;
+}
+
+static void parse_label_config(int fd, uint64_t psize, LdZfsSummary *summary)
+{
+    uint8_t config[ZFS_NVLIST_BYTES];
+    const uint64_t offset =
+        label_offset(psize, summary->label_index) + ZFS_VDEV_PHYS_OFFSET;
+    const ssize_t count = ld_pread_full(fd, config, sizeof(config), offset);
+    if (count != (ssize_t)sizeof(config) || config[0] != 1U)
+        return;
+
+    ZfsXdr xdr = {
+        .data = config,
+        .length = sizeof(config),
+        .position = 4U,
+    };
+    if (zfs_parse_nvlist(&xdr, 0U, summary))
+        summary->config_known = summary->pool_guid != 0U &&
+                                summary->leaf_guid != 0U &&
+                                summary->top_guid != 0U &&
+                                summary->metaslab_vdevs != 0U;
 }
 
 static uint64_t load_u64(const uint8_t *data, LdZfsByteOrder byte_order)
@@ -223,6 +456,8 @@ int zfs_read_summary(const char *path, LdZfsSummary *summary,
     int result = 1;
     if (psize >= (uint64_t)ZFS_VDEV_LABELS * ZFS_VDEV_LABEL_SIZE)
         result = scan_labels(fd, psize, summary);
+    if (result == 0)
+        parse_label_config(fd, psize, summary);
 
     const int saved_errno = errno;
     (void)close(fd);
