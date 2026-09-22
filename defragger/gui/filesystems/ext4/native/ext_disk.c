@@ -1275,7 +1275,7 @@ int ext_fs_iterate_payload(ExtFs *fs, ExtInode *inode, bool writable,
     return 0;
 }
 
-static int validate_inode_callback(ExtFs *fs, const ExtInode *inode,
+static int validate_inode_callback(ExtFs *fs, ExtInode *inode,
                                    void *context, char **error)
 {
     (void)fs;
