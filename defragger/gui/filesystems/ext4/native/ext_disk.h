@@ -89,8 +89,6 @@ typedef int (*ExtInodeVisitor)(ExtFs *fs, ExtInode *inode,
 typedef int (*ExtPayloadVisitor)(ExtFs *fs, uint32_t ino, int64_t logical,
                                  uint64_t *physical, bool mutable_mapping,
                                  void *context, char **error);
-typedef int (*ExtPhysicalVisitor)(ExtFs *fs, uint64_t physical,
-                                  void *context, char **error);
 
 int ext_fs_open(const char *path, bool writable, ExtFs **out, char **error);
 void ext_fs_close(ExtFs *fs);
@@ -127,9 +125,5 @@ int ext_fs_block_allocated(ExtFs *fs, uint64_t block, bool *allocated,
                            char **error);
 int ext_fs_set_block_allocated(ExtFs *fs, uint64_t block, bool allocated,
                                char **error);
-
-/* Exact fixed/system metadata classification used by the native map worker. */
-int ext_fs_foreach_metadata_block(ExtFs *fs, ExtPhysicalVisitor visitor,
-                                  void *context, char **error);
 
 #endif
