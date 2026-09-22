@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-# ZFS/OpenZFS member identification and summary mapping are native C.
+# ZFS/OpenZFS member identification, MOS traversal and exact bounded mapping are native C.
 add_library(linux-defragger-zfs-native STATIC
-    gui/filesystems/zfs/native/zfs_native.c)
+    gui/filesystems/zfs/native/zfs_native.c
+    gui/filesystems/zfs/native/zfs_analysis.c)
 target_include_directories(linux-defragger-zfs-native PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
     "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/zfs/native"
