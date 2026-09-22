@@ -938,7 +938,8 @@ def test_test_media_companion_is_all_c() -> None:
     deb_builder = (ROOT / "packaging" / "build-deb.sh").read_text()
     assert "per-filesystem native C analysers / planners / writers" in architecture_doc
     assert "Amiga OFS/FFS/SFS/PFS3" in deb_builder
-    assert "UFS and ZFS" in deb_builder
+    assert "qualified UFS filesystems" in deb_builder
+    assert "ZFS/OpenZFS remains analysis-only by design" in deb_builder
     assert "install(FILES README.md" in cmake
     assert "docs/AUDIT_STATUS.md" not in cmake
 
