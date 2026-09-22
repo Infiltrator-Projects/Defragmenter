@@ -128,7 +128,7 @@ The exact release revision must satisfy the project quality gate. The current wr
 
 Release artifacts are built from the exact qualified `main` revision. Published tags and assets are immutable identities. The Debian package/native installer, Common pin, audit source baseline and release-governance baseline are checked as part of publication rather than treated as post-release bookkeeping.
 
-Publication is part of the quality-gate dependency graph rather than an event-only afterthought: the release reusable workflow depends directly on both the local qualification and hosted sanitizer jobs, and the APT refresh reusable workflow depends directly on successful immutable release publication. This preserves the dependency across GitHub job retries, while exact-SHA checks and the explicit `Release <version>` commit requirement prevent an unrelated successful run from publishing artifacts.
+Publication is part of the quality-gate dependency graph rather than an event-only afterthought: the release reusable workflow depends directly on both permanent GitHub-hosted lanes — the full project quality gate and the ASan/UBSan lane — while the self-hosted local-quality workflow remains optional manual evidence. The APT refresh reusable workflow depends directly on successful immutable release publication. This preserves the dependency across GitHub job retries, while exact-SHA checks and the explicit `Release <version>` commit requirement prevent an unrelated successful run from publishing artifacts.
 
 ## Specialist documents
 
