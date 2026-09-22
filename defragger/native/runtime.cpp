@@ -270,7 +270,7 @@ const std::vector<BackendInfo>& backend_registry() {
                 "XFS Growth Defrag uses the native C raw engine, requires staging space, and preserves an exact 10% free run after every supported regular file.")});
         result.push_back({
             "zfs", "ZFS/OpenZFS Member", {"zfs", "zfs_member"},
-            read, "summary", "zfs-native", MapAdapter::NativeMap, {}});
+            read, "exact-bounded", "zfs-native", MapAdapter::NativeMap, {}});
         return result;
     }();
     return registry;
