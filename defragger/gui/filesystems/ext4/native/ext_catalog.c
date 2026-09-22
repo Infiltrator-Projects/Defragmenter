@@ -116,8 +116,15 @@ static int scan_inode(ExtFs *fs, ExtInode *inode, void *private_data,
     catalogue->inodes_scanned++;
     ExtBlockVec blocks = {0}; char *local_error = NULL;
     if (collect_inode_blocks(fs, inode, &blocks, &local_error) != 0) {
-        catalogue->malformed_inodes++; free(local_error); block_free(&blocks);
-        return 0;
+        catalogue->malformed_inodes++;
+        if (error != NULL && *error == NULL) {
+            *error = local_error != NULL
+                ? local_error : ld_xstrdup("malformed EXT inode mapping");
+            local_error = NULL;
+        }
+        free(local_error);
+        block_free(&blocks);
+        return -1;
     }
     uint64_t last_allocation = 0U;
     bool contiguous = allocation_is_contiguous(&blocks, &last_allocation);
