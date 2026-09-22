@@ -24,6 +24,7 @@
 #define ZFS_DNODE_MAX_LEVELS 5U
 #define ZFS_DNODE_MIN_INDBLKSHIFT 12U
 #define ZFS_DNODE_MAX_INDBLKSHIFT 17U
+#define ZFS_DMU_OT_OBJECT_DIRECTORY 1U
 #define ZFS_DMU_OT_OBJECT_ARRAY 2U
 #define ZFS_DMU_OT_SPACE_MAP_HEADER 7U
 #define ZFS_DMU_OT_SPACE_MAP 8U
@@ -39,6 +40,12 @@
 #define ZFS_COMPRESS_LZ4 15U
 #define ZFS_POOL_VERSION_LAST_LEGACY 28U
 #define ZFS_POOL_VERSION_FEATURES 5000U
+#define ZFS_ZBT_MICRO (UINT64_C(1) << 63U | UINT64_C(3))
+#define ZFS_MZAP_HEADER_SIZE 64U
+#define ZFS_MZAP_ENTRY_SIZE 64U
+#define ZFS_MZAP_NAME_OFFSET 14U
+#define ZFS_MZAP_NAME_SIZE 50U
+#define ZFS_POOL_DIRECTORY_OBJECT 1U
 #define ZFS_SM_DEBUG_PREFIX 2U
 #define ZFS_SM2_PREFIX 3U
 #define ZFS_SM_NO_VDEVID (UINT64_C(1) << 24)
@@ -915,6 +922,121 @@ static const uint8_t *dnode_bonus(const ZfsDnode *dnode)
     return dnode->raw + offset;
 }
 
+static int microzap_lookup_uint64(ZfsContext *context, uint64_t object,
+                                  const char *name, bool *found,
+                                  uint64_t *value,
+                                  char *error, size_t error_size)
+{
+    *found = false;
+    *value = 0U;
+
+    ZfsDnode zap;
+    memset(&zap, 0, sizeof(zap));
+    if (read_object_dnode(context, object, &zap, error, error_size) != 0)
+        return -1;
+
+    int result = -1;
+    if (zap.type != ZFS_DMU_OT_OBJECT_DIRECTORY ||
+        zap.maxblkid != 0U || zap.datablkszsec == 0U) {
+        errno = ENOTSUP;
+        set_error(error, error_size,
+                  "ZFS feature/pool directory uses unsupported fat or multi-block ZAP");
+        goto cleanup;
+    }
+
+    const uint64_t block_size = (uint64_t)zap.datablkszsec << 9U;
+    if (block_size < ZFS_MZAP_HEADER_SIZE + ZFS_MZAP_ENTRY_SIZE ||
+        block_size > ZFS_MAX_BLOCK_SIZE ||
+        block_size > SIZE_MAX ||
+        (block_size % ZFS_MZAP_ENTRY_SIZE) != 0U) {
+        errno = EINVAL;
+        set_error(error, error_size, "invalid ZFS micro-ZAP block size");
+        goto cleanup;
+    }
+
+    uint8_t *block = malloc((size_t)block_size);
+    if (block == NULL)
+        goto cleanup;
+    LdZfsByteOrder order = zap.order;
+    if (object_read_bytes(context, &zap, 0U, block, (size_t)block_size,
+                          &order, error, error_size) != 0) {
+        free(block);
+        goto cleanup;
+    }
+
+    if (load_u64_order(block, order) != ZFS_ZBT_MICRO) {
+        free(block);
+        errno = ENOTSUP;
+        set_error(error, error_size,
+                  "ZFS feature/pool directory is a fat ZAP outside the bounded exact reader");
+        goto cleanup;
+    }
+
+    const size_t entries =
+        ((size_t)block_size - ZFS_MZAP_HEADER_SIZE) / ZFS_MZAP_ENTRY_SIZE;
+    for (size_t index = 0U; index < entries; ++index) {
+        const uint8_t *entry =
+            block + ZFS_MZAP_HEADER_SIZE + index * ZFS_MZAP_ENTRY_SIZE;
+        const char *entry_name =
+            (const char *)(entry + ZFS_MZAP_NAME_OFFSET);
+        if (entry_name[0] == '\0')
+            continue;
+        const void *terminator =
+            memchr(entry_name, '\0', ZFS_MZAP_NAME_SIZE);
+        if (terminator == NULL) {
+            free(block);
+            errno = EINVAL;
+            set_error(error, error_size, "unterminated ZFS micro-ZAP name");
+            goto cleanup;
+        }
+        if (strcmp(entry_name, name) == 0) {
+            *value = load_u64_order(entry, order);
+            *found = true;
+            break;
+        }
+    }
+    free(block);
+    result = 0;
+
+cleanup:
+    dnode_destroy(&zap);
+    return result;
+}
+
+static int validate_modern_allocation_features(ZfsContext *context,
+                                               char *error,
+                                               size_t error_size)
+{
+    if (context->summary.uberblock_version != ZFS_POOL_VERSION_FEATURES)
+        return 0;
+
+    bool found = false;
+    uint64_t feature_object = 0U;
+    if (microzap_lookup_uint64(context, ZFS_POOL_DIRECTORY_OBJECT,
+                               "features_for_write", &found,
+                               &feature_object, error, error_size) != 0)
+        return -1;
+    if (!found || feature_object == 0U) {
+        errno = ENOTSUP;
+        set_error(error, error_size,
+                  "feature-flag ZFS pool has no readable features_for_write directory");
+        return -1;
+    }
+
+    uint64_t refcount = 0U;
+    if (microzap_lookup_uint64(context, feature_object,
+                               "com.delphix:log_spacemap", &found,
+                               &refcount, error, error_size) != 0)
+        return -1;
+    if (found && refcount != 0U) {
+        errno = ENOTSUP;
+        set_error(error, error_size,
+                  "active ZFS log_spacemap requires log-space-map replay before allocation can be exact");
+        return -1;
+    }
+    return 0;
+}
+
 static int context_open(const char *path, ZfsContext *context,
                         char *error, size_t error_size)
 {
@@ -1042,6 +1164,17 @@ static int context_open(const char *path, ZfsContext *context,
         context->fd = -1;
         errno = EINVAL;
         set_error(error, error_size, "ZFS MOS metadnode has unexpected type");
+        return -1;
+    }
+    if (validate_modern_allocation_features(context,
+                                            error, error_size) != 0) {
+        const int saved_errno = errno;
+        dnode_destroy(&context->meta_dnode);
+        free(context->mos);
+        context->mos = NULL;
+        (void)close(context->fd);
+        context->fd = -1;
+        errno = saved_errno;
         return -1;
     }
     return 0;
