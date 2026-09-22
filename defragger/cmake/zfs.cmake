@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-# ZFS/OpenZFS member identification, MOS traversal and exact bounded mapping are native C.
+# ZFS/OpenZFS identification and bounded exact read-only MOS/allocation/fragmentation analysis are native C.
 add_library(linux-defragger-zfs-native STATIC
     gui/filesystems/zfs/native/zfs_native.c
     gui/filesystems/zfs/native/zfs_analysis.c)
