@@ -181,6 +181,30 @@ def main() -> None:
     assert "__pycache__/" in gitignore
     assert "*.py[cod]" in gitignore
 
+    # Validate the committed dependency layout, not just strings in build files.
+    # An orphan gitlink breaks recursive checkout before any build can begin.
+    gitlinks = {}
+    for entry in subprocess.check_output(
+        ["git", "ls-tree", "-r", "HEAD"], cwd=REPO_ROOT, text=True
+    ).splitlines():
+        metadata, path = entry.split("\t", 1)
+        mode, kind, sha = metadata.split()
+        if mode == "160000":
+            gitlinks[path] = sha
+    expected_common = re.search(
+        r'INFILTRATR_COMMON_EXPECTED_COMMIT\s+"([0-9a-f]{40})"', cmake
+    )
+    assert expected_common is not None, "CMake lost the exact Common commit"
+    assert gitlinks == {
+        "defragger/shared/infiltratr-common": expected_common.group(1)
+    }, f"committed Common layout disagrees with the build: {gitlinks}"
+    declared_path = subprocess.check_output(
+        ["git", "config", "-f", ".gitmodules",
+         "--get", "submodule.defragger/shared/infiltratr-common.path"],
+        cwd=REPO_ROOT, text=True,
+    ).strip()
+    assert declared_path == "defragger/shared/infiltratr-common"
+
     common_contract = (
         ('COMMON_TAG="v1.19.24"', 'INFILTRATR_COMMON_TAG "v1.19.24"'),
         ('COMMON_VERSION="1.19.24"', 'INFILTRATR_COMMON_EXPECTED_VERSION "1.19.24"'),
