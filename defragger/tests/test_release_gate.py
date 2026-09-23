@@ -175,10 +175,10 @@ def main() -> None:
         assert required in apt_refresh, f"APT refresh workflow lost required contract: {required}"
     assert "waiting for the repository safety refresh" not in apt_refresh
     assert "Central APT repository did not advertise" not in apt_refresh
-    assert "APT_REPOSITORY_DISPATCH_TOKEN" not in apt_refresh
-    assert "application-release" not in apt_refresh
-    assert "Infiltrator-Repository/dispatches" not in apt_refresh
-    assert "DISPATCH_TOKEN" not in apt_refresh
+    assert "secrets." not in apt_refresh
+    assert "/dispatches" not in apt_refresh
+    assert "client_payload" not in apt_refresh
+    assert "repository_dispatch" not in apt_refresh
 
     assert "LD_ENABLE_SANITIZERS=ON" in gate
     assert "Hosted ASan / UBSan" in gate
