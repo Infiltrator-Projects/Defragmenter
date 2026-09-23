@@ -7,7 +7,7 @@ Extended: 2026-09-22
 
 Applies to: release version 1.8.0-195
 Audited source commit: b0bfbf14d8fd2e2519a33d0d96ebca4d74c30c05
-Audited release-governance commit: 514f653cbd2e0d6c5dee1c5b150590312d91c154
+Audited release-governance commit: c88a6b98fccf4d6bbd5dbe4a7a6c57ebcd8b5dc6
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
@@ -19,7 +19,7 @@ The incremental dependency and packaging audit is bound to source commit `b0bfbf
 
 The reviewed delta from the previous source baseline changes the Common pin from 1.19.23 to 1.19.24 and its matching CMake/installer declarations, repairs the misplaced Git submodule, restores script executable modes, and adds a committed-dependency-layout regression. Common's changed implementation is confined to graphics clipping and overlapping surface operations. The filesystem-engine source is unchanged; its existing safety case is carried forward rather than represented as a new line-by-line engine audit.
 
-The release-governance baseline was extended again at `514f653cbd2e0d6c5dee1c5b150590312d91c154` after verifying the central Infiltrator-Repository contract explicitly defines scheduled publication as asynchronous and forbids source repositories from treating that schedule as a synchronous release gate. Defragmenter's APT refresh still validates the exact immutable release identity and still verifies an accepted immediate dispatch, but a missing or failed dispatch now defers to the central publisher instead of converting a valid release into a false failure. The release-gate regression was updated in the same commit to lock that distinction permanently.
+The release-governance baseline was extended again at `c88a6b98fccf4d6bbd5dbe4a7a6c57ebcd8b5dc6` after restoring the intended pull-only APT ownership boundary. Defragmenter's release path validates its exact immutable GitHub release identity but never dispatches, authenticates to, waits on or synchronously verifies Infiltrator-Repository. The central repository independently discovers released packages on its own schedule, and the release-gate regression now rejects any reintroduction of cross-repository dispatch-token plumbing.
 
 The malformed-media matrix, transaction/recovery tests, native integration fixtures, GUI contract tests, release/package tests and architecture ownership checks remain part of the permanent **Project quality gate**. Environment-dependent destructive media evidence is supplementary and is not represented as hosted-CI proof.
 
