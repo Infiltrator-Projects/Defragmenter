@@ -169,16 +169,16 @@ def main() -> None:
         "REQUESTED_SHA",
         "releases/tags/${release_tag}",
         "Published release ${release_tag} points at",
-        "APT_REPOSITORY_DISPATCH_TOKEN",
-        "application-release",
-        "catalogue/apps.json",
-        "dispatched=false",
-        "APT verification deferred to the central repository workflow.",
-        "Immediate APT dispatch was accepted",
+        "Central APT publication is pull-based.",
+        "Infiltrator-Repository will discover this immutable GitHub release on its own schedule.",
     ):
         assert required in apt_refresh, f"APT refresh workflow lost required contract: {required}"
     assert "waiting for the repository safety refresh" not in apt_refresh
     assert "Central APT repository did not advertise" not in apt_refresh
+    assert "APT_REPOSITORY_DISPATCH_TOKEN" not in apt_refresh
+    assert "application-release" not in apt_refresh
+    assert "Infiltrator-Repository/dispatches" not in apt_refresh
+    assert "DISPATCH_TOKEN" not in apt_refresh
 
     assert "LD_ENABLE_SANITIZERS=ON" in gate
     assert "Hosted ASan / UBSan" in gate
