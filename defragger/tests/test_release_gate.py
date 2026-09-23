@@ -172,9 +172,13 @@ def main() -> None:
         "APT_REPOSITORY_DISPATCH_TOKEN",
         "application-release",
         "catalogue/apps.json",
-        "Central APT repository did not advertise",
+        "dispatched=false",
+        "APT verification deferred to the central repository workflow.",
+        "Immediate APT dispatch was accepted",
     ):
         assert required in apt_refresh, f"APT refresh workflow lost required contract: {required}"
+    assert "waiting for the repository safety refresh" not in apt_refresh
+    assert "Central APT repository did not advertise" not in apt_refresh
 
     assert "LD_ENABLE_SANITIZERS=ON" in gate
     assert "Hosted ASan / UBSan" in gate
