@@ -2,6 +2,13 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-197
+
+- Centralise Unicode scalar-to-UTF-8 byte encoding through Infiltratr Common 1.19.27 for the native JSON parser and FAT/exFAT filename paths, removing their independent byte encoders.
+- Keep filesystem-specific Unicode policy local: FAT still sanitises path separators/NUL and replaces malformed UTF-16, while exFAT now maps unpaired UTF-16 surrogates to U+FFFD before the shared strict encoder.
+- Advance the exact Common dependency to released 1.19.27 at commit `3ef3710df6563df305b6d8e2dc9d1a41c61843ba` across the gitlink, CMake, installer, tests and maintained documentation.
+- Qualify the production-source baseline at `e9a341b08b93d624f98df9a9ec0d7bc4842d9d7b`: warnings-as-errors builds and all 44 hosted CTest tests pass, and the separate hosted ASan/UBSan lane passes; the pre-release gate stops only on the deliberately stale audit-baseline marker that this release commit advances.
+
 ## 1.8.0-196
 
 - Align GTK button height with the 30 px desktop suite control contract while retaining Common's existing compact radius.

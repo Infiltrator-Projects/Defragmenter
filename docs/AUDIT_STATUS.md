@@ -5,8 +5,8 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-09-22
 
-Applies to: release version 1.8.0-196
-Audited source commit: 599d5c6c07a450f9821d6ddbfe2b73a8333120bd
+Applies to: release version 1.8.0-197
+Audited source commit: e9a341b08b93d624f98df9a9ec0d7bc4842d9d7b
 Audited release-governance commit: 1a61ff57bdf939fcbfcc84300b66b30411276113
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
@@ -15,9 +15,9 @@ This document records the current release safety case. Historical audit-developm
 
 ## Qualification evidence
 
-The current audited source baseline is commit `599d5c6c07a450f9821d6ddbfe2b73a8333120bd`. In [Project quality gate run 35978135468](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/35978135468), that revision passed the warnings-as-errors build, all 44 CTest tests, the Btrfs architecture guard, and the separate hosted ASan/UBSan lane. The run remained red only because this document still named the previous audited source baseline. The reviewed delta is presentation-only: GTK button minimum height moves from 27 px to the suite-standard 30 px, with filesystem engines, write safety, dependencies and release-governance workflows unchanged. The exact 1.8.0-196 release head must pass both hosted lanes and the complete release guard before publication.
+The current audited source baseline is commit `e9a341b08b93d624f98df9a9ec0d7bc4842d9d7b`. In [Project quality gate run 36065764985](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/36065764985), that revision completed the warnings-as-errors build and all 44 hosted CTest tests successfully. The separate hosted ASan/UBSan lane also passed. The gate remained red only because this audit document still named the previous audited source baseline, which is the expected pre-release stop that this release commit resolves.
 
-The reviewed delta from the previous source baseline changes the Common pin from 1.19.23 to 1.19.24 and its matching CMake/installer declarations, repairs the misplaced Git submodule, restores script executable modes, and adds a committed-dependency-layout regression. Common's changed implementation is confined to graphics clipping and overlapping surface operations. The filesystem-engine source is unchanged; its existing safety case is carried forward rather than represented as a new line-by-line engine audit.
+The reviewed production delta advances the exact Common dependency from 1.19.24 to 1.19.27 and replaces duplicate Unicode scalar-to-UTF-8 byte emission in the native JSON, FAT and exFAT paths with Common's strict product-neutral encoder. FAT retains its filesystem-specific separator/NUL sanitisation and malformed-UTF-16 replacement policy. exFAT retains UTF-16 decoding policy and now maps unpaired surrogate units to U+FFFD before encoding. Filesystem geometry, allocation, placement, transaction/recovery ordering and raw mutation logic are otherwise unchanged.
 
 The release-governance baseline is extended through `1a61ff57bdf939fcbfcc84300b66b30411276113`, which retains the pull-only APT ownership boundary and adds the intended self-hosted qualification run on main pushes. Defragmenter's release path validates its exact immutable GitHub release identity but never dispatches, authenticates to, waits on or synchronously verifies Infiltrator-Repository. The central repository independently discovers released packages on its own schedule, and the release-gate regression now rejects any reintroduction of cross-repository dispatch-token plumbing.
 
@@ -60,7 +60,7 @@ The audited writers preserve these release invariants:
 
 ## Dependency baseline
 
-The audited production tree consumes Infiltratr Common 1.19.24 at exact commit `748e089ae175329471d4cf375522c44081371bd5`. CMake, the local installer, the Git submodule and release regressions assert the same released pin.
+The audited production tree consumes Infiltratr Common 1.19.27 at exact commit `3ef3710df6563df305b6d8e2dc9d1a41c61843ba`. CMake, the local installer, the Git submodule and release regressions assert the same released pin.
 
 Common owns generic checked arithmetic, strict numeric/config parsing, endian access, bounded growth, path/string primitives, exact I/O, generic durable-file operations, design metrics/semantic roles, typography identity and canonical font provenance. Defragmenter retains filesystem geometry and interpretation, target-safety policy, placement, transaction/recovery semantics and allocation-map meaning. This boundary is enforced by architecture tests rather than documentation alone.
 
