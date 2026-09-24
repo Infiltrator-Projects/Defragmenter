@@ -5,8 +5,8 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-09-22
 
-Applies to: release version 1.8.0-195
-Audited source commit: b0bfbf14d8fd2e2519a33d0d96ebca4d74c30c05
+Applies to: release version 1.8.0-196
+Audited source commit: 599d5c6c07a450f9821d6ddbfe2b73a8333120bd
 Audited release-governance commit: c88a6b98fccf4d6bbd5dbe4a7a6c57ebcd8b5dc6
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
@@ -15,7 +15,7 @@ This document records the current release safety case. Historical audit-developm
 
 ## Qualification evidence
 
-The incremental dependency and packaging audit is bound to source commit `b0bfbf14d8fd2e2519a33d0d96ebca4d74c30c05`. In [Project quality gate run 35792024919](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/35792024919), that revision passed the warnings-as-errors build, all 44 CTest tests, the Btrfs architecture guard, and the separate hosted ASan/UBSan lane. The run remained red because the release guard correctly detected that this document still named the pre-upgrade source baseline. The exact 1.8.0-195 release head must pass both hosted lanes and the complete release guard before publication.
+The current audited source baseline is commit `599d5c6c07a450f9821d6ddbfe2b73a8333120bd`. In [Project quality gate run 35978135468](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/35978135468), that revision passed the warnings-as-errors build, all 44 CTest tests, the Btrfs architecture guard, and the separate hosted ASan/UBSan lane. The run remained red only because this document still named the previous audited source baseline. The reviewed delta is presentation-only: GTK button minimum height moves from 27 px to the suite-standard 30 px, with filesystem engines, write safety, dependencies and release-governance workflows unchanged. The exact 1.8.0-196 release head must pass both hosted lanes and the complete release guard before publication.
 
 The reviewed delta from the previous source baseline changes the Common pin from 1.19.23 to 1.19.24 and its matching CMake/installer declarations, repairs the misplaced Git submodule, restores script executable modes, and adds a committed-dependency-layout regression. Common's changed implementation is confined to graphics clipping and overlapping surface operations. The filesystem-engine source is unchanged; its existing safety case is carried forward rather than represented as a new line-by-line engine audit.
 

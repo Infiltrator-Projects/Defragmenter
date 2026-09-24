@@ -2,6 +2,12 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-196
+
+- Align GTK button height with the 30 px desktop suite control contract while retaining Common's existing compact radius.
+- Re-run the complete 44-test hosted quality suite and ASan/UBSan lane; all functional and sanitizer checks pass.
+- Advance the exact audited production-source baseline to the reviewed presentation-only commit without changing filesystem engines, write safety, dependencies or Common APIs.
+
 ## 1.8.0-195
 
 - Correct the Common 1.19.24 Git submodule at the actual project dependency path and remove the stray root entry that prevented recursive checkout.
