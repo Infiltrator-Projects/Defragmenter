@@ -121,7 +121,7 @@ def _base_css() -> str:
     .summary-title {{ font-size: 8.75pt; }}
     .summary-value {{ font-size: 15pt; font-weight: {bold}; }}
     .section-title {{ font-size: 9.5pt; font-weight: {bold}; padding: 0 5px; }}
-    button {{ border-radius: {radius}px; padding: 7px 13px; min-height: 27px; }}
+    button {{ border-radius: {radius}px; padding: 7px 13px; min-height: 30px; }}
     button.primary-action, button.operation-action {{ font-weight: {bold}; }}
     progressbar trough {{ min-height: 8px; }}
     .status-prefix {{ font-size: 8pt; font-weight: {bold}; }}
