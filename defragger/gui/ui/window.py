@@ -59,6 +59,9 @@ from .widgets import MAX_MAP_CELLS, MIN_MAP_CELLS
 from .window_view import APP_NAME
 
 
+MAP_RESIZE_DEBOUNCE_MS = 180
+
+
 class MainWindow(Gtk.ApplicationWindow):
     """Compose independent GUI, storage, runner, and protocol components."""
 
@@ -77,6 +80,8 @@ class MainWindow(Gtk.ApplicationWindow):
         self.set_default_size(1040, 680)
         self.set_position(Gtk.WindowPosition.CENTER)
         self.connect("realize", self._configure_native_window)
+        self._map_resize_source: int | None = None
+        self._map_resize_target = 0
 
         self.mapper = find_mapper()
         self.operation_engine = find_operation_engine()
@@ -127,7 +132,7 @@ class MainWindow(Gtk.ApplicationWindow):
             "delete-event",
             lambda *_args: self.operations.defer_close_while_busy(),
         )
-        self.connect("destroy", lambda *_args: self.runner.shutdown())
+        self.connect("destroy", self._shutdown)
         self.refresh_devices()
         GLib.timeout_add(150, self._authenticate_on_launch)
 
@@ -276,13 +281,62 @@ class MainWindow(Gtk.ApplicationWindow):
     def journal_path(self) -> str:
         return self.coordinator.journal_path
 
+    def _cancel_map_resize_refresh(self) -> None:
+        if self._map_resize_source is not None:
+            GLib.source_remove(self._map_resize_source)
+            self._map_resize_source = None
+
+    def _schedule_map_resize_refresh(self) -> None:
+        self._cancel_map_resize_refresh()
+        self._map_resize_source = GLib.timeout_add(
+            MAP_RESIZE_DEBOUNCE_MS,
+            self._refresh_map_after_resize,
+        )
+
+    def _refresh_map_after_resize(self) -> bool:
+        self._map_resize_source = None
+        target = self._map_resize_target
+        if target <= 0 or self.coordinator.map_data is None:
+            self._map_resize_target = 0
+            return False
+        if not self.coordinator.map_resolution_needs_refresh(target):
+            self._map_resize_target = 0
+            return False
+        if self.runner.busy:
+            # Keep the newest pixel target pending. update_controls() schedules
+            # it once the active analysis/mutation has actually completed.
+            return False
+        self._map_resize_target = 0
+        self.analyze(
+            clear_log=False,
+            target_cells=target,
+            quiet=True,
+        )
+        return False
+
     def on_map_size_allocate(
         self,
         _widget: Gtk.Widget,
         _allocation: Gdk.Rectangle,
     ) -> None:
-        if self.coordinator.map_data:
-            self.view.disk_map.queue_draw()
+        if self.coordinator.map_data is None:
+            return
+
+        # Drawing geometry already follows the current GTK allocation. The
+        # native mapper must follow it too: one requested map cell per drawable
+        # pixel (within the bounded GUI limit) keeps clusters-per-cell coupled
+        # to the visible map resolution instead of freezing at the first size.
+        self.view.disk_map.queue_draw()
+        target = self.coordinator.desired_map_cells(
+            _allocation.width,
+            _allocation.height,
+        )
+        if not self.coordinator.map_resolution_needs_refresh(target):
+            self._map_resize_target = 0
+            self._cancel_map_resize_refresh()
+            return
+        self._map_resize_target = target
+        self._schedule_map_resize_refresh()
 
     def analyze(
         self,
@@ -320,3 +374,16 @@ class MainWindow(Gtk.ApplicationWindow):
         self.view.set_operation_tooltips(
             dict(operation_tooltips(volume, self.backend_catalog))
         )
+        if (
+            not self.runner.busy
+            and self._map_resize_target > 0
+            and self.coordinator.map_resolution_needs_refresh(
+                self._map_resize_target
+            )
+            and self._map_resize_source is None
+        ):
+            self._schedule_map_resize_refresh()
+
+    def _shutdown(self, *_args: object) -> None:
+        self._cancel_map_resize_refresh()
+        self.runner.shutdown()

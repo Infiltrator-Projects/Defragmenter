@@ -602,6 +602,13 @@ def test_main_window_remains_resizable_maximisable_and_workarea_bounded() -> Non
     assert "scroll.set_min_content_height(110)" in view_source
     assert "self.set_size_request(-1, 180)" in widgets_source
     assert "self.set_size_request(640, 260)" not in widgets_source
+    assert "MAP_RESIZE_DEBOUNCE_MS = 180" in window_source
+    assert "self.coordinator.desired_map_cells(" in window_source
+    assert "_allocation.width" in window_source
+    assert "_allocation.height" in window_source
+    assert "self.coordinator.map_resolution_needs_refresh(target)" in window_source
+    assert "target_cells=target" in window_source
+    assert "quiet=True" in window_source
 
 
 def main() -> None:

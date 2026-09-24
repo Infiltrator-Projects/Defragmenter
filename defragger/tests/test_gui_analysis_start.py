@@ -27,7 +27,13 @@ class _DiskMap:
         self.cells = []
         self.draws = 0
 
-    def desired_cell_count(self) -> int:
+    def desired_cell_count(
+        self,
+        width: int | None = None,
+        height: int | None = None,
+    ) -> int:
+        if width is not None and height is not None:
+            return max(1, width) * max(1, height)
         return 369_720
 
     def set_cells(self, cells) -> None:
@@ -241,6 +247,8 @@ def test_gui_analysis_dispatches_mapper() -> None:
     assert request.purpose == "analysis"
     assert request.privileged
     assert view.logs == ["Analysing EXT4 volume /dev/test…"]
+    assert coordinator.desired_map_cells(640, 320) == 204_800
+    assert not coordinator.map_resolution_needs_refresh(204_800)
 
     runner.busy = False
     coordinator.analyze(target_cells=2_000_000)
@@ -254,12 +262,18 @@ def test_complete_gui_operation_lifecycle() -> None:
         image.write_bytes(b"test")
         coordinator, view, runner, volumes = _composed(str(image), state)
 
-        coordinator.analyze()
+        coordinator.analyze(target_cells=250_000)
         assert not runner.requests[-1].privileged
         runner.complete(0, _map_payload())
         assert coordinator.map_data is not None
         assert len(view.presentations) == 1
         assert len(volumes.remembered) == 1
+        # The backend may legitimately return fewer cells than requested when
+        # the filesystem itself has fewer units. Remember the requested pixel
+        # density so resizing does not loop forever trying the same resolution.
+        assert coordinator.last_map_cell_target == 250_000
+        assert not coordinator.map_resolution_needs_refresh(250_000)
+        assert coordinator.map_resolution_needs_refresh(200_000)
 
         coordinator.analyze()
         runner.complete(0, "not-json")

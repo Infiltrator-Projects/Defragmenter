@@ -32,7 +32,11 @@ from .volume_coordinator import VolumeCoordinator
 
 
 class _DiskMap(Protocol):
-    def desired_cell_count(self) -> int: ...
+    def desired_cell_count(
+        self,
+        width: int | None = None,
+        height: int | None = None,
+    ) -> int: ...
 
     def set_cells(self, cells: list[dict[str, Any]]) -> None: ...
 
@@ -107,22 +111,46 @@ class OperationCoordinator:
         self.last_map_cell_target = 0
         self.view.disk_map.set_cells([])
 
-    def apply_map(self, data: dict[str, Any]) -> MapPresentation:
+    def _bounded_map_cells(self, cells: int) -> int:
+        return max(self.minimum_cells, min(self.maximum_cells, int(cells)))
+
+    def apply_map(
+        self,
+        data: dict[str, Any],
+        *,
+        requested_cells: int | None = None,
+    ) -> MapPresentation:
         volume = self.volumes.current
         operations = volume.operations if volume else ()
         presentation = present_allocation_map(data, operations)
         data["cells"] = presentation.cells
         self.map_data = data
         self.volumes.remember_map(data)
-        self.last_map_cell_target = presentation.cell_count
+        self.last_map_cell_target = self._bounded_map_cells(
+            presentation.cell_count if requested_cells is None else requested_cells
+        )
         self.view.apply_map_presentation(presentation)
         return presentation
 
     def use_cached_map(self, data: dict[str, Any]) -> MapPresentation:
         return self.apply_map(data)
 
-    def desired_map_cells(self) -> int:
-        return self.view.disk_map.desired_cell_count()
+    def desired_map_cells(
+        self,
+        width: int | None = None,
+        height: int | None = None,
+    ) -> int:
+        return self._bounded_map_cells(
+            self.view.disk_map.desired_cell_count(width, height)
+        )
+
+    def map_resolution_needs_refresh(self, target_cells: int) -> bool:
+        """Return whether the current map was sampled for a different pixel target."""
+
+        return (
+            self.map_data is not None
+            and self.last_map_cell_target != self._bounded_map_cells(target_cells)
+        )
 
     def analyze(
         self,
@@ -148,15 +176,14 @@ class OperationCoordinator:
                     "The volume is mounted. Analysis is read-only; this is a live "
                     "snapshot and the map may change while the filesystem is active."
                 )
+        requested_cells = self._bounded_map_cells(
+            target_cells if target_cells is not None else self.desired_map_cells()
+        )
         try:
             arguments = build_analysis_arguments(
                 self.mapper,
                 volume,
-                (
-                    target_cells
-                    if target_cells is not None
-                    else self.desired_map_cells()
-                ),
+                requested_cells,
                 minimum_cells=self.minimum_cells,
                 maximum_cells=self.maximum_cells,
             )
@@ -172,7 +199,10 @@ class OperationCoordinator:
                 payload = json.loads(output)
                 if not isinstance(payload, dict):
                     raise AllocationMapError("allocation map root is not an object")
-                presentation = self.apply_map(payload)
+                presentation = self.apply_map(
+                    payload,
+                    requested_cells=requested_cells,
+                )
             except (json.JSONDecodeError, AllocationMapError) as exc:
                 self.view.show_error(
                     "The analyser did not return a valid allocation map",
