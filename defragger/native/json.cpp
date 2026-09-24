@@ -3,6 +3,7 @@
 
 #include <infiltratr/core.h>
 #include <infiltratr/escape.h>
+#include <infiltratr/utf8.h>
 
 #include <charconv>
 #include <cmath>
@@ -30,23 +31,13 @@ std::string quoted(std::string_view value) {
 }
 
 void append_utf8(std::string& out, std::uint32_t codepoint) {
-    if (codepoint <= 0x7FU) {
-        out.push_back(static_cast<char>(codepoint));
-    } else if (codepoint <= 0x7FFU) {
-        out.push_back(static_cast<char>(0xC0U | (codepoint >> 6U)));
-        out.push_back(static_cast<char>(0x80U | (codepoint & 0x3FU)));
-    } else if (codepoint <= 0xFFFFU) {
-        out.push_back(static_cast<char>(0xE0U | (codepoint >> 12U)));
-        out.push_back(static_cast<char>(0x80U | ((codepoint >> 6U) & 0x3FU)));
-        out.push_back(static_cast<char>(0x80U | (codepoint & 0x3FU)));
-    } else if (codepoint <= 0x10FFFFU) {
-        out.push_back(static_cast<char>(0xF0U | (codepoint >> 18U)));
-        out.push_back(static_cast<char>(0x80U | ((codepoint >> 12U) & 0x3FU)));
-        out.push_back(static_cast<char>(0x80U | ((codepoint >> 6U) & 0x3FU)));
-        out.push_back(static_cast<char>(0x80U | (codepoint & 0x3FU)));
-    } else {
+    char encoded[4];
+    std::size_t encoded_length = 0U;
+    if (!infiltratr_utf8_encode_codepoint(
+            codepoint, encoded, sizeof(encoded), &encoded_length)) {
         throw std::runtime_error("JSON contains an invalid Unicode code point");
     }
+    out.append(encoded, encoded_length);
 }
 
 int hex_value(char value) {

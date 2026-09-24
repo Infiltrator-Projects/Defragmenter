@@ -8,6 +8,7 @@
 #include "infiltratr/endian.h"
 #include "infiltratr/arithmetic.h"
 #include "infiltratr/posix.h"
+#include "infiltratr/utf8.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -61,7 +62,47 @@ int exfat_chain(const ExfatVolume*v,uint32_t first,uint64_t count,bool count_kno
 int exfat_read_stream(const ExfatVolume*v,const ExfatClusterVec*clusters,uint64_t length,uint8_t**data,char**error){if(length>SIZE_MAX){exfat_set_error(error,"exFAT stream exceeds addressable memory");return -1;}uint8_t*out=ld_xmalloc((size_t)(length?length:1U));uint64_t remaining=length,position=0;uint8_t*buffer=ld_xmalloc(v->cluster_size);for(size_t i=0;i<clusters->count&&remaining>0;++i){if(exfat_read_cluster(v,clusters->items[i],buffer,error)!=0){free(buffer);free(out);return -1;}size_t take=remaining<v->cluster_size?(size_t)remaining:v->cluster_size;memcpy(out+(size_t)position,buffer,take);position+=take;remaining-=take;}free(buffer);if(remaining!=0){free(out);exfat_set_error(error,"short exFAT stream");return -1;}*data=out;return 0;}
 
 static ExfatObject *object_push(ExfatObjectVec *v){if(v->count==SIZE_MAX||!infiltratr_array_reserve((void**)&v->items,&v->capacity,sizeof(*v->items),v->count+1U,32U))ld_die("cannot grow exFAT object list");ExfatObject*o=&v->items[v->count++];memset(o,0,sizeof(*o));o->parent_index=SIZE_MAX;o->system_entry_offset=UINT64_MAX;o->entry_offset=UINT64_MAX;return o;}
-static char *utf16_name(const uint8_t *data,size_t chars){size_t cap=chars*3U+1U;char*out=ld_xmalloc(cap),*w=out;for(size_t i=0;i<chars;++i){uint16_t ch=exfat_u16(data,i*2U);if(ch<0x80U)*w++=(char)ch;else if(ch<0x800U){*w++=(char)(0xc0U|(ch>>6));*w++=(char)(0x80U|(ch&0x3fU));}else if(ch>=0xd800U&&ch<=0xdbffU&&i+1U<chars){uint16_t lo=exfat_u16(data,(i+1U)*2U);if(lo>=0xdc00U&&lo<=0xdfffU){uint32_t cp=0x10000U+(((uint32_t)ch-0xd800U)<<10)+((uint32_t)lo-0xdc00U);*w++=(char)(0xf0U|(cp>>18));*w++=(char)(0x80U|((cp>>12)&0x3fU));*w++=(char)(0x80U|((cp>>6)&0x3fU));*w++=(char)(0x80U|(cp&0x3fU));i++;}else *w++='?';}else{*w++=(char)(0xe0U|(ch>>12));*w++=(char)(0x80U|((ch>>6)&0x3fU));*w++=(char)(0x80U|(ch&0x3fU));}}*w='\0';return out;}
+static char *utf16_name(const uint8_t *data, size_t chars) {
+    const size_t capacity = chars * 3U + 1U;
+    char *out = ld_xmalloc(capacity);
+    size_t position = 0U;
+
+    for (size_t index = 0U; index < chars; ++index) {
+        const uint16_t high = exfat_u16(data, index * 2U);
+        uint32_t codepoint = high;
+        if (high >= 0xd800U && high <= 0xdbffU) {
+            if (index + 1U < chars) {
+                const uint16_t low = exfat_u16(data, (index + 1U) * 2U);
+                if (low >= 0xdc00U && low <= 0xdfffU) {
+                    codepoint = UINT32_C(0x10000) +
+                        (((uint32_t)high - UINT32_C(0xd800)) << 10U) +
+                        ((uint32_t)low - UINT32_C(0xdc00));
+                    ++index;
+                } else {
+                    codepoint = UINT32_C(0xfffd);
+                }
+            } else {
+                codepoint = UINT32_C(0xfffd);
+            }
+        } else if (high >= 0xdc00U && high <= 0xdfffU) {
+            codepoint = UINT32_C(0xfffd);
+        }
+
+        char encoded[4];
+        size_t encoded_length = 0U;
+        if (!infiltratr_utf8_encode_codepoint(
+                codepoint, encoded, sizeof(encoded), &encoded_length)) {
+            encoded_length = 0U;
+            (void)infiltratr_utf8_encode_codepoint(
+                UINT32_C(0xfffd), encoded, sizeof(encoded), &encoded_length);
+        }
+        if (encoded_length > capacity - position - 1U) break;
+        memcpy(out + position, encoded, encoded_length);
+        position += encoded_length;
+    }
+    out[position] = '\0';
+    return out;
+}
 static char *join_path_alloc(const char *parent, const char *name) {
     const char *left = (parent == NULL || parent[0] == '\0' ||
                         strcmp(parent, "/") == 0) ? "/" : parent;

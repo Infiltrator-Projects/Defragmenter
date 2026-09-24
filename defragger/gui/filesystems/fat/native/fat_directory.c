@@ -19,6 +19,7 @@
 #include "ld_runtime.h"
 #include "infiltratr/arithmetic.h"
 #include "infiltratr/endian.h"
+#include "infiltratr/utf8.h"
 
 #define FAT_PROGRAM_NAME "linux-defragger-fat-worker"
 #define MAX_RECURSION_DEPTH 128U
@@ -173,29 +174,25 @@ static void utf8_append(
     size_t *position,
     uint32_t codepoint
 ) {
-    if (codepoint == '/' || codepoint == '\\' || codepoint == 0) {
+    if (codepoint == '/' || codepoint == '\\' || codepoint == 0U) {
         codepoint = '_';
     }
-    if (codepoint <= 0x7F) {
-        if (*position + 1 < capacity) {
-            out[(*position)++] = (char)codepoint;
+
+    char encoded[4];
+    size_t encoded_length = 0U;
+    if (!infiltratr_utf8_encode_codepoint(
+            codepoint, encoded, sizeof(encoded), &encoded_length)) {
+        codepoint = UINT32_C(0xFFFD);
+        if (!infiltratr_utf8_encode_codepoint(
+                codepoint, encoded, sizeof(encoded), &encoded_length)) {
+            return;
         }
-    } else if (codepoint <= 0x7FF) {
-        if (*position + 2 < capacity) {
-            out[(*position)++] = (char)(0xC0U | (codepoint >> 6));
-            out[(*position)++] = (char)(0x80U | (codepoint & 0x3FU));
-        }
-    } else if (codepoint <= 0xFFFF) {
-        if (*position + 3 < capacity) {
-            out[(*position)++] = (char)(0xE0U | (codepoint >> 12));
-            out[(*position)++] = (char)(0x80U | ((codepoint >> 6) & 0x3FU));
-            out[(*position)++] = (char)(0x80U | (codepoint & 0x3FU));
-        }
-    } else if (codepoint <= 0x10FFFF && *position + 4 < capacity) {
-        out[(*position)++] = (char)(0xF0U | (codepoint >> 18));
-        out[(*position)++] = (char)(0x80U | ((codepoint >> 12) & 0x3FU));
-        out[(*position)++] = (char)(0x80U | ((codepoint >> 6) & 0x3FU));
-        out[(*position)++] = (char)(0x80U | (codepoint & 0x3FU));
+    }
+
+    if (*position < capacity &&
+        encoded_length <= capacity - *position - 1U) {
+        memcpy(out + *position, encoded, encoded_length);
+        *position += encoded_length;
     }
 }
 
