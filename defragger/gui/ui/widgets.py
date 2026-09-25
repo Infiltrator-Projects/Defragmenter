@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import math
+from pathlib import Path
 from typing import Any
 
 from gi.repository import Gdk, GdkPixbuf, GLib, Gtk
@@ -253,98 +254,155 @@ class DiskMap(Gtk.DrawingArea):
         return True
 
 
-class HeroArtwork(Gtk.DrawingArea):
-    """Decorative data-neutral hero artwork for the selected-volume banner."""
+class _ConceptArtwork(Gtk.DrawingArea):
+    """Raster artwork cropped from the approved Defragmenter UI concept."""
+
+    _concept: GdkPixbuf.Pixbuf | None = None
+
+    @classmethod
+    def _load_concept(cls) -> GdkPixbuf.Pixbuf | None:
+        if cls._concept is not None:
+            return cls._concept
+        module = Path(__file__).resolve()
+        candidates = (
+            Path("/usr/lib/linux-defragger/art/defragmenter-ui-vision.jpg"),
+            module.parents[3] / "docs" / "ui" / "defragmenter-ui-vision.jpg",
+        )
+        for candidate in candidates:
+            if not candidate.is_file():
+                continue
+            try:
+                cls._concept = GdkPixbuf.Pixbuf.new_from_file(str(candidate))
+                return cls._concept
+            except GLib.Error:
+                continue
+        return None
+
+    @classmethod
+    def _crop(
+        cls,
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+    ) -> GdkPixbuf.Pixbuf | None:
+        source = cls._load_concept()
+        if source is None:
+            return None
+        if (
+            x < 0
+            or y < 0
+            or x + width > source.get_width()
+            or y + height > source.get_height()
+        ):
+            return None
+        return source.new_subpixbuf(x, y, width, height)
+
+
+class HeroArtwork(_ConceptArtwork):
+    """Approved raster landscape used behind the selected-volume hero."""
+
+    _hero: GdkPixbuf.Pixbuf | None = None
 
     def __init__(self) -> None:
         super().__init__()
         self.set_size_request(-1, 136)
         self.connect("draw", self._draw)
 
-    @staticmethod
-    def _draw(_widget: Gtk.Widget, cr: Any) -> bool:
-        allocation = _widget.get_allocation()
+    @classmethod
+    def _hero_source(cls) -> GdkPixbuf.Pixbuf | None:
+        if cls._hero is None:
+            cls._hero = cls._crop(690, 88, 670, 119)
+        return cls._hero
+
+    @classmethod
+    def _draw(cls, widget: Gtk.Widget, cr: Any) -> bool:
+        allocation = widget.get_allocation()
         width = max(1, allocation.width)
         height = max(1, allocation.height)
-
-        # Deep blue field.
-        cr.set_source_rgb(0.025, 0.070, 0.145)
+        cr.set_source_rgb(0.018, 0.045, 0.095)
         cr.paint()
 
-        # Sunset glow at the right, built from translucent concentric discs.
-        cx = width * 0.82
-        cy = height * 0.42
-        for radius, alpha in ((120, 0.025), (86, 0.045), (54, 0.070), (22, 0.16)):
-            cr.set_source_rgba(1.0, 0.55, 0.16, alpha)
-            cr.arc(cx, cy, radius, 0.0, math.tau)
-            cr.fill()
-
-        # Stylised mountain silhouettes and reflected water bands.
-        cr.set_source_rgba(0.02, 0.04, 0.10, 0.88)
-        cr.move_to(width * 0.43, height * 0.72)
-        points = (
-            (0.50, 0.50), (0.56, 0.61), (0.62, 0.35),
-            (0.67, 0.57), (0.72, 0.42), (0.78, 0.64),
-            (0.85, 0.46), (0.91, 0.62), (1.00, 0.50),
+        source = cls._hero_source()
+        if source is None:
+            return False
+        target_width = max(1, int(width * 0.64))
+        scaled = source.scale_simple(
+            target_width,
+            height,
+            GdkPixbuf.InterpType.BILINEAR,
         )
-        for px, py in points:
-            cr.line_to(width * px, height * py)
-        cr.line_to(width, height)
-        cr.line_to(width * 0.43, height)
-        cr.close_path()
-        cr.fill()
-
-        for index, alpha in enumerate((0.20, 0.14, 0.10, 0.07)):
-            y = height * (0.73 + index * 0.06)
-            cr.set_source_rgba(0.05, 0.58, 1.0, alpha)
-            cr.rectangle(width * 0.42, y, width * 0.58, max(1.0, height * 0.018))
-            cr.fill()
-        cr.set_source_rgba(1.0, 0.64, 0.18, 0.18)
-        cr.rectangle(width * 0.68, height * 0.78, width * 0.30, max(1.0, height * 0.02))
-        cr.fill()
+        if scaled is not None:
+            Gdk.cairo_set_source_pixbuf(cr, scaled, width - target_width, 0)
+            cr.paint()
         return False
 
 
-class CheckerBall(Gtk.DrawingArea):
-    """Small Workbench-inspired decorative checker sphere."""
+class CheckerBall(_ConceptArtwork):
+    """Raster Workbench scene from the approved sidebar concept."""
+
+    _sidebar: GdkPixbuf.Pixbuf | None = None
 
     def __init__(self) -> None:
         super().__init__()
-        self.set_size_request(150, 150)
+        self.set_size_request(210, 250)
         self.connect("draw", self._draw)
 
-    @staticmethod
-    def _draw(widget: Gtk.Widget, cr: Any) -> bool:
+    @classmethod
+    def _sidebar_source(cls) -> GdkPixbuf.Pixbuf | None:
+        if cls._sidebar is None:
+            cls._sidebar = cls._crop(28, 700, 224, 270)
+        return cls._sidebar
+
+    @classmethod
+    def _draw(cls, widget: Gtk.Widget, cr: Any) -> bool:
         allocation = widget.get_allocation()
-        size = min(allocation.width, allocation.height)
-        radius = max(10.0, size * 0.40)
-        cx = allocation.width / 2.0
-        cy = allocation.height / 2.0
+        width = max(1, allocation.width)
+        height = max(1, allocation.height)
+        source = cls._sidebar_source()
+        if source is None:
+            return False
+        scaled = source.scale_simple(
+            width,
+            height,
+            GdkPixbuf.InterpType.BILINEAR,
+        )
+        if scaled is not None:
+            Gdk.cairo_set_source_pixbuf(cr, scaled, 0, 0)
+            cr.paint()
+        return False
 
-        cr.save()
-        cr.arc(cx, cy, radius, 0.0, math.tau)
-        cr.clip()
-        tile = max(10.0, radius / 3.0)
-        left = cx - radius
-        top = cy - radius
-        rows = int((radius * 2.0) / tile) + 2
-        cols = rows
-        for row in range(rows):
-            for col in range(cols):
-                red = (row + col) % 2 == 0
-                cr.set_source_rgb(
-                    0.92 if red else 0.95,
-                    0.10 if red else 0.95,
-                    0.12 if red else 0.95,
-                )
-                cr.rectangle(left + col * tile, top + row * tile, tile, tile)
-                cr.fill()
-        cr.restore()
 
-        cr.set_line_width(3.0)
-        cr.set_source_rgba(0.18, 0.55, 1.0, 0.75)
-        cr.arc(cx, cy, radius, 0.0, math.tau)
-        cr.stroke()
+class DriveArtwork(_ConceptArtwork):
+    """Raster SSD badge cropped from the approved selected-volume concept."""
+
+    _drive: GdkPixbuf.Pixbuf | None = None
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.set_size_request(76, 66)
+        self.connect("draw", self._draw)
+
+    @classmethod
+    def _drive_source(cls) -> GdkPixbuf.Pixbuf | None:
+        if cls._drive is None:
+            cls._drive = cls._crop(284, 105, 101, 88)
+        return cls._drive
+
+    @classmethod
+    def _draw(cls, widget: Gtk.Widget, cr: Any) -> bool:
+        allocation = widget.get_allocation()
+        source = cls._drive_source()
+        if source is None:
+            return False
+        scaled = source.scale_simple(
+            max(1, allocation.width),
+            max(1, allocation.height),
+            GdkPixbuf.InterpType.BILINEAR,
+        )
+        if scaled is not None:
+            Gdk.cairo_set_source_pixbuf(cr, scaled, 0, 0)
+            cr.paint()
         return False
 
 
