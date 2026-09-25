@@ -10,7 +10,7 @@ from gi.repository import Gdk, Gtk
 from .map_presenter import MapPresentation
 from .operation_planner import ControlState
 from .theme import ThemeMode, apply_theme, load_theme_mode, save_theme_mode, theme_label
-from .widgets import CheckerBall, DiskMap, GaugeCard, HeroArtwork, SummaryCard
+from .widgets import CheckerBall, DiskMap, DriveArtwork, GaugeCard, HeroArtwork, SummaryCard
 
 
 APP_NAME = "Defragmenter"
@@ -260,15 +260,9 @@ class WindowView:
         sidebar.pack_start(self.sidebar_test_media_button, False, False, 0)
         sidebar.pack_start(self.sidebar_settings_button, False, False, 0)
 
-        footer_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         checker = CheckerBall()
         checker.set_halign(Gtk.Align.CENTER)
-        footer_box.pack_start(checker, False, False, 0)
-        footer = Gtk.Label(label="Fast disks\nHappy computing.")
-        footer.set_xalign(0)
-        footer.get_style_context().add_class("sidebar-footer")
-        footer_box.pack_start(footer, False, False, 0)
-        sidebar.pack_end(footer_box, False, False, 4)
+        sidebar.pack_end(checker, False, False, 4)
         return sidebar
 
     def _build(self) -> None:
@@ -310,7 +304,7 @@ class WindowView:
         drive_badge = Gtk.Frame()
         drive_badge.set_shadow_type(Gtk.ShadowType.NONE)
         drive_badge.get_style_context().add_class("hero-drive-badge")
-        drive_badge.add(self._icon("drive-harddisk-symbolic", 48))
+        drive_badge.add(DriveArtwork())
         hero_heading.pack_start(drive_badge, False, False, 0)
 
         hero_text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
