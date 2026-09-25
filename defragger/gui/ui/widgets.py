@@ -254,66 +254,70 @@ class DiskMap(Gtk.DrawingArea):
         return True
 
 
-class _ConceptArtwork(Gtk.DrawingArea):
-    """Raster artwork cropped from the approved Defragmenter UI concept."""
+class _RasterArtwork(Gtk.DrawingArea):
+    """Base widget for one dedicated Defragmenter raster art asset."""
 
-    _concept: GdkPixbuf.Pixbuf | None = None
-
-    @classmethod
-    def _load_concept(cls) -> GdkPixbuf.Pixbuf | None:
-        if cls._concept is not None:
-            return cls._concept
-        module = Path(__file__).resolve()
-        candidates = (
-            Path("/usr/lib/linux-defragger/art/defragmenter-ui-vision.jpg"),
-            module.parents[3] / "docs" / "ui" / "defragmenter-ui-vision.jpg",
-        )
-        for candidate in candidates:
-            if not candidate.is_file():
-                continue
-            try:
-                cls._concept = GdkPixbuf.Pixbuf.new_from_file(str(candidate))
-                return cls._concept
-            except GLib.Error:
-                continue
-        return None
+    _cache: dict[str, GdkPixbuf.Pixbuf] = {}
 
     @classmethod
-    def _crop(
-        cls,
+    def _load_asset(cls, name: str) -> GdkPixbuf.Pixbuf | None:
+        cached = cls._cache.get(name)
+        if cached is not None:
+            return cached
+
+        path = Path(__file__).resolve().parent / "art" / name
+        if not path.is_file():
+            return None
+        try:
+            pixbuf = GdkPixbuf.Pixbuf.new_from_file(str(path))
+        except GLib.Error:
+            return None
+        cls._cache[name] = pixbuf
+        return pixbuf
+
+    @staticmethod
+    def _paint_cover(
+        cr: Any,
+        source: GdkPixbuf.Pixbuf,
         x: int,
         y: int,
         width: int,
         height: int,
-    ) -> GdkPixbuf.Pixbuf | None:
-        source = cls._load_concept()
-        if source is None:
-            return None
-        if (
-            x < 0
-            or y < 0
-            or x + width > source.get_width()
-            or y + height > source.get_height()
-        ):
-            return None
-        return source.new_subpixbuf(x, y, width, height)
+    ) -> None:
+        """Scale without aspect distortion and crop only at the destination edge."""
+
+        width = max(1, int(width))
+        height = max(1, int(height))
+        src_width = max(1, source.get_width())
+        src_height = max(1, source.get_height())
+        scale = max(width / src_width, height / src_height)
+        scaled_width = max(1, int(round(src_width * scale)))
+        scaled_height = max(1, int(round(src_height * scale)))
+        scaled = source.scale_simple(
+            scaled_width,
+            scaled_height,
+            GdkPixbuf.InterpType.BILINEAR,
+        )
+        if scaled is None:
+            return
+
+        draw_x = x + (width - scaled_width) / 2.0
+        draw_y = y + (height - scaled_height) / 2.0
+        cr.save()
+        cr.rectangle(x, y, width, height)
+        cr.clip()
+        Gdk.cairo_set_source_pixbuf(cr, scaled, draw_x, draw_y)
+        cr.paint()
+        cr.restore()
 
 
-class HeroArtwork(_ConceptArtwork):
-    """Approved raster landscape used behind the selected-volume hero."""
-
-    _hero: GdkPixbuf.Pixbuf | None = None
+class HeroArtwork(_RasterArtwork):
+    """Standalone approved landscape artwork for the selected-volume hero."""
 
     def __init__(self) -> None:
         super().__init__()
         self.set_size_request(-1, 136)
         self.connect("draw", self._draw)
-
-    @classmethod
-    def _hero_source(cls) -> GdkPixbuf.Pixbuf | None:
-        if cls._hero is None:
-            cls._hero = cls._crop(690, 88, 670, 119)
-        return cls._hero
 
     @classmethod
     def _draw(cls, widget: Gtk.Widget, cr: Any) -> bool:
@@ -323,25 +327,23 @@ class HeroArtwork(_ConceptArtwork):
         cr.set_source_rgb(0.018, 0.045, 0.095)
         cr.paint()
 
-        source = cls._hero_source()
+        source = cls._load_asset("hero-landscape.jpg")
         if source is None:
             return False
-        target_width = max(1, int(width * 0.64))
-        scaled = source.scale_simple(
+        target_width = max(1, int(width * 0.68))
+        cls._paint_cover(
+            cr,
+            source,
+            width - target_width,
+            0,
             target_width,
             height,
-            GdkPixbuf.InterpType.BILINEAR,
         )
-        if scaled is not None:
-            Gdk.cairo_set_source_pixbuf(cr, scaled, width - target_width, 0)
-            cr.paint()
         return False
 
 
-class CheckerBall(_ConceptArtwork):
-    """Raster Workbench scene from the approved sidebar concept."""
-
-    _sidebar: GdkPixbuf.Pixbuf | None = None
+class CheckerBall(_RasterArtwork):
+    """Standalone Workbench-inspired sidebar raster artwork."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -349,60 +351,34 @@ class CheckerBall(_ConceptArtwork):
         self.connect("draw", self._draw)
 
     @classmethod
-    def _sidebar_source(cls) -> GdkPixbuf.Pixbuf | None:
-        if cls._sidebar is None:
-            cls._sidebar = cls._crop(28, 700, 224, 270)
-        return cls._sidebar
+    def _draw(cls, widget: Gtk.Widget, cr: Any) -> bool:
+        allocation = widget.get_allocation()
+        width = max(1, allocation.width)
+        height = max(1, allocation.height)
+        source = cls._load_asset("sidebar-workbench.jpg")
+        if source is None:
+            return False
+        cls._paint_cover(cr, source, 0, 0, width, height)
+        return False
+
+
+class DriveArtwork(_RasterArtwork):
+    """Standalone SSD artwork for the selected-volume identity surface."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.set_size_request(84, 74)
+        self.connect("draw", self._draw)
 
     @classmethod
     def _draw(cls, widget: Gtk.Widget, cr: Any) -> bool:
         allocation = widget.get_allocation()
         width = max(1, allocation.width)
         height = max(1, allocation.height)
-        source = cls._sidebar_source()
+        source = cls._load_asset("drive-ssd.jpg")
         if source is None:
             return False
-        scaled = source.scale_simple(
-            width,
-            height,
-            GdkPixbuf.InterpType.BILINEAR,
-        )
-        if scaled is not None:
-            Gdk.cairo_set_source_pixbuf(cr, scaled, 0, 0)
-            cr.paint()
-        return False
-
-
-class DriveArtwork(_ConceptArtwork):
-    """Raster SSD badge cropped from the approved selected-volume concept."""
-
-    _drive: GdkPixbuf.Pixbuf | None = None
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.set_size_request(76, 66)
-        self.connect("draw", self._draw)
-
-    @classmethod
-    def _drive_source(cls) -> GdkPixbuf.Pixbuf | None:
-        if cls._drive is None:
-            cls._drive = cls._crop(284, 105, 101, 88)
-        return cls._drive
-
-    @classmethod
-    def _draw(cls, widget: Gtk.Widget, cr: Any) -> bool:
-        allocation = widget.get_allocation()
-        source = cls._drive_source()
-        if source is None:
-            return False
-        scaled = source.scale_simple(
-            max(1, allocation.width),
-            max(1, allocation.height),
-            GdkPixbuf.InterpType.BILINEAR,
-        )
-        if scaled is not None:
-            Gdk.cairo_set_source_pixbuf(cr, scaled, 0, 0)
-            cr.paint()
+        cls._paint_cover(cr, source, 0, 0, width, height)
         return False
 
 
@@ -427,7 +403,7 @@ class GaugeCard(Gtk.Frame):
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         box.set_border_width(10)
         self.gauge = Gtk.DrawingArea()
-        self.gauge.set_size_request(82, 82)
+        self.gauge.set_size_request(94, 94)
         self.gauge.connect("draw", self._draw_gauge)
         box.pack_start(self.gauge, False, False, 0)
 
@@ -487,7 +463,7 @@ class GaugeCard(Gtk.Frame):
             cr.stroke()
 
         cr.select_font_face(TYPOGRAPHY["ui_family"], 0, 1)
-        cr.set_font_size(15)
+        cr.set_font_size(17)
         percent = f"{self._fraction * 100.0:.0f}%"
         extents = cr.text_extents(percent)
         cr.move_to(

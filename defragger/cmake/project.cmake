@@ -538,8 +538,9 @@ install(FILES packaging/io.github.linuxdefragger.png
 install(FILES packaging/io.github.linuxdefragger.png
         DESTINATION lib/linux-defragger
         RENAME defragmenter-icon.png)
-install(FILES ../docs/ui/defragmenter-ui-vision.jpg
-        DESTINATION lib/linux-defragger/art)
+install(DIRECTORY gui/ui/art
+        DESTINATION lib/linux-defragger/ui
+        FILES_MATCHING PATTERN "*.jpg")
 
 # Install only documentation that is part of the self-contained application
 # source tree. Canonical repository documentation lives at ../docs and is not

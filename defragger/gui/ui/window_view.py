@@ -3,9 +3,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Protocol
 
-from gi.repository import Gdk, Gtk
+from gi.repository import Gdk, GdkPixbuf, GLib, Gtk
 
 from .map_presenter import MapPresentation
 from .operation_planner import ControlState
@@ -93,6 +94,28 @@ class WindowView:
 
     @staticmethod
     def _icon(name: str, size: int = 24) -> Gtk.Image:
+        if name == APP_ICON_NAME:
+            module = Path(__file__).resolve()
+            candidates = (
+                module.parents[1] / "defragmenter-icon.png",
+                Path("/usr/lib/linux-defragger/defragmenter-icon.png"),
+                Path("/usr/share/icons/hicolor/96x96/apps/io.github.linuxdefragger.png"),
+                module.parents[2] / "packaging" / "io.github.linuxdefragger.png",
+            )
+            for candidate in candidates:
+                if not candidate.is_file():
+                    continue
+                try:
+                    pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
+                        str(candidate),
+                        size,
+                        size,
+                        True,
+                    )
+                    return Gtk.Image.new_from_pixbuf(pixbuf)
+                except GLib.Error:
+                    continue
+
         image = Gtk.Image.new_from_icon_name(name, Gtk.IconSize.DIALOG)
         image.set_pixel_size(size)
         return image
@@ -951,7 +974,7 @@ class WindowView:
         .version-secondary { font-size: 9pt; }
         .section-title { font-size: 10.5pt; font-weight: bold; }
         .summary-title { font-size: 9.25pt; }
-        .summary-value { font-size: 18pt; font-weight: bold; }
+        .summary-value { font-size: 20pt; font-weight: bold; }
         .legend-item label, .map-caption, .map-hint { font-size: 8.75pt; }
         .action-card-title { font-size: 11pt; font-weight: bold; }
         .action-card-subtitle { font-size: 8.75pt; }

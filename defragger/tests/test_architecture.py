@@ -864,6 +864,24 @@ def test_user_facing_branding_is_defragmenter() -> None:
     assert "RENAME infiltrator-defragmenter.png" in project_cmake
     assert "DESTINATION lib/linux-defragger" in project_cmake
     assert "RENAME defragmenter-icon.png" in project_cmake
+    assert "install(DIRECTORY gui/ui/art" in project_cmake
+    assert "DESTINATION lib/linux-defragger/ui" in project_cmake
+    assert "../docs/ui/defragmenter-ui-vision.jpg" not in project_cmake
+    art_dir = GUI / "ui" / "art"
+    expected_art = {
+        "drive-ssd.jpg": "7764a15e54be63618c1ae9dea0bb00f66133237f",
+        "hero-landscape.jpg": "d467f6f16425b38b32472f6877ccbe55657d21d4",
+        "sidebar-workbench.jpg": "58aea05415be55e92b201fe5d4bc5a3f5d9fefeb",
+    }
+    for name, expected_hash in expected_art.items():
+        asset = art_dir / name
+        assert asset.is_file(), f"missing dedicated UI artwork {name}"
+        assert asset.read_bytes()[:2] == bytes((0xFF, 0xD8))
+        assert subprocess.check_output(
+            ["git", "hash-object", str(asset)],
+            cwd=ROOT.parent,
+            text=True,
+        ).strip() == expected_hash
     assert "packaging/io.github.linuxdefragger.svg" not in project_cmake
     icon_path = ROOT / "packaging" / "io.github.linuxdefragger.png"
     assert icon_path.is_file()

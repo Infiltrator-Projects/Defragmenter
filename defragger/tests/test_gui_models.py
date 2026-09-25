@@ -434,16 +434,21 @@ def test_ui_polish_preserves_allocation_map_visual_contract() -> None:
         "source_cell_at_pixel(",
         "Pixbuf.new_from_bytes(",
         "class GaugeCard(Gtk.Frame):",
-        "class _ConceptArtwork(Gtk.DrawingArea):",
-        "class HeroArtwork(_ConceptArtwork):",
-        "class CheckerBall(_ConceptArtwork):",
-        "class DriveArtwork(_ConceptArtwork):",
-        'Path("/usr/lib/linux-defragger/art/defragmenter-ui-vision.jpg")',
+        "class _RasterArtwork(Gtk.DrawingArea):",
+        "class HeroArtwork(_RasterArtwork):",
+        "class CheckerBall(_RasterArtwork):",
+        "class DriveArtwork(_RasterArtwork):",
+        'Path(__file__).resolve().parent / "art" / name',
+        '"hero-landscape.jpg"',
+        '"sidebar-workbench.jpg"',
+        '"drive-ssd.jpg"',
         "InterpType.BILINEAR",
         "no Hilbert/Morton/other spatial curve",
         "Paint 1:1 with no",
     ):
         assert required in source
+
+    assert "defragmenter-ui-vision.jpg" not in source
 
     for required in (
         '"Test Media"',

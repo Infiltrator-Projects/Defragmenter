@@ -54,9 +54,11 @@ operation.
 ## Raster-art contract
 
 Where the approved concept uses illustration or product artwork, Defragmenter
-uses raster artwork derived from the approved concept rather than procedurally
-redrawing the scene with Cairo primitives. The installed application ships the
-approved concept artwork under `/usr/lib/linux-defragger/art/`; live UI crops
-for the drive badge, hero landscape and Workbench-inspired sidebar scene are
-drawn from that raster source. Procedural drawing remains appropriate for
-truthful live data visualisations such as gauges and the physical allocation map.
+uses dedicated standalone raster assets rather than procedurally redrawing the
+scene with Cairo primitives. Runtime artwork lives under `gui/ui/art/` and is
+installed beside the UI modules; the complete concept screenshot is
+**documentation only** and must never be loaded, cropped or displayed by the
+application. The drive badge, hero landscape and Workbench-inspired sidebar
+scene each have their own asset with no embedded prototype controls. Procedural
+drawing remains appropriate for truthful live data visualisations such as gauges
+and the physical allocation map.
