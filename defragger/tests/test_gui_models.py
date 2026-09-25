@@ -422,10 +422,13 @@ def test_ui_polish_preserves_allocation_map_visual_contract() -> None:
         '"bad": (1.000, 0.625, 0.040)',
         '"background": (0.010, 0.020, 0.040)',
         "self.set_size_request(-1, 250)",
-        "def _morton_xy(",
-        "def _morton_index(",
+        "def _hilbert_xy(",
+        "def _hilbert_distance(",
+        "pattern.set_filter(4)",
         "class GaugeCard(Gtk.Frame):",
-        "locality-preserving pixel image",
+        "class HeroArtwork(Gtk.DrawingArea):",
+        "class CheckerBall(Gtk.DrawingArea):",
+        "flowing, picture-like field",
     ):
         assert required in source
 
@@ -433,19 +436,26 @@ def test_ui_polish_preserves_allocation_map_visual_contract() -> None:
         '"Test Media"',
         '"Settings"',
         "self.controller.launch_test_media()",
+        "Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)",
+        "HeroArtwork()",
+        "CheckerBall()",
         "GaugeCard(",
+        "Current allocation",
+        "body.pack1(self._build_sidebar()",
+        "idle = state.refresh",
         "Pixel locality map",
         "locality-preserving pixel view",
     ):
         assert required in view_source
 
     # The dashboard deliberately visualises the linear disk through a
-    # locality-preserving pixel image. It must not regress to visible grid
-    # geometry or the old row-major stripe renderer.
+    # locality-preserving image. It must not regress to visible grid geometry,
+    # row-major stripes or the earlier Morton renderer that remained too blocky.
     assert '"grid":' not in source
     assert "allocation_grid(" not in source
     assert "block_bounds(" not in source
     assert "pixel_index = y * width + x" not in source
+    assert "def _morton_xy(" not in source
 
 
 def test_theme_modes_are_persistent_and_shared_across_windows() -> None:
