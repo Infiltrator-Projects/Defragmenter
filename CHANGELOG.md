@@ -2,6 +2,15 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-204
+
+- Fix a selected-volume identity regression introduced by the graphical hero: changing the volume combo box now immediately refreshes the hero title, detail line, footer identity and mounted/offline badge from the revalidated `Volume` object.
+- Remove the stale-state path where the combo could show one partition while the hero still showed the previously selected partition and its mount state.
+- Centralise selected-volume presentation in one `show_selected_volume()` path shared by device-list refreshes and manual selection changes, so all identity surfaces consume the same authoritative display string.
+- Parse the explicit trailing `, unmounted` state before `, mounted` so the substring `mounted` inside `unmounted` can never produce a false mounted badge.
+- Add a GUI regression that requires manual selection changes to call the selected-volume synchroniser using the revalidated volume identity.
+- Qualify production source commit `eb0ef2222e110bba8a4b8b89c41af68e10e09d3d` in Project quality gate run 36120025982: warnings-as-errors builds and all 44 hosted CTest tests pass and the separate ASan/UBSan lane passes; the ordinary candidate gate stops only on the deliberately stale audited-source marker advanced by this release.
+
 ## 1.8.0-203
 
 - Correct the allocation-map semantics after the 1.8.0-202 Hilbert experiment: display pixels now preserve exact physical disk order instead of moving allocation units to aesthetically convenient coordinates.

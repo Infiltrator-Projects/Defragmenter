@@ -5,8 +5,8 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-09-25
 
-Applies to: release version 1.8.0-203
-Audited source commit: d11f3085718064121fa8f98ef25aff87617933e4
+Applies to: release version 1.8.0-204
+Audited source commit: eb0ef2222e110bba8a4b8b89c41af68e10e09d3d
 Audited release-governance commit: 1a61ff57bdf939fcbfcc84300b66b30411276113
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
@@ -15,9 +15,9 @@ This document records the current release safety case. Historical audit-developm
 
 ## Qualification evidence
 
-The current audited production-source baseline is commit `d11f3085718064121fa8f98ef25aff87617933e4`. In [Project quality gate run 36118695325](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/36118695325), that exact candidate passed the warnings-as-errors build and all 44 hosted CTest tests. The separate hosted ASan/UBSan lane also passed. The overall ordinary-candidate gate stopped only because this audit document still named the 1.8.0-202 production baseline, which is the deliberate pre-release control resolved by version 1.8.0-203.
+The current audited production-source baseline is commit `eb0ef2222e110bba8a4b8b89c41af68e10e09d3d`. In [Project quality gate run 36120025982](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/36120025982), that exact candidate passed the warnings-as-errors build and all 44 hosted CTest tests. The separate hosted ASan/UBSan lane also passed. The overall ordinary-candidate gate stopped only because this audit document still named the 1.8.0-203 production baseline, which is the deliberate pre-release control resolved by version 1.8.0-204.
 
-The reviewed production delta remains confined to GTK allocation-map presentation. The 1.8.0-202 Hilbert mapping was rejected because it preserved source identity but changed apparent physical position: later allocation units could be drawn beside or above earlier units, causing a fully compacted disk to look spatially fragmented. The authoritative map now advances monotonically through the actual on-disk allocation-unit address space in row-major display order. The renderer builds one pixel for each display position at the actual drawing resolution, performs no interpolation, and uses the same physical mapping for tooltip hit-testing. No filesystem parser, planner, writer, journal or recovery path changed.
+The reviewed production delta is confined to selected-volume GUI identity synchronisation. Manual combo-box selection now updates the hero title, filesystem/detail line, footer volume identity and mounted/offline badge from the revalidated `Volume.display_name` before cached analysis or automatic analysis presentation proceeds. Refresh-driven population uses the same presentation helper. Explicit `, unmounted` parsing precedes `, mounted` parsing so mount state cannot be misclassified by substring overlap. Filesystem analysis, allocation mapping, mutation planning, writers, recovery and journal semantics are unchanged.
 
 The dashboard now pins navigation to the physical left edge through a GTK Paned layout, adds a compact mirrored allocation preview, colour-coded operation cards and a live Activity surface driven from real command-runner lifecycle/progress events. Analyse, Defragment, Growth Defrag and Recover cards remain clickable whenever the UI is idle so validation failures are explicit rather than represented by visually dead controls. Analyse reports a missing selection; mutation validation still owns unsupported-operation, mounted-target, journal and recovery-state errors.
 
