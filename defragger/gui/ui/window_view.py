@@ -807,6 +807,10 @@ class WindowView:
             self.footer_volume.set_text("No volume selected")
             self.hero_status.set_text("Ready")
 
+    def set_activity(self, primary: str, secondary: str) -> None:
+        self.activity_primary.set_text(primary)
+        self.activity_secondary.set_text(secondary)
+
     def append_log(self, text: str) -> None:
         if not text:
             return
