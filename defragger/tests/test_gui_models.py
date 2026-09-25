@@ -435,7 +435,8 @@ def test_ui_polish_preserves_allocation_map_visual_contract() -> None:
         "class GaugeCard(Gtk.Frame):",
         "class HeroArtwork(Gtk.DrawingArea):",
         "class CheckerBall(Gtk.DrawingArea):",
-        "flowing, picture-like field",
+        "no Hilbert/Morton/other spatial curve",
+        "Paint 1:1 with no",
     ):
         assert required in source
 
@@ -450,8 +451,8 @@ def test_ui_polish_preserves_allocation_map_visual_contract() -> None:
         "Current allocation",
         "body.pack1(self._build_sidebar()",
         "idle = state.refresh",
-        "Pixel locality map",
-        "locality-preserving pixel view",
+        "Physical pixel map",
+        "physical-position pixel view",
     ):
         assert required in view_source
 
