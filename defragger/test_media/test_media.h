@@ -64,6 +64,7 @@ int ldtm_build_sfdisk_script(char *buffer, size_t capacity);
 int ldtm_transport_is_field_media(int removable, const char *transport);
 int ldtm_decode_hex_byte(char high, char low, unsigned char *value);
 const char *ldtm_creator_program(const LdtmFilesystemSpec *spec);
+const char *ldtm_creator_display_name(const LdtmFilesystemSpec *spec);
 int ldtm_program_available(const char *program);
 int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
                                 char *detail, size_t detail_capacity);

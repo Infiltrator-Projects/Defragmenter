@@ -393,12 +393,6 @@ static gboolean confirmation_dialog(LdtmApp *app, const char *device) {
     return accepted;
 }
 
-static const char *creator_short_name(const LdtmFilesystemSpec *spec) {
-    const char *program = ldtm_creator_program(spec);
-    if (spec != NULL && spec->creator == LDTM_CREATOR_MANUAL) return "Manual";
-    return program != NULL ? program : "Unavailable";
-}
-
 static void reset_filesystem_rows(LdtmApp *app) {
     size_t index;
     guint ready = 0U;
@@ -448,7 +442,7 @@ static void reset_filesystem_rows(LdtmApp *app) {
                            LDTM_FS_COL_LABEL, spec->label,
                            LDTM_FS_COL_SIZE, size,
                            LDTM_FS_COL_PAYLOAD, payload,
-                           LDTM_FS_COL_CREATOR, creator_short_name(spec),
+                           LDTM_FS_COL_CREATOR, ldtm_creator_display_name(spec),
                            LDTM_FS_COL_AVAILABILITY, availability,
                            LDTM_FS_COL_RESULT, "Waiting",
                            LDTM_FS_COL_DETAIL, detail,

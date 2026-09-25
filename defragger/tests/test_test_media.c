@@ -312,6 +312,13 @@ int main(void) {
     CHECK(strcmp(ldtm_creator_program(ofs), "/usr/lib/linux-defragger/test-media-mkfs-ofs") == 0);
     CHECK(strcmp(ldtm_creator_program(ffs), "/usr/lib/linux-defragger/test-media-mkfs-ffs") == 0);
     CHECK(ldtm_creator_program(sfs) == NULL);
+    CHECK(strcmp(ldtm_creator_display_name(fat12), "mkfs.fat") == 0);
+    CHECK(strcmp(ldtm_creator_display_name(ofs), "Built-in native") == 0);
+    CHECK(strcmp(ldtm_creator_display_name(ffs), "Built-in native") == 0);
+    CHECK(strcmp(ldtm_creator_display_name(sfs), "Built-in native") == 0);
+    CHECK(strcmp(ldtm_creator_display_name(pfs3), "Built-in native") == 0);
+    CHECK(strcmp(ldtm_creator_display_name(apfs), "Built-in native") == 0);
+    CHECK(strcmp(ldtm_creator_display_name(NULL), "Unavailable") == 0);
     CHECK(strstr(sfs->note, "SFS0") != NULL && strstr(sfs->note, "100 extents") != NULL);
     CHECK(pfs3->creator == LDTM_CREATOR_PFS3 && strstr(pfs3->note, "PFS3") != NULL);
     CHECK(strcmp(ldtm_creator_program(ufs), "makefs") == 0);

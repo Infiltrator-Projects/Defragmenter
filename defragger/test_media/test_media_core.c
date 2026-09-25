@@ -173,6 +173,31 @@ const char *ldtm_creator_program(const LdtmFilesystemSpec *spec) {
     return NULL;
 }
 
+
+const char *ldtm_creator_display_name(const LdtmFilesystemSpec *spec) {
+    const char *program;
+    if (spec == NULL) return "Unavailable";
+
+    if (spec->creator == LDTM_CREATOR_MANUAL) return "Manual";
+
+    /*
+     * These formats are constructed directly by Defragmenter's native
+     * test-media engine.  They intentionally have no external mkfs program,
+     * so the GUI must not describe a ready native creator as unavailable.
+     */
+    if ((spec->creator == LDTM_CREATOR_AFFS &&
+         (strcmp(spec->key, "ofs") == 0 ||
+          strcmp(spec->key, "ffs") == 0 ||
+          strcmp(spec->key, "sfs") == 0)) ||
+        spec->creator == LDTM_CREATOR_PFS3 ||
+        spec->creator == LDTM_CREATOR_APFS) {
+        return "Built-in native";
+    }
+
+    program = ldtm_creator_program(spec);
+    return program != NULL ? program : "Unavailable";
+}
+
 int ldtm_program_available(const char *program) {
     static const char *const directories[] = {
         "/usr/sbin", "/usr/bin", "/sbin", "/bin", "/usr/local/sbin", "/usr/local/bin"
