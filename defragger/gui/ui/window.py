@@ -360,6 +360,9 @@ class MainWindow(Gtk.ApplicationWindow):
             return
         if self.busy:
             return
+        if operation not in volume.operations:
+            self.coordinator.start_mutation(operation)
+            return
         if volume.mounted and not volume.image:
             operation_name = operation.replace("-", " ").title()
             if not self.confirm(
