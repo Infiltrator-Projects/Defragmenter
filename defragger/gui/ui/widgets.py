@@ -8,6 +8,7 @@ from typing import Any
 
 from gi.repository import Gdk, GdkPixbuf, GLib, Gtk
 
+from .map_geometry import physical_unit_at_pixel, source_cell_at_pixel
 from .theme_tokens import TYPOGRAPHY
 
 MIN_MAP_CELLS = 256
@@ -15,7 +16,7 @@ MAX_MAP_CELLS = 1048576
 
 
 class DiskMap(Gtk.DrawingArea):
-    """Render allocation data as a dense locality-preserving pixel image."""
+    """Render allocation data as a dense physically ordered pixel image."""
 
     COLORS = {
         "free": (0.018, 0.050, 0.105),
@@ -33,7 +34,8 @@ class DiskMap(Gtk.DrawingArea):
         self.cells: list[dict[str, int]] = []
         self.unit_label = "clusters"
         self._raster_size: tuple[int, int] | None = None
-        self._logical_layout: tuple[int, int, int, int] | None = None
+        self._cell_starts: list[int] = []
+        self._cell_ends: list[int] = []
         self._pixbuf: GdkPixbuf.Pixbuf | None = None
         self._pixbuf_key: tuple[int, int, int] | None = None
         self.set_size_request(-1, 250)
@@ -43,6 +45,8 @@ class DiskMap(Gtk.DrawingArea):
 
     def set_cells(self, cells: list[dict[str, int]]) -> None:
         self.cells = cells
+        self._cell_starts = [int(cell["start"]) for cell in cells]
+        self._cell_ends = [int(cell["end"]) for cell in cells]
         self._pixbuf = None
         self._pixbuf_key = None
         self.queue_draw()
@@ -110,89 +114,68 @@ class DiskMap(Gtk.DrawingArea):
             )
         return colour
 
-    @staticmethod
-    def _hilbert_order(cell_count: int) -> int:
-        """Return a bounded square Hilbert order for the current map density."""
-
-        target = max(1024, min(65536, max(1, cell_count) * 2))
-        side = int(math.ceil(math.sqrt(target)))
-        order = max(5, int(math.ceil(math.log2(max(2, side)))))
-        return min(8, order)
-
-    @staticmethod
-    def _hilbert_xy(side: int, distance: int) -> tuple[int, int]:
-        """Map one Hilbert-curve distance to a square pixel coordinate."""
-
-        x = 0
-        y = 0
-        scale = 1
-        value = int(distance)
-        while scale < side:
-            rx = 1 & (value // 2)
-            ry = 1 & (value ^ rx)
-            if ry == 0:
-                if rx == 1:
-                    x = scale - 1 - x
-                    y = scale - 1 - y
-                x, y = y, x
-            x += scale * rx
-            y += scale * ry
-            value //= 4
-            scale *= 2
-        return x, y
-
-    @staticmethod
-    def _hilbert_distance(side: int, x: int, y: int) -> int:
-        """Map one square pixel coordinate back to Hilbert distance."""
-
-        distance = 0
-        scale = side // 2
-        px = int(x)
-        py = int(y)
-        while scale > 0:
-            rx = 1 if (px & scale) else 0
-            ry = 1 if (py & scale) else 0
-            distance += scale * scale * ((3 * rx) ^ ry)
-            if ry == 0:
-                if rx == 1:
-                    px = side - 1 - px
-                    py = side - 1 - py
-                px, py = py, px
-            scale //= 2
-        return distance
-
     def _build_pixbuf(self, width: int, height: int) -> GdkPixbuf.Pixbuf:
-        order = self._hilbert_order(len(self.cells))
-        side = 1 << order
-        self._logical_layout = (side, side, order, order)
-        key = (len(self.cells), side, side)
+        """Build one exact positional raster from physical allocation order."""
+
+        width = max(1, int(width))
+        height = max(1, int(height))
+        key = (len(self.cells), width, height)
         if self._pixbuf is not None and self._pixbuf_key == key:
             return self._pixbuf
 
-        total_points = side * side
-        pixels = bytearray(total_points * 3)
-        for distance in range(total_points):
-            source_index = min(
-                len(self.cells) - 1,
-                (distance * len(self.cells)) // total_points,
-            )
-            x, y = self._hilbert_xy(side, distance)
-            colour = tuple(
-                max(0, min(255, int(round(channel * 255.0))))
-                for channel in self._cell_colour(self.cells[source_index])
-            )
-            offset = (y * side + x) * 3
-            pixels[offset : offset + 3] = bytes(colour)
+        pixel_count = width * height
+        pixels = bytearray(pixel_count * 3)
+        first_unit = self._cell_starts[0]
+        last_unit = self._cell_ends[-1]
 
-        rowstride = side * 3
+        # Both the analyser contract and map presenter guarantee monotonically
+        # ordered physical cell bounds.  Walk them once while the display
+        # pixels advance monotonically through the real on-disk unit range.
+        # This is deliberately row-major: no Hilbert/Morton/other spatial curve
+        # may move an allocation unit to a different apparent disk position.
+        cell_index = 0
+        for pixel_index in range(pixel_count):
+            x = pixel_index % width
+            y = pixel_index // width
+            unit = physical_unit_at_pixel(
+                first_unit,
+                last_unit,
+                width,
+                height,
+                x,
+                y,
+            )
+            assert unit is not None
+            while (
+                cell_index + 1 < len(self.cells)
+                and unit > self._cell_ends[cell_index]
+            ):
+                cell_index += 1
+
+            if (
+                unit < self._cell_starts[cell_index]
+                or unit > self._cell_ends[cell_index]
+            ):
+                colour = self.COLORS["background"]
+            else:
+                colour = self._cell_colour(self.cells[cell_index])
+
+            rgb = bytes(
+                max(0, min(255, int(round(channel * 255.0))))
+                for channel in colour
+            )
+            offset = pixel_index * 3
+            pixels[offset : offset + 3] = rgb
+
+        rowstride = width * 3
         data = GLib.Bytes.new(bytes(pixels))
         self._pixbuf = GdkPixbuf.Pixbuf.new_from_bytes(
             data,
             GdkPixbuf.Colorspace.RGB,
             False,
             8,
-            side,
-            side,
+            width,
+            height,
             rowstride,
         )
         self._pixbuf_key = key
@@ -220,52 +203,30 @@ class DiskMap(Gtk.DrawingArea):
             return False
 
         pixbuf = self._build_pixbuf(width, height)
-        logical_width = max(1, pixbuf.get_width())
-        logical_height = max(1, pixbuf.get_height())
 
-        # Stretch one locality-preserving Hilbert image across the available
-        # canvas and deliberately use bilinear filtering.  This keeps every
-        # colour grounded in real allocation cells while turning the low-level
-        # sample lattice into the flowing, picture-like field expected from the
-        # graphical dashboard.
-        cr.save()
-        cr.scale(width / logical_width, height / logical_height)
+        # Pixbuf dimensions equal the drawing surface.  Paint 1:1 with no
+        # interpolation so category boundaries stay on their exact physical
+        # pixels instead of being blurred into neighbouring disk positions.
         Gdk.cairo_set_source_pixbuf(cr, pixbuf, 0.0, 0.0)
-        pattern = cr.get_source()
-        try:
-            pattern.set_filter(4)  # cairo FILTER_BILINEAR
-        except (AttributeError, TypeError):
-            pass
         cr.paint()
-        cr.restore()
 
-        # Layered highlights deepen the surface without changing category
-        # identity or drawing synthetic allocation objects.
-        cr.set_source_rgba(0.05, 0.58, 1.0, 0.07)
-        cr.rectangle(0, 0, width, max(1, height // 4))
-        cr.fill()
-        cr.set_source_rgba(1.0, 0.45, 0.10, 0.035)
-        cr.rectangle(0, max(0, height - height // 5), width, height // 5)
+        # Data-neutral lighting only; it never changes allocation placement.
+        cr.set_source_rgba(0.05, 0.58, 1.0, 0.045)
+        cr.rectangle(0, 0, width, max(1, height // 5))
         cr.fill()
         return False
 
     def _source_at(self, x: int, y: int) -> int | None:
-        if (
-            self._raster_size is None
-            or self._logical_layout is None
-            or not self.cells
-        ):
+        if self._raster_size is None or not self.cells:
             return None
         width, height = self._raster_size
-        side = self._logical_layout[0]
-        if x < 0 or y < 0 or x >= width or y >= height:
-            return None
-        logical_x = min(side - 1, int(x * side / max(1, width)))
-        logical_y = min(side - 1, int(y * side / max(1, height)))
-        distance = self._hilbert_distance(side, logical_x, logical_y)
-        return min(
-            len(self.cells) - 1,
-            (distance * len(self.cells)) // max(1, side * side),
+        return source_cell_at_pixel(
+            self._cell_starts,
+            self._cell_ends,
+            width,
+            height,
+            x,
+            y,
         )
 
     def _query_tooltip(
