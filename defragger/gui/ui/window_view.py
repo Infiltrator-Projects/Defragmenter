@@ -584,19 +584,27 @@ class WindowView:
     def _load_css(self) -> None:
         """Install layout/typography rules; colour policy lives in theme.py."""
         css = b"""
-        .app-title { font-size: 21pt; font-weight: bold; }
-        .app-subtitle { font-size: 10pt; }
+        .app-title { font-size: 24pt; font-weight: bold; }
+        .app-subtitle { font-size: 10.5pt; }
+        .sidebar-brand { font-size: 15pt; font-weight: bold; }
+        .sidebar-brand-subtitle { font-size: 8.5pt; }
+        .nav-title { font-size: 10pt; font-weight: bold; }
+        .nav-subtitle { font-size: 8.25pt; }
+        .sidebar-footer { font-size: 8.5pt; }
+        .hero-kicker { font-size: 8.5pt; font-weight: bold; letter-spacing: 1px; }
+        .hero-hint { font-size: 10pt; }
         .version-primary { font-size: 9.5pt; font-weight: bold; }
         .version-secondary { font-size: 9pt; }
-        .section-title { font-size: 10pt; font-weight: bold; }
-        .summary-title { font-size: 9.5pt; }
-        .summary-value { font-size: 16pt; font-weight: bold; }
-        .legend-item label, .map-caption { font-size: 9pt; }
-        button.primary-action, button.operation-action { font-weight: bold; }
+        .section-title { font-size: 10.5pt; font-weight: bold; }
+        .summary-title { font-size: 9.25pt; }
+        .summary-value { font-size: 18pt; font-weight: bold; }
+        .legend-item label, .map-caption, .map-hint { font-size: 8.75pt; }
+        .action-card-title { font-size: 11pt; font-weight: bold; }
+        .action-card-subtitle { font-size: 8.75pt; }
         .log-expander { font-weight: bold; }
-        textview.log-view { font-size: 9.5pt; }
-        .status-prefix { font-size: 8.5pt; font-weight: bold; }
+        textview.log-view { font-size: 9.25pt; }
         .status-text { font-size: 9pt; }
+        .ready-dot { font-size: 10pt; }
         .about-title { font-size: 19pt; font-weight: bold; }
         .about-version, .about-copy, .about-meta-key, .about-meta-value { font-size: 9.5pt; }
         """
