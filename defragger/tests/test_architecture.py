@@ -978,6 +978,38 @@ def test_test_media_companion_is_all_c() -> None:
 
 
 
+def test_ntfs_catalogue_analysis_is_batched_and_n_minus_one_parallel() -> None:
+    catalogue = (
+        GUI / "filesystems" / "ntfs" / "native" / "ntfs_catalog.c"
+    ).read_text()
+    project = (ROOT / "cmake" / "project.cmake").read_text()
+
+    for required in (
+        "#define NTFS_MFT_BATCH_BYTES",
+        "read_mft_batch(",
+        "parse_batch_parallel(",
+        "sysconf(_SC_NPROCESSORS_ONLN)",
+        "online > 1 ? (size_t)online - 1U : 1U",
+        "pthread_create(",
+        "object_slots_rebuild(",
+        "hash_record(",
+    ):
+        assert required in catalogue
+
+    # Regression guards for the two pathological costs that made a large NTFS
+    # MFT look hung: one tiny metadata read per FRS and a linear owner lookup
+    # for every record/stream.
+    assert "uint8_t *raw=ld_xmalloc(volume->record_size),*fixed=ld_xmalloc" not in catalogue
+    assert "for (size_t index = 0; index < vec->count; ++index)" not in catalogue.split(
+        "static ObjectState *object_get", 1
+    )[1].split("static ObjectState *object_find", 1)[0]
+
+    ntfs_target = project.split(
+        "add_library(linux-defragger-ntfs-native STATIC", 1
+    )[1].split("add_executable(linux-defragger-ntfs-worker", 1)[0]
+    assert "Threads::Threads" in ntfs_target
+
+
 def test_cpp_mapper_reuses_common_arithmetic_and_has_no_legacy_apfs_adapter() -> None:
     mapper = (ROOT / "native" / "map.cpp").read_text()
     runtime_header = (ROOT / "native" / "runtime.hpp").read_text()
@@ -1007,6 +1039,7 @@ def main() -> None:
     test_core_remains_filesystem_neutral()
     test_production_write_safety_is_enforced_at_every_boundary()
     test_test_media_companion_is_all_c()
+    test_ntfs_catalogue_analysis_is_batched_and_n_minus_one_parallel()
     test_cpp_mapper_reuses_common_arithmetic_and_has_no_legacy_apfs_adapter()
     test_user_facing_branding_is_defragmenter()
     test_version_and_native_registry_ownership()
