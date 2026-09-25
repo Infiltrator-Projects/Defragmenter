@@ -413,18 +413,28 @@ def test_about_dialog_matches_the_standard_project_identity() -> None:
 def test_ui_polish_preserves_allocation_map_visual_contract() -> None:
     source = (GUI / "ui" / "widgets.py").read_text()
     for required in (
-        '"free": (0.92, 0.94, 0.96)',
-        '"outside": (0.98, 0.98, 0.99)',
-        '"used": (0.13, 0.43, 0.76)',
-        '"fragmented": (0.94, 0.28, 0.22)',
-        '"directory": (0.48, 0.28, 0.72)',
-        '"unknown": (0.38, 0.40, 0.44)',
-        '"bad": (0.08, 0.08, 0.10)',
-        '"grid": (0.74, 0.77, 0.81)',
-        '"background": (0.98, 0.98, 0.99)',
-        "self.set_size_request(-1, 180)",
+        '"free": (0.035, 0.055, 0.090)',
+        '"outside": (0.015, 0.022, 0.035)',
+        '"used": (0.045, 0.535, 0.980)',
+        '"fragmented": (1.000, 0.205, 0.235)',
+        '"directory": (0.565, 0.240, 0.930)',
+        '"unknown": (0.310, 0.355, 0.420)',
+        '"bad": (1.000, 0.650, 0.080)',
+        '"background": (0.020, 0.030, 0.050)',
+        "self.set_size_request(-1, 210)",
+        "continuous image instead of an old-style",
+        "def _source_index(",
+        "self._raster_size",
     ):
         assert required in source
+
+    # The dashboard's visual contract is intentionally pixel/raster based.
+    # Reintroducing a grid colour or block-grid renderer would regress the
+    # graphical UI direction even if the underlying allocation data remained
+    # correct.
+    assert '"grid":' not in source
+    assert "allocation_grid(" not in source
+    assert "block_bounds(" not in source
 
 
 def test_theme_modes_are_persistent_and_shared_across_windows() -> None:
