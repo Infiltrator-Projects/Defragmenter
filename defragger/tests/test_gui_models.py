@@ -140,7 +140,7 @@ def test_map_presenter_validates_and_normalises_fat_map() -> None:
     assert view.free_value == "20.0 KB (62.5%)"
     assert view.fragmentation_value == "1 files · 0 dirs"
     assert view.unit_label == "clusters"
-    assert view.caption.startswith("Allocation grid:")
+    assert view.caption.startswith("Allocation image:")
     assert view.cells[0]["outside"] == 0
     assert view.analysis_log.endswith("1 fragmented files, 0 fragmented directories.")
 
