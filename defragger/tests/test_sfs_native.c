@@ -474,6 +474,8 @@ int main(int argc, char **argv)
         return 21;
     }
 
+    make_image(image, 0, 1, 1);
+
     char sfs2_source[64];
     char sfs2_stage[64];
     uint64_t sfs2_commit_bytes = 0U;
