@@ -3,10 +3,10 @@
 Status: **complete**
 
 Completed: 2026-09-22
-Extended: 2026-09-22
+Extended: 2026-09-25
 
-Applies to: release version 1.8.0-197
-Audited source commit: e9a341b08b93d624f98df9a9ec0d7bc4842d9d7b
+Applies to: release version 1.8.0-198
+Audited source commit: aa7b2675e6f945b6e41a6f2a5b65c1cff7fc7c9b
 Audited release-governance commit: 1a61ff57bdf939fcbfcc84300b66b30411276113
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
@@ -15,9 +15,9 @@ This document records the current release safety case. Historical audit-developm
 
 ## Qualification evidence
 
-The current audited source baseline is commit `e9a341b08b93d624f98df9a9ec0d7bc4842d9d7b`. In [Project quality gate run 36065764985](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/36065764985), that revision completed the warnings-as-errors build and all 44 hosted CTest tests successfully. The separate hosted ASan/UBSan lane also passed. The gate remained red only because this audit document still named the previous audited source baseline, which is the expected pre-release stop that this release commit resolves.
+The current audited source baseline is commit `aa7b2675e6f945b6e41a6f2a5b65c1cff7fc7c9b`. In [Project quality gate run 36098340286](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/36098340286), that revision passed the warnings-as-errors build and all 44 hosted CTest tests, including the composed GUI-service regression for privileged analysis output ordering. The separate hosted ASan/UBSan lane also passed. The gate remained red only because this audit document still named the previous audited source baseline, which is the expected pre-release stop that this release commit resolves.
 
-The reviewed production delta advances the exact Common dependency from 1.19.24 to 1.19.27 and replaces duplicate Unicode scalar-to-UTF-8 byte emission in the native JSON, FAT and exFAT paths with Common's strict product-neutral encoder. FAT retains its filesystem-specific separator/NUL sanitisation and malformed-UTF-16 replacement policy. exFAT retains UTF-16 decoding policy and now maps unpaired surrogate units to U+FFFD before encoding. Filesystem geometry, allocation, placement, transaction/recovery ordering and raw mutation logic are otherwise unchanged.
+The reviewed production delta is confined to the reusable administrator-session transport. Privileged-helper protocol messages are now drained through one FIFO main-loop dispatch queue, preventing a successful `finished` message from overtaking the preceding allocation-map output. A deterministic regression reproduces the NTFS physical-device analysis path with deferred GUI scheduling and proves that the complete mapper JSON is retained before completion. NTFS boot-sector, bitmap, MFT/catalogue, allocation-map and mutation engines are unchanged.
 
 The release-governance baseline is extended through `1a61ff57bdf939fcbfcc84300b66b30411276113`, which retains the pull-only APT ownership boundary and adds the intended self-hosted qualification run on main pushes. Defragmenter's release path validates its exact immutable GitHub release identity but never dispatches, authenticates to, waits on or synchronously verifies Infiltrator-Repository. The central repository independently discovers released packages on its own schedule, and the release-gate regression now rejects any reintroduction of cross-repository dispatch-token plumbing.
 
