@@ -55,6 +55,8 @@ class OperationView(Protocol):
 
     def show_error(self, title: str, message: str) -> None: ...
 
+    def set_activity(self, primary: str, secondary: str) -> None: ...
+
 
 Schedule = Callable[..., Any]
 CancelScheduled = Callable[[Any], None]
@@ -150,6 +152,11 @@ class OperationPresenter:
 
         if event.kind == "started":
             self._set_operation_started(event.purpose)
+            display_name = operation_display_name(event.purpose)
+            self._view.set_activity(
+                f"{display_name} in progress",
+                "The operation is running through the verified native engine.",
+            )
         elif event.kind == "helper-starting":
             self._view.append_log(event.message)
             self._view.status_label.set_text(
@@ -177,6 +184,10 @@ class OperationPresenter:
             )
             self._view.status_label.set_text(
                 f"{display_name} in progress · {percent:.2f}%"
+            )
+            self._view.set_activity(
+                f"{display_name} · {percent:.0f}%",
+                "Working through the current verified transaction.",
             )
         elif event.kind == "stop-requested":
             self._view.append_log(event.message)
@@ -257,6 +268,10 @@ class OperationPresenter:
             return
         if stopped_safely:
             display_name = operation_display_name(purpose)
+            self._view.set_activity(
+                f"{display_name} stopped safely",
+                "The active journalled transaction reached a recoverable boundary.",
+            )
             self._view.append_log(
                 f"{display_name} stopped safely. The active journalled "
                 "transaction completed before exit."
@@ -272,6 +287,10 @@ class OperationPresenter:
                 on_success(output)
             return
         if returncode == 0:
+            self._view.set_activity(
+                "Operation complete",
+                "The operation completed and the allocation map is being refreshed.",
+            )
             presentation = successful_completion(
                 purpose, self.operation_result
             )
@@ -288,6 +307,10 @@ class OperationPresenter:
                 on_success(output)
             return
         display_name = operation_display_name(purpose)
+        self._view.set_activity(
+            f"{display_name} failed",
+            "Open the technical activity log for the complete diagnostic.",
+        )
         self._view.show_error(
             f"{display_name} failed",
             _failure_summary(output, returncode),
