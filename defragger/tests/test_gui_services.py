@@ -353,6 +353,56 @@ def test_privilege_session_owns_allowlist_and_protocol_state() -> None:
     assert any(event.kind == "engine" for event in events)
 
 
+def test_privilege_session_preserves_helper_fifo_across_gui_scheduler() -> None:
+    scheduled = []
+    completions = []
+
+    def defer(callback, *args):
+        scheduled.append((callback, args))
+        return len(scheduled)
+
+    session = PrivilegeSession(
+        mapper="/mapper",
+        operation_engine="/engine",
+        privileged_helper="/helper",
+        on_event=lambda _event: None,
+        on_complete=completions.append,
+        scheduler=defer,
+    )
+    request = CommandRequest(
+        arguments=("/mapper", "/dev/nvme0n1p2", "--fstype", "ntfs"),
+        purpose="analysis",
+        privileged=True,
+        stream_output=False,
+        on_complete=lambda _completion: None,
+    )
+    session._active_request = request
+    session._active_id = 19
+
+    payload = (
+        '{"filesystem":"ntfs","unit_size":4096,"total_units":8,'
+        '"cell_count":1,"cells":[{"start":0,"end":7}]}'
+    )
+    session._queue_message(
+        {"type": "output", "id": 19, "line": payload}
+    )
+    session._queue_message(
+        {"type": "finished", "id": 19, "returncode": 0}
+    )
+
+    # The transport must schedule one FIFO drain, not independent callbacks
+    # that the GTK main loop could observe in completion-before-output order.
+    assert len(scheduled) == 1
+    callback, args = scheduled.pop()
+    callback(*args)
+
+    assert len(completions) == 1
+    assert completions[0].returncode == 0
+    assert completions[0].purpose == "analysis"
+    assert completions[0].output == payload + "\n"
+
+
+
 class _FakeValue:
     def __init__(self) -> None:
         self.text = ""
@@ -535,6 +585,7 @@ def main() -> None:
     test_live_event_controller_returns_view_model_updates()
     test_command_runner_owns_process_and_emits_typed_events()
     test_privilege_session_owns_allowlist_and_protocol_state()
+    test_privilege_session_preserves_helper_fifo_across_gui_scheduler()
     test_operation_presenter_owns_transient_window_lifecycle()
     print("composed GUI service tests passed")
 
