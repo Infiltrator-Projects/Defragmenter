@@ -448,6 +448,10 @@ class _FakeOperationView:
         self.free_card = _FakeValue()
         self.logs = []
         self.errors = []
+        self.activity = ("", "")
+
+    def set_activity(self, primary: str, secondary: str) -> None:
+        self.activity = (primary, secondary)
 
     def append_log(self, text: str) -> None:
         self.logs.append(text)
