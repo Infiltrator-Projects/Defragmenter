@@ -1028,6 +1028,19 @@ def test_ntfs_catalogue_analysis_is_batched_and_n_minus_one_parallel() -> None:
     assert "Threads::Threads" in ntfs_target
 
 
+def test_sfs_and_pfs3_maps_expose_complete_fragmentation_summary() -> None:
+    for filesystem in ("sfs", "pfs3"):
+        worker = (
+            GUI / "filesystems" / filesystem / "native" / f"{filesystem}_worker.c"
+        ).read_text()
+        for required in (
+            '"fragmented_directories\\":0',
+            '"fragmentation_percent\\":%.6f',
+            "infiltratr_percent_u64(",
+        ):
+            assert required in worker
+
+
 def test_cpp_mapper_reuses_common_arithmetic_and_has_no_legacy_apfs_adapter() -> None:
     mapper = (ROOT / "native" / "map.cpp").read_text()
     runtime_header = (ROOT / "native" / "runtime.hpp").read_text()
@@ -1058,6 +1071,7 @@ def main() -> None:
     test_production_write_safety_is_enforced_at_every_boundary()
     test_test_media_companion_is_all_c()
     test_ntfs_catalogue_analysis_is_batched_and_n_minus_one_parallel()
+    test_sfs_and_pfs3_maps_expose_complete_fragmentation_summary()
     test_cpp_mapper_reuses_common_arithmetic_and_has_no_legacy_apfs_adapter()
     test_user_facing_branding_is_defragmenter()
     test_version_and_native_registry_ownership()

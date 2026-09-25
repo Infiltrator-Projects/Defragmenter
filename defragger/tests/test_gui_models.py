@@ -149,6 +149,40 @@ def test_map_presenter_validates_and_normalises_fat_map() -> None:
     assert view.analysis_log.endswith("1 fragmented files, 0 fragmented directories.")
 
 
+def test_sfs_style_exact_map_reports_file_fragmentation_not_fallback_text() -> None:
+    data = {
+        "backend": "read-only-domain",
+        "filesystem": "sfs",
+        "map_accuracy": "exact-allocation",
+        "unit_size": 4096,
+        "total_units": 16,
+        "cell_count": 2,
+        "total_bytes": 16 * 4096,
+        "filesystem_bytes": 16 * 4096,
+        "outside_bytes": 0,
+        "free_bytes": 8 * 4096,
+        "used_bytes": 8 * 4096,
+        "unknown_bytes": 0,
+        "regular_files": 1,
+        "directories": 2,
+        "fragmented_files": 1,
+        "fragmented_directories": 0,
+        "fragmentation_percent": 100.0,
+        "cells": [
+            {"start": 0, "end": 7, "free": 0, "used": 8, "fragmented": 8},
+            {"start": 8, "end": 15, "free": 8, "used": 0, "fragmented": 0},
+        ],
+    }
+    view = present_allocation_map(
+        data,
+        ("defrag", "growth-defrag", "recover"),
+    )
+    assert view.fragmentation_value == "100.0% · 1 files"
+    assert view.files_value == "1 files · 2 dirs"
+    assert view.fragmentation_value != "Not calculated"
+    assert "1 fragmented files" in view.analysis_log
+
+
 def test_allocation_raster_preserves_physical_disk_order() -> None:
     starts = [0, 50]
     ends = [49, 99]

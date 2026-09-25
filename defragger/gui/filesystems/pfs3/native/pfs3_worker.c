@@ -77,6 +77,8 @@ static void print_identify(const Pfs3Analysis *analysis)
 
 static void print_analysis_json(const Pfs3Analysis *analysis)
 {
+    const double fragmentation = infiltratr_percent_u64(
+        analysis->fragmented_files, analysis->regular_files);
     (void)printf(
         "{\"filesystem\":\"pfs3\",\"format\":\"%s\","
         "\"structure_version\":%u,\"sequence_number\":%u,"
@@ -85,6 +87,7 @@ static void print_analysis_json(const Pfs3Analysis *analysis)
         "\"used_blocks\":%" PRIu64 ",\"free_blocks\":%" PRIu64 ","
         "\"data_blocks\":%" PRIu64 ",\"regular_files\":%" PRIu64 ","
         "\"directories\":%" PRIu64 ",\"fragmented_files\":%" PRIu64 ","
+        "\"fragmented_directories\":0,\"fragmentation_percent\":%.6f,"
         "\"growth_10_satisfied\":%s,"
         "\"primary_root_valid\":%s,\"backup_root_valid\":%s,"
         "\"transaction_pending\":%s,\"fragmentation_available\":true}\n",
@@ -94,7 +97,7 @@ static void print_analysis_json(const Pfs3Analysis *analysis)
         analysis->physical_bytes, analysis->bitmap_base, analysis->bitmap_blocks,
         analysis->used_blocks, analysis->free_blocks,
         analysis->data_blocks, analysis->regular_files,
-        analysis->directories, analysis->fragmented_files,
+        analysis->directories, analysis->fragmented_files, fragmentation,
         json_bool(analysis->growth_10_satisfied),
         json_bool(analysis->primary_root_valid), json_bool(analysis->backup_root_valid),
         json_bool(analysis->transaction_pending));
@@ -135,6 +138,8 @@ static int print_map(const char *path, uint64_t requested_cells)
         return -1;
     }
 
+    const double fragmentation = infiltratr_percent_u64(
+        analysis.fragmented_files, analysis.regular_files);
     const uint64_t outside_units = total_units > analysis.total_blocks
                                  ? total_units - analysis.total_blocks : 0U;
     (void)printf(
@@ -146,6 +151,7 @@ static int print_map(const char *path, uint64_t requested_cells)
         "\"free_bytes\":%" PRIu64 ",\"used_bytes\":%" PRIu64 ","
         "\"unknown_bytes\":0,\"regular_files\":%" PRIu64 ","
         "\"directories\":%" PRIu64 ",\"fragmented_files\":%" PRIu64 ","
+        "\"fragmented_directories\":0,\"fragmentation_percent\":%.6f,"
         "\"growth_10_satisfied\":%s,\"cells\":[",
         analysis.block_size, total_units, cells,
         total_units * analysis.block_size, analysis.total_blocks,
@@ -153,7 +159,7 @@ static int print_map(const char *path, uint64_t requested_cells)
         analysis.free_blocks * analysis.block_size,
         analysis.used_blocks * analysis.block_size,
         analysis.regular_files, analysis.directories, analysis.fragmented_files,
-        json_bool(analysis.growth_10_satisfied));
+        fragmentation, json_bool(analysis.growth_10_satisfied));
     for (uint64_t i = 0U; i < cells; ++i) {
         if (i != 0U) (void)putchar(',');
         (void)printf(
