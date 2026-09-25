@@ -420,6 +420,7 @@ def test_about_dialog_matches_the_standard_project_identity() -> None:
 def test_ui_polish_preserves_allocation_map_visual_contract() -> None:
     source = (GUI / "ui" / "widgets.py").read_text()
     view_source = (GUI / "ui" / "window_view.py").read_text()
+    window_source = (GUI / "ui" / "window.py").read_text()
     for required in (
         '"free": (0.018, 0.050, 0.105)',
         '"outside": (0.006, 0.014, 0.030)',
@@ -455,6 +456,19 @@ def test_ui_polish_preserves_allocation_map_visual_contract() -> None:
         "physical-position pixel view",
     ):
         assert required in view_source
+
+    # The combo box and hero/footer are one selected-volume identity. Manual
+    # selection changes must refresh the hero from the revalidated Volume,
+    # rather than leaving the identity/status from the previous partition.
+    for required in (
+        "def show_selected_volume(self, selected: str | None)",
+        'if ", unmounted" in lowered:',
+        'elif ", mounted" in lowered:',
+        "self.show_selected_volume(",
+    ):
+        assert required in view_source
+    assert "self.view.show_selected_volume(" in window_source
+    assert "volume.display_name if volume is not None else None" in window_source
 
     # The dashboard is a positional view of the real disk. It must remain a
     # dense pixel image while preserving monotonic physical order exactly.
