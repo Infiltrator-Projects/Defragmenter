@@ -609,8 +609,8 @@ def test_main_window_remains_resizable_maximisable_and_workarea_bounded() -> Non
     assert "body_scroll = Gtk.ScrolledWindow()" in view_source
     assert "body_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)" in view_source
     assert "body_scroll.add(root)" in view_source
-    assert "scroll.set_min_content_height(110)" in view_source
-    assert "self.set_size_request(-1, 180)" in widgets_source
+    assert "scroll.set_min_content_height(100)" in view_source
+    assert "self.set_size_request(-1, 210)" in widgets_source
     assert "self.set_size_request(640, 260)" not in widgets_source
     assert "MAP_RESIZE_DEBOUNCE_MS = 180" in window_source
     assert "self.coordinator.desired_map_cells(" in window_source
