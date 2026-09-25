@@ -130,14 +130,18 @@ def _base_css() -> str:
     progressbar trough {{ min-height: 8px; border-radius: {radius}px; }}
     .sidebar {{ padding: 4px; }}
     .nav-button {{ padding: 4px; border-radius: {card_radius}px; min-height: 52px; }}
-    .hero-panel > border, .map-panel > border, .activity-panel > border {{
+    .hero-panel > border, .map-panel > border, .activity-panel > border,
+    .preview-panel > border {{
         border-radius: {panel_radius}px;
     }}
+    .hero-drive-badge > border {{ border-radius: {card_radius}px; padding: 8px; }}
     frame.summary-card > border {{ border-radius: {card_radius}px; }}
     button.action-card {{ min-height: 86px; border-radius: {card_radius}px; padding: 6px; }}
     .pixel-map {{ border-radius: {card_radius}px; }}
     .status-prefix {{ font-size: 8pt; font-weight: {bold}; }}
     .status-text {{ font-size: 8.75pt; }}
+    .hero-status {{ padding: 6px 10px; border-radius: {radius}px; }}
+    .action-arrow {{ padding: 0 6px; }}
     """
 
 
@@ -157,7 +161,8 @@ def _night_css() -> str:
     .legend-item label, .log-expander {{ color: {p["detail_label"]}; }}
     .version-badge, frame.section-panel > border, frame.map-panel > border,
     frame.action-panel > border, frame.summary-card > border,
-    frame.hero-panel > border, frame.activity-panel > border {{
+    frame.hero-panel > border, frame.activity-panel > border,
+    frame.preview-panel > border {{
         background-color: {p["surface"]}; border: 1px solid {p["border"]};
     }}
     .sidebar {{
@@ -171,9 +176,16 @@ def _night_css() -> str:
     .nav-button {{ background-image: none; background-color: transparent; border: 1px solid transparent; }}
     .nav-button:hover {{ background-color: {p["card"]}; border-color: {p["border"]}; }}
     .nav-button.nav-selected {{
-        background-color: {p["selection_background"]};
+        background-image: linear-gradient(90deg, alpha({p["neutral_accent"]}, 0.26), alpha({p["info"]}, 0.12));
         border-color: {p["neutral_accent"]};
+        box-shadow: 0 0 12px alpha({p["neutral_accent"]}, 0.18);
     }}
+    .nav-analyse image {{ color: {p["neutral_accent"]}; }}
+    .nav-defrag image {{ color: {p["info"]}; }}
+    .nav-growth image {{ color: {p["success"]}; }}
+    .nav-recover image {{ color: #9b5cff; }}
+    .nav-test-media image {{ color: {p["success"]}; }}
+    .nav-settings image {{ color: {p["summary"]}; }}
     .hero-panel > border {{
         background-image:
             linear-gradient(110deg, alpha({p["neutral_accent"]}, 0.10), transparent),
@@ -181,6 +193,24 @@ def _night_css() -> str:
         border-color: {p["neutral_accent"]};
     }}
     .hero-kicker {{ color: {p["neutral_accent"]}; }}
+    .hero-drive-badge > border {{
+        background-color: alpha({p["panel"]}, 0.82);
+        border: 1px solid alpha({p["neutral_accent"]}, 0.60);
+    }}
+    .hero-status {{
+        color: {p["success"]};
+        background-color: alpha({p["success"]}, 0.10);
+        border: 1px solid alpha({p["success"]}, 0.45);
+    }}
+    .hero-drive-badge > border {{
+        background-color: alpha({p["background"]}, 0.72);
+        border: 1px solid alpha({p["neutral_accent"]}, 0.70);
+    }}
+    .hero-status {{
+        color: {p["success"]};
+        background-color: alpha({p["success"]}, 0.12);
+        border: 1px solid alpha({p["success"]}, 0.55);
+    }}
     frame.summary-card > border {{
         background-image: linear-gradient(145deg, {p["card"]}, {p["surface"]});
         box-shadow: 0 3px 10px alpha(#000000, 0.24);
@@ -196,16 +226,42 @@ def _night_css() -> str:
         border-color: {p["neutral_accent"]};
         box-shadow: 0 4px 14px alpha(#000000, 0.30);
     }}
-    frame.activity-panel > border {{ background-color: {p["panel"]}; }}
-    button.action-card {{
-        background-image: none; background-color: {p["card"]}; color: {p["text"]};
-        border: 1px solid {p["border"]}; box-shadow: 0 2px 5px alpha(#000000, 0.28);
+    frame.activity-panel > border {{
+        background-image: linear-gradient(145deg, {p["panel"]}, {p["surface"]});
+        border-color: {p["status_border"]};
     }}
-    button.action-card:hover {{ background-color: {p["card_hover"]}; }}
-    button.action-analyse {{ border-color: {p["neutral_accent"]}; }}
-    button.action-defrag {{ border-color: {p["info"]}; }}
-    button.action-growth {{ border-color: {p["success"]}; }}
-    button.action-recover {{ border-color: {p["warning"]}; }}
+    frame.preview-panel > border {{
+        background-image: linear-gradient(145deg, {p["surface"]}, {p["background"]});
+        border-color: {p["status_border"]};
+    }}
+    .activity-primary {{ color: {p["heading"]}; }}
+    .activity-secondary, .preview-note {{ color: {p["detail_label"]}; }}
+    button.action-card {{
+        color: {p["text"]};
+        border: 1px solid {p["border"]};
+        box-shadow: 0 4px 12px alpha(#000000, 0.30);
+    }}
+    button.action-card:hover {{ box-shadow: 0 0 16px alpha({p["neutral_accent"]}, 0.18); }}
+    button.action-analyse {{
+        background-image: linear-gradient(135deg, alpha({p["neutral_accent"]}, 0.24), {p["card"]});
+        border-color: {p["neutral_accent"]};
+    }}
+    button.action-defrag {{
+        background-image: linear-gradient(135deg, alpha({p["info"]}, 0.28), {p["card"]});
+        border-color: {p["info"]};
+    }}
+    button.action-growth {{
+        background-image: linear-gradient(135deg, alpha({p["success"]}, 0.26), {p["card"]});
+        border-color: {p["success"]};
+    }}
+    button.action-recover {{
+        background-image: linear-gradient(135deg, alpha(#8f52ff, 0.30), {p["card"]});
+        border-color: #8f52ff;
+    }}
+    button.action-analyse image, button.action-analyse .action-arrow {{ color: {p["neutral_accent"]}; }}
+    button.action-defrag image, button.action-defrag .action-arrow {{ color: {p["info"]}; }}
+    button.action-growth image, button.action-growth .action-arrow {{ color: {p["success"]}; }}
+    button.action-recover image, button.action-recover .action-arrow {{ color: #a979ff; }}
     .action-card-title {{ color: {p["heading"]}; }}
     .action-card-subtitle {{ color: {p["detail_label"]}; }}
     .ready-dot {{ color: {p["success"]}; }}
@@ -229,7 +285,11 @@ def _night_css() -> str:
     entry selection, textview text selection, treeview.view:selected {{
         background-color: {p["selection_background"]}; color: {p["selection_foreground"]};
     }}
-    .status-strip {{ background-color: {p["connection"]}; border-top: 1px solid {p["status_border"]}; }}
+    .status-strip {{
+        background-image: linear-gradient(90deg, {p["connection"]}, {p["surface"]});
+        border-top: 1px solid {p["status_border"]};
+    }}
+    .footer-volume {{ color: {p["heading"]}; }}
     scrollbar slider {{ background-color: {p["neutral_accent"]}; }}
     scrollbar slider:hover {{ background-color: {p["accent_hover"]}; }}
     tooltip {{ background-color: {p["card"]}; color: {p["note"]}; border: 1px solid {p["status_border"]}; }}
@@ -254,7 +314,8 @@ def _day_css() -> str:
     .legend-item label, .log-expander {{ color: {p["detail_label"]}; }}
     .version-badge, frame.section-panel > border, frame.map-panel > border,
     frame.action-panel > border, frame.summary-card > border,
-    frame.hero-panel > border, frame.activity-panel > border {{
+    frame.hero-panel > border, frame.activity-panel > border,
+    frame.preview-panel > border {{
         background-color: {p["panel"]}; border: 1px solid {p["border"]};
     }}
     .sidebar {{
@@ -268,9 +329,16 @@ def _day_css() -> str:
     .nav-button {{ background-image: none; background-color: transparent; border: 1px solid transparent; }}
     .nav-button:hover {{ background-color: {p["card_hover"]}; border-color: {p["border"]}; }}
     .nav-button.nav-selected {{
-        background-color: {p["selection_background"]};
+        background-image: linear-gradient(90deg, alpha({p["neutral_accent"]}, 0.20), alpha({p["info"]}, 0.08));
         border-color: {p["neutral_accent"]};
+        box-shadow: 0 0 10px alpha({p["neutral_accent"]}, 0.12);
     }}
+    .nav-analyse image {{ color: {p["neutral_accent"]}; }}
+    .nav-defrag image {{ color: {p["info"]}; }}
+    .nav-growth image {{ color: {p["success"]}; }}
+    .nav-recover image {{ color: #7a3be8; }}
+    .nav-test-media image {{ color: {p["success"]}; }}
+    .nav-settings image {{ color: {p["summary"]}; }}
     .hero-panel > border {{
         background-image:
             linear-gradient(110deg, alpha({p["neutral_accent"]}, 0.08), transparent),
@@ -293,16 +361,37 @@ def _day_css() -> str:
         border-color: {p["neutral_accent"]};
         box-shadow: 0 4px 12px alpha(#000000, 0.12);
     }}
-    frame.activity-panel > border {{ background-color: {p["panel"]}; }}
-    button.action-card {{
-        background-image: none; background-color: {p["card"]}; color: {p["text"]};
-        border: 1px solid {p["border"]}; box-shadow: 0 2px 4px alpha(#000000, 0.12);
+    frame.activity-panel > border {{
+        background-image: linear-gradient(145deg, {p["panel"]}, {p["surface"]});
+        border-color: {p["status_border"]};
     }}
-    button.action-card:hover {{ background-color: {p["card_hover"]}; }}
-    button.action-analyse {{ border-color: {p["neutral_accent"]}; }}
-    button.action-defrag {{ border-color: {p["info"]}; }}
-    button.action-growth {{ border-color: {p["success"]}; }}
-    button.action-recover {{ border-color: {p["warning"]}; }}
+    frame.preview-panel > border {{
+        background-image: linear-gradient(145deg, {p["surface"]}, {p["panel"]});
+        border-color: {p["status_border"]};
+    }}
+    .activity-primary {{ color: {p["heading"]}; }}
+    .activity-secondary, .preview-note {{ color: {p["detail_label"]}; }}
+    button.action-card {{
+        color: {p["text"]};
+        border: 1px solid {p["border"]};
+        box-shadow: 0 3px 8px alpha(#000000, 0.14);
+    }}
+    button.action-analyse {{
+        background-image: linear-gradient(135deg, alpha({p["neutral_accent"]}, 0.18), {p["card"]});
+        border-color: {p["neutral_accent"]};
+    }}
+    button.action-defrag {{
+        background-image: linear-gradient(135deg, alpha({p["info"]}, 0.18), {p["card"]});
+        border-color: {p["info"]};
+    }}
+    button.action-growth {{
+        background-image: linear-gradient(135deg, alpha({p["success"]}, 0.18), {p["card"]});
+        border-color: {p["success"]};
+    }}
+    button.action-recover {{
+        background-image: linear-gradient(135deg, alpha(#8f52ff, 0.18), {p["card"]});
+        border-color: #8f52ff;
+    }}
     .action-card-title {{ color: {p["heading"]}; }}
     .action-card-subtitle {{ color: {p["detail_label"]}; }}
     .ready-dot {{ color: {p["success"]}; }}
@@ -326,7 +415,11 @@ def _day_css() -> str:
     entry selection, textview text selection, treeview.view:selected {{
         background-color: {p["selection_background"]}; color: {p["selection_foreground"]};
     }}
-    .status-strip {{ background-color: {p["connection"]}; border-top: 1px solid {p["status_border"]}; }}
+    .status-strip {{
+        background-image: linear-gradient(90deg, {p["connection"]}, {p["surface"]});
+        border-top: 1px solid {p["status_border"]};
+    }}
+    .footer-volume {{ color: {p["heading"]}; }}
     scrollbar slider {{ background-color: {p["neutral_accent"]}; }}
     scrollbar slider:hover {{ background-color: {p["accent_hover"]}; }}
     tooltip {{ background-color: {p["card"]}; color: {p["note"]}; border: 1px solid {p["status_border"]}; }}
