@@ -159,10 +159,9 @@ def control_state(
     mounted = bool(volume and volume.mounted)
     operations = volume.operations if volume else {}
     mutation_backend = bool(operations)
-    can_write = (
+    can_offer_write = (
         enabled
         and mutation_backend
-        and not mounted
         and not bool(volume and volume.readonly)
     )
     return ControlState(
@@ -170,13 +169,13 @@ def control_state(
         select_device=not busy,
         analyse=enabled,
         unmount=enabled and mounted and not bool(volume and volume.image),
-        defrag=can_write and "defrag" in operations and not journal_exists,
+        defrag=can_offer_write and "defrag" in operations and not journal_exists,
         growth_defrag=(
-            can_write
+            can_offer_write
             and "growth-defrag" in operations
             and not journal_exists
         ),
-        recover=can_write and "recover" in operations and journal_exists,
+        recover=can_offer_write and "recover" in operations and journal_exists,
         stop=busy and not stop_requested,
     )
 
@@ -218,5 +217,11 @@ def operation_tooltips(
             continue
         description = str(manifest.get("description") or label)
         warning = str(manifest.get("warning") or "").strip()
-        result[operation] = description + (f"\n\n{warning}" if warning else "")
+        text = description + (f"\n\n{warning}" if warning else "")
+        if volume.mounted and not volume.image:
+            text += (
+                "\n\nThis volume is mounted. Defragmenter will ask to "
+                "unmount it safely before starting the write operation."
+            )
+        result[operation] = text
     return result
