@@ -230,12 +230,12 @@ def _domain_presentation(
         )
     elif full_allocation_unknown:
         caption = (
-            f"Allocation grid: {cell_count:,} cells · exact allocated/free "
+            f"Allocation image: {cell_count:,} cells · exact allocated/free "
             "locations are not decoded yet"
         )
     elif outside_bytes:
         caption = (
-            f"Allocation grid: {cell_count:,} cells · white tail is outside the "
+            f"Allocation grid: {cell_count:,} cells · dark tail is outside the "
             "active filesystem boundary"
         )
     else:
