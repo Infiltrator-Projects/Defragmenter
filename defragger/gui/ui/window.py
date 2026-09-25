@@ -77,7 +77,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.set_type_hint(Gdk.WindowTypeHint.NORMAL)
         self.set_skip_taskbar_hint(False)
         self.set_skip_pager_hint(False)
-        self.set_default_size(1040, 680)
+        self.set_default_size(1240, 780)
         self.set_position(Gtk.WindowPosition.CENTER)
         self.connect("realize", self._configure_native_window)
         self._map_resize_source: int | None = None
