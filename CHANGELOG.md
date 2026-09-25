@@ -2,6 +2,17 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-206
+
+- Correct the 1.8.0-205 raster-art implementation error that caused a miniature copy of the full UI concept to appear in the selected-drive badge and left the intended hero/sidebar artwork absent.
+- Stop loading and cropping `docs/ui/defragmenter-ui-vision.jpg` at runtime. The concept screenshot is now documentation-only, matching the intended design workflow rather than being treated as a sprite sheet.
+- Add three clean standalone JPEG runtime assets under `gui/ui/art/`: `drive-ssd.jpg`, `hero-landscape.jpg` and `sidebar-workbench.jpg`. Each is loaded independently, aspect-preserving, with no prototype controls embedded in the asset.
+- Install the dedicated artwork beside the GTK UI modules and remove the full concept screenshot from the application payload.
+- Resolve the Defragmenter brand icon from the exact packaged PNG bytes before falling back to the desktop icon theme, preventing an unrelated theme glyph from appearing in the sidebar brand surface.
+- Increase the radial summary gauge and headline weight to move the live dashboard closer to the approved target without changing any data semantics.
+- Add regressions that reject runtime references to the concept screenshot and verify the exact three standalone raster assets and their package installation contract.
+- Qualify production source commit `8efc6dc86b333d309ca6d465450449f9d53f8efa`: Project quality gate run 36129632563 passed all 44 hosted CTest tests and the ASan/UBSan lane; self-hosted run 36129631957 passed its build, functional test subsets and architecture checks. Both ordinary-candidate runs stopped only on the deliberately stale audited-source marker advanced by this release.
+
 ## 1.8.0-205
 
 - Remove the large-volume NTFS analysis bottleneck. The $MFT catalogue scanner now reads records in 32 MiB sequential batches instead of issuing one tiny metadata read per file-record segment, retaining the old per-record path only as a damaged-I/O fallback.
