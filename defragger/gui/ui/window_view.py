@@ -3,15 +3,22 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any, Protocol
 
-from gi.repository import Gdk, GdkPixbuf, GLib, Gtk
+from gi.repository import Gdk, Gtk
 
 from .map_presenter import MapPresentation
 from .operation_planner import ControlState
 from .theme import ThemeMode, apply_theme, load_theme_mode, save_theme_mode, theme_label
-from .widgets import CheckerBall, DiskMap, DriveArtwork, GaugeCard, HeroArtwork, SummaryCard
+from .widgets import (
+    CheckerBall,
+    DiskMap,
+    DriveArtwork,
+    GaugeCard,
+    HeroArtwork,
+    SummaryCard,
+    load_app_icon_image,
+)
 
 
 APP_NAME = "Defragmenter"
@@ -95,30 +102,11 @@ class WindowView:
     @staticmethod
     def _icon(name: str, size: int = 24) -> Gtk.Image:
         if name == APP_ICON_NAME:
-            module = Path(__file__).resolve()
-            candidates = (
-                module.parents[1] / "defragmenter-icon.png",
-                Path("/usr/lib/linux-defragger/defragmenter-icon.png"),
-                Path("/usr/share/icons/hicolor/96x96/apps/io.github.linuxdefragger.png"),
-                module.parents[2] / "packaging" / "io.github.linuxdefragger.png",
-            )
-            for candidate in candidates:
-                if not candidate.is_file():
-                    continue
-                try:
-                    pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
-                        str(candidate),
-                        size,
-                        size,
-                        True,
-                    )
-                    return Gtk.Image.new_from_pixbuf(pixbuf)
-                except GLib.Error:
-                    continue
-
+            return load_app_icon_image(name, size)
         image = Gtk.Image.new_from_icon_name(name, Gtk.IconSize.DIALOG)
         image.set_pixel_size(size)
         return image
+
 
     def _nav_button(
         self,

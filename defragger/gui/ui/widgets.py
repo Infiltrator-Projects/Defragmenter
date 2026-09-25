@@ -16,6 +16,35 @@ MIN_MAP_CELLS = 256
 MAX_MAP_CELLS = 1048576
 
 
+def load_app_icon_image(icon_name: str, size: int) -> Gtk.Image:
+    """Load the exact packaged application icon without theme-name ambiguity."""
+
+    module = Path(__file__).resolve()
+    candidates = (
+        module.parents[1] / "defragmenter-icon.png",
+        Path("/usr/lib/linux-defragger/defragmenter-icon.png"),
+        Path("/usr/share/icons/hicolor/96x96/apps/io.github.linuxdefragger.png"),
+        module.parents[2] / "packaging" / "io.github.linuxdefragger.png",
+    )
+    for candidate in candidates:
+        if not candidate.is_file():
+            continue
+        try:
+            pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
+                str(candidate),
+                size,
+                size,
+                True,
+            )
+            return Gtk.Image.new_from_pixbuf(pixbuf)
+        except GLib.Error:
+            continue
+
+    image = Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.DIALOG)
+    image.set_pixel_size(size)
+    return image
+
+
 class DiskMap(Gtk.DrawingArea):
     """Render allocation data as a dense physically ordered pixel image."""
 
