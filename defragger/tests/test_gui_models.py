@@ -722,7 +722,7 @@ def test_main_window_remains_resizable_maximisable_and_workarea_bounded() -> Non
     assert "activity_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)" in view_source
     assert "self.progress.set_size_request(220, -1)" in view_source
     assert "scroll.set_min_content_height(100)" in view_source
-    assert "self.set_size_request(-1, 250)" in widgets_source
+    assert "self.set_size_request(-1, 64)" in widgets_source
     assert "self.set_size_request(640, 260)" not in widgets_source
     assert "MAP_RESIZE_DEBOUNCE_MS = 180" in window_source
     assert "self.coordinator.desired_map_cells(" in window_source
