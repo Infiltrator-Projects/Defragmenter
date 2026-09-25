@@ -344,6 +344,13 @@ class MainWindow(Gtk.ApplicationWindow):
         target_cells: int | None = None,
         quiet: bool = False,
     ) -> None:
+        if self.current_volume is None:
+            if not quiet:
+                self.show_error(
+                    "Select a volume",
+                    "Choose a supported volume or open a filesystem image before analysing.",
+                )
+            return
         self.coordinator.analyze(
             clear_log=clear_log,
             target_cells=target_cells,
