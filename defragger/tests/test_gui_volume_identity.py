@@ -146,11 +146,24 @@ def test_amiga_discovery_does_not_depend_on_lsblk_fstype() -> None:
             # when an unprivileged native probe cannot open the physical device.
             node("/dev/mmcblk0p13", partlabel="LD_SFS"),
             node("/dev/mmcblk0p14", partlabel="LD_PFS3"),
-            # APFS now has a first-party creator.  Its Test Media GPT label
-            # must override a stale pre-rebuild signature.
+            # APFS Test Media labels are not filesystem identity. A stale
+            # pre-rebuild HFS+ signature must remain HFS+, not become APFS.
             node(
                 "/dev/mmcblk0p15",
                 fstype="hfsplus",
+                partlabel="LD_APFS",
+                label="LD_APFS",
+            ),
+            # When the host leaves APFS unnamed, the first-party APFS worker
+            # may positively identify the raw Test Media slot.
+            node(
+                "/dev/mmcblk0p16",
+                partlabel="LD_APFS",
+                label="LD_APFS",
+            ),
+            # A labelled but unformatted/stale slot must not be advertised.
+            node(
+                "/dev/mmcblk0p17",
                 partlabel="LD_APFS",
                 label="LD_APFS",
             ),
@@ -163,7 +176,16 @@ def test_amiga_discovery_does_not_depend_on_lsblk_fstype() -> None:
     def fake_probe(path: str) -> str:
         return "ffs" if path.endswith("p20") else ""
 
-    volumes = discover_volumes(_catalog(), run=fake_run, probe_unknown=fake_probe)
+    def fake_test_media_probe(path: str, expected: str) -> str:
+        assert expected == "apfs"
+        return "apfs" if path.endswith("p16") else ""
+
+    volumes = discover_volumes(
+        _catalog(),
+        run=fake_run,
+        probe_unknown=fake_probe,
+        probe_test_media=fake_test_media_probe,
+    )
     by_path = {volume.path: volume for volume in volumes}
     assert set(by_path) == {
         "/dev/mmcblk0p11",
@@ -171,6 +193,7 @@ def test_amiga_discovery_does_not_depend_on_lsblk_fstype() -> None:
         "/dev/mmcblk0p13",
         "/dev/mmcblk0p14",
         "/dev/mmcblk0p15",
+        "/dev/mmcblk0p16",
         "/dev/mmcblk0p20",
     }
     assert by_path["/dev/mmcblk0p11"].normalized_fstype == "affs"
@@ -180,7 +203,9 @@ def test_amiga_discovery_does_not_depend_on_lsblk_fstype() -> None:
     assert by_path["/dev/mmcblk0p12"].display_fstype == "ffs"
     assert by_path["/dev/mmcblk0p13"].display_fstype == "sfs"
     assert by_path["/dev/mmcblk0p14"].display_fstype == "pfs3"
-    assert by_path["/dev/mmcblk0p15"].display_fstype == "apfs"
+    assert by_path["/dev/mmcblk0p15"].display_fstype == "hfsplus"
+    assert by_path["/dev/mmcblk0p16"].display_fstype == "apfs"
+    assert "/dev/mmcblk0p17" not in by_path
     assert by_path["/dev/mmcblk0p20"].display_fstype == "ffs"
 
 

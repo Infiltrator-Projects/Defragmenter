@@ -19,6 +19,7 @@ from .backend_catalog import BackendCatalog
 
 RunCommand = Callable[..., subprocess.CompletedProcess[str]]
 UnknownFilesystemProbe = Callable[[str], str]
+TestMediaFilesystemProbe = Callable[[str, str], str]
 _GENERIC_FAT_TYPES = frozenset({"vfat", "fat", "msdos"})
 _EXT_TYPES = frozenset({"ext2", "ext3", "ext4"})
 _AMIGA_TYPES = frozenset({"ofs", "ffs"})
@@ -118,20 +119,55 @@ def first_party_unknown_filesystem_probe(path: str) -> str:
     return variant if variant in _AMIGA_TYPES else "affs"
 
 
+_TEST_MEDIA_NATIVE_PROBES = {
+    "apfs": ("apfs-native", "apfs"),
+}
+
+
+def first_party_test_media_probe(path: str, expected: str) -> str:
+    """Verify raw Test Media identities that cannot safely rely on GPT labels.
+
+    LD_APFS is merely a partition slot label. Older or partially rebuilt
+    qualification media may carry that label while the partition still
+    contains another filesystem or no filesystem at all.
+    """
+
+    spec = _TEST_MEDIA_NATIVE_PROBES.get(expected)
+    if not path or spec is None:
+        return ""
+    program_id, filesystem = spec
+    anchor = Path(__file__).resolve().parents[1] / "core"
+    try:
+        worker = resolve_program(program_id, anchor=anchor)
+        completed = subprocess.run(
+            [worker, "identify", path],
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=2.0,
+            env={**os.environ, "LC_ALL": "C", "LANG": "C"},
+        )
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+        return ""
+    if completed.returncode != 0:
+        return ""
+    try:
+        payload = json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    return filesystem if str(payload.get("filesystem") or "").lower() == filesystem else ""
+
+
 def _resolved_discovery_fstype(
     catalog: BackendCatalog,
     node: dict[str, Any],
     probe_unknown: UnknownFilesystemProbe,
+    probe_test_media: TestMediaFilesystemProbe,
 ) -> str:
-    """Resolve one lsblk node without treating the host probe as authoritative."""
-
-    partlabel = str(node.get("partlabel") or "").strip().lower()
-    hinted = _TEST_MEDIA_RAW_PARTLABELS.get(partlabel, "")
-    if hinted and catalog.supports(hinted):
-        # Test Media owns these GPT labels.  Prefer the expected first-party
-        # filesystem identity over a stale signature left on a partition that
-        # has not yet been rebuilt in the current media-generation pass.
-        return hinted
+    """Resolve one lsblk node without turning partition labels into evidence."""
 
     raw = str(node.get("fstype") or "").strip().lower()
     if raw and catalog.supports(raw):
@@ -142,7 +178,21 @@ def _resolved_discovery_fstype(
     if probed and catalog.supports(probed):
         return probed
 
-    return ""
+    partlabel = str(node.get("partlabel") or "").strip().lower()
+    hinted = _TEST_MEDIA_RAW_PARTLABELS.get(partlabel, "")
+    if not hinted or not catalog.supports(hinted):
+        return ""
+
+    # OFS/FFS/SFS/PFS3 deliberately need their deterministic Test Media slot
+    # label as a last-resort discovery hint on hosts whose blkid stack does not
+    # understand them. APFS is different: a stale LD_APFS GPT label previously
+    # caused Defragmenter to route arbitrary bytes to the APFS worker. Require
+    # a positive native APFS identity before presenting that slot as APFS.
+    if hinted == "apfs":
+        verified = str(probe_test_media(path, hinted) or "").strip().lower()
+        return verified if verified == hinted else ""
+
+    return hinted
 
 
 @dataclass(slots=True)
@@ -261,6 +311,7 @@ def discover_volumes(
     *,
     run: RunCommand = subprocess.run,
     probe_unknown: UnknownFilesystemProbe = first_party_unknown_filesystem_probe,
+    probe_test_media: TestMediaFilesystemProbe = first_party_test_media_probe,
 ) -> list[Volume]:
     columns = (
         "NAME,PATH,TYPE,FSTYPE,FSVER,LABEL,PARTLABEL,UUID,PARTUUID,SIZE,"
@@ -277,7 +328,9 @@ def discover_volumes(
     data = json.loads(result.stdout)
     volumes: list[Volume] = []
     for node in flatten_lsblk(data.get("blockdevices", [])):
-        fstype = _resolved_discovery_fstype(catalog, node, probe_unknown)
+        fstype = _resolved_discovery_fstype(
+            catalog, node, probe_unknown, probe_test_media
+        )
         if not fstype:
             continue
         partlabel = str(node.get("partlabel") or "")

@@ -1145,6 +1145,23 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device) {
             (void)state_write_status(state, spec, "reserved", spec->note);
             continue;
         }
+        if (spec->creator == LDTM_CREATOR_APFS) {
+            char detail[512];
+            detail[0] = '\0';
+            if (ldtm_verify_apfs_payload(
+                    partition, detail, sizeof(detail)) == 0) {
+                emit_status(
+                    spec->key, "verified",
+                    detail[0] != '\0'
+                        ? detail : "raw C APFS fixture verified");
+            } else {
+                emit_status(
+                    spec->key, "verify-failed",
+                    detail[0] != '\0'
+                        ? detail : "raw C APFS fixture verification failed");
+            }
+            continue;
+        }
         if ((spec->creator == LDTM_CREATOR_AFFS || spec->creator == LDTM_CREATOR_PFS3)) {
             if (create_amiga_and_populate(spec, partition, state) != 0) goto cleanup;
         } else if (spec->creator == LDTM_CREATOR_APFS) {
