@@ -190,7 +190,7 @@ def test_map_presenter_handles_domain_and_swap_maps() -> None:
         ("defrag", "growth-defrag", "recover"),
     )
     assert writable.fragmentation_value == "Not calculated"
-    assert "white tail" in writable.caption
+    assert "dark tail" in writable.caption
     assert "available: Defragment, Growth Defrag, Recover" in writable.status
 
     read_only = present_allocation_map(domain)
