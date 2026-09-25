@@ -10,7 +10,7 @@ from gi.repository import Gdk, Gtk
 from .map_presenter import MapPresentation
 from .operation_planner import ControlState
 from .theme import ThemeMode, apply_theme, load_theme_mode, save_theme_mode, theme_label
-from .widgets import DiskMap, GaugeCard, SummaryCard
+from .widgets import CheckerBall, DiskMap, GaugeCard, HeroArtwork, SummaryCard
 
 
 APP_NAME = "Defragmenter"
@@ -105,13 +105,19 @@ class WindowView:
         callback: Any,
         *,
         selected: bool = False,
+        css_class: str = "",
     ) -> Gtk.Button:
         button = Gtk.Button()
         button.set_relief(Gtk.ReliefStyle.NONE)
         button.set_hexpand(True)
         button.get_style_context().add_class("nav-button")
+        if css_class:
+            button.get_style_context().add_class(css_class)
         if selected:
             button.get_style_context().add_class("nav-selected")
+        if not hasattr(self, "_nav_buttons"):
+            self._nav_buttons = []
+        self._nav_buttons.append(button)
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         row.set_border_width(6)
         row.pack_start(self._icon(icon_name, 28), False, False, 0)
@@ -126,7 +132,14 @@ class WindowView:
         labels.pack_start(secondary, False, False, 0)
         row.pack_start(labels, True, True, 0)
         button.add(row)
-        button.connect("clicked", callback)
+
+        def activate(widget: Gtk.Button) -> None:
+            for candidate in getattr(self, "_nav_buttons", []):
+                candidate.get_style_context().remove_class("nav-selected")
+            widget.get_style_context().add_class("nav-selected")
+            callback(widget)
+
+        button.connect("clicked", activate)
         return button
 
     def _action_button(
@@ -156,13 +169,16 @@ class WindowView:
         labels.pack_start(title_label, False, False, 0)
         labels.pack_start(subtitle_label, False, False, 0)
         content.pack_start(labels, True, True, 0)
+        arrow = Gtk.Label(label="›")
+        arrow.get_style_context().add_class("action-arrow")
+        content.pack_end(arrow, False, False, 0)
         button.add(content)
         button.connect("clicked", callback)
         return button
 
     def _build_sidebar(self) -> Gtk.Widget:
         sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        sidebar.set_size_request(220, -1)
+        sidebar.set_size_request(238, -1)
         sidebar.set_border_width(12)
         sidebar.get_style_context().add_class("sidebar")
 
@@ -186,6 +202,7 @@ class WindowView:
             "Drive at a glance",
             lambda _button: self._show_overview(),
             selected=True,
+            css_class="nav-overview",
         )
         sidebar.pack_start(overview, False, False, 0)
 
@@ -194,24 +211,28 @@ class WindowView:
             "Analyse",
             "Scan and visualise",
             lambda _button: self.controller.analyze(),
+            css_class="nav-analyse",
         )
         self.sidebar_defrag_button = self._nav_button(
             "view-grid-symbolic",
             "Defragment",
             "Optimise file layout",
             lambda _button: self.controller.start_mutation("defrag"),
+            css_class="nav-defrag",
         )
         self.sidebar_growth_button = self._nav_button(
             "go-up-symbolic",
             "Growth Defrag",
             "Keep free space contiguous",
             lambda _button: self.controller.start_mutation("growth-defrag"),
+            css_class="nav-growth",
         )
         self.sidebar_recover_button = self._nav_button(
             "edit-undo-symbolic",
             "Recover",
             "Resume safe recovery",
             lambda _button: self.controller.start_mutation("recover"),
+            css_class="nav-recover",
         )
         for button in (
             self.sidebar_analyze_button,
@@ -227,22 +248,27 @@ class WindowView:
             "Test Media",
             "Check and diagnose",
             lambda _button: self.controller.launch_test_media(),
+            css_class="nav-test-media",
         )
         self.sidebar_settings_button = self._nav_button(
             "preferences-system-symbolic",
             "Settings",
             "Appearance and preferences",
             lambda _button: self._show_settings_dialog(),
+            css_class="nav-settings",
         )
         sidebar.pack_start(self.sidebar_test_media_button, False, False, 0)
         sidebar.pack_start(self.sidebar_settings_button, False, False, 0)
 
-        footer = Gtk.Label(
-            label="Graphical first\nPixel locality map\nSafe offline engine"
-        )
+        footer_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        checker = CheckerBall()
+        checker.set_halign(Gtk.Align.CENTER)
+        footer_box.pack_start(checker, False, False, 0)
+        footer = Gtk.Label(label="Fast disks\nHappy computing.")
         footer.set_xalign(0)
         footer.get_style_context().add_class("sidebar-footer")
-        sidebar.pack_end(footer, False, False, 4)
+        footer_box.pack_start(footer, False, False, 0)
+        sidebar.pack_end(footer_box, False, False, 4)
         return sidebar
 
     def _build(self) -> None:
@@ -251,7 +277,11 @@ class WindowView:
         self.window.add(outer)
         outer.pack_start(self._build_menu_bar(), False, False, 0)
 
-        body = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        body = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
+        body.set_wide_handle(False)
+        body.set_position(238)
+        body.set_hexpand(True)
+        body.set_vexpand(True)
         body.get_style_context().add_class("app-body")
         outer.pack_start(body, True, True, 0)
 
@@ -267,41 +297,23 @@ class WindowView:
         root.set_border_width(16)
         body_scroll.add(root)
 
-        title_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
-        title_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        title = Gtk.Label(label="Defragmenter")
-        title.set_xalign(0)
-        title.get_style_context().add_class("app-title")
-        title_box.pack_start(title, False, False, 0)
-        subtitle = Gtk.Label(label="See the disk. Understand it. Optimise it.")
-        subtitle.set_xalign(0)
-        subtitle.get_style_context().add_class("app-subtitle")
-        title_box.pack_start(subtitle, False, False, 0)
-        title_row.pack_start(title_box, True, True, 0)
-
-        version_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
-        version_box.set_border_width(8)
-        version_box.get_style_context().add_class("version-badge")
-        version_title = Gtk.Label(label=f"Engine {self.engine_version}")
-        version_title.set_xalign(1)
-        version_title.get_style_context().add_class("version-primary")
-        version_gui = Gtk.Label(label=f"GUI {self.gui_version}")
-        version_gui.set_xalign(1)
-        version_gui.get_style_context().add_class("version-secondary")
-        version_box.pack_start(version_title, False, False, 0)
-        version_box.pack_start(version_gui, False, False, 0)
-        title_row.pack_end(version_box, False, False, 0)
-        root.pack_start(title_row, False, False, 0)
-
         hero = Gtk.Frame()
         hero.set_shadow_type(Gtk.ShadowType.NONE)
         hero.get_style_context().add_class("hero-panel")
-        hero_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        hero_box.set_border_width(14)
 
-        hero_heading = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        hero_heading.pack_start(self._icon("drive-harddisk-symbolic", 40), False, False, 0)
-        hero_text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+        hero_overlay = Gtk.Overlay()
+        hero_overlay.add(HeroArtwork())
+        hero_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        hero_box.set_border_width(16)
+
+        hero_heading = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        drive_badge = Gtk.Frame()
+        drive_badge.set_shadow_type(Gtk.ShadowType.NONE)
+        drive_badge.get_style_context().add_class("hero-drive-badge")
+        drive_badge.add(self._icon("drive-harddisk-symbolic", 48))
+        hero_heading.pack_start(drive_badge, False, False, 0)
+
+        hero_text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         selected_label = Gtk.Label(label="SELECTED VOLUME")
         selected_label.set_xalign(0)
         selected_label.get_style_context().add_class("hero-kicker")
@@ -317,7 +329,23 @@ class WindowView:
         hero_text.pack_start(self.volume_title, False, False, 0)
         hero_text.pack_start(self.volume_detail, False, False, 0)
         hero_heading.pack_start(hero_text, True, True, 0)
-        hero_box.pack_start(hero_heading, False, False, 0)
+
+        version_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+        version_box.get_style_context().add_class("version-badge")
+        version_title = Gtk.Label(label=f"Engine {self.engine_version}")
+        version_title.set_xalign(1)
+        version_title.get_style_context().add_class("version-primary")
+        version_gui = Gtk.Label(label=f"GUI {self.gui_version}")
+        version_gui.set_xalign(1)
+        version_gui.get_style_context().add_class("version-secondary")
+        version_box.pack_start(version_title, False, False, 0)
+        version_box.pack_start(version_gui, False, False, 0)
+        hero_heading.pack_end(version_box, False, False, 4)
+
+        self.hero_status = Gtk.Label(label="Ready")
+        self.hero_status.get_style_context().add_class("hero-status")
+        hero_heading.pack_end(self.hero_status, False, False, 0)
+        hero_box.pack_start(hero_heading, True, True, 0)
 
         device_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.device_combo = Gtk.ComboBoxText()
@@ -336,8 +364,10 @@ class WindowView:
         self.unmount_button = Gtk.Button.new_with_label("Unmount")
         self.unmount_button.connect("clicked", self.controller.unmount_selected)
         device_row.pack_start(self.unmount_button, False, False, 0)
-        hero_box.pack_start(device_row, False, False, 0)
-        hero.add(hero_box)
+        hero_box.pack_end(device_row, False, False, 0)
+
+        hero_overlay.add_overlay(hero_box)
+        hero.add(hero_overlay)
         root.pack_start(hero, False, False, 0)
 
         cards = Gtk.Grid(column_spacing=10, row_spacing=10)
@@ -458,6 +488,29 @@ class WindowView:
         actions.attach(self.recover_button, 3, 0, 1, 1)
         root.pack_start(actions, False, False, 0)
 
+        lower = Gtk.Grid(column_spacing=12, row_spacing=0)
+        lower.set_column_homogeneous(True)
+
+        preview = Gtk.Frame()
+        preview.set_shadow_type(Gtk.ShadowType.NONE)
+        preview.get_style_context().add_class("preview-panel")
+        preview_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        preview_box.set_border_width(12)
+        preview_title = self._section_label("Current allocation")
+        preview_box.pack_start(preview_title, False, False, 0)
+        self.preview_map = DiskMap()
+        self.preview_map.set_size_request(-1, 116)
+        self.preview_map.set_sensitive(False)
+        preview_box.pack_start(self.preview_map, True, True, 0)
+        preview_note = Gtk.Label(
+            label="Compact live mirror of the authoritative disk map."
+        )
+        preview_note.set_xalign(0)
+        preview_note.get_style_context().add_class("preview-note")
+        preview_box.pack_start(preview_note, False, False, 0)
+        preview.add(preview_box)
+        lower.attach(preview, 0, 0, 1, 1)
+
         activity = Gtk.Frame()
         activity.set_shadow_type(Gtk.ShadowType.NONE)
         activity.get_style_context().add_class("activity-panel")
@@ -475,6 +528,18 @@ class WindowView:
         self.stop_button.get_style_context().add_class("destructive-action")
         activity_header.pack_end(self.stop_button, False, False, 0)
         activity_box.pack_start(activity_header, False, False, 0)
+
+        self.activity_primary = Gtk.Label(label="Ready for analysis")
+        self.activity_primary.set_xalign(0)
+        self.activity_primary.get_style_context().add_class("activity-primary")
+        activity_box.pack_start(self.activity_primary, False, False, 0)
+        self.activity_secondary = Gtk.Label(
+            label="Choose a volume; analysis and safe operations appear here."
+        )
+        self.activity_secondary.set_xalign(0)
+        self.activity_secondary.set_line_wrap(True)
+        self.activity_secondary.get_style_context().add_class("activity-secondary")
+        activity_box.pack_start(self.activity_secondary, False, False, 0)
 
         self.progress = Gtk.ProgressBar()
         self.progress.set_hexpand(True)
@@ -503,7 +568,9 @@ class WindowView:
         expander.add(scroll)
         activity_box.pack_start(expander, False, True, 0)
         activity.add(activity_box)
-        root.pack_start(activity, False, False, 0)
+        lower.attach(activity, 1, 0, 1, 1)
+
+        root.pack_start(lower, False, False, 0)
 
         status_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         status_box.set_border_width(8)
@@ -511,14 +578,24 @@ class WindowView:
         ready_dot = Gtk.Label(label="●")
         ready_dot.get_style_context().add_class("ready-dot")
         status_box.pack_start(ready_dot, False, False, 0)
+        self.footer_volume = Gtk.Label(label="No volume selected")
+        self.footer_volume.set_xalign(0)
+        self.footer_volume.get_style_context().add_class("footer-volume")
+        status_box.pack_start(self.footer_volume, False, False, 0)
+        status_box.pack_start(
+            Gtk.Separator(orientation=Gtk.Orientation.VERTICAL),
+            False,
+            False,
+            8,
+        )
         self.status_label = Gtk.Label(label="Ready")
         self.status_label.set_xalign(0)
         self.status_label.get_style_context().add_class("status-text")
         status_box.pack_start(self.status_label, True, True, 0)
         root.pack_start(status_box, False, False, 0)
 
-        body.pack_start(self._build_sidebar(), False, False, 0)
-        body.pack_start(body_scroll, True, True, 0)
+        body.pack1(self._build_sidebar(), resize=False, shrink=False)
+        body.pack2(body_scroll, resize=True, shrink=True)
 
     def _show_overview(self) -> None:
         adjustment = self.body_scroll.get_vadjustment()
@@ -686,6 +763,12 @@ class WindowView:
         .legend-item label, .map-caption, .map-hint { font-size: 8.75pt; }
         .action-card-title { font-size: 11pt; font-weight: bold; }
         .action-card-subtitle { font-size: 8.75pt; }
+        .action-arrow { font-size: 22pt; font-weight: bold; }
+        .hero-volume-title { font-size: 17pt; font-weight: bold; }
+        .hero-status { font-size: 9pt; font-weight: bold; }
+        .activity-primary { font-size: 10.5pt; font-weight: bold; }
+        .activity-secondary, .preview-note { font-size: 8.75pt; }
+        .footer-volume { font-size: 9pt; font-weight: bold; }
         .log-expander { font-weight: bold; }
         textview.log-view { font-size: 9.25pt; }
         .status-text { font-size: 9pt; }
@@ -712,12 +795,17 @@ class WindowView:
             selected = names[active_index]
             parts = [part.strip() for part in selected.split("—")]
             self.volume_title.set_text(parts[0] if parts else selected)
-            self.volume_detail.set_text(
-                "  •  ".join(parts[1:]) if len(parts) > 1 else selected
-            )
+            detail = "  •  ".join(parts[1:]) if len(parts) > 1 else selected
+            self.volume_detail.set_text(detail)
+            self.footer_volume.set_text(parts[0] if parts else selected)
+            lowered = selected.lower()
+            mounted = "mounted" in lowered and "unmounted" not in lowered
+            self.hero_status.set_text("● Mounted" if mounted else "● Offline")
         else:
             self.volume_title.set_text("Choose a disk")
             self.volume_detail.set_text("Select a filesystem to visualise")
+            self.footer_volume.set_text("No volume selected")
+            self.hero_status.set_text("Ready")
 
     def append_log(self, text: str) -> None:
         if not text:
@@ -785,6 +873,11 @@ class WindowView:
         )
 
     def reset_summary(self) -> None:
+        self.preview_map.set_cells([])
+        self.activity_primary.set_text("Ready for analysis")
+        self.activity_secondary.set_text(
+            "Choose a volume; analysis and safe operations appear here."
+        )
         self.capacity_card.set_title("Allocated")
         self.free_card.set_title("Free space")
         self.files_card.set_title("Files")
@@ -809,6 +902,8 @@ class WindowView:
 
     def apply_map_presentation(self, presentation: MapPresentation) -> None:
         self.disk_map.set_cells(presentation.cells)
+        self.preview_map.set_cells(presentation.cells)
+        self.preview_map.set_unit_label(presentation.unit_label)
         total_units = sum(
             int(cell["end"]) - int(cell["start"]) + 1
             for cell in presentation.cells
@@ -846,23 +941,24 @@ class WindowView:
         self.disk_map.set_unit_label(presentation.unit_label)
         self.map_caption.set_text(presentation.caption)
         self.status_label.set_text(presentation.status)
+        self.activity_primary.set_text("Scan completed")
+        self.activity_secondary.set_text(presentation.status)
 
     def set_control_state(self, state: ControlState) -> None:
         self.refresh_button.set_sensitive(state.refresh)
         self.image_button.set_sensitive(state.refresh)
         self.device_combo.set_sensitive(state.select_device)
-        self.analyze_button.set_sensitive(state.analyse)
+        idle = state.refresh
+        self.analyze_button.set_sensitive(idle)
         self.unmount_button.set_sensitive(state.unmount)
-        self.defrag_button.set_sensitive(state.defrag)
-        self.growth_button.set_sensitive(state.growth_defrag)
-        self.recover_button.set_sensitive(state.recover)
+        self.defrag_button.set_sensitive(idle)
+        self.growth_button.set_sensitive(idle)
+        self.recover_button.set_sensitive(idle)
         self.stop_button.set_sensitive(state.stop)
-        # Sidebar entries stay clickable so they always provide feedback.
-        # Mutation actions perform their own safe unmount/validation sequence.
-        self.sidebar_analyze_button.set_sensitive(not state.stop)
-        self.sidebar_defrag_button.set_sensitive(not state.stop)
-        self.sidebar_growth_button.set_sensitive(not state.stop)
-        self.sidebar_recover_button.set_sensitive(not state.stop)
+        self.sidebar_analyze_button.set_sensitive(idle)
+        self.sidebar_defrag_button.set_sensitive(idle)
+        self.sidebar_growth_button.set_sensitive(idle)
+        self.sidebar_recover_button.set_sensitive(idle)
 
     def set_operation_tooltips(self, tooltips: dict[str, str]) -> None:
         self.defrag_button.set_tooltip_text(tooltips["defrag"])
