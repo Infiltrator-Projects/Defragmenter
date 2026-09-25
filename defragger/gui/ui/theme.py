@@ -110,6 +110,8 @@ def _base_css() -> str:
     bold = TYPOGRAPHY["ui_bold_weight"]
     brand_weight = TYPOGRAPHY["brand_weight"]
     radius = METRICS["small_radius"]
+    card_radius = METRICS["card_radius"]
+    panel_radius = METRICS["panel_radius"]
     return f"""
     * {{ font-family: "{body}"; font-weight: {regular}; }}
     .app-title, .about-title {{
@@ -123,7 +125,15 @@ def _base_css() -> str:
     .section-title {{ font-size: 9.5pt; font-weight: {bold}; padding: 0 5px; }}
     button {{ border-radius: {radius}px; padding: 7px 13px; min-height: 30px; }}
     button.primary-action, button.operation-action {{ font-weight: {bold}; }}
-    progressbar trough {{ min-height: 8px; }}
+    progressbar trough {{ min-height: 8px; border-radius: {radius}px; }}
+    .sidebar {{ padding: 4px; }}
+    .nav-button {{ padding: 2px; border-radius: {card_radius}px; }}
+    .hero-panel > border, .map-panel > border, .activity-panel > border {{
+        border-radius: {panel_radius}px;
+    }}
+    frame.summary-card > border {{ border-radius: {card_radius}px; }}
+    button.action-card {{ min-height: 74px; border-radius: {card_radius}px; padding: 4px; }}
+    .pixel-map {{ border-radius: {card_radius}px; }}
     .status-prefix {{ font-size: 8pt; font-weight: {bold}; }}
     .status-text {{ font-size: 8.75pt; }}
     """
@@ -144,9 +154,48 @@ def _night_css() -> str:
     .section-title {{ color: {p["kicker"]}; }}
     .legend-item label, .log-expander {{ color: {p["detail_label"]}; }}
     .version-badge, frame.section-panel > border, frame.map-panel > border,
-    frame.action-panel > border, frame.summary-card > border {{
+    frame.action-panel > border, frame.summary-card > border,
+    frame.hero-panel > border, frame.activity-panel > border {{
         background-color: {p["surface"]}; border: 1px solid {p["border"]};
     }}
+    .sidebar {{
+        background-image: linear-gradient(to bottom, {p["surface"]}, {p["background"]});
+        border-right: 1px solid {p["status_border"]};
+    }}
+    .sidebar-brand, .nav-title {{ color: {p["heading"]}; }}
+    .sidebar-brand-subtitle, .nav-subtitle, .sidebar-footer, .hero-hint, .map-hint {{
+        color: {p["detail_label"]};
+    }}
+    .nav-button {{ background-image: none; background-color: transparent; border: 1px solid transparent; }}
+    .nav-button:hover {{ background-color: {p["card"]}; border-color: {p["border"]}; }}
+    .nav-button.nav-selected {{
+        background-color: {p["selection_background"]};
+        border-color: {p["neutral_accent"]};
+    }}
+    .hero-panel > border {{
+        background-image: linear-gradient(135deg, {p["surface"]}, {p["card"]});
+        border-color: {p["status_border"]};
+    }}
+    .hero-kicker {{ color: {p["neutral_accent"]}; }}
+    frame.summary-card > border {{ background-color: {p["card"]}; }}
+    frame.summary-capacity > border {{ border-color: {p["info"]}; }}
+    frame.summary-free > border {{ border-color: {p["neutral_accent"]}; }}
+    frame.summary-files > border {{ border-color: {p["success"]}; }}
+    frame.summary-fragmented > border {{ border-color: {p["fault"]}; }}
+    frame.map-panel > border {{ background-color: {p["surface"]}; border-color: {p["status_border"]}; }}
+    frame.activity-panel > border {{ background-color: {p["panel"]}; }}
+    button.action-card {{
+        background-image: none; background-color: {p["card"]}; color: {p["text"]};
+        border: 1px solid {p["border"]}; box-shadow: 0 2px 5px alpha(#000000, 0.28);
+    }}
+    button.action-card:hover {{ background-color: {p["card_hover"]}; }}
+    button.action-analyse {{ border-color: {p["neutral_accent"]}; }}
+    button.action-defrag {{ border-color: {p["info"]}; }}
+    button.action-growth {{ border-color: {p["success"]}; }}
+    button.action-recover {{ border-color: {p["warning"]}; }}
+    .action-card-title {{ color: {p["heading"]}; }}
+    .action-card-subtitle {{ color: {p["detail_label"]}; }}
+    .ready-dot {{ color: {p["success"]}; }}
     button, combobox button, entry, spinbutton {{
         background-image: none; background-color: {p["card"]}; color: {p["text"]};
         border: 1px solid {p["neutral_accent"]}; box-shadow: none;
@@ -191,9 +240,48 @@ def _day_css() -> str:
     .section-title {{ color: {p["kicker"]}; }}
     .legend-item label, .log-expander {{ color: {p["detail_label"]}; }}
     .version-badge, frame.section-panel > border, frame.map-panel > border,
-    frame.action-panel > border, frame.summary-card > border {{
+    frame.action-panel > border, frame.summary-card > border,
+    frame.hero-panel > border, frame.activity-panel > border {{
         background-color: {p["panel"]}; border: 1px solid {p["border"]};
     }}
+    .sidebar {{
+        background-image: linear-gradient(to bottom, {p["surface"]}, {p["panel"]});
+        border-right: 1px solid {p["status_border"]};
+    }}
+    .sidebar-brand, .nav-title {{ color: {p["heading"]}; }}
+    .sidebar-brand-subtitle, .nav-subtitle, .sidebar-footer, .hero-hint, .map-hint {{
+        color: {p["detail_label"]};
+    }}
+    .nav-button {{ background-image: none; background-color: transparent; border: 1px solid transparent; }}
+    .nav-button:hover {{ background-color: {p["card_hover"]}; border-color: {p["border"]}; }}
+    .nav-button.nav-selected {{
+        background-color: {p["selection_background"]};
+        border-color: {p["neutral_accent"]};
+    }}
+    .hero-panel > border {{
+        background-image: linear-gradient(135deg, {p["panel"]}, {p["surface"]});
+        border-color: {p["status_border"]};
+    }}
+    .hero-kicker {{ color: {p["neutral_accent"]}; }}
+    frame.summary-card > border {{ background-color: {p["card"]}; }}
+    frame.summary-capacity > border {{ border-color: {p["info"]}; }}
+    frame.summary-free > border {{ border-color: {p["neutral_accent"]}; }}
+    frame.summary-files > border {{ border-color: {p["success"]}; }}
+    frame.summary-fragmented > border {{ border-color: {p["fault"]}; }}
+    frame.map-panel > border {{ background-color: {p["panel"]}; border-color: {p["status_border"]}; }}
+    frame.activity-panel > border {{ background-color: {p["panel"]}; }}
+    button.action-card {{
+        background-image: none; background-color: {p["card"]}; color: {p["text"]};
+        border: 1px solid {p["border"]}; box-shadow: 0 2px 4px alpha(#000000, 0.12);
+    }}
+    button.action-card:hover {{ background-color: {p["card_hover"]}; }}
+    button.action-analyse {{ border-color: {p["neutral_accent"]}; }}
+    button.action-defrag {{ border-color: {p["info"]}; }}
+    button.action-growth {{ border-color: {p["success"]}; }}
+    button.action-recover {{ border-color: {p["warning"]}; }}
+    .action-card-title {{ color: {p["heading"]}; }}
+    .action-card-subtitle {{ color: {p["detail_label"]}; }}
+    .ready-dot {{ color: {p["success"]}; }}
     button, combobox button, entry, spinbutton {{
         background-image: none; background-color: {p["card"]}; color: {p["text"]};
         border: 1px solid {p["neutral_accent"]}; box-shadow: none;
