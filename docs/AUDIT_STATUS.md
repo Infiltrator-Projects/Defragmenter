@@ -5,8 +5,8 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-09-25
 
-Applies to: release version 1.8.0-208
-Audited source commit: 21e2936bddab06c0e491f9b0f1167cdf45cd6cc5
+Applies to: release version 1.8.0-209
+Audited source commit: 6c066eca248747f7150f84f1e7744caf36199ae2
 Audited release-governance commit: 1a61ff57bdf939fcbfcc84300b66b30411276113
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
@@ -15,9 +15,11 @@ This document records the current release safety case. Historical audit-developm
 
 ## Qualification evidence
 
-The current audited production-source baseline is commit `21e2936bddab06c0e491f9b0f1167cdf45cd6cc5`. In Project quality gate run 36136561546, that exact candidate completed the warnings-as-errors build and all 44 hosted CTest tests successfully; the independent hosted ASan/UBSan lane also passed. The self-hosted Local Linux / heavy qualification run 36136561102 completed its build, functional test subsets and architecture checks successfully. Both ordinary-candidate gates stopped only because this audit document still named the 1.8.0-207 production baseline, which is the deliberate pre-release control resolved by version 1.8.0-208.
+The current audited production-source baseline is commit `6c066eca248747f7150f84f1e7744caf36199ae2`. In Project quality gate run 36141377186, that exact candidate completed the warnings-as-errors build and all 44 hosted CTest tests successfully; the independent hosted ASan/UBSan lane also passed. The self-hosted Local Linux / heavy qualification run 36141376019 completed its build, functional test subsets and architecture checks successfully. Both ordinary-candidate gates stopped only because this audit document still named the 1.8.0-208 production baseline, which is the deliberate pre-release control resolved by version 1.8.0-209.
 
-The reviewed production delta corrects filesystem identity and Test Media verification around APFS. GPT partition label `LD_APFS` is no longer treated as authoritative filesystem identity or allowed to override a real lsblk/libblkid filesystem result. If host discovery leaves the slot unnamed, Defragmenter requires a successful first-party APFS native identify result before presenting the partition as APFS. Test Media verification now invokes the first-party raw APFS verifier for APFS fixtures instead of attempting a host-kernel mount. The APFS analyser/writer implementation, on-disk parsing, placement, staging, journal/recovery and mounted-target safety semantics are unchanged.
+The reviewed filesystem-analysis delta completes the SFS and PFS3 exact-allocation presentation contract by emitting the already-computed regular-file, directory and fragmented-file counts together with a calculated file-fragmentation percentage and an explicit zero fragmented-directory count for the qualified formats. No SFS/PFS3 placement, write, transaction, recovery or verification semantics changed. Linux swap presentation now states the format distinction explicitly: swap is page-slot storage rather than a file/extent filesystem, so file fragmentation is not applicable whether the area is active or inactive; raw swap header/bad-page/allocation semantics are unchanged.
+
+The reviewed GTK delta is layout-only. The redundant miniature allocation preview has been removed from Overview, the idle Activity area is compacted into one horizontal strip, root spacing is reduced, and the authoritative DiskMap minimum height is reduced from 250 to 64 pixels while remaining vertically expandable. This lets the real map yield height first on constrained laptop work areas so the quick-action row, activity strip and status/footer remain visible without unnecessary vertical scrolling. Filesystem analysis data, map physical ordering, mutation planning and writer safety are unchanged.
 
 The release-governance baseline is extended through `1a61ff57bdf939fcbfcc84300b66b30411276113`, which retains the pull-only APT ownership boundary and adds the intended self-hosted qualification run on main pushes. Defragmenter's release path validates its exact immutable GitHub release identity but never dispatches, authenticates to, waits on or synchronously verifies Infiltrator-Repository. The central repository independently discovers released packages on its own schedule, and the release-gate regression now rejects any reintroduction of cross-repository dispatch-token plumbing.
 

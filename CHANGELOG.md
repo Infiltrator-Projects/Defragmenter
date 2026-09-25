@@ -2,6 +2,15 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-209
+
+- Fix the Overview layout so the bottom of the screen remains present on laptop work areas. Remove the duplicate miniature "Current allocation" map, compact the activity area into a single horizontal strip and make the authoritative disk map vertically elastic with a 64-pixel minimum instead of forcing a 250-pixel minimum that caused avoidable scrolling.
+- Preserve the authoritative map's real physical pixel ordering while allowing GTK to shrink or grow its height with the available work area; map-resolution refresh continues to follow the actual allocated drawing size.
+- Complete the SFS0/SFS2 and PFS3 map summary contracts. Their native exact-allocation mappers now emit regular-file/directory counts, fragmented-file count, zero fragmented-directory count for the qualified subset, and a calculated fragmentation percentage rather than leaving the GUI at "Not calculated".
+- Add GUI and architecture regressions for SFS/PFS3 fragmentation summaries and for the non-duplicated, shrinkable Overview layout.
+- Clarify Linux swap semantics in the UI. Swap uses page slots rather than file extents, so file fragmentation is not applicable whether the swap area is active or inactive; the presentation now says this explicitly instead of leaving the relationship to "mounted" state ambiguous.
+- Qualify production source commit `6c066eca248747f7150f84f1e7744caf36199ae2`: all 44 hosted CTest tests passed, hosted ASan/UBSan passed, and the self-hosted functional/architecture subsets passed. The only ordinary-gate stop was the deliberately stale audited-source marker advanced by this release.
+
 ## 1.8.0-208
 
 - Fix the APFS failure shown on stale Test Media where an `LD_APFS` GPT partition label was being treated as proof that the partition actually contained an APFS container.

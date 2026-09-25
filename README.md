@@ -8,13 +8,13 @@
 
 Defragmenter is a C-first offline filesystem allocation analyser and defragmenter for Linux. Native C owns the raw filesystem engines and storage-safety core; C++17 owns selected filesystem-neutral application services where RAII, stronger value types and explicit process/protocol ownership improve the implementation. Write-capable engines operate directly on unmounted block devices or filesystem images and do not delegate production mutations to mounted kernel filesystem drivers or external repair/defragmentation tools.
 
-**Current version:** 1.8.0-208
+**Current version:** 1.8.0-209
 
 **Platform:** Linux
 
 **Licence:** GPL-3.0-or-later
 
-> **Safety status:** The version 1.8.0-208 filesystem-safety audit is complete. Defragment, Growth Defrag and Recover are enabled behind exact target confirmation, mounted-target refusal, durable filesystem-specific recovery and final verification. The separate Test Media utility is deliberately destructive and must be used only on sacrificial targets. See `docs/AUDIT_STATUS.md`.
+> **Safety status:** The version 1.8.0-209 filesystem-safety audit is complete. Defragment, Growth Defrag and Recover are enabled behind exact target confirmation, mounted-target refusal, durable filesystem-specific recovery and final verification. The separate Test Media utility is deliberately destructive and must be used only on sacrificial targets. See `docs/AUDIT_STATUS.md`.
 
 ## Engineering ethos
 
@@ -26,7 +26,7 @@ The project prefers the strongest justified method, not automatically the newest
 
 ## Appearance
 
-The graphical dashboard direction is captured in [`docs/UI_VISION.md`](docs/UI_VISION.md), including the approved concept image. The left rail is navigation rather than a duplicate command surface: Overview is the dashboard, while Analyse, Defragment, Growth Defrag, Recover, Test Media and Settings open dedicated pages with one relevant primary action. The complete concept screenshot is documentation-only. Runtime presentation uses three dedicated standalone raster assets — SSD identity art, hero landscape and Workbench-inspired sidebar scene — installed beside the GTK UI; the application never crops or displays pieces of the prototype screen. The authoritative allocation map remains a physically positional pixel raster: left-to-right and then top-to-bottom advances monotonically through the real on-disk allocation-unit address space, with no Hilbert, Morton/Z-order or other aesthetic remapping.
+The graphical dashboard direction is captured in [`docs/UI_VISION.md`](docs/UI_VISION.md), including the approved concept image. The left rail is navigation rather than a duplicate command surface: Overview is the dashboard, while Analyse, Defragment, Growth Defrag, Recover, Test Media and Settings open dedicated pages with one relevant primary action. The complete concept screenshot is documentation-only. Runtime presentation uses three dedicated standalone raster assets — SSD identity art, hero landscape and Workbench-inspired sidebar scene — installed beside the GTK UI; the application never crops or displays pieces of the prototype screen. The authoritative allocation map remains a physically positional pixel raster: left-to-right and then top-to-bottom advances monotonically through the real on-disk allocation-unit address space, with no Hilbert, Morton/Z-order or other aesthetic remapping. The Overview no longer carries a duplicate miniature allocation map: the main map is the elastic vertical surface and shrinks first on laptop work areas so the action row, compact activity strip and footer remain visible without needless scrolling.
 
 The main GTK application supports **Follow system**, **Day** and **Night** appearance modes. Follow system detects the host GTK/Mint light/dark preference and resolves it to the exact Common Day or Night palette; it does not inherit an unrelated toolkit palette. Common 1.19.27 supplies the complete layered Linux MBLINK reference face for Night — including titlebar, connection, heading, summary, detail, note, state-border and hover-accent roles — while Day supplies the matching white semantic palette. Defragmenter maps those neutral roles into its GTK selectors without redefining a private palette. The selected mode is persisted per user and synchronised across open windows.
 
