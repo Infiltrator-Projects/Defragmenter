@@ -450,6 +450,13 @@ def test_ui_polish_preserves_allocation_map_visual_contract() -> None:
 
     assert "defragmenter-ui-vision.jpg" not in source
 
+    # Primary volume controls are never children of the decorative hero overlay.
+    hero_tail = view_source.split("hero_overlay.add_overlay(hero_box)", 1)[0]
+    assert "hero_box.pack_end(device_row" not in hero_tail
+    selector_tail = view_source.split("hero_overlay.add_overlay(hero_box)", 1)[1]
+    assert 'add_class("volume-selector-panel")' in selector_tail
+    assert "root.pack_start(selector_frame, False, False, 0)" in selector_tail
+
     for required in (
         '"Test Media"',
         '"Settings"',
@@ -464,6 +471,11 @@ def test_ui_polish_preserves_allocation_map_visual_contract() -> None:
         "HeroArtwork()",
         "CheckerBall()",
         "DriveArtwork()",
+        "Gtk.Frame()",
+        'add_class("volume-selector-panel")',
+        "selector_frame.add(selector_box)",
+        "root.pack_start(selector_frame, False, False, 0)",
+        "self.device_combo.set_size_request(360, -1)",
         "GaugeCard(",
         "Current allocation",
         "body.pack1(self._build_sidebar()",

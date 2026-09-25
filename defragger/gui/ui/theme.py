@@ -136,6 +136,8 @@ def _base_css() -> str:
     }}
     .hero-drive-badge > border {{ border-radius: {card_radius}px; padding: 8px; }}
     .operation-page-volume > border {{ border-radius: {panel_radius}px; }}
+    .volume-selector-panel > border {{ border-radius: {panel_radius}px; }}
+    .volume-selector-kicker {{ font-size: 8pt; font-weight: {bold}; }}
     frame.summary-card > border {{ border-radius: {card_radius}px; }}
     button.action-card {{ min-height: 86px; border-radius: {card_radius}px; padding: 6px; }}
     .pixel-map {{ border-radius: {card_radius}px; }}
@@ -194,6 +196,11 @@ def _night_css() -> str:
         border-color: {p["neutral_accent"]};
     }}
     .hero-kicker {{ color: {p["neutral_accent"]}; }}
+    frame.volume-selector-panel > border {{
+        background-color: {p["surface"]};
+        border: 1px solid {p["status_border"]};
+    }}
+    .volume-selector-kicker {{ color: {p["neutral_accent"]}; }}
     .hero-drive-badge > border {{
         background-color: alpha({p["panel"]}, 0.82);
         border: 1px solid alpha({p["neutral_accent"]}, 0.60);
@@ -353,6 +360,11 @@ def _day_css() -> str:
         border-color: {p["neutral_accent"]};
     }}
     .hero-kicker {{ color: {p["neutral_accent"]}; }}
+    frame.volume-selector-panel > border {{
+        background-color: {p["panel"]};
+        border: 1px solid {p["status_border"]};
+    }}
+    .volume-selector-kicker {{ color: {p["neutral_accent"]}; }}
     frame.summary-card > border {{
         background-image: linear-gradient(145deg, {p["card"]}, {p["panel"]});
         box-shadow: 0 3px 8px alpha(#000000, 0.10);

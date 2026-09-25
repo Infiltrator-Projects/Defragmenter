@@ -355,28 +355,50 @@ class WindowView:
         hero_heading.pack_end(self.hero_status, False, False, 0)
         hero_box.pack_start(hero_heading, True, True, 0)
 
+        # The hero is decorative/informational only. Do not place the primary
+        # volume selector inside this overlay: the fixed-height raster canvas can
+        # clip child controls and GTK combo popovers on shorter windows/themes.
+        hero_overlay.add_overlay(hero_box)
+        hero.add(hero_overlay)
+        root.pack_start(hero, False, False, 0)
+
+        selector_frame = Gtk.Frame()
+        selector_frame.set_shadow_type(Gtk.ShadowType.NONE)
+        selector_frame.get_style_context().add_class("volume-selector-panel")
+        selector_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=7)
+        selector_box.set_border_width(10)
+
+        selector_label = Gtk.Label(label="VOLUME")
+        selector_label.set_xalign(0)
+        selector_label.get_style_context().add_class("volume-selector-kicker")
+        selector_box.pack_start(selector_label, False, False, 0)
+
         device_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        device_row.set_hexpand(True)
         self.device_combo = Gtk.ComboBoxText()
         self.device_combo.set_hexpand(True)
+        self.device_combo.set_size_request(360, -1)
         self.device_combo.connect("changed", self.controller.on_device_changed)
         device_row.pack_start(self.device_combo, True, True, 0)
+
         self.refresh_button = Gtk.Button.new_with_label("Refresh")
         self.refresh_button.connect(
             "clicked",
             lambda _button: self.controller.refresh_devices(clear_cache=True),
         )
         device_row.pack_start(self.refresh_button, False, False, 0)
+
         self.image_button = Gtk.Button.new_with_label("Open image…")
         self.image_button.connect("clicked", self.controller.open_image)
         device_row.pack_start(self.image_button, False, False, 0)
+
         self.unmount_button = Gtk.Button.new_with_label("Unmount")
         self.unmount_button.connect("clicked", self.controller.unmount_selected)
         device_row.pack_start(self.unmount_button, False, False, 0)
-        hero_box.pack_end(device_row, False, False, 0)
 
-        hero_overlay.add_overlay(hero_box)
-        hero.add(hero_overlay)
-        root.pack_start(hero, False, False, 0)
+        selector_box.pack_start(device_row, False, False, 0)
+        selector_frame.add(selector_box)
+        root.pack_start(selector_frame, False, False, 0)
 
         cards = Gtk.Grid(column_spacing=10, row_spacing=10)
         cards.set_column_homogeneous(True)

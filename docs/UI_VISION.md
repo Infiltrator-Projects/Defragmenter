@@ -62,3 +62,13 @@ application. The drive badge, hero landscape and Workbench-inspired sidebar
 scene each have their own asset with no embedded prototype controls. Procedural
 drawing remains appropriate for truthful live data visualisations such as gauges
 and the physical allocation map.
+
+
+## Primary volume-control contract
+
+The selected-volume hero is decorative and informational. The actual volume
+selector, Refresh, Open image and Unmount controls live in a separate full-width
+control surface immediately below the hero. Primary controls must never be
+children of the hero artwork overlay or depend on its fixed raster height.
+This guarantees that the combo box and its popup remain visible, clickable and
+unclipped across supported window sizes and desktop themes.
