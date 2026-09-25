@@ -75,6 +75,10 @@ class _View:
         self.free_card = _Value()
         self.confirm_result = True
         self.presentations = []
+        self.activity = ("", "")
+
+    def set_activity(self, primary: str, secondary: str) -> None:
+        self.activity = (primary, secondary)
 
     def append_log(self, text: str) -> None:
         self.logs.append(text)
