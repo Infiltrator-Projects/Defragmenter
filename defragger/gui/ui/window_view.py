@@ -10,7 +10,7 @@ from gi.repository import Gdk, Gtk
 from .map_presenter import MapPresentation
 from .operation_planner import ControlState
 from .theme import ThemeMode, apply_theme, load_theme_mode, save_theme_mode, theme_label
-from .widgets import DiskMap, SummaryCard
+from .widgets import DiskMap, GaugeCard, SummaryCard
 
 
 APP_NAME = "Defragmenter"
@@ -61,6 +61,8 @@ class WindowActions(Protocol):
     def start_mutation(self, operation: str) -> None: ...
 
     def request_stop(self, button: Gtk.Button) -> None: ...
+
+    def launch_test_media(self) -> None: ...
 
 
 class WindowView:
@@ -219,9 +221,24 @@ class WindowView:
         ):
             sidebar.pack_start(button, False, False, 0)
 
-        sidebar.pack_start(Gtk.Separator(), False, False, 8)
+        sidebar.pack_start(Gtk.Separator(), False, False, 6)
+        self.sidebar_test_media_button = self._nav_button(
+            "drive-removable-media-symbolic",
+            "Test Media",
+            "Check and diagnose",
+            lambda _button: self.controller.launch_test_media(),
+        )
+        self.sidebar_settings_button = self._nav_button(
+            "preferences-system-symbolic",
+            "Settings",
+            "Appearance and preferences",
+            lambda _button: self._show_settings_dialog(),
+        )
+        sidebar.pack_start(self.sidebar_test_media_button, False, False, 0)
+        sidebar.pack_start(self.sidebar_settings_button, False, False, 0)
+
         footer = Gtk.Label(
-            label="Graphical first\nPixel allocation map\nSafe offline engine"
+            label="Graphical first\nPixel locality map\nSafe offline engine"
         )
         footer.set_xalign(0)
         footer.get_style_context().add_class("sidebar-footer")
@@ -241,7 +258,8 @@ class WindowView:
         # Build the content before the sidebar so the selected Overview button
         # can safely focus the already-created map widget.
         body_scroll = Gtk.ScrolledWindow()
-        body_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        self.body_scroll = body_scroll
+        body_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         body_scroll.set_shadow_type(Gtk.ShadowType.NONE)
         body_scroll.get_style_context().add_class("body-scroll")
 
@@ -287,11 +305,17 @@ class WindowView:
         selected_label = Gtk.Label(label="SELECTED VOLUME")
         selected_label.set_xalign(0)
         selected_label.get_style_context().add_class("hero-kicker")
-        selected_hint = Gtk.Label(label="Choose a disk or filesystem image to visualise")
-        selected_hint.set_xalign(0)
-        selected_hint.get_style_context().add_class("hero-hint")
+        self.volume_title = Gtk.Label(label="Choose a disk")
+        self.volume_title.set_xalign(0)
+        self.volume_title.set_ellipsize(3)
+        self.volume_title.get_style_context().add_class("hero-volume-title")
+        self.volume_detail = Gtk.Label(label="Select a filesystem to visualise")
+        self.volume_detail.set_xalign(0)
+        self.volume_detail.set_ellipsize(3)
+        self.volume_detail.get_style_context().add_class("hero-hint")
         hero_text.pack_start(selected_label, False, False, 0)
-        hero_text.pack_start(selected_hint, False, False, 0)
+        hero_text.pack_start(self.volume_title, False, False, 0)
+        hero_text.pack_start(self.volume_detail, False, False, 0)
         hero_heading.pack_start(hero_text, True, True, 0)
         hero_box.pack_start(hero_heading, False, False, 0)
 
@@ -318,14 +342,26 @@ class WindowView:
 
         cards = Gtk.Grid(column_spacing=10, row_spacing=10)
         cards.set_column_homogeneous(True)
-        self.capacity_card = SummaryCard("Capacity", "summary-capacity")
-        self.free_card = SummaryCard("Free space", "summary-free")
+        self.fragmented_card = GaugeCard(
+            "Fragmentation",
+            DiskMap.COLORS["fragmented"],
+            "summary-fragmented",
+        )
+        self.free_card = GaugeCard(
+            "Free space",
+            (0.08, 0.62, 1.0),
+            "summary-free",
+        )
+        self.capacity_card = GaugeCard(
+            "Allocated",
+            (1.0, 0.66, 0.10),
+            "summary-capacity",
+        )
         self.files_card = SummaryCard("Files", "summary-files")
-        self.fragmented_card = SummaryCard("Fragmentation", "summary-fragmented")
-        cards.attach(self.capacity_card, 0, 0, 1, 1)
+        cards.attach(self.fragmented_card, 0, 0, 1, 1)
         cards.attach(self.free_card, 1, 0, 1, 1)
-        cards.attach(self.files_card, 2, 0, 1, 1)
-        cards.attach(self.fragmented_card, 3, 0, 1, 1)
+        cards.attach(self.capacity_card, 2, 0, 1, 1)
+        cards.attach(self.files_card, 3, 0, 1, 1)
         root.pack_start(cards, False, False, 0)
 
         map_frame = Gtk.Frame()
@@ -337,7 +373,7 @@ class WindowView:
         map_header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         map_title = self._section_label("Disk map")
         map_header.pack_start(map_title, False, False, 0)
-        map_hint = Gtk.Label(label="continuous pixel view")
+        map_hint = Gtk.Label(label="locality-preserving pixel view")
         map_hint.set_xalign(0)
         map_hint.get_style_context().add_class("map-hint")
         map_header.pack_start(map_hint, False, False, 0)
@@ -377,7 +413,7 @@ class WindowView:
         map_box.pack_start(legend, False, False, 0)
 
         self.map_caption = Gtk.Label(
-            label="Pixel map · each display pixel represents a range of allocation units."
+            label="Pixel locality map · colour is real allocation state; position preserves storage locality."
         )
         self.map_caption.set_xalign(0)
         self.map_caption.set_line_wrap(True)
@@ -483,6 +519,50 @@ class WindowView:
 
         body.pack_start(self._build_sidebar(), False, False, 0)
         body.pack_start(body_scroll, True, True, 0)
+
+    def _show_settings_dialog(self) -> None:
+        dialog = Gtk.Dialog(
+            title="Defragmenter Settings",
+            transient_for=self.window,
+            modal=True,
+        )
+        dialog.add_button("Close", Gtk.ResponseType.CLOSE)
+        content = dialog.get_content_area()
+        content.set_border_width(18)
+        content.set_spacing(12)
+
+        heading = Gtk.Label(label="Appearance")
+        heading.set_xalign(0)
+        heading.get_style_context().add_class("section-title")
+        content.pack_start(heading, False, False, 0)
+
+        note = Gtk.Label(
+            label="Choose how Defragmenter follows the desktop appearance."
+        )
+        note.set_xalign(0)
+        content.pack_start(note, False, False, 0)
+
+        combo = Gtk.ComboBoxText()
+        modes = (ThemeMode.SYSTEM, ThemeMode.DAY, ThemeMode.NIGHT)
+        for mode in modes:
+            combo.append_text(theme_label(mode))
+        current = load_theme_mode()
+        combo.set_active(modes.index(current))
+
+        def apply_selection(widget: Gtk.ComboBoxText) -> None:
+            index = widget.get_active()
+            if index < 0:
+                return
+            mode = modes[index]
+            save_theme_mode(mode)
+            apply_theme(mode)
+            self.sync_theme_menu(mode)
+
+        combo.connect("changed", apply_selection)
+        content.pack_start(combo, False, False, 0)
+        dialog.show_all()
+        dialog.run()
+        dialog.destroy()
 
     def _build_menu_bar(self) -> Gtk.MenuBar:
         menu_bar = Gtk.MenuBar()
@@ -623,6 +703,16 @@ class WindowView:
         for name in names:
             self.device_combo.append_text(name)
         self.device_combo.set_active(active_index)
+        if 0 <= active_index < len(names):
+            selected = names[active_index]
+            parts = [part.strip() for part in selected.split("—")]
+            self.volume_title.set_text(parts[0] if parts else selected)
+            self.volume_detail.set_text(
+                "  •  ".join(parts[1:]) if len(parts) > 1 else selected
+            )
+        else:
+            self.volume_title.set_text("Choose a disk")
+            self.volume_detail.set_text("Select a filesystem to visualise")
 
     def append_log(self, text: str) -> None:
         if not text:
@@ -690,7 +780,7 @@ class WindowView:
         )
 
     def reset_summary(self) -> None:
-        self.capacity_card.set_title("Capacity")
+        self.capacity_card.set_title("Allocated")
         self.free_card.set_title("Free space")
         self.files_card.set_title("Files")
         self.fragmented_card.set_title("Fragmentation")
@@ -701,20 +791,53 @@ class WindowView:
             self.fragmented_card,
         ):
             card.set_value("—")
+        for card in (
+            self.capacity_card,
+            self.free_card,
+            self.fragmented_card,
+        ):
+            card.set_fraction(0.0)
+            card.set_detail("")
         self.map_caption.set_text(
-            "Pixel map · detail increases with the available drawing area."
+            "Pixel locality map · detail increases with the available drawing area."
         )
 
     def apply_map_presentation(self, presentation: MapPresentation) -> None:
         self.disk_map.set_cells(presentation.cells)
-        self.capacity_card.set_title(presentation.capacity_title)
+        total_units = sum(
+            int(cell["end"]) - int(cell["start"]) + 1
+            for cell in presentation.cells
+        )
+        free_units = sum(int(cell.get("free", 0)) for cell in presentation.cells)
+        used_units = sum(int(cell.get("used", 0)) for cell in presentation.cells)
+        fragmented_units = sum(
+            int(cell.get("fragmented", 0)) for cell in presentation.cells
+        )
+
+        self.capacity_card.set_title("Allocated")
         self.capacity_card.set_value(presentation.capacity_value)
+        self.capacity_card.set_fraction(
+            used_units / max(1, free_units + used_units)
+        )
+        self.capacity_card.set_detail("filesystem usage")
+
         self.free_card.set_title(presentation.free_title)
         self.free_card.set_value(presentation.free_value)
+        self.free_card.set_fraction(
+            free_units / max(1, free_units + used_units)
+        )
+        self.free_card.set_detail("available allocation space")
+
         self.files_card.set_title(presentation.files_title)
         self.files_card.set_value(presentation.files_value)
+
         self.fragmented_card.set_title(presentation.fragmentation_title)
         self.fragmented_card.set_value(presentation.fragmentation_value)
+        self.fragmented_card.set_fraction(
+            fragmented_units / max(1, used_units)
+        )
+        self.fragmented_card.set_detail("fragmented allocation")
+
         self.disk_map.set_unit_label(presentation.unit_label)
         self.map_caption.set_text(presentation.caption)
         self.status_label.set_text(presentation.status)
@@ -729,12 +852,17 @@ class WindowView:
         self.growth_button.set_sensitive(state.growth_defrag)
         self.recover_button.set_sensitive(state.recover)
         self.stop_button.set_sensitive(state.stop)
-        self.sidebar_analyze_button.set_sensitive(state.analyse)
-        self.sidebar_defrag_button.set_sensitive(state.defrag)
-        self.sidebar_growth_button.set_sensitive(state.growth_defrag)
-        self.sidebar_recover_button.set_sensitive(state.recover)
+        # Sidebar entries stay clickable so they always provide feedback.
+        # Mutation actions perform their own safe unmount/validation sequence.
+        self.sidebar_analyze_button.set_sensitive(not state.stop)
+        self.sidebar_defrag_button.set_sensitive(not state.stop)
+        self.sidebar_growth_button.set_sensitive(not state.stop)
+        self.sidebar_recover_button.set_sensitive(not state.stop)
 
     def set_operation_tooltips(self, tooltips: dict[str, str]) -> None:
         self.defrag_button.set_tooltip_text(tooltips["defrag"])
         self.growth_button.set_tooltip_text(tooltips["growth-defrag"])
         self.recover_button.set_tooltip_text(tooltips["recover"])
+        self.sidebar_defrag_button.set_tooltip_text(tooltips["defrag"])
+        self.sidebar_growth_button.set_tooltip_text(tooltips["growth-defrag"])
+        self.sidebar_recover_button.set_tooltip_text(tooltips["recover"])
