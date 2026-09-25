@@ -5,8 +5,8 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-09-25
 
-Applies to: release version 1.8.0-206
-Audited source commit: 8efc6dc86b333d309ca6d465450449f9d53f8efa
+Applies to: release version 1.8.0-207
+Audited source commit: 8913ba5da086fff6971e5bfa91e0bb72349e7009
 Audited release-governance commit: 1a61ff57bdf939fcbfcc84300b66b30411276113
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
@@ -15,11 +15,9 @@ This document records the current release safety case. Historical audit-developm
 
 ## Qualification evidence
 
-The current audited production-source baseline is commit `8efc6dc86b333d309ca6d465450449f9d53f8efa`. In [Project quality gate run 36129632563](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/36129632563), that exact candidate completed the warnings-as-errors build and all 44 hosted CTest tests successfully; the independent hosted ASan/UBSan lane also passed. The self-hosted [Local Linux / heavy qualification run 36129631957](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/36129631957) completed its build, functional test subsets and architecture checks successfully. Both ordinary-candidate gates stopped only because this audit document still named the 1.8.0-205 production baseline, which is the deliberate pre-release control resolved by version 1.8.0-206.
+The current audited production-source baseline is commit `8913ba5da086fff6971e5bfa91e0bb72349e7009`. In Project quality gate run 36134874419, that exact candidate completed the warnings-as-errors build and all 44 hosted CTest tests successfully; the independent hosted ASan/UBSan lane also passed. The self-hosted Local Linux / heavy qualification run 36134873946 completed its build, functional test subsets and architecture checks successfully. Both ordinary-candidate gates stopped only because this audit document still named the 1.8.0-206 production baseline, which is the deliberate pre-release control resolved by version 1.8.0-207.
 
-The NTFS performance work qualified in 1.8.0-205 remains unchanged: large $MFT streams use bounded 32 MiB sequential batches, independent record parsing uses online CPUs minus one, catalogue ownership uses open-addressed indexing, and per-record reads remain only as an I/O-recovery fallback. NTFS writer admission, placement, journal/recovery, mounted-target refusal, identity binding and final verification are unchanged.
-
-The reviewed 1.8.0-206 production delta is presentation and packaging only. The complete UI concept screenshot is no longer installed or read by runtime code. Three dedicated standalone raster assets provide the SSD identity badge, hero landscape and Workbench-inspired sidebar scene from `gui/ui/art/`, loaded without aspect distortion and without embedded prototype controls. The application-brand surface resolves the exact packaged Defragmenter PNG before theme fallback. The navigation model, filesystem analyser data, allocation-map physical ordering, mutation planning and all writer/recovery semantics are unchanged.
+The reviewed production delta is GTK layout only. The selected-volume ComboBoxText and the Refresh, Open image and Unmount controls are no longer children of the decorative hero overlay. They now live in a separate full-width selector frame immediately below the hero, so fixed raster height and overlay composition cannot clip the control row or its popup interaction. Device-selection identity, analyser dispatch, allocation-map data, mutation planning, filesystem writers, journal/recovery behaviour and mounted-target safety are unchanged.
 
 The release-governance baseline is extended through `1a61ff57bdf939fcbfcc84300b66b30411276113`, which retains the pull-only APT ownership boundary and adds the intended self-hosted qualification run on main pushes. Defragmenter's release path validates its exact immutable GitHub release identity but never dispatches, authenticates to, waits on or synchronously verifies Infiltrator-Repository. The central repository independently discovers released packages on its own schedule, and the release-gate regression now rejects any reintroduction of cross-repository dispatch-token plumbing.
 

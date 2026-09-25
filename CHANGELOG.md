@@ -2,6 +2,15 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-207
+
+- Fix the selected-volume dropdown being clipped and effectively unusable under the decorative hero artwork.
+- Move the real volume selector, Refresh, Open image and Unmount controls out of the fixed-height hero overlay into a dedicated full-width control panel directly below the hero.
+- Keep the hero purely decorative/informational so its raster height can no longer constrain or overlap primary GTK controls or combo-box popup interaction.
+- Give the volume combo an explicit useful minimum width while allowing it to expand across the available window width.
+- Add a GUI regression and UI-vision invariant requiring primary volume controls to remain outside the hero overlay.
+- Qualify production source commit `8913ba5da086fff6971e5bfa91e0bb72349e7009`: all 44 hosted CTest tests passed, the hosted ASan/UBSan lane passed, and the local functional/architecture subsets passed. The ordinary candidate gates stopped only on the deliberately stale audited-source marker advanced by this release.
+
 ## 1.8.0-206
 
 - Correct the 1.8.0-205 raster-art implementation error that caused a miniature copy of the full UI concept to appear in the selected-drive badge and left the intended hero/sidebar artwork absent.
