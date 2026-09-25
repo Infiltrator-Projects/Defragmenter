@@ -121,18 +121,20 @@ def _base_css() -> str:
     .app-title {{ font-size: 23pt; }}
     .app-subtitle {{ font-size: 9.5pt; }}
     .summary-title {{ font-size: 8.75pt; }}
-    .summary-value {{ font-size: 15pt; font-weight: {bold}; }}
+    .summary-value {{ font-size: 13.5pt; font-weight: {bold}; }}
+    .summary-detail {{ font-size: 8pt; }}
+    .hero-volume-title {{ font-size: 16pt; font-weight: {bold}; }}
     .section-title {{ font-size: 9.5pt; font-weight: {bold}; padding: 0 5px; }}
     button {{ border-radius: {radius}px; padding: 7px 13px; min-height: 30px; }}
     button.primary-action, button.operation-action {{ font-weight: {bold}; }}
     progressbar trough {{ min-height: 8px; border-radius: {radius}px; }}
     .sidebar {{ padding: 4px; }}
-    .nav-button {{ padding: 2px; border-radius: {card_radius}px; }}
+    .nav-button {{ padding: 4px; border-radius: {card_radius}px; min-height: 52px; }}
     .hero-panel > border, .map-panel > border, .activity-panel > border {{
         border-radius: {panel_radius}px;
     }}
     frame.summary-card > border {{ border-radius: {card_radius}px; }}
-    button.action-card {{ min-height: 74px; border-radius: {card_radius}px; padding: 4px; }}
+    button.action-card {{ min-height: 86px; border-radius: {card_radius}px; padding: 6px; }}
     .pixel-map {{ border-radius: {card_radius}px; }}
     .status-prefix {{ font-size: 8pt; font-weight: {bold}; }}
     .status-text {{ font-size: 8.75pt; }}
@@ -173,16 +175,27 @@ def _night_css() -> str:
         border-color: {p["neutral_accent"]};
     }}
     .hero-panel > border {{
-        background-image: linear-gradient(135deg, {p["surface"]}, {p["card"]});
-        border-color: {p["status_border"]};
+        background-image:
+            linear-gradient(110deg, alpha({p["neutral_accent"]}, 0.10), transparent),
+            linear-gradient(135deg, {p["surface"]}, {p["card"]});
+        border-color: {p["neutral_accent"]};
     }}
     .hero-kicker {{ color: {p["neutral_accent"]}; }}
-    frame.summary-card > border {{ background-color: {p["card"]}; }}
+    frame.summary-card > border {{
+        background-image: linear-gradient(145deg, {p["card"]}, {p["surface"]});
+        box-shadow: 0 3px 10px alpha(#000000, 0.24);
+    }}
+    .summary-detail {{ color: {p["detail_label"]}; }}
+    .hero-volume-title {{ color: {p["heading"]}; }}
     frame.summary-capacity > border {{ border-color: {p["info"]}; }}
     frame.summary-free > border {{ border-color: {p["neutral_accent"]}; }}
     frame.summary-files > border {{ border-color: {p["success"]}; }}
     frame.summary-fragmented > border {{ border-color: {p["fault"]}; }}
-    frame.map-panel > border {{ background-color: {p["surface"]}; border-color: {p["status_border"]}; }}
+    frame.map-panel > border {{
+        background-image: linear-gradient(to bottom, {p["surface"]}, {p["background"]});
+        border-color: {p["neutral_accent"]};
+        box-shadow: 0 4px 14px alpha(#000000, 0.30);
+    }}
     frame.activity-panel > border {{ background-color: {p["panel"]}; }}
     button.action-card {{
         background-image: none; background-color: {p["card"]}; color: {p["text"]};
@@ -259,16 +272,27 @@ def _day_css() -> str:
         border-color: {p["neutral_accent"]};
     }}
     .hero-panel > border {{
-        background-image: linear-gradient(135deg, {p["panel"]}, {p["surface"]});
-        border-color: {p["status_border"]};
+        background-image:
+            linear-gradient(110deg, alpha({p["neutral_accent"]}, 0.08), transparent),
+            linear-gradient(135deg, {p["panel"]}, {p["surface"]});
+        border-color: {p["neutral_accent"]};
     }}
     .hero-kicker {{ color: {p["neutral_accent"]}; }}
-    frame.summary-card > border {{ background-color: {p["card"]}; }}
+    frame.summary-card > border {{
+        background-image: linear-gradient(145deg, {p["card"]}, {p["panel"]});
+        box-shadow: 0 3px 8px alpha(#000000, 0.10);
+    }}
+    .summary-detail {{ color: {p["detail_label"]}; }}
+    .hero-volume-title {{ color: {p["heading"]}; }}
     frame.summary-capacity > border {{ border-color: {p["info"]}; }}
     frame.summary-free > border {{ border-color: {p["neutral_accent"]}; }}
     frame.summary-files > border {{ border-color: {p["success"]}; }}
     frame.summary-fragmented > border {{ border-color: {p["fault"]}; }}
-    frame.map-panel > border {{ background-color: {p["panel"]}; border-color: {p["status_border"]}; }}
+    frame.map-panel > border {{
+        background-image: linear-gradient(to bottom, {p["panel"]}, {p["surface"]});
+        border-color: {p["neutral_accent"]};
+        box-shadow: 0 4px 12px alpha(#000000, 0.12);
+    }}
     frame.activity-panel > border {{ background-color: {p["panel"]}; }}
     button.action-card {{
         background-image: none; background-color: {p["card"]}; color: {p["text"]};
