@@ -2,6 +2,13 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-198
+
+- Preserve privileged-helper protocol order through one FIFO GTK-main-loop dispatch queue so successful completion cannot overtake and discard the preceding allocation-map JSON.
+- Add a deterministic physical-device NTFS analysis regression that defers GUI scheduling and proves mapper output is delivered before the `finished` message.
+- Qualify the fix at commit `aa7b2675e6f945b6e41a6f2a5b65c1cff7fc7c9b`: all 44 hosted CTest tests pass and the separate ASan/UBSan lane passes in Project quality gate run 36098340286; the pre-release gate stops only on the deliberately stale audit-baseline marker updated by this release.
+- Keep the NTFS filesystem engine unchanged; the regression was in the privileged GUI transport between the already-correct mapper output and its consumer.
+
 ## 1.8.0-197
 
 - Centralise Unicode scalar-to-UTF-8 byte encoding through Infiltratr Common 1.19.27 for the native JSON parser and FAT/exFAT filename paths, removing their independent byte encoders.
