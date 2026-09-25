@@ -15,7 +15,11 @@ if str(GUI) not in sys.path:
 from core.protocol import EngineEventParser, OperationResult
 from ui.backend_catalog import BackendCatalog
 from ui.devices import Volume
-from ui.map_geometry import allocation_grid, block_bounds, source_cell_at
+from ui.map_geometry import (
+    physical_unit_at_pixel,
+    source_cell_at_pixel,
+    source_cell_for_unit,
+)
 from ui.map_presenter import AllocationMapError, present_allocation_map
 from ui.live_controller import LiveEventController
 from ui.operation_status import successful_completion
@@ -145,29 +149,32 @@ def test_map_presenter_validates_and_normalises_fat_map() -> None:
     assert view.analysis_log.endswith("1 fragmented files, 0 fragmented directories.")
 
 
-def test_small_filesystems_use_square_allocation_blocks_not_row_stripes() -> None:
-    geometry = allocation_grid(2044, 1190, 260)
-    assert geometry.uses_one_block_per_cell
-    assert geometry.columns == 97
-    assert geometry.rows == 22
+def test_allocation_raster_preserves_physical_disk_order() -> None:
+    starts = [0, 50]
+    ends = [49, 99]
 
-    first = block_bounds(geometry, 0)
-    last_in_first_row = block_bounds(geometry, geometry.columns - 1)
-    first_in_second_row = block_bounds(geometry, geometry.columns)
-    assert first[2] - first[0] in (12, 13)
-    assert first[3] - first[1] in (11, 12)
-    assert last_in_first_row[1] == first[1]
-    assert first_in_second_row[1] > first[1]
-    assert source_cell_at(geometry, first[0], first[1]) == 0
-    assert source_cell_at(
-        geometry,
-        first_in_second_row[0],
-        first_in_second_row[1],
-    ) == geometry.columns
+    assert physical_unit_at_pixel(0, 99, 10, 10, 0, 0) == 0
+    assert physical_unit_at_pixel(0, 99, 10, 10, 9, 4) == 49
+    assert physical_unit_at_pixel(0, 99, 10, 10, 0, 5) == 50
+    assert physical_unit_at_pixel(0, 99, 10, 10, 9, 9) == 99
+    assert physical_unit_at_pixel(0, 99, 10, 10, -1, 0) is None
 
-    sampled = allocation_grid(300, 10, 10)
-    assert not sampled.uses_one_block_per_cell
-    assert source_cell_at(sampled, 9, 9) == 297
+    assert source_cell_for_unit(starts, ends, 0) == 0
+    assert source_cell_for_unit(starts, ends, 49) == 0
+    assert source_cell_for_unit(starts, ends, 50) == 1
+    assert source_cell_for_unit(starts, ends, 99) == 1
+    assert source_cell_at_pixel(starts, ends, 10, 10, 9, 4) == 0
+    assert source_cell_at_pixel(starts, ends, 10, 10, 0, 5) == 1
+
+    # Regression: a fully packed beginning followed by free space must remain
+    # one monotonic before/after boundary on screen. No Hilbert/Morton spatial
+    # transform may move later disk units back into earlier display regions.
+    units = [
+        physical_unit_at_pixel(0, 99, 10, 10, x, y)
+        for y in range(10)
+        for x in range(10)
+    ]
+    assert units == list(range(100))
 
 
 def test_map_presenter_handles_domain_and_swap_maps() -> None:
@@ -422,9 +429,9 @@ def test_ui_polish_preserves_allocation_map_visual_contract() -> None:
         '"bad": (1.000, 0.625, 0.040)',
         '"background": (0.010, 0.020, 0.040)',
         "self.set_size_request(-1, 250)",
-        "def _hilbert_xy(",
-        "def _hilbert_distance(",
-        "pattern.set_filter(4)",
+        "physical_unit_at_pixel(",
+        "source_cell_at_pixel(",
+        "Pixbuf.new_from_bytes(",
         "class GaugeCard(Gtk.Frame):",
         "class HeroArtwork(Gtk.DrawingArea):",
         "class CheckerBall(Gtk.DrawingArea):",
@@ -448,14 +455,15 @@ def test_ui_polish_preserves_allocation_map_visual_contract() -> None:
     ):
         assert required in view_source
 
-    # The dashboard deliberately visualises the linear disk through a
-    # locality-preserving image. It must not regress to visible grid geometry,
-    # row-major stripes or the earlier Morton renderer that remained too blocky.
+    # The dashboard is a positional view of the real disk. It must remain a
+    # dense pixel image while preserving monotonic physical order exactly.
     assert '"grid":' not in source
     assert "allocation_grid(" not in source
     assert "block_bounds(" not in source
-    assert "pixel_index = y * width + x" not in source
     assert "def _morton_xy(" not in source
+    assert "def _hilbert_xy(" not in source
+    assert "def _hilbert_distance(" not in source
+    assert "pattern.set_filter(" not in source
 
 
 def test_theme_modes_are_persistent_and_shared_across_windows() -> None:
@@ -645,7 +653,7 @@ def test_main_window_remains_resizable_maximisable_and_workarea_bounded() -> Non
 def main() -> None:
     test_catalog_is_validated_immutable_and_instance_owned()
     test_map_presenter_validates_and_normalises_fat_map()
-    test_small_filesystems_use_square_allocation_blocks_not_row_stripes()
+    test_allocation_raster_preserves_physical_disk_order()
     test_map_presenter_handles_domain_and_swap_maps()
     test_xfs_live_strokes_are_preview_then_authoritative()
     test_invalid_map_is_rejected_before_widget_state_changes()
