@@ -200,7 +200,7 @@ class WindowView:
             "go-home-symbolic",
             "Overview",
             "Drive at a glance",
-            lambda _button: self._show_overview(),
+            lambda _button: self._show_page("overview"),
             selected=True,
             css_class="nav-overview",
         )
@@ -210,28 +210,28 @@ class WindowView:
             "system-search-symbolic",
             "Analyse",
             "Scan and visualise",
-            lambda _button: self.controller.analyze(),
+            lambda _button: self._show_page("analyse"),
             css_class="nav-analyse",
         )
         self.sidebar_defrag_button = self._nav_button(
             "view-grid-symbolic",
             "Defragment",
             "Optimise file layout",
-            lambda _button: self.controller.start_mutation("defrag"),
+            lambda _button: self._show_page("defrag"),
             css_class="nav-defrag",
         )
         self.sidebar_growth_button = self._nav_button(
             "go-up-symbolic",
             "Growth Defrag",
             "Keep free space contiguous",
-            lambda _button: self.controller.start_mutation("growth-defrag"),
+            lambda _button: self._show_page("growth"),
             css_class="nav-growth",
         )
         self.sidebar_recover_button = self._nav_button(
             "edit-undo-symbolic",
             "Recover",
             "Resume safe recovery",
-            lambda _button: self.controller.start_mutation("recover"),
+            lambda _button: self._show_page("recover"),
             css_class="nav-recover",
         )
         for button in (
@@ -247,14 +247,14 @@ class WindowView:
             "drive-removable-media-symbolic",
             "Test Media",
             "Check and diagnose",
-            lambda _button: self.controller.launch_test_media(),
+            lambda _button: self._show_page("test-media"),
             css_class="nav-test-media",
         )
         self.sidebar_settings_button = self._nav_button(
             "preferences-system-symbolic",
             "Settings",
             "Appearance and preferences",
-            lambda _button: self._show_settings_dialog(),
+            lambda _button: self._show_page("settings"),
             css_class="nav-settings",
         )
         sidebar.pack_start(self.sidebar_test_media_button, False, False, 0)
@@ -279,8 +279,11 @@ class WindowView:
         body.get_style_context().add_class("app-body")
         outer.pack_start(body, True, True, 0)
 
-        # Build the content before the sidebar so the selected Overview button
-        # can safely focus the already-created map widget.
+        self._detail_maps: list[DiskMap] = []
+        self._page_volume_labels: list[Gtk.Label] = []
+
+        # Overview remains the rich dashboard. Sidebar entries switch to
+        # dedicated pages rather than duplicating the same operation buttons.
         body_scroll = Gtk.ScrolledWindow()
         self.body_scroll = body_scroll
         body_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
@@ -588,13 +591,208 @@ class WindowView:
         status_box.pack_start(self.status_label, True, True, 0)
         root.pack_start(status_box, False, False, 0)
 
-        body.pack1(self._build_sidebar(), resize=False, shrink=False)
-        body.pack2(body_scroll, resize=True, shrink=True)
+        self.content_stack = Gtk.Stack()
+        self.content_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
+        self.content_stack.set_transition_duration(160)
+        self.content_stack.add_named(body_scroll, "overview")
+        self.content_stack.add_named(
+            self._build_operation_page(
+                "Analyse",
+                "Read the filesystem and build a truthful physical allocation map.",
+                "system-search-symbolic",
+                "Analyse selected volume",
+                "action-analyse",
+                lambda _button: self.controller.analyze(),
+                show_map=True,
+            ),
+            "analyse",
+        )
+        self.content_stack.add_named(
+            self._build_operation_page(
+                "Defragment",
+                "Compact movable extents while preserving the verified filesystem contract.",
+                "view-grid-symbolic",
+                "Defragment selected volume",
+                "action-defrag",
+                lambda _button: self.controller.start_mutation("defrag"),
+                show_map=True,
+            ),
+            "defrag",
+        )
+        self.content_stack.add_named(
+            self._build_operation_page(
+                "Growth Defrag",
+                "Lay files out with deliberate contiguous growth space after them.",
+                "go-up-symbolic",
+                "Run Growth Defrag",
+                "action-growth",
+                lambda _button: self.controller.start_mutation("growth-defrag"),
+                show_map=True,
+            ),
+            "growth",
+        )
+        self.content_stack.add_named(
+            self._build_operation_page(
+                "Recover",
+                "Resume or safely unwind an interrupted journalled operation.",
+                "edit-undo-symbolic",
+                "Recover selected volume",
+                "action-recover",
+                lambda _button: self.controller.start_mutation("recover"),
+                show_map=False,
+            ),
+            "recover",
+        )
+        self.content_stack.add_named(self._build_test_media_page(), "test-media")
+        self.content_stack.add_named(self._build_settings_page(), "settings")
+        self.content_stack.set_visible_child_name("overview")
 
-    def _show_overview(self) -> None:
-        adjustment = self.body_scroll.get_vadjustment()
-        adjustment.set_value(adjustment.get_lower())
-        self.disk_map.grab_focus()
+        body.pack1(self._build_sidebar(), resize=False, shrink=False)
+        body.pack2(self.content_stack, resize=True, shrink=True)
+
+    def _show_page(self, name: str) -> None:
+        self.content_stack.set_visible_child_name(name)
+        if name == "overview":
+            adjustment = self.body_scroll.get_vadjustment()
+            adjustment.set_value(adjustment.get_lower())
+            self.disk_map.grab_focus()
+
+    def _build_operation_page(
+        self,
+        title: str,
+        subtitle: str,
+        icon_name: str,
+        button_text: str,
+        css_class: str,
+        callback: Any,
+        *,
+        show_map: bool,
+    ) -> Gtk.Widget:
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_shadow_type(Gtk.ShadowType.NONE)
+
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        page.set_border_width(24)
+        scroll.add(page)
+
+        heading = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
+        heading.pack_start(self._icon(icon_name, 44), False, False, 0)
+        labels = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
+        title_label = Gtk.Label(label=title)
+        title_label.set_xalign(0)
+        title_label.get_style_context().add_class("page-title")
+        subtitle_label = Gtk.Label(label=subtitle)
+        subtitle_label.set_xalign(0)
+        subtitle_label.set_line_wrap(True)
+        subtitle_label.get_style_context().add_class("page-subtitle")
+        labels.pack_start(title_label, False, False, 0)
+        labels.pack_start(subtitle_label, False, False, 0)
+        heading.pack_start(labels, True, True, 0)
+        page.pack_start(heading, False, False, 0)
+
+        volume_frame = Gtk.Frame()
+        volume_frame.set_shadow_type(Gtk.ShadowType.NONE)
+        volume_frame.get_style_context().add_class("operation-page-volume")
+        volume_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        volume_box.set_border_width(14)
+        volume_box.pack_start(DriveArtwork(), False, False, 0)
+        selected = Gtk.Label(label="No volume selected")
+        selected.set_xalign(0)
+        selected.set_ellipsize(3)
+        selected.get_style_context().add_class("operation-page-volume-title")
+        self._page_volume_labels.append(selected)
+        volume_box.pack_start(selected, True, True, 0)
+        volume_frame.add(volume_box)
+        page.pack_start(volume_frame, False, False, 0)
+
+        if show_map:
+            map_frame = Gtk.Frame()
+            map_frame.set_shadow_type(Gtk.ShadowType.NONE)
+            map_frame.get_style_context().add_class("map-panel")
+            map_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+            map_box.set_border_width(12)
+            label = self._section_label("Current physical allocation")
+            label.set_xalign(0)
+            map_box.pack_start(label, False, False, 0)
+            detail_map = DiskMap()
+            detail_map.set_size_request(-1, 320)
+            self._detail_maps.append(detail_map)
+            map_box.pack_start(detail_map, True, True, 0)
+            map_frame.add(map_box)
+            page.pack_start(map_frame, True, True, 0)
+
+        action = self._action_button(
+            icon_name,
+            button_text,
+            "Run this operation on the selected volume",
+            css_class,
+            callback,
+        )
+        action.set_vexpand(False)
+        page.pack_start(action, False, False, 0)
+        return scroll
+
+    def _build_test_media_page(self) -> Gtk.Widget:
+        return self._build_operation_page(
+            "Test Media",
+            "Create and diagnose safe filesystem test media in the companion tool.",
+            "drive-removable-media-symbolic",
+            "Launch Test Media",
+            "action-growth",
+            lambda _button: self.controller.launch_test_media(),
+            show_map=False,
+        )
+
+    def _build_settings_page(self) -> Gtk.Widget:
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        page.set_border_width(24)
+        scroll.add(page)
+
+        title = Gtk.Label(label="Settings")
+        title.set_xalign(0)
+        title.get_style_context().add_class("page-title")
+        page.pack_start(title, False, False, 0)
+
+        note = Gtk.Label(
+            label="Appearance is a section of the application, not a modal side effect."
+        )
+        note.set_xalign(0)
+        note.set_line_wrap(True)
+        note.get_style_context().add_class("page-subtitle")
+        page.pack_start(note, False, False, 0)
+
+        theme_frame = Gtk.Frame()
+        theme_frame.set_shadow_type(Gtk.ShadowType.NONE)
+        theme_frame.get_style_context().add_class("operation-page-volume")
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        box.set_border_width(16)
+        heading = Gtk.Label(label="Appearance")
+        heading.set_xalign(0)
+        heading.get_style_context().add_class("section-title")
+        box.pack_start(heading, False, False, 0)
+        combo = Gtk.ComboBoxText()
+        modes = (ThemeMode.SYSTEM, ThemeMode.DAY, ThemeMode.NIGHT)
+        for mode in modes:
+            combo.append_text(theme_label(mode))
+        combo.set_active(modes.index(load_theme_mode()))
+
+        def apply_selection(widget: Gtk.ComboBoxText) -> None:
+            index = widget.get_active()
+            if index < 0:
+                return
+            mode = modes[index]
+            save_theme_mode(mode)
+            apply_theme(mode)
+            self.sync_theme_menu(mode)
+
+        combo.connect("changed", apply_selection)
+        box.pack_start(combo, False, False, 0)
+        theme_frame.add(box)
+        page.pack_start(theme_frame, False, False, 0)
+        return scroll
 
     def _show_settings_dialog(self) -> None:
         dialog = Gtk.Dialog(
@@ -759,6 +957,9 @@ class WindowView:
         .action-card-subtitle { font-size: 8.75pt; }
         .action-arrow { font-size: 22pt; font-weight: bold; }
         .hero-volume-title { font-size: 17pt; font-weight: bold; }
+        .page-title { font-size: 24pt; font-weight: bold; }
+        .page-subtitle { font-size: 11pt; }
+        .operation-page-volume-title { font-size: 14pt; font-weight: bold; }
         .hero-status { font-size: 9pt; font-weight: bold; }
         .activity-primary { font-size: 10.5pt; font-weight: bold; }
         .activity-secondary, .preview-note { font-size: 8.75pt; }
@@ -790,6 +991,8 @@ class WindowView:
             self.volume_title.set_text(title)
             self.volume_detail.set_text(detail)
             self.footer_volume.set_text(title)
+            for label in self._page_volume_labels:
+                label.set_text(selected)
 
             # display_name is generated by Volume and ends in either
             # ", mounted" or ", unmounted".  Check the negative form first so
@@ -806,6 +1009,8 @@ class WindowView:
         self.volume_title.set_text("Choose a disk")
         self.volume_detail.set_text("Select a filesystem to visualise")
         self.footer_volume.set_text("No volume selected")
+        for label in self._page_volume_labels:
+            label.set_text("No volume selected")
         self.hero_status.set_text("Ready")
 
     def populate_volumes(self, names: list[str], active_index: int) -> None:
@@ -888,6 +1093,8 @@ class WindowView:
 
     def reset_summary(self) -> None:
         self.preview_map.set_cells([])
+        for detail_map in self._detail_maps:
+            detail_map.set_cells([])
         self.activity_primary.set_text("Ready for analysis")
         self.activity_secondary.set_text(
             "Choose a volume; analysis and safe operations appear here."
@@ -917,6 +1124,9 @@ class WindowView:
     def apply_map_presentation(self, presentation: MapPresentation) -> None:
         self.disk_map.set_cells(presentation.cells)
         self.preview_map.set_cells(presentation.cells)
+        for detail_map in self._detail_maps:
+            detail_map.set_cells(presentation.cells)
+            detail_map.set_unit_label(presentation.unit_label)
         self.preview_map.set_unit_label(presentation.unit_label)
         total_units = sum(
             int(cell["end"]) - int(cell["start"]) + 1
