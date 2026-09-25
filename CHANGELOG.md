@@ -2,6 +2,15 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-200
+
+- Begin the graphical Defragmenter dashboard redesign from the approved GUI-first concept: add a left visual navigation rail, selected-volume hero panel, stronger summary hierarchy, large operation cards, compact activity surface and a wider 1240×780 desktop canvas.
+- Replace the visible chessboard allocation grid with a continuous pixel-raster renderer while preserving the same authoritative allocation categories and exact tooltip mapping back to source allocation ranges.
+- Move the technical operation log behind a collapsed expander so graphical status and progress remain primary while low-level detail stays available on demand.
+- Extend the existing Common Day/Night palette and MB Corpo typography into the new dashboard surfaces without introducing a second theme or changing filesystem semantics.
+- Store the approved UI north-star image at `docs/ui/defragmenter-ui-vision.jpg` and document the implementation boundary in `docs/UI_VISION.md`; no earlier mockup is retained in that design directory.
+- Qualify candidate `477f05032c2ed175950f4f1cba7b29332f0b4b06` in Project quality gate run 36109520528: warnings-as-errors builds and all 44 hosted CTest tests pass, and the independent ASan/UBSan lane passes. The ordinary candidate gate stops only on the deliberately stale audited-source marker advanced by this release.
+
 ## 1.8.0-199
 
 - Correct SFS2 metadata checksum handling to use the format-specific checksum convention on both validation and rewrite paths; fix the independent SFS2 fixtures so they no longer reproduce the old SFS0 checksum error.

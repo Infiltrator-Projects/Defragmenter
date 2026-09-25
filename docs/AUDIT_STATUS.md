@@ -5,8 +5,8 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-09-25
 
-Applies to: release version 1.8.0-199
-Audited source commit: 963c8500b87a90a82f619e9abecdbbafc5f48cfb
+Applies to: release version 1.8.0-200
+Audited source commit: 477f05032c2ed175950f4f1cba7b29332f0b4b06
 Audited release-governance commit: 1a61ff57bdf939fcbfcc84300b66b30411276113
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
@@ -15,11 +15,13 @@ This document records the current release safety case. Historical audit-developm
 
 ## Qualification evidence
 
-The current audited production-source baseline is commit `963c8500b87a90a82f619e9abecdbbafc5f48cfb`. In [Project quality gate run 36105142739](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/36105142739), candidate `4bdce31c7b6e9ff995b9320303d7d8f17ebd3ed0` passed the warnings-as-errors build and all 44 hosted CTest tests. The separate hosted ASan/UBSan lane also passed. The overall pre-release gate stopped only because this audit document still named the preceding production baseline, which is the deliberate release-control stop resolved by version 1.8.0-199.
+The current audited production-source baseline is commit `477f05032c2ed175950f4f1cba7b29332f0b4b06`. In [Project quality gate run 36109520528](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/36109520528), that exact candidate passed the warnings-as-errors build and all 44 hosted CTest tests. The separate hosted ASan/UBSan lane also passed. The overall ordinary-candidate gate stopped only because this audit document still named the 1.8.0-199 production baseline, which is the deliberate pre-release control resolved by version 1.8.0-200.
 
-The reviewed filesystem delta came from a forensic comparison against the independently developed Filesystem-Support format cores and documentation, followed by direct verification in Defragmenter's own writer paths. SFS2 now uses its format-specific metadata checksum convention for both reads and rewrites rather than inheriting SFS0's checksum seed; the regression fixtures were corrected independently so they cannot mask that distinction. SFS/SFS2 object records now enforce the documented 107-character name ceiling and reject invalid control/colon bytes before relocation planning.
+The reviewed production delta is confined to GTK presentation and allocation-map drawing. The main window is recomposed as a graphical dashboard with a visual navigation rail, selected-volume hero surface, accented summaries, large operation cards, compact activity/status presentation and a wider but still work-area-bounded default canvas. The low-level activity log remains available but is collapsed by default.
 
-Classic Amiga OFS/FFS now refuses to trust allocation state unless the root bitmap-valid word is valid, and DOS\\6/DOS\\7 long-name variants fail closed instead of being parsed through the classic directory model. The bounded PFS3 path now validates root-extension roving/delete-directory/filename geometry plus directory-entry comment and extension-tail bounds. Regression cases prove each malformed state is rejected before mutation, while the existing Defragment, Growth Defrag, Recover and payload-verification paths continue to pass.
+The allocation display now renders the already-produced authoritative map cells as a continuous pixel raster rather than outlining every cell as a square grid. Pixel-to-source indexing is deterministic and tooltips continue to resolve back to the corresponding allocation-unit range and category counts. No native filesystem parser, placement planner, transaction/recovery engine, privileged-helper protocol, target-safety check or write path changed in this UI pass.
+
+The approved visual north star is stored as `docs/ui/defragmenter-ui-vision.jpg` and its implementation boundary is documented in `docs/UI_VISION.md`. Common remains the authority for suite typography, semantic Day/Night colours and neutral design metrics; Defragmenter retains only product-specific presentation and allocation-map category colours.
 
 The release-governance baseline is extended through `1a61ff57bdf939fcbfcc84300b66b30411276113`, which retains the pull-only APT ownership boundary and adds the intended self-hosted qualification run on main pushes. Defragmenter's release path validates its exact immutable GitHub release identity but never dispatches, authenticates to, waits on or synchronously verifies Infiltrator-Repository. The central repository independently discovers released packages on its own schedule, and the release-gate regression now rejects any reintroduction of cross-repository dispatch-token plumbing.
 

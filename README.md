@@ -8,13 +8,13 @@
 
 Defragmenter is a C-first offline filesystem allocation analyser and defragmenter for Linux. Native C owns the raw filesystem engines and storage-safety core; C++17 owns selected filesystem-neutral application services where RAII, stronger value types and explicit process/protocol ownership improve the implementation. Write-capable engines operate directly on unmounted block devices or filesystem images and do not delegate production mutations to mounted kernel filesystem drivers or external repair/defragmentation tools.
 
-**Current version:** 1.8.0-199
+**Current version:** 1.8.0-200
 
 **Platform:** Linux
 
 **Licence:** GPL-3.0-or-later
 
-> **Safety status:** The version 1.8.0-199 filesystem-safety audit is complete. Defragment, Growth Defrag and Recover are enabled behind exact target confirmation, mounted-target refusal, durable filesystem-specific recovery and final verification. The separate Test Media utility is deliberately destructive and must be used only on sacrificial targets. See `docs/AUDIT_STATUS.md`.
+> **Safety status:** The version 1.8.0-200 filesystem-safety audit is complete. Defragment, Growth Defrag and Recover are enabled behind exact target confirmation, mounted-target refusal, durable filesystem-specific recovery and final verification. The separate Test Media utility is deliberately destructive and must be used only on sacrificial targets. See `docs/AUDIT_STATUS.md`.
 
 ## Engineering ethos
 
@@ -25,6 +25,8 @@ Filesystem specifications, mature implementations and external tools are evidenc
 The project prefers the strongest justified method, not automatically the newest one. A replacement earns its place by improving safety, correctness, recoverability, performance or clarity, and write support is not considered complete until interruption and recovery paths are testable.
 
 ## Appearance
+
+The graphical dashboard direction is captured in [`docs/UI_VISION.md`](docs/UI_VISION.md), including the approved concept image. The live first pass now uses a left visual navigation rail, selected-volume hero surface, accented summary cards, large operation cards and a continuous pixel-raster allocation map rather than an exposed square-cell grid. The filesystem engines and write-safety contracts remain independent of this presentation layer.
 
 The main GTK application supports **Follow system**, **Day** and **Night** appearance modes. Follow system detects the host GTK/Mint light/dark preference and resolves it to the exact Common Day or Night palette; it does not inherit an unrelated toolkit palette. Common 1.19.27 supplies the complete layered Linux MBLINK reference face for Night — including titlebar, connection, heading, summary, detail, note, state-border and hover-accent roles — while Day supplies the matching white semantic palette. Defragmenter maps those neutral roles into its GTK selectors without redefining a private palette. The selected mode is persisted per user and synchronised across open windows.
 
