@@ -40,3 +40,23 @@ summary cards, pixel-raster disk map, large operation cards and a compact
 activity surface. Further passes can refine animation, preview states, richer
 drive artwork and before/after visualisations without changing the storage
 engine contract.
+
+
+## Navigation contract
+
+The left rail is **navigation**, not a second copy of the operation controls.
+Overview is the graphical at-a-glance dashboard and may contain quick-action
+cards. Analyse, Defragment, Growth Defrag, Recover, Test Media and Settings each
+open their own section with the information and controls relevant to that task.
+A sidebar click must never silently execute a destructive or long-running
+operation.
+
+## Raster-art contract
+
+Where the approved concept uses illustration or product artwork, Defragmenter
+uses raster artwork derived from the approved concept rather than procedurally
+redrawing the scene with Cairo primitives. The installed application ships the
+approved concept artwork under `/usr/lib/linux-defragger/art/`; live UI crops
+for the drive badge, hero landscape and Workbench-inspired sidebar scene are
+drawn from that raster source. Procedural drawing remains appropriate for
+truthful live data visualisations such as gauges and the physical allocation map.
