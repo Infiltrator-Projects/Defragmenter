@@ -58,6 +58,11 @@
 #define PFS_BITMAP_LONGS ((PFS_RESBLOCK_SIZE / 4U) - 3U)
 #define PFS_BITMAP_BITS (PFS_BITMAP_LONGS * 32U)
 #define PFS_ROOT_BITMAP_BITS ((PFS_SECTOR_SIZE - 12U) * 8U)
+#define PFS_DEFAULT_FILENAME_SIZE 32U
+#define PFS_MIN_FILENAME_SIZE 30U
+#define PFS_MAX_FILENAME_SIZE 107U
+#define PFS_MAX_DELDIR_BLOCKS 32U
+#define PFS_DELDIR_ENTRIES_PER_BLOCK 31U
 #define PFS_COPY_BATCH (1024U * 1024U)
 
 typedef struct {
@@ -74,6 +79,7 @@ typedef struct {
     uint32_t roving_ptr;
     uint32_t disksize;
     uint32_t extension;
+    uint16_t filename_size;
     uint32_t bitmap_index[5];
     uint32_t index_block[99];
 } PfsRoot;
@@ -200,6 +206,7 @@ static int parse_root(int fd, uint64_t physical_bytes, PfsRoot *root,
     root->roving_ptr = infiltratr_load_be32(block + 76U);
     root->disksize = infiltratr_load_be32(block + 84U);
     root->extension = infiltratr_load_be32(block + 88U);
+    root->filename_size = PFS_DEFAULT_FILENAME_SIZE;
     for (size_t index = 0U; index < 5U; ++index)
         root->bitmap_index[index] = infiltratr_load_be32(block + 96U + index * 4U);
     for (size_t index = 0U; index < 99U; ++index)
@@ -270,7 +277,7 @@ static bool root_bitmap_free(const uint8_t sector[PFS_SECTOR_SIZE],
             (UINT32_C(0x80000000) >> bit)) != 0U;
 }
 
-static int validate_reserved_area(int fd, const PfsRoot *root,
+static int validate_reserved_area(int fd, PfsRoot *root,
                                   bool *pending,
                                   char *error, size_t error_size)
 {
@@ -325,6 +332,45 @@ static int validate_reserved_area(int fd, const PfsRoot *root,
             set_error(error, error_size, "PFS3 root extension ID is invalid");
             return -1;
         }
+
+        const uint32_t reserved_slots =
+            (root->last_reserved - root->first_reserved + 1U) /
+            PFS_RESCLUSTER;
+        const uint32_t reserved_roving =
+            infiltratr_load_be32(extension + 44U);
+        const uint16_t roving_bit =
+            infiltratr_load_be16(extension + 48U);
+        const uint16_t delete_directory_roving =
+            infiltratr_load_be16(extension + 52U);
+        const uint16_t delete_directory_size =
+            infiltratr_load_be16(extension + 54U);
+        const uint16_t stored_filename_size =
+            infiltratr_load_be16(extension + 56U);
+        const uint32_t delete_directory_entries =
+            (uint32_t)delete_directory_size *
+            PFS_DELDIR_ENTRIES_PER_BLOCK;
+
+        if (roving_bit > 31U ||
+            (reserved_slots != 0U && reserved_roving >= reserved_slots) ||
+            delete_directory_size > PFS_MAX_DELDIR_BLOCKS ||
+            (delete_directory_entries == 0U
+                 ? delete_directory_roving != 0U
+                 : delete_directory_roving >= delete_directory_entries)) {
+            set_error(error, error_size,
+                      "PFS3 root extension contains invalid roving or delete-directory geometry");
+            return -1;
+        }
+        if (stored_filename_size == 0U) {
+            root->filename_size = PFS_DEFAULT_FILENAME_SIZE;
+        } else if (stored_filename_size < PFS_MIN_FILENAME_SIZE ||
+                   stored_filename_size > PFS_MAX_FILENAME_SIZE) {
+            set_error(error, error_size,
+                      "PFS3 root extension contains an invalid filename-size limit");
+            return -1;
+        } else {
+            root->filename_size = stored_filename_size;
+        }
+
         *pending = infiltratr_load_be32(extension + 28U) != 0U;
     } else if (root->extension != 0U) {
         set_error(error, error_size,
@@ -539,8 +585,47 @@ static int parse_root_directory(PfsModel *model, char *error, size_t error_size)
         const uint32_t anode = infiltratr_load_be32(directory + offset + 2U);
         const uint32_t size = infiltratr_load_be32(directory + offset + 6U);
         const uint8_t name_length = directory[offset + 17U];
-        if (18U + (size_t)name_length >= next) {
-            set_error(error, error_size, "PFS3 directory entry name exceeds its record");
+        if (name_length > model->root.filename_size) {
+            set_error(error, error_size,
+                      "PFS3 directory entry name exceeds the volume filename limit");
+            return -1;
+        }
+        const size_t comment_offset = 18U + (size_t)name_length;
+        if (comment_offset >= next) {
+            set_error(error, error_size,
+                      "PFS3 directory entry name exceeds its record");
+            return -1;
+        }
+
+        size_t payload_end = next;
+        if ((model->root.options & PFS_MODE_DIR_EXTENSION) != 0U) {
+            const uint16_t flags =
+                infiltratr_load_be16(directory + offset + next - 2U);
+            if ((flags >> 11U) != 0U) {
+                set_error(error, error_size,
+                          "PFS3 directory entry contains unknown extension fields");
+                return -1;
+            }
+            uint16_t bits = flags;
+            size_t extra_words = 0U;
+            while (bits != 0U) {
+                extra_words += (size_t)(bits & 1U);
+                bits >>= 1U;
+            }
+            const size_t extension_bytes = 2U + extra_words * 2U;
+            if (extension_bytes > next) {
+                set_error(error, error_size,
+                          "PFS3 directory entry extension fields overrun the record");
+                return -1;
+            }
+            payload_end = next - extension_bytes;
+        }
+
+        if (payload_end <= comment_offset ||
+            (size_t)directory[offset + comment_offset] + 1U >
+                payload_end - comment_offset) {
+            set_error(error, error_size,
+                      "PFS3 directory entry comment exceeds its record");
             return -1;
         }
         if (type != PFS_ST_FILE) {
