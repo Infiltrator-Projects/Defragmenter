@@ -21,7 +21,7 @@ try:
 
     gi.require_version("Gtk", "3.0")
     gi.require_version("Gdk", "3.0")
-    from gi.repository import Gdk, GLib, Gtk
+    from gi.repository import Gdk, Gio, GLib, Gtk
 except (ImportError, ValueError) as exc:
     print(
         "Defragmenter requires GTK 3 Python bindings.\n"
@@ -77,7 +77,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.set_type_hint(Gdk.WindowTypeHint.NORMAL)
         self.set_skip_taskbar_hint(False)
         self.set_skip_pager_hint(False)
-        self.set_default_size(1240, 780)
+        self.set_default_size(1480, 900)
         self.set_position(Gtk.WindowPosition.CENTER)
         self.connect("realize", self._configure_native_window)
         self._map_resize_source: int | None = None
@@ -168,8 +168,8 @@ class MainWindow(Gtk.ApplicationWindow):
         # Client geometry needs headroom for server-side title bars/borders.
         # Never request more than the usable monitor rectangle minus this
         # decoration margin.
-        width = min(1040, max(1, workarea.width - 48))
-        height = min(680, max(1, workarea.height - 64))
+        width = min(1480, max(1, workarea.width - 48))
+        height = min(900, max(1, workarea.height - 64))
         self.resize(width, height)
 
     @property
@@ -351,7 +351,75 @@ class MainWindow(Gtk.ApplicationWindow):
         )
 
     def start_mutation(self, operation: str) -> None:
+        volume = self.current_volume
+        if volume is None:
+            self.show_error(
+                "Select a volume",
+                "Choose a supported volume before starting an optimisation operation.",
+            )
+            return
+        if self.busy:
+            return
+        if volume.mounted and not volume.image:
+            operation_name = operation.replace("-", " ").title()
+            if not self.confirm(
+                "Unmount required",
+                f"{operation_name} requires {volume.path} to be unmounted.\n\n"
+                "Unmount it safely and continue?",
+            ):
+                return
+            self.clear_log()
+            self.append_log(
+                f"Unmounting {volume.path} safely before {operation_name}…"
+            )
+            selected_path = volume.path
+
+            def continue_after_unmount(_output: str) -> None:
+                self.refresh_devices(selected_path)
+                refreshed = self.current_volume
+                if refreshed is None or refreshed.path != selected_path:
+                    self.show_error(
+                        "Volume changed",
+                        "The selected volume changed while unmounting. "
+                        "Choose it again before continuing.",
+                    )
+                    return
+                if refreshed.mounted:
+                    self.show_error(
+                        "Unable to continue",
+                        f"{selected_path} is still mounted.",
+                    )
+                    return
+                GLib.idle_add(self._start_mutation_after_unmount, operation)
+
+            self.coordinator.run_command(
+                ["udisksctl", "unmount", "-b", volume.path],
+                privileged=True,
+                purpose="unmount-for-mutation",
+                on_success=continue_after_unmount,
+            )
+            return
         self.coordinator.start_mutation(operation)
+
+    def _start_mutation_after_unmount(self, operation: str) -> bool:
+        self.coordinator.start_mutation(operation)
+        return False
+
+    def launch_test_media(self) -> None:
+        executable = GLib.find_program_in_path("linux-defragger-test-media")
+        if not executable:
+            self.show_error(
+                "Test Media is unavailable",
+                "The Defragmenter Test Media companion is not installed.",
+            )
+            return
+        try:
+            Gio.Subprocess.new(
+                [executable],
+                Gio.SubprocessFlags.NONE,
+            )
+        except GLib.Error as exc:
+            self.show_error("Unable to launch Test Media", str(exc))
 
     def request_stop(self, _button: Gtk.Button) -> None:
         self.operations.request_stop()
