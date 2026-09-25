@@ -169,7 +169,7 @@ static void make_root_directory(uint8_t *image)
     put32(block + 12U, 5U);
     put32(block + 16U, 0U);
     uint8_t *entry = block + 20U;
-    entry[0] = 24U;
+    entry[0] = 26U;
     entry[1] = UINT8_C(0xfd);
     put32(entry + 2U, 6U);
     put32(entry + 6U, 3U * TEST_SECTOR);
@@ -177,6 +177,7 @@ static void make_root_directory(uint8_t *image)
     memcpy(entry + 18U, "frag", 4U);
     entry[22U] = 0U;
     entry[24U] = 0U;
+    entry[26U] = 0U;
 }
 
 static void fill_payload(uint8_t *sector, uint8_t value)
@@ -387,6 +388,49 @@ int main(int argc, char **argv)
         (void)unlink(invalid);
         free(image);
         return 9;
+    }
+    (void)unlink(invalid);
+
+    make_image(image, 1);
+    put16(image + EXTENSION_SECTOR * TEST_SECTOR + 48U, 32U);
+    if (save_image(image, invalid) != 0) {
+        (void)unlink(source);
+        free(image);
+        return 10;
+    }
+    memset(error, 0, sizeof(error));
+    if (pfs3_analyse(invalid, &analysis, NULL, 0U,
+                     error, sizeof(error)) == 0) {
+        (void)fprintf(stderr,
+                      "PFS3 extension with an invalid roving bit was accepted\n");
+        (void)unlink(source);
+        (void)unlink(invalid);
+        free(image);
+        return 11;
+    }
+    (void)unlink(invalid);
+
+    make_image(image, 1);
+    {
+        uint8_t *const entry =
+            image + ROOT_DIR_SECTOR * TEST_SECTOR + PFS_DIR_HEADER;
+        entry[0] = 24U;
+        entry[24U] = 0U;
+    }
+    if (save_image(image, invalid) != 0) {
+        (void)unlink(source);
+        free(image);
+        return 12;
+    }
+    memset(error, 0, sizeof(error));
+    if (pfs3_analyse(invalid, &analysis, NULL, 0U,
+                     error, sizeof(error)) == 0) {
+        (void)fprintf(stderr,
+                      "PFS3 directory entry overlapping its extension tail was accepted\n");
+        (void)unlink(source);
+        (void)unlink(invalid);
+        free(image);
+        return 13;
     }
 
     (void)unlink(source);
