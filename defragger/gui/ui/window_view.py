@@ -259,7 +259,7 @@ class WindowView:
         # can safely focus the already-created map widget.
         body_scroll = Gtk.ScrolledWindow()
         self.body_scroll = body_scroll
-        body_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        body_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         body_scroll.set_shadow_type(Gtk.ShadowType.NONE)
         body_scroll.get_style_context().add_class("body-scroll")
 
