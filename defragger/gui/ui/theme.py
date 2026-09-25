@@ -135,6 +135,7 @@ def _base_css() -> str:
         border-radius: {panel_radius}px;
     }}
     .hero-drive-badge > border {{ border-radius: {card_radius}px; padding: 8px; }}
+    .operation-page-volume > border {{ border-radius: {panel_radius}px; }}
     frame.summary-card > border {{ border-radius: {card_radius}px; }}
     button.action-card {{ min-height: 86px; border-radius: {card_radius}px; padding: 6px; }}
     .pixel-map {{ border-radius: {card_radius}px; }}
@@ -234,6 +235,12 @@ def _night_css() -> str:
         background-image: linear-gradient(145deg, {p["surface"]}, {p["background"]});
         border-color: {p["status_border"]};
     }}
+    frame.operation-page-volume > border {{
+        background-image: linear-gradient(135deg, {p["surface"]}, {p["card"]});
+        border: 1px solid {p["status_border"]};
+    }}
+    .page-title, .operation-page-volume-title {{ color: {p["heading"]}; }}
+    .page-subtitle {{ color: {p["detail_label"]}; }}
     .activity-primary {{ color: {p["heading"]}; }}
     .activity-secondary, .preview-note {{ color: {p["detail_label"]}; }}
     button.action-card {{
@@ -369,6 +376,12 @@ def _day_css() -> str:
         background-image: linear-gradient(145deg, {p["surface"]}, {p["panel"]});
         border-color: {p["status_border"]};
     }}
+    frame.operation-page-volume > border {{
+        background-image: linear-gradient(135deg, {p["panel"]}, {p["surface"]});
+        border: 1px solid {p["status_border"]};
+    }}
+    .page-title, .operation-page-volume-title {{ color: {p["heading"]}; }}
+    .page-subtitle {{ color: {p["detail_label"]}; }}
     .activity-primary {{ color: {p["heading"]}; }}
     .activity-secondary, .preview-note {{ color: {p["detail_label"]}; }}
     button.action-card {{
