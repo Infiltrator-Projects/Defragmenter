@@ -7,7 +7,6 @@ from typing import Any
 
 from gi.repository import Gtk
 
-from .map_geometry import MapGeometry, allocation_grid, block_bounds, source_cell_at
 from .theme_tokens import TYPOGRAPHY
 
 MIN_MAP_CELLS = 256
@@ -15,30 +14,29 @@ MAX_MAP_CELLS = 1048576
 
 
 class DiskMap(Gtk.DrawingArea):
-    """Render allocation data as a dense dynamically sized block grid."""
+    """Render allocation data as a dense pixel raster, never a visible grid."""
 
     COLORS = {
-        "free": (0.92, 0.94, 0.96),
-        "outside": (0.98, 0.98, 0.99),
-        "used": (0.13, 0.43, 0.76),
-        "fragmented": (0.94, 0.28, 0.22),
-        "directory": (0.48, 0.28, 0.72),
-        "unknown": (0.38, 0.40, 0.44),
-        "bad": (0.08, 0.08, 0.10),
-        "grid": (0.74, 0.77, 0.81),
-        "background": (0.98, 0.98, 0.99),
+        "free": (0.035, 0.055, 0.090),
+        "outside": (0.015, 0.022, 0.035),
+        "used": (0.045, 0.535, 0.980),
+        "fragmented": (1.000, 0.205, 0.235),
+        "directory": (0.565, 0.240, 0.930),
+        "unknown": (0.310, 0.355, 0.420),
+        "bad": (1.000, 0.650, 0.080),
+        "background": (0.020, 0.030, 0.050),
     }
 
     def __init__(self) -> None:
         super().__init__()
         self.cells: list[dict[str, int]] = []
         self.unit_label = "clusters"
-        self._layout: MapGeometry | None = None
+        self._raster_size: tuple[int, int] | None = None
         # Keep a useful compact minimum while allowing the expanding map panel
         # to consume all additional space.  A 260-pixel hard minimum combined
         # with the log made the top-level frame taller than some work areas and
         # caused window managers to reject otherwise valid maximise requests.
-        self.set_size_request(-1, 180)
+        self.set_size_request(-1, 210)
         self.set_has_tooltip(True)
         self.connect("draw", self._draw)
         self.connect("query-tooltip", self._query_tooltip)
@@ -90,14 +88,27 @@ class DiskMap(Gtk.DrawingArea):
             colour = self._mix(colour, self.COLORS["unknown"], unknown / total)
         return colour
 
+    @staticmethod
+    def _source_index(
+        cell_count: int,
+        width: int,
+        height: int,
+        x: int,
+        y: int,
+    ) -> int:
+        pixel_count = max(1, width * height)
+        pixel_index = y * width + x
+        return min(cell_count - 1, (pixel_index * cell_count) // pixel_count)
+
     def _draw(self, widget: Gtk.Widget, cr: Any) -> bool:
         allocation = widget.get_allocation()
         width, height = max(1, allocation.width), max(1, allocation.height)
+        self._raster_size = (width, height)
         cr.set_source_rgb(*self.COLORS["background"])
         cr.rectangle(0, 0, width, height)
         cr.fill()
         if not self.cells:
-            cr.set_source_rgb(0.38, 0.40, 0.44)
+            cr.set_source_rgb(0.56, 0.62, 0.70)
             cr.select_font_face(TYPOGRAPHY["ui_family"], 0, 0)
             cr.set_font_size(15)
             message = "Select a supported volume and click Analyse"
@@ -108,31 +119,43 @@ class DiskMap(Gtk.DrawingArea):
             )
             cr.show_text(message)
             return False
+
+        # The map is intentionally a raster rather than a chessboard of UI
+        # controls.  Cells are streamed row-major into the physical drawing
+        # pixels, with adjacent pixels of the same source cell coalesced into
+        # one Cairo run.  That keeps the display truthful while making a large
+        # allocation map read as a continuous image instead of an old-style
+        # block grid.
         cell_count = len(self.cells)
-        self._layout = allocation_grid(cell_count, width, height)
-        if self._layout.uses_one_block_per_cell:
-            for source_index, cell in enumerate(self.cells):
-                x0, y0, x1, y1 = block_bounds(self._layout, source_index)
-                cr.set_source_rgb(*self._cell_colour(cell))
-                cr.rectangle(float(x0), float(y0), float(x1 - x0), float(y1 - y0))
-                cr.fill()
-        else:
-            total_pixels = width * height
-            last_source = -1
-            colour = self.COLORS["background"]
-            for pixel_index in range(total_pixels):
+        total_pixels = width * height
+        for row in range(height):
+            row_start = row * width
+            column = 0
+            while column < width:
+                pixel_index = row_start + column
                 source_index = min(
                     cell_count - 1,
                     (pixel_index * cell_count) // total_pixels,
                 )
-                if source_index != last_source:
-                    colour = self._cell_colour(self.cells[source_index])
-                    last_source = source_index
-                row, column = divmod(pixel_index, width)
-                cr.set_source_rgb(*colour)
-                cr.rectangle(float(column), float(row), 1.0, 1.0)
+                next_source_pixel = (
+                    ((source_index + 1) * total_pixels + cell_count - 1)
+                    // cell_count
+                )
+                run_end = min(
+                    width,
+                    max(column + 1, next_source_pixel - row_start),
+                )
+                cr.set_source_rgb(*self._cell_colour(self.cells[source_index]))
+                cr.rectangle(
+                    float(column),
+                    float(row),
+                    float(run_end - column),
+                    1.0,
+                )
                 cr.fill()
+                column = run_end
         return False
+
 
     def _query_tooltip(
         self,
@@ -142,11 +165,12 @@ class DiskMap(Gtk.DrawingArea):
         _keyboard_mode: bool,
         tooltip: Gtk.Tooltip,
     ) -> bool:
-        if not self.cells or self._layout is None:
+        if not self.cells or self._raster_size is None:
             return False
-        index = source_cell_at(self._layout, x, y)
-        if index is None:
+        width, height = self._raster_size
+        if x < 0 or y < 0 or x >= width or y >= height:
             return False
+        index = self._source_index(len(self.cells), width, height, x, y)
         cell = self.cells[index]
         tooltip.set_text(
             f"{self.unit_label.capitalize()} {cell['start']:,}–{cell['end']:,}\n"
@@ -158,11 +182,14 @@ class DiskMap(Gtk.DrawingArea):
         return True
 
 
+
 class SummaryCard(Gtk.Frame):
-    def __init__(self, title: str) -> None:
+    def __init__(self, title: str, accent_class: str = "") -> None:
         super().__init__()
         self.set_shadow_type(Gtk.ShadowType.NONE)
         self.get_style_context().add_class("summary-card")
+        if accent_class:
+            self.get_style_context().add_class(accent_class)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
         box.set_border_width(12)
         self.title = Gtk.Label(label=title)
