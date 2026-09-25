@@ -197,7 +197,10 @@ def test_operation_planner_is_pure_and_complete() -> None:
         stop_requested=False,
         journal_exists=False,
     )
-    assert blocked.unmount and not blocked.defrag
+    # Mounted physical media keeps the operation affordance clickable.
+    # MainWindow owns the safe unmount-and-continue interaction; the native
+    # planner still refuses any mounted write that bypasses that UI sequence.
+    assert blocked.unmount and blocked.defrag and blocked.growth_defrag
 
 
 def test_live_event_controller_returns_view_model_updates() -> None:
