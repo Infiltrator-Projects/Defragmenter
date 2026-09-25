@@ -379,7 +379,7 @@ target_compile_options(linux-defragger-ntfs-native PRIVATE ${LD_WARNING_FLAGS})
 target_compile_definitions(linux-defragger-ntfs-native PRIVATE
     _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(linux-defragger-ntfs-native PUBLIC
-    linux-defragger-core SQLite::SQLite3 OpenSSL::Crypto)
+    linux-defragger-core SQLite::SQLite3 OpenSSL::Crypto Threads::Threads)
 
 add_executable(linux-defragger-ntfs-worker
     gui/filesystems/ntfs/native/ntfs_worker.c
