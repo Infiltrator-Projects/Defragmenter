@@ -17,8 +17,12 @@ is contemporary GTK rather than a retro imitation.
 ## Visual direction
 
 - The disk map is a **continuous pixel raster**, not a visible square-cell grid.
-  Each display pixel still represents real allocation data; higher available
-  drawing resolution requests more source cells from the analyser.
+  Every display pixel is positional: left-to-right and then top-to-bottom must
+  advance monotonically through the real on-disk allocation-unit address space.
+  The renderer must never use Hilbert, Morton/Z-order or another aesthetic
+  remapping that moves a physical allocation unit to a different apparent disk
+  position. Higher drawing resolution requests more source cells from the analyser
+  but never changes their physical ordering.
 - The main window uses a graphical navigation rail, a selected-volume hero card,
   visual summary cards, a dominant disk-map canvas and large operation cards.
 - Detailed logs remain available, but are secondary and collapsed by default.
