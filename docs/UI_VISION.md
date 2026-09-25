@@ -72,3 +72,14 @@ control surface immediately below the hero. Primary controls must never be
 children of the hero artwork overlay or depend on its fixed raster height.
 This guarantees that the combo box and its popup remain visible, clickable and
 unclipped across supported window sizes and desktop themes.
+
+
+## Overview fit contract
+
+At normal laptop work-area sizes, including a 1366×768-class desktop, the
+Overview page must present its hero, volume selector, summary cards, physical
+allocation map, quick actions, compact activity strip and footer without
+requiring vertical scrolling. The allocation map is the elastic surface: it
+grows when space is available and yields height first when the window is
+shorter. The Overview must not add a second miniature allocation-map preview;
+the authoritative map already occupies that role.

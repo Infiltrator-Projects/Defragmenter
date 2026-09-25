@@ -301,8 +301,8 @@ class WindowView:
         body_scroll.set_shadow_type(Gtk.ShadowType.NONE)
         body_scroll.get_style_context().add_class("body-scroll")
 
-        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
-        root.set_border_width(16)
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        root.set_border_width(12)
         body_scroll.add(root)
 
         hero = Gtk.Frame()
@@ -518,65 +518,45 @@ class WindowView:
         actions.attach(self.recover_button, 3, 0, 1, 1)
         root.pack_start(actions, False, False, 0)
 
-        lower = Gtk.Grid(column_spacing=12, row_spacing=0)
-        lower.set_column_homogeneous(True)
-
-        preview = Gtk.Frame()
-        preview.set_shadow_type(Gtk.ShadowType.NONE)
-        preview.get_style_context().add_class("preview-panel")
-        preview_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        preview_box.set_border_width(12)
-        preview_title = self._section_label("Current allocation")
-        preview_box.pack_start(preview_title, False, False, 0)
-        self.preview_map = DiskMap()
-        self.preview_map.set_size_request(-1, 116)
-        self.preview_map.set_sensitive(False)
-        preview_box.pack_start(self.preview_map, True, True, 0)
-        preview_note = Gtk.Label(
-            label="Compact live mirror of the authoritative disk map."
-        )
-        preview_note.set_xalign(0)
-        preview_note.get_style_context().add_class("preview-note")
-        preview_box.pack_start(preview_note, False, False, 0)
-        preview.add(preview_box)
-        lower.attach(preview, 0, 0, 1, 1)
-
         activity = Gtk.Frame()
         activity.set_shadow_type(Gtk.ShadowType.NONE)
         activity.get_style_context().add_class("activity-panel")
-        activity_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        activity_box.set_border_width(12)
-        activity_header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        activity_header.pack_start(self._icon("media-playback-start-symbolic", 20), False, False, 0)
-        activity_title = Gtk.Label(label="Activity")
-        activity_title.set_xalign(0)
-        activity_title.get_style_context().add_class("section-title")
-        activity_header.pack_start(activity_title, True, True, 0)
-        self.stop_button = Gtk.Button.new_with_label("Stop safely")
-        self.stop_button.connect("clicked", self.controller.request_stop)
-        self.stop_button.set_sensitive(False)
-        self.stop_button.get_style_context().add_class("destructive-action")
-        activity_header.pack_end(self.stop_button, False, False, 0)
-        activity_box.pack_start(activity_header, False, False, 0)
+        activity_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+        activity_box.set_border_width(8)
 
+        activity_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        activity_row.pack_start(
+            self._icon("media-playback-start-symbolic", 18),
+            False,
+            False,
+            0,
+        )
         self.activity_primary = Gtk.Label(label="Ready for analysis")
         self.activity_primary.set_xalign(0)
         self.activity_primary.get_style_context().add_class("activity-primary")
-        activity_box.pack_start(self.activity_primary, False, False, 0)
+        activity_row.pack_start(self.activity_primary, False, False, 0)
+
         self.activity_secondary = Gtk.Label(
             label="Choose a volume; analysis and safe operations appear here."
         )
         self.activity_secondary.set_xalign(0)
-        self.activity_secondary.set_line_wrap(True)
+        self.activity_secondary.set_ellipsize(3)
         self.activity_secondary.get_style_context().add_class("activity-secondary")
-        activity_box.pack_start(self.activity_secondary, False, False, 0)
+        activity_row.pack_start(self.activity_secondary, True, True, 0)
 
         self.progress = Gtk.ProgressBar()
-        self.progress.set_hexpand(True)
+        self.progress.set_size_request(220, -1)
         self.progress.set_show_text(True)
         self.progress.set_text("Ready")
         self.progress.get_style_context().add_class("operation-progress")
-        activity_box.pack_start(self.progress, False, False, 0)
+        activity_row.pack_start(self.progress, False, False, 0)
+
+        self.stop_button = Gtk.Button.new_with_label("Stop safely")
+        self.stop_button.connect("clicked", self.controller.request_stop)
+        self.stop_button.set_sensitive(False)
+        self.stop_button.get_style_context().add_class("destructive-action")
+        activity_row.pack_end(self.stop_button, False, False, 0)
+        activity_box.pack_start(activity_row, False, False, 0)
 
         expander = Gtk.Expander(label="Technical activity log")
         expander.set_expanded(False)
@@ -598,9 +578,7 @@ class WindowView:
         expander.add(scroll)
         activity_box.pack_start(expander, False, True, 0)
         activity.add(activity_box)
-        lower.attach(activity, 1, 0, 1, 1)
-
-        root.pack_start(lower, False, False, 0)
+        root.pack_start(activity, False, False, 0)
 
         status_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         status_box.set_border_width(8)
@@ -1125,7 +1103,6 @@ class WindowView:
         )
 
     def reset_summary(self) -> None:
-        self.preview_map.set_cells([])
         for detail_map in self._detail_maps:
             detail_map.set_cells([])
         self.activity_primary.set_text("Ready for analysis")
@@ -1156,11 +1133,9 @@ class WindowView:
 
     def apply_map_presentation(self, presentation: MapPresentation) -> None:
         self.disk_map.set_cells(presentation.cells)
-        self.preview_map.set_cells(presentation.cells)
         for detail_map in self._detail_maps:
             detail_map.set_cells(presentation.cells)
             detail_map.set_unit_label(presentation.unit_label)
-        self.preview_map.set_unit_label(presentation.unit_label)
         total_units = sum(
             int(cell["end"]) - int(cell["start"]) + 1
             for cell in presentation.cells

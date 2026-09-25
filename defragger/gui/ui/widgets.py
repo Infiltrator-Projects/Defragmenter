@@ -68,7 +68,7 @@ class DiskMap(Gtk.DrawingArea):
         self._cell_ends: list[int] = []
         self._pixbuf: GdkPixbuf.Pixbuf | None = None
         self._pixbuf_key: tuple[int, int, int] | None = None
-        self.set_size_request(-1, 250)
+        self.set_size_request(-1, 64)
         self.set_has_tooltip(True)
         self.connect("draw", self._draw)
         self.connect("query-tooltip", self._query_tooltip)

@@ -175,7 +175,7 @@ def _domain_presentation(
         )
         page_word = "page" if used_pages == 1 else "pages"
         files_value = f"{human_bytes(used_bytes)} used · {used_pages:,} {page_word}"
-        fragmentation_value = "Not applicable"
+        fragmentation_value = "N/A · swap has no files"
     elif has_fragmentation:
         files_value = (
             f"{_required_int(data, 'regular_files'):,} files · "
@@ -280,12 +280,15 @@ def _domain_presentation(
         analysis_log = (
             f"Analysis complete: active SWAP uses {human_bytes(used_bytes)} "
             f"across {used_pages:,} {page_word}. Aggregate usage is known; "
-            "physical occupied slot locations are unavailable."
+            "physical occupied slot locations are unavailable. Swap stores "
+            "page slots rather than files, so file fragmentation does not apply."
         )
     elif is_swap:
         analysis_log = (
             "Analysis complete: inactive SWAP has no occupied pages; "
-            "the header, bad pages, free pages and outside tail are mapped exactly."
+            "the header, bad pages, free pages and outside tail are mapped exactly. "
+            "Swap stores page slots rather than files, so file fragmentation "
+            "does not apply."
         )
     elif has_fragmentation:
         analysis_log = (

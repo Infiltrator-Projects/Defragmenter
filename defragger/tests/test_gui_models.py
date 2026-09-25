@@ -277,10 +277,11 @@ def test_map_presenter_handles_domain_and_swap_maps() -> None:
     swap_view = present_allocation_map(swap)
     assert swap_view.files_title == "Usage"
     assert swap_view.files_value == "8.0 KB used · 2 pages"
-    assert swap_view.fragmentation_value == "Not applicable"
+    assert swap_view.fragmentation_value == "N/A · swap has no files"
     assert "aggregate usage only" in swap_view.caption
     assert "2 pages" in swap_view.status
     assert "physical occupied slot locations are unavailable" in swap_view.analysis_log
+    assert "file fragmentation does not apply" in swap_view.analysis_log
 
     swap["used_bytes"] = 4096
     swap["free_bytes"] = 7 * 4096
@@ -463,7 +464,7 @@ def test_ui_polish_preserves_allocation_map_visual_contract() -> None:
         '"directory": (0.620, 0.170, 0.980)',
         '"bad": (1.000, 0.625, 0.040)',
         '"background": (0.010, 0.020, 0.040)',
-        "self.set_size_request(-1, 250)",
+        "self.set_size_request(-1, 64)",
         "physical_unit_at_pixel(",
         "source_cell_at_pixel(",
         "Pixbuf.new_from_bytes(",
@@ -511,7 +512,6 @@ def test_ui_polish_preserves_allocation_map_visual_contract() -> None:
         "root.pack_start(selector_frame, False, False, 0)",
         "self.device_combo.set_size_request(360, -1)",
         "GaugeCard(",
-        "Current allocation",
         "body.pack1(self._build_sidebar()",
         "idle = state.refresh",
         "Physical pixel map",
@@ -715,6 +715,12 @@ def test_main_window_remains_resizable_maximisable_and_workarea_bounded() -> Non
     assert "body_scroll = Gtk.ScrolledWindow()" in view_source
     assert "body_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)" in view_source
     assert "body_scroll.add(root)" in view_source
+    assert "root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)" in view_source
+    assert "root.set_border_width(12)" in view_source
+    assert "self.preview_map" not in view_source
+    assert "lower = Gtk.Grid(column_spacing=12, row_spacing=0)" not in view_source
+    assert "activity_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)" in view_source
+    assert "self.progress.set_size_request(220, -1)" in view_source
     assert "scroll.set_min_content_height(100)" in view_source
     assert "self.set_size_request(-1, 250)" in widgets_source
     assert "self.set_size_request(640, 260)" not in widgets_source
