@@ -20,6 +20,7 @@
 #define ANODE_INDEX_SECTOR 10U
 #define ANODE_BLOCK_SECTOR 12U
 #define ROOT_DIR_SECTOR 14U
+#define TEST_DIR_HEADER 20U
 
 static void put16(uint8_t *p, uint16_t v)
 {
@@ -413,7 +414,7 @@ int main(int argc, char **argv)
     make_image(image, 1);
     {
         uint8_t *const entry =
-            image + ROOT_DIR_SECTOR * TEST_SECTOR + PFS_DIR_HEADER;
+            image + ROOT_DIR_SECTOR * TEST_SECTOR + TEST_DIR_HEADER;
         entry[0] = 24U;
         entry[24U] = 0U;
     }
