@@ -32,18 +32,18 @@ static uint32_t get32(const uint8_t *p)
            ((uint32_t)p[2] << 8) | (uint32_t)p[3];
 }
 
-static void stamp_checksum_bytes(uint8_t *block, uint32_t block_size)
+static void stamp_checksum_bytes(uint8_t *block, uint32_t block_size, int sfs2)
 {
     put32(block + 4U, 0U);
-    uint32_t sum = 1U;
+    uint32_t sum = sfs2 != 0 ? 2U : 1U;
     for (uint32_t offset = 0U; offset < block_size; offset += 4U)
         sum += get32(block + offset);
     put32(block + 4U, 0U - sum);
 }
 
-static void stamp_checksum(uint8_t *block)
+static void stamp_checksum(uint8_t *block, int sfs2)
 {
-    stamp_checksum_bytes(block, TEST_BLOCK_SIZE);
+    stamp_checksum_bytes(block, TEST_BLOCK_SIZE, sfs2);
 }
 
 static void set_header(uint8_t *block, const char id[4], uint32_t own_block)
@@ -66,7 +66,7 @@ static void make_root(uint8_t *block, uint32_t own_block, uint16_t sequence,
     put32(block + 104U, 4U); /* root object container */
     put32(block + 108U, 3U); /* extent B-tree root */
     put32(block + 112U, 5U); /* object node root */
-    stamp_checksum(block);
+    stamp_checksum(block, sfs2);
 }
 
 static void bitmap_mark_used(uint8_t *block, uint32_t number)
@@ -75,7 +75,7 @@ static void bitmap_mark_used(uint8_t *block, uint32_t number)
         (uint8_t)~(uint8_t)(0x80U >> (number & 7U));
 }
 
-static void make_bitmap(uint8_t *block, int fragmented)
+static void make_bitmap(uint8_t *block, int fragmented, int sfs2)
 {
     memset(block, 0, TEST_BLOCK_SIZE);
     set_header(block, "BTMP", 1U);
@@ -89,7 +89,7 @@ static void make_bitmap(uint8_t *block, int fragmented)
         bitmap_mark_used(block, 21U);
         bitmap_mark_used(block, 22U);
     }
-    stamp_checksum(block);
+    stamp_checksum(block, sfs2);
 }
 
 static void make_extent_tree(uint8_t *block, int fragmented, int sfs2)
@@ -113,7 +113,7 @@ static void make_extent_tree(uint8_t *block, int fragmented, int sfs2)
     put32(second_node + 8U, 20U);
     if (sfs2 != 0) put32(second_node + 12U, 2U);
     else put16(second_node + 12U, 2U);
-    stamp_checksum(block);
+    stamp_checksum(block, sfs2);
 }
 
 static void make_object_container(uint8_t *block, int sfs2)
@@ -137,7 +137,7 @@ static void make_object_container(uint8_t *block, int sfs2)
         memcpy(object + 25U, "frag", 5U);
         object[30U] = 0U;
     }
-    stamp_checksum(block);
+    stamp_checksum(block, sfs2);
 }
 
 static void make_image(uint8_t *image, int transaction_pending, int fragmented,
@@ -147,7 +147,7 @@ static void make_image(uint8_t *image, int transaction_pending, int fragmented,
     make_root(image, 0U, 5U, sfs2);
     make_root(image + (TEST_BLOCKS - 1U) * TEST_BLOCK_SIZE,
               TEST_BLOCKS - 1U, 6U, sfs2);
-    make_bitmap(image + TEST_BLOCK_SIZE, fragmented);
+    make_bitmap(image + TEST_BLOCK_SIZE, fragmented, sfs2);
     make_extent_tree(image + 3U * TEST_BLOCK_SIZE, fragmented, sfs2);
     make_object_container(image + 4U * TEST_BLOCK_SIZE, sfs2);
     memset(image + 20U * TEST_BLOCK_SIZE, 'A', TEST_BLOCK_SIZE);
@@ -161,7 +161,7 @@ static void make_image(uint8_t *image, int transaction_pending, int fragmented,
     if (transaction_pending != 0) {
         uint8_t *marker = image + 6U * TEST_BLOCK_SIZE;
         set_header(marker, "TRFA", 6U);
-        stamp_checksum(marker);
+        stamp_checksum(marker, sfs2);
     }
 }
 
@@ -273,7 +273,7 @@ static int test_sfs2_large_sparse(void)
     put32(block + 104U, 4U);
     put32(block + 108U, 3U);
     put32(block + 112U, 5U);
-    stamp_checksum_bytes(block, LARGE_BLOCK_SIZE);
+    stamp_checksum_bytes(block, LARGE_BLOCK_SIZE, 1);
     if (write_block_at(fd, block, LARGE_BLOCK_SIZE, 0U) != 0)
         goto fail;
 
@@ -287,7 +287,7 @@ static int test_sfs2_large_sparse(void)
          number < LARGE_DATA_START + LARGE_DATA_BLOCKS; ++number)
         bitmap_set(block, number, 0);
     bitmap_set(block, LARGE_BLOCKS - 1U, 0);
-    stamp_checksum_bytes(block, LARGE_BLOCK_SIZE);
+    stamp_checksum_bytes(block, LARGE_BLOCK_SIZE, 1);
     if (write_block_at(fd, block, LARGE_BLOCK_SIZE, 1U) != 0)
         goto fail;
 
@@ -300,7 +300,7 @@ static int test_sfs2_large_sparse(void)
     put32(block + 20U, 0U);
     put32(block + 24U, 0U);
     put32(block + 28U, LARGE_DATA_BLOCKS);
-    stamp_checksum_bytes(block, LARGE_BLOCK_SIZE);
+    stamp_checksum_bytes(block, LARGE_BLOCK_SIZE, 1);
     if (write_block_at(fd, block, LARGE_BLOCK_SIZE, 3U) != 0)
         goto fail;
 
@@ -315,7 +315,7 @@ static int test_sfs2_large_sparse(void)
     object[26U] = 0U;
     memcpy(object + 27U, "large", 6U);
     object[33U] = 0U;
-    stamp_checksum_bytes(block, LARGE_BLOCK_SIZE);
+    stamp_checksum_bytes(block, LARGE_BLOCK_SIZE, 1);
     if (write_block_at(fd, block, LARGE_BLOCK_SIZE, 4U) != 0)
         goto fail;
 
@@ -330,7 +330,7 @@ static int test_sfs2_large_sparse(void)
     put32(block + 104U, 4U);
     put32(block + 108U, 3U);
     put32(block + 112U, 5U);
-    stamp_checksum_bytes(block, LARGE_BLOCK_SIZE);
+    stamp_checksum_bytes(block, LARGE_BLOCK_SIZE, 1);
     if (write_block_at(fd, block, LARGE_BLOCK_SIZE, LARGE_BLOCKS - 1U) != 0 ||
         fsync(fd) != 0)
         goto fail;
@@ -450,6 +450,30 @@ int main(int argc, char **argv)
         return 15;
     }
 
+    make_image(image, 0, 1, 1);
+    stamp_checksum(image + TEST_BLOCK_SIZE, 0);
+    if (analyse_image(image, &analysis, NULL, 0U, error, sizeof(error)) == 0) {
+        (void)fprintf(stderr,
+                      "SFS2 metadata using the SFS0 checksum convention was accepted\n");
+        free(image);
+        return 20;
+    }
+
+    make_image(image, 0, 1, 0);
+    {
+        uint8_t *const object_block = image + 4U * TEST_BLOCK_SIZE;
+        uint8_t *const name = object_block + 24U + 25U;
+        memset(name, 'A', 108U);
+        name[108U] = 0U;
+        name[109U] = 0U;
+        stamp_checksum(object_block, 0);
+    }
+    if (analyse_image(image, &analysis, NULL, 0U, error, sizeof(error)) == 0) {
+        (void)fprintf(stderr, "overlength SFS object name was accepted\n");
+        free(image);
+        return 21;
+    }
+
     char sfs2_source[64];
     char sfs2_stage[64];
     uint64_t sfs2_commit_bytes = 0U;
@@ -536,7 +560,7 @@ int main(int argc, char **argv)
 
     make_image(image, 0, 1, 0);
     put32(image + (TEST_BLOCKS - 1U) * TEST_BLOCK_SIZE + 48U, TEST_BLOCKS - 1U);
-    stamp_checksum(image + (TEST_BLOCKS - 1U) * TEST_BLOCK_SIZE);
+    stamp_checksum(image + (TEST_BLOCKS - 1U) * TEST_BLOCK_SIZE, 0);
     if (analyse_image(image, &analysis, NULL, 0U, error, sizeof(error)) == 0) {
         (void)fprintf(stderr, "disagreeing SFS redundant-root geometry was accepted\n");
         free(image);
