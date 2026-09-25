@@ -41,6 +41,7 @@
 #define SFS_MIN_BLOCK 512U
 #define SFS_MAX_BLOCK 65536U
 #define SFS_HEADER_BYTES 12U
+#define SFS_MAX_FILENAME 107U
 #define SFS_IO_BATCH_BYTES (1024U * 1024U)
 
 static void set_error(char *error, size_t size, const char *text) {
@@ -61,9 +62,14 @@ static bool valid_block_size(uint32_t value) {
     return value >= SFS_MIN_BLOCK && value <= SFS_MAX_BLOCK &&
            (value & (value - 1U)) == 0U && value % 512U == 0U;
 }
-static bool checksum_ok(const uint8_t *block, uint32_t block_size) {
+static uint32_t checksum_seed_for_root_id(uint32_t root_id) {
+    return root_id == SFS2_ROOT_ID ? 2U : 1U;
+}
+
+static bool checksum_ok(const uint8_t *block, uint32_t block_size,
+                        uint32_t seed) {
     if (block_size % 4U != 0U) return false;
-    uint32_t sum = 1U;
+    uint32_t sum = seed;
     for (uint32_t off = 0U; off < block_size; off += 4U)
         sum += infiltratr_load_be32(block + off);
     return sum == 0U;
@@ -84,6 +90,10 @@ static bool root_id_supported(uint32_t root_id) {
 static bool root_is_sfs2(const Root *root) {
     return root != NULL && root->root_id == SFS2_ROOT_ID &&
            root->version == SFS2_STRUCTURE_VERSION;
+}
+
+static uint32_t checksum_seed(const Root *root) {
+    return root_is_sfs2(root) ? 2U : 1U;
 }
 
 static uint8_t extent_node_bytes(const Root *root) {
@@ -199,7 +209,8 @@ static bool parse_root(const uint8_t *block, uint32_t bytes, uint32_t expected_o
     const uint32_t root_id = infiltratr_load_be32(block);
     if (bytes < 116U || !root_id_supported(root_id) ||
         infiltratr_load_be32(block + 8U) != expected_own ||
-        !checksum_ok(block, bytes)) return false;
+        !checksum_ok(block, bytes, checksum_seed_for_root_id(root_id)))
+        return false;
     Root r = {0};
     r.own_block = expected_own;
     r.root_id = root_id;
@@ -288,7 +299,7 @@ static int validate_transaction(int fd, const Root *root, bool *pending,
     const ssize_t rr = ld_pread_full(fd, buf, root->block_size, (uint64_t)block_no * root->block_size);
     if (rr != (ssize_t)root->block_size) { free(buf); set_error(error, error_size, "cannot read SFS transaction state"); return -1; }
     if (infiltratr_load_be32(buf) == SFS_TRFA_ID) {
-        if (infiltratr_load_be32(buf + 8U) != block_no || !checksum_ok(buf, root->block_size)) {
+        if (infiltratr_load_be32(buf + 8U) != block_no || !checksum_ok(buf, root->block_size, checksum_seed(root))) {
             free(buf); set_error(error, error_size, "corrupt SFS unfinished-transaction marker"); return -1;
         }
         *pending = true;
@@ -307,7 +318,7 @@ static int read_metadata_block(int fd, const Root *root, uint32_t block_no,
         return -1;
     }
     if (infiltratr_load_be32(buffer) != expected_id || infiltratr_load_be32(buffer + 8U) != block_no ||
-        !checksum_ok(buffer, root->block_size)) {
+        !checksum_ok(buffer, root->block_size, checksum_seed(root))) {
         set_error(error, error_size, "invalid SFS metadata block");
         return -1;
     }
@@ -535,6 +546,18 @@ static int evaluate_file(const Root *root, const SfsExtentVec *extents,
     return 0;
 }
 
+static bool object_name_valid(const uint8_t *name, size_t length) {
+    if (name == NULL || length == 0U || length > SFS_MAX_FILENAME)
+        return false;
+    for (size_t index = 0U; index < length; ++index) {
+        const uint8_t character = name[index];
+        if (character < UINT8_C(0x20) || character == (uint8_t)':' ||
+            (character > UINT8_C(0x7e) && character < UINT8_C(0xa0)))
+            return false;
+    }
+    return true;
+}
+
 static int scan_object_catalogue(int fd, const Root *root,
                                  const SfsExtentVec *extents,
                                  uint8_t *extent_owned, const uint8_t *free_map,
@@ -596,6 +619,15 @@ static int scan_object_catalogue(int fd, const Root *root,
                 if (name_end == NULL) {
                     free(buffer);
                     set_error(error, error_size, "unterminated SFS object name");
+                    rc = -1;
+                    break;
+                }
+                const size_t name_length =
+                    (size_t)(name_end - (buffer + name_offset));
+                if (!object_name_valid(buffer + name_offset, name_length)) {
+                    free(buffer);
+                    set_error(error, error_size,
+                              "SFS object name is invalid or exceeds 107 characters");
                     rc = -1;
                     break;
                 }
@@ -767,7 +799,7 @@ static int scan_bitmap(int fd, const Root *root, SfsAnalysis *analysis,
             free(buf); set_error(error, error_size, "cannot read SFS bitmap block"); return -1;
         }
         if (infiltratr_load_be32(buf) != SFS_BITMAP_ID || infiltratr_load_be32(buf + 8U) != block_no ||
-            !checksum_ok(buf, root->block_size)) {
+            !checksum_ok(buf, root->block_size, checksum_seed(root))) {
             free(buf); set_error(error, error_size, "invalid SFS bitmap block"); return -1;
         }
         const uint64_t first = bi * bits_per;
@@ -961,9 +993,9 @@ static int model_open(const char *path, SfsModel *model,
     return 0;
 }
 
-static void fix_checksum(uint8_t *block, uint32_t block_size) {
+static void fix_checksum(uint8_t *block, uint32_t block_size, uint32_t seed) {
     infiltratr_store_be32(block + 4U, 0U);
-    uint32_t sum = 1U;
+    uint32_t sum = seed;
     for (uint32_t offset = 0U; offset < block_size; offset += 4U)
         sum += infiltratr_load_be32(block + offset);
     infiltratr_store_be32(block + 4U, 0U - sum);
@@ -1122,7 +1154,7 @@ static int write_extent_records(int fd, const Root *root,
             }
             infiltratr_store_be16(node + 12U, (uint16_t)record->blocks);
         }
-        fix_checksum(block, root->block_size);
+        fix_checksum(block, root->block_size, checksum_seed(root));
         if (ld_pwrite_full(fd, block, root->block_size,
                            (uint64_t)slot->container_block * root->block_size) !=
             (ssize_t)root->block_size) {
@@ -1198,7 +1230,7 @@ static int refresh_btree_node(int fd, const Root *root, uint32_t block_no,
             *has_key = true;
         }
     }
-    fix_checksum(block, root->block_size);
+    fix_checksum(block, root->block_size, checksum_seed(root));
     if (ld_pwrite_full(fd, block, root->block_size,
                        (uint64_t)block_no * root->block_size) !=
         (ssize_t)root->block_size) {
@@ -1249,7 +1281,7 @@ static int write_file_pointer(int fd, const Root *root, const SfsFile *file,
     }
     infiltratr_store_be32(block + file->object_offset + 12U,
                           file->chain.count == 0U ? 0U : file->new_start);
-    fix_checksum(block, root->block_size);
+    fix_checksum(block, root->block_size, checksum_seed(root));
     if (ld_pwrite_full(fd, block, root->block_size,
                        (uint64_t)file->object_block * root->block_size) !=
         (ssize_t)root->block_size) {
@@ -1290,7 +1322,7 @@ static int write_bitmap(int fd, const Root *root, const uint8_t *free_map,
             if (free_map[first + bit] != 0U) *byte |= mask;
             else *byte &= (uint8_t)~mask;
         }
-        fix_checksum(block, root->block_size);
+        fix_checksum(block, root->block_size, checksum_seed(root));
         if (ld_pwrite_full(fd, block, root->block_size,
                            (uint64_t)block_no * root->block_size) !=
             (ssize_t)root->block_size) {
