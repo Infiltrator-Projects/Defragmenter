@@ -7,6 +7,7 @@ protocol.  It knows nothing about GTK widgets or ordinary subprocesses.
 
 from __future__ import annotations
 
+from collections import deque
 import json
 import os
 import shutil
@@ -51,6 +52,9 @@ class PrivilegeSession:
         self.starting = False
         self._active_request: CommandRequest | None = None
         self._write_lock = threading.Lock()
+        self._message_lock = threading.Lock()
+        self._message_queue: deque[dict[str, Any]] = deque()
+        self._message_dispatch_scheduled = False
         self._request_id = 0
         self._active_id: int | None = None
         self._output_parts: list[str] = []
@@ -155,13 +159,36 @@ class PrivilegeSession:
                             from_worker=True,
                         )
                         continue
-                    self._scheduler(self._handle_message, message)
+                    self._queue_message(message)
                 returncode = process.wait()
                 self._scheduler(self._exited, returncode)
             except Exception as exc:
                 self._scheduler(self._start_failed, str(exc))
 
         threading.Thread(target=launcher, daemon=True).start()
+
+    def _queue_message(self, message: dict[str, Any]) -> None:
+        """Queue one helper message without exposing scheduler reordering."""
+
+        should_schedule = False
+        with self._message_lock:
+            self._message_queue.append(message)
+            if not self._message_dispatch_scheduled:
+                self._message_dispatch_scheduled = True
+                should_schedule = True
+        if should_schedule:
+            self._scheduler(self._drain_messages)
+
+    def _drain_messages(self) -> bool:
+        """Deliver helper messages in the exact order read from its pipe."""
+
+        while True:
+            with self._message_lock:
+                if not self._message_queue:
+                    self._message_dispatch_scheduled = False
+                    return False
+                message = self._message_queue.popleft()
+            self._handle_message(message)
 
     def _drain_stderr(self, process: subprocess.Popen[str]) -> None:
         if process.stderr is None:
