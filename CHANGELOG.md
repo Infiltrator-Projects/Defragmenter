@@ -2,6 +2,15 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-201
+
+- Replace the first-pass row-major allocation raster that produced diagonal scan-line stripes with a locality-preserving Morton/Z-order pixel image, retaining exact source-cell tooltips while making contiguous disk regions read as a graphical picture rather than a grid.
+- Add radial graphical summary gauges, a stronger selected-volume hero, deeper card/gradient hierarchy, a wider 1480×900 work-area-bounded canvas and responsive scrolling so the live GTK interface moves materially closer to the approved GUI-first concept.
+- Make the graphical navigation functional: Overview returns to the dashboard top, Test Media launches the installed companion, and Settings opens the persistent System/Day/Night appearance control.
+- Keep supported Defragment/Growth Defrag/Recover actions usable when a physical volume is mounted: the GUI now asks permission to unmount it safely, performs and verifies the unmount, refreshes the selected identity and only then enters the existing mutation planner. The native planner and filesystem writers still refuse mounted targets if that UI sequence is bypassed.
+- Keep unsupported mutation actions fail-closed and user-visible rather than silently unmounting analysis-only filesystems.
+- Qualify production source commit `ff054b617e57482c2ebb6dcae929e79fed191b16` in Project quality gate run 36112649677: the warnings-as-errors build and all 44 hosted CTest tests pass, and the separate ASan/UBSan lane passes. The ordinary candidate gate stops only on the deliberately stale audited-source marker advanced by this release.
+
 ## 1.8.0-200
 
 - Begin the graphical Defragmenter dashboard redesign from the approved GUI-first concept: add a left visual navigation rail, selected-volume hero panel, stronger summary hierarchy, large operation cards, compact activity surface and a wider 1240×780 desktop canvas.
