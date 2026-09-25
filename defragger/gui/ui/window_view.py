@@ -184,7 +184,7 @@ class WindowView:
             "go-home-symbolic",
             "Overview",
             "Drive at a glance",
-            lambda _button: self.disk_map.grab_focus(),
+            lambda _button: self._show_overview(),
             selected=True,
         )
         sidebar.pack_start(overview, False, False, 0)
@@ -519,6 +519,11 @@ class WindowView:
 
         body.pack_start(self._build_sidebar(), False, False, 0)
         body.pack_start(body_scroll, True, True, 0)
+
+    def _show_overview(self) -> None:
+        adjustment = self.body_scroll.get_vadjustment()
+        adjustment.set_value(adjustment.get_lower())
+        self.disk_map.grab_focus()
 
     def _show_settings_dialog(self) -> None:
         dialog = Gtk.Dialog(
