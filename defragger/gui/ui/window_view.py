@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from gi.repository import Gdk, Gtk
+from gi.repository import Gdk, Gtk, Pango
 
 from .map_presenter import MapPresentation
 from .operation_planner import ControlState
@@ -307,11 +307,11 @@ class WindowView:
         selected_label.get_style_context().add_class("hero-kicker")
         self.volume_title = Gtk.Label(label="Choose a disk")
         self.volume_title.set_xalign(0)
-        self.volume_title.set_ellipsize(3)
+        self.volume_title.set_ellipsize(Pango.EllipsizeMode.END)
         self.volume_title.get_style_context().add_class("hero-volume-title")
         self.volume_detail = Gtk.Label(label="Select a filesystem to visualise")
         self.volume_detail.set_xalign(0)
-        self.volume_detail.set_ellipsize(3)
+        self.volume_detail.set_ellipsize(Pango.EllipsizeMode.END)
         self.volume_detail.get_style_context().add_class("hero-hint")
         hero_text.pack_start(selected_label, False, False, 0)
         hero_text.pack_start(self.volume_title, False, False, 0)
