@@ -20,6 +20,79 @@
     } \
 } while (0)
 
+static uint32_t test_load_be32(const unsigned char *bytes)
+{
+    return ((uint32_t)bytes[0] << 24U) |
+           ((uint32_t)bytes[1] << 16U) |
+           ((uint32_t)bytes[2] << 8U) |
+           (uint32_t)bytes[3];
+}
+
+static void test_store_be32(unsigned char *bytes, uint32_t value)
+{
+    bytes[0] = (unsigned char)(value >> 24U);
+    bytes[1] = (unsigned char)(value >> 16U);
+    bytes[2] = (unsigned char)(value >> 8U);
+    bytes[3] = (unsigned char)value;
+}
+
+static int production_parser_rejects(const char *path)
+{
+    AffsVolume volume;
+    char *error = NULL;
+    const int accepted = affs_scan(path, false, &volume, &error) == 0;
+    if (accepted)
+        affs_close(&volume);
+    free(error);
+    return accepted ? 1 : 0;
+}
+
+static int set_amiga_dostype(const char *path, uint8_t dostype)
+{
+    int fd = open(path, O_RDWR | O_CLOEXEC);
+    if (fd < 0)
+        return -1;
+    const ssize_t written = pwrite(fd, &dostype, 1U, 3);
+    const int sync_result = written == 1 ? fsync(fd) : -1;
+    const int close_result = close(fd);
+    return written == 1 && sync_result == 0 && close_result == 0 ? 0 : -1;
+}
+
+static int set_amiga_bitmap_valid(const char *path, uint32_t value)
+{
+    enum { AMIGA_BLOCK_BYTES = 512, AMIGA_LONGWORDS = 128,
+           AMIGA_ROOT_BITMAP_VALID_WORD = 78, AMIGA_CHECKSUM_WORD = 5 };
+    unsigned char root[AMIGA_BLOCK_BYTES];
+    int fd = open(path, O_RDWR | O_CLOEXEC);
+    if (fd < 0)
+        return -1;
+    const off_t bytes = lseek(fd, 0, SEEK_END);
+    if (bytes <= 0 || bytes % AMIGA_BLOCK_BYTES != 0) {
+        (void)close(fd);
+        return -1;
+    }
+    const uint64_t blocks = (uint64_t)bytes / AMIGA_BLOCK_BYTES;
+    const uint64_t root_offset = (blocks / 2U) * AMIGA_BLOCK_BYTES;
+    if (pread(fd, root, sizeof(root), (off_t)root_offset) != (ssize_t)sizeof(root)) {
+        (void)close(fd);
+        return -1;
+    }
+
+    test_store_be32(root + AMIGA_ROOT_BITMAP_VALID_WORD * 4U, value);
+    test_store_be32(root + AMIGA_CHECKSUM_WORD * 4U, 0U);
+    uint32_t sum = 0U;
+    for (size_t word = 0U; word < AMIGA_LONGWORDS; ++word)
+        sum += test_load_be32(root + word * 4U);
+    test_store_be32(root + AMIGA_CHECKSUM_WORD * 4U, 0U - sum);
+
+    const ssize_t written =
+        pwrite(fd, root, sizeof(root), (off_t)root_offset);
+    const int sync_result = written == (ssize_t)sizeof(root) ? fsync(fd) : -1;
+    const int close_result = close(fd);
+    return written == (ssize_t)sizeof(root) &&
+           sync_result == 0 && close_result == 0 ? 0 : -1;
+}
+
 static int production_parser_accepts(const char *path, uint8_t dostype, int expect_ffs,
                                      size_t expected_files, size_t fragmented_targets,
                                      size_t minimum_fragments) {
@@ -88,6 +161,14 @@ static int test_amiga_formatters_and_payload(void) {
     if (ldtm_format_amiga_volume(path, 0U, "LD_OFS") != 0 ||
         ldtm_validate_amiga_volume(path, 0U) != 0 ||
         ldtm_validate_amiga_volume(path, 1U) == 0 ||
+        production_parser_accepts(path, 0U, 0, 0U, 0U, 1U) != 0 ||
+        set_amiga_bitmap_valid(path, 0U) != 0 ||
+        production_parser_rejects(path) != 0 ||
+        set_amiga_bitmap_valid(path, UINT32_MAX) != 0 ||
+        production_parser_accepts(path, 0U, 0, 0U, 0U, 1U) != 0 ||
+        set_amiga_dostype(path, 6U) != 0 ||
+        production_parser_rejects(path) != 0 ||
+        set_amiga_dostype(path, 0U) != 0 ||
         production_parser_accepts(path, 0U, 0, 0U, 0U, 1U) != 0 ||
         ldtm_populate_amiga_volume(path, 0U, &tiny) != 0 ||
         ldtm_verify_amiga_payload(path, 0U, &tiny, detail, sizeof(detail)) != 0 ||
