@@ -588,8 +588,8 @@ def test_main_window_remains_resizable_maximisable_and_workarea_bounded() -> Non
     assert "self.set_decorated(True)" in window_source
     assert "self.set_resizable(True)" in window_source
     assert "self.set_type_hint(Gdk.WindowTypeHint.NORMAL)" in window_source
-    assert "self.set_default_size(1040, 680)" in window_source
-    assert "self.set_default_size(1180, 820)" not in window_source
+    assert "self.set_default_size(1240, 780)" in window_source
+    assert "self.set_default_size(1040, 680)" not in window_source
     assert "self.set_resizable(False)" not in window_source
     assert "set_geometry_hints" not in window_source
     assert 'self.connect("realize", self._configure_native_window)' in window_source
