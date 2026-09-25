@@ -21,7 +21,6 @@ typedef struct {
     uint32_t block_size;
     uint8_t dostype;
     bool ffs;
-    bool longname;
     uint8_t *free_map;
     uint8_t *fixed_map;
     AffsU32Vec bitmap_blocks;
