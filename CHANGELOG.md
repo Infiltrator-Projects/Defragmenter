@@ -2,6 +2,16 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-208
+
+- Fix the APFS failure shown on stale Test Media where an `LD_APFS` GPT partition label was being treated as proof that the partition actually contained an APFS container.
+- Stop letting the Test Media slot label override real host filesystem metadata. A stale `LD_APFS` slot that still contains HFS+/other bytes now keeps its real discovered identity instead of being routed to the APFS mapper.
+- When Linux leaves the filesystem type blank, require a successful first-party `apfs-native identify` result before exposing an `LD_APFS` slot as APFS. A label-only, unformatted or partially rebuilt slot is no longer advertised as a valid APFS filesystem.
+- Keep deterministic OFS/FFS/SFS/PFS3 Test Media label fallback where host blkid support is genuinely absent; the stricter identity rule is applied to APFS because a positive native container probe is available.
+- Extend Test Media verification so APFS is checked with the first-party raw APFS verifier instead of attempting to mount it through the host kernel. Missing/corrupt APFS fixture bytes now produce an explicit Test Media verification failure.
+- Add regressions covering stale HFS+ bytes under an `LD_APFS` label, positive native APFS identification, and rejection of an unformatted labelled APFS slot.
+- Qualify production source commit `21e2936bddab06c0e491f9b0f1167cdf45cd6cc5`: all 44 hosted CTest tests passed, the hosted ASan/UBSan lane passed, and the self-hosted functional/architecture subsets passed. The ordinary candidate gates stopped only on the deliberately stale audited-source marker advanced by this release.
+
 ## 1.8.0-207
 
 - Fix the selected-volume dropdown being clipped and effectively unusable under the decorative hero artwork.
