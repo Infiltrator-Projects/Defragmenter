@@ -403,7 +403,7 @@ class WindowView:
         map_header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         map_title = self._section_label("Disk map")
         map_header.pack_start(map_title, False, False, 0)
-        map_hint = Gtk.Label(label="locality-preserving pixel view")
+        map_hint = Gtk.Label(label="physical-position pixel view")
         map_hint.set_xalign(0)
         map_hint.get_style_context().add_class("map-hint")
         map_header.pack_start(map_hint, False, False, 0)
@@ -443,7 +443,7 @@ class WindowView:
         map_box.pack_start(legend, False, False, 0)
 
         self.map_caption = Gtk.Label(
-            label="Pixel locality map · colour is real allocation state; position preserves storage locality."
+            label="Physical pixel map · left-to-right, top-to-bottom follows real on-disk allocation order."
         )
         self.map_caption.set_xalign(0)
         self.map_caption.set_line_wrap(True)
@@ -901,7 +901,7 @@ class WindowView:
             card.set_fraction(0.0)
             card.set_detail("")
         self.map_caption.set_text(
-            "Pixel locality map · detail increases with the available drawing area."
+            "Physical pixel map · detail increases with the available drawing area without reordering disk positions."
         )
 
     def apply_map_presentation(self, presentation: MapPresentation) -> None:
