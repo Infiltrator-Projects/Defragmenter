@@ -2,6 +2,15 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-199
+
+- Correct SFS2 metadata checksum handling to use the format-specific checksum convention on both validation and rewrite paths; fix the independent SFS2 fixtures so they no longer reproduce the old SFS0 checksum error.
+- Enforce the documented 107-character SFS/SFS2 object-name limit and reject malformed control/colon name bytes before catalogue data is trusted for relocation.
+- Require classic Amiga OFS/FFS root bitmap-valid state before allocation is trusted, and fail closed on DOS\\6/DOS\\7 long-name media until their altered on-disk namespace structures are independently implemented.
+- Harden the bounded PFS3 reader/writer contract with root-extension roving/delete-directory/filename-limit validation and directory-entry extension-tail/comment bounds checks.
+- Add regressions for SFS2 checksum separation, overlength SFS names, invalid Amiga bitmap state, DOS\\6 rejection, malformed PFS3 extension geometry and overlapping PFS3 directory-extension tails.
+- Qualify production source commit `963c8500b87a90a82f619e9abecdbbafc5f48cfb`: the warnings-as-errors build and all 44 hosted CTest tests pass at candidate `4bdce31c7b6e9ff995b9320303d7d8f17ebd3ed0`, and the separate ASan/UBSan lane passes; the pre-release gate stops only on the deliberately stale audit-baseline marker advanced by this release.
+
 ## 1.8.0-198
 
 - Preserve privileged-helper protocol order through one FIFO GTK-main-loop dispatch queue so successful completion cannot overtake and discard the preceding allocation-map JSON.

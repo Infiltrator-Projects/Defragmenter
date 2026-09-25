@@ -5,8 +5,8 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-09-25
 
-Applies to: release version 1.8.0-198
-Audited source commit: aa7b2675e6f945b6e41a6f2a5b65c1cff7fc7c9b
+Applies to: release version 1.8.0-199
+Audited source commit: 963c8500b87a90a82f619e9abecdbbafc5f48cfb
 Audited release-governance commit: 1a61ff57bdf939fcbfcc84300b66b30411276113
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
@@ -15,9 +15,11 @@ This document records the current release safety case. Historical audit-developm
 
 ## Qualification evidence
 
-The current audited source baseline is commit `aa7b2675e6f945b6e41a6f2a5b65c1cff7fc7c9b`. In [Project quality gate run 36098340286](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/36098340286), that revision passed the warnings-as-errors build and all 44 hosted CTest tests, including the composed GUI-service regression for privileged analysis output ordering. The separate hosted ASan/UBSan lane also passed. The gate remained red only because this audit document still named the previous audited source baseline, which is the expected pre-release stop that this release commit resolves.
+The current audited production-source baseline is commit `963c8500b87a90a82f619e9abecdbbafc5f48cfb`. In [Project quality gate run 36105142739](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/36105142739), candidate `4bdce31c7b6e9ff995b9320303d7d8f17ebd3ed0` passed the warnings-as-errors build and all 44 hosted CTest tests. The separate hosted ASan/UBSan lane also passed. The overall pre-release gate stopped only because this audit document still named the preceding production baseline, which is the deliberate release-control stop resolved by version 1.8.0-199.
 
-The reviewed production delta is confined to the reusable administrator-session transport. Privileged-helper protocol messages are now drained through one FIFO main-loop dispatch queue, preventing a successful `finished` message from overtaking the preceding allocation-map output. A deterministic regression reproduces the NTFS physical-device analysis path with deferred GUI scheduling and proves that the complete mapper JSON is retained before completion. NTFS boot-sector, bitmap, MFT/catalogue, allocation-map and mutation engines are unchanged.
+The reviewed filesystem delta came from a forensic comparison against the independently developed Filesystem-Support format cores and documentation, followed by direct verification in Defragmenter's own writer paths. SFS2 now uses its format-specific metadata checksum convention for both reads and rewrites rather than inheriting SFS0's checksum seed; the regression fixtures were corrected independently so they cannot mask that distinction. SFS/SFS2 object records now enforce the documented 107-character name ceiling and reject invalid control/colon bytes before relocation planning.
+
+Classic Amiga OFS/FFS now refuses to trust allocation state unless the root bitmap-valid word is valid, and DOS\\6/DOS\\7 long-name variants fail closed instead of being parsed through the classic directory model. The bounded PFS3 path now validates root-extension roving/delete-directory/filename geometry plus directory-entry comment and extension-tail bounds. Regression cases prove each malformed state is rejected before mutation, while the existing Defragment, Growth Defrag, Recover and payload-verification paths continue to pass.
 
 The release-governance baseline is extended through `1a61ff57bdf939fcbfcc84300b66b30411276113`, which retains the pull-only APT ownership boundary and adds the intended self-hosted qualification run on main pushes. Defragmenter's release path validates its exact immutable GitHub release identity but never dispatches, authenticates to, waits on or synchronously verifies Infiltrator-Repository. The central repository independently discovers released packages on its own schedule, and the release-gate regression now rejects any reintroduction of cross-repository dispatch-token plumbing.
 
@@ -33,9 +35,9 @@ Write-capable engines are admitted only when the parser, placement model, durabl
 - **EXT2/EXT3/EXT4** — first-party native on-disk superblock/group/bitmap/inode validation, extent and legacy-indirect traversal, allocation mutation, metadata checksum maintenance, staged commit and Recover. Production mutation no longer links libext2fs; e2fsprogs/libext2fs remains test-only independent fixture/oracle evidence.
 - **XFS** — native raw userspace catalogue, planning, allocation-metadata reconstruction, verification and Recover for the qualified v5 contract.
 - **Btrfs** — exact first-party analysis plus bounded offline Defragment, exact 10% Growth Defrag and Recover for the single-device CRC32C, level-0 mixed-group subset; unsupported profiles, sharing, encoding, snapshots/qgroups and active transaction state fail closed.
-- **Amiga OFS/FFS** — native raw catalogue, relocation, verification and Recover.
-- **Amiga SFS0/SFS2** — native supported-subset relayout and Recover, including SFS2 48-bit file-size and 32-bit extent geometry.
-- **Amiga PFS3** — bounded small-disk native allocation/anode analysis, Defragment, exact 10% Growth Defrag and Recover.
+- **Amiga OFS/FFS** — native raw catalogue, relocation, verification and Recover for the qualified classic layout; allocation is trusted only with a valid root bitmap-valid word, and DOS\\6/DOS\\7 long-name layouts fail closed.
+- **Amiga SFS0/SFS2** — native supported-subset relayout and Recover with format-specific metadata checksums, 107-character namespace validation, SFS2 48-bit file-size encoding and 32-bit extent geometry.
+- **Amiga PFS3** — bounded small-disk native allocation/anode analysis, Defragment, exact 10% Growth Defrag and Recover with validated root-extension roving/delete-directory/filename geometry and directory-entry extension bounds.
 - **Classic Macintosh HFS** — exact allocation/catalog analysis plus bounded offline Defragment, exact 10% Growth Defrag and Recover for clean volumes whose regular-file fork maps are completely understood.
 - **HFS+/HFSX** — native staged transaction and Recover for the qualified clean/journal state.
 - **Minix v1/v2/v3** — exact native analysis plus recoverable Defragment, exact 10% Growth Defrag and Recover.
@@ -70,4 +72,4 @@ The repository uses the `direct-main` development model. The active `protected-m
 
 Ordinary main commits never publish. An **explicit release decision** is represented by a commit whose subject begins `Release <version>`. The exact head must pass the hosted full-suite and ASan/UBSan lanes; release automation then verifies the version, audit baselines, source/workflow drift and immutable tag identity before creating the GitHub release.
 
-APT refresh is a direct dependency of successful immutable release publication. It dispatches the central Infiltrator repository refresh and verifies that the live catalogue advertises the exact released Defragmenter version before the release workflow is considered complete.
+APT refresh remains a direct release-workflow stage, but publication ownership is pull-based: Defragmenter validates and records its immutable released identity without cross-repository dispatch credentials, while Infiltrator-Repository independently discovers the release on its own schedule.
