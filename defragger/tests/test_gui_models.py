@@ -412,29 +412,40 @@ def test_about_dialog_matches_the_standard_project_identity() -> None:
 
 def test_ui_polish_preserves_allocation_map_visual_contract() -> None:
     source = (GUI / "ui" / "widgets.py").read_text()
+    view_source = (GUI / "ui" / "window_view.py").read_text()
     for required in (
-        '"free": (0.035, 0.055, 0.090)',
-        '"outside": (0.015, 0.022, 0.035)',
-        '"used": (0.045, 0.535, 0.980)',
-        '"fragmented": (1.000, 0.205, 0.235)',
-        '"directory": (0.565, 0.240, 0.930)',
-        '"unknown": (0.310, 0.355, 0.420)',
-        '"bad": (1.000, 0.650, 0.080)',
-        '"background": (0.020, 0.030, 0.050)',
-        "self.set_size_request(-1, 210)",
-        "continuous image instead of an old-style",
-        "def _source_index(",
-        "self._raster_size",
+        '"free": (0.018, 0.050, 0.105)',
+        '"outside": (0.006, 0.014, 0.030)',
+        '"used": (0.020, 0.520, 1.000)',
+        '"fragmented": (1.000, 0.145, 0.235)',
+        '"directory": (0.620, 0.170, 0.980)',
+        '"bad": (1.000, 0.625, 0.040)',
+        '"background": (0.010, 0.020, 0.040)',
+        "self.set_size_request(-1, 250)",
+        "def _morton_xy(",
+        "def _morton_index(",
+        "class GaugeCard(Gtk.Frame):",
+        "locality-preserving pixel image",
     ):
         assert required in source
 
-    # The dashboard's visual contract is intentionally pixel/raster based.
-    # Reintroducing a grid colour or block-grid renderer would regress the
-    # graphical UI direction even if the underlying allocation data remained
-    # correct.
+    for required in (
+        '"Test Media"',
+        '"Settings"',
+        "self.controller.launch_test_media()",
+        "GaugeCard(",
+        "Pixel locality map",
+        "locality-preserving pixel view",
+    ):
+        assert required in view_source
+
+    # The dashboard deliberately visualises the linear disk through a
+    # locality-preserving pixel image. It must not regress to visible grid
+    # geometry or the old row-major stripe renderer.
     assert '"grid":' not in source
     assert "allocation_grid(" not in source
     assert "block_bounds(" not in source
+    assert "pixel_index = y * width + x" not in source
 
 
 def test_theme_modes_are_persistent_and_shared_across_windows() -> None:
@@ -588,7 +599,7 @@ def test_main_window_remains_resizable_maximisable_and_workarea_bounded() -> Non
     assert "self.set_decorated(True)" in window_source
     assert "self.set_resizable(True)" in window_source
     assert "self.set_type_hint(Gdk.WindowTypeHint.NORMAL)" in window_source
-    assert "self.set_default_size(1240, 780)" in window_source
+    assert "self.set_default_size(1480, 900)" in window_source
     assert "self.set_default_size(1040, 680)" not in window_source
     assert "self.set_resizable(False)" not in window_source
     assert "set_geometry_hints" not in window_source
