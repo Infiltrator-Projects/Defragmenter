@@ -8,13 +8,13 @@
 
 Defragmenter is a C-first offline filesystem allocation analyser and defragmenter for Linux. Native C owns the raw filesystem engines and storage-safety core; C++17 owns selected filesystem-neutral application services where RAII, stronger value types and explicit process/protocol ownership improve the implementation. Write-capable engines operate directly on unmounted block devices or filesystem images and do not delegate production mutations to mounted kernel filesystem drivers or external repair/defragmentation tools.
 
-**Current version:** 1.8.0-204
+**Current version:** 1.8.0-205
 
 **Platform:** Linux
 
 **Licence:** GPL-3.0-or-later
 
-> **Safety status:** The version 1.8.0-204 filesystem-safety audit is complete. Defragment, Growth Defrag and Recover are enabled behind exact target confirmation, mounted-target refusal, durable filesystem-specific recovery and final verification. The separate Test Media utility is deliberately destructive and must be used only on sacrificial targets. See `docs/AUDIT_STATUS.md`.
+> **Safety status:** The version 1.8.0-205 filesystem-safety audit is complete. Defragment, Growth Defrag and Recover are enabled behind exact target confirmation, mounted-target refusal, durable filesystem-specific recovery and final verification. The separate Test Media utility is deliberately destructive and must be used only on sacrificial targets. See `docs/AUDIT_STATUS.md`.
 
 ## Engineering ethos
 
@@ -26,7 +26,7 @@ The project prefers the strongest justified method, not automatically the newest
 
 ## Appearance
 
-The graphical dashboard direction is captured in [`docs/UI_VISION.md`](docs/UI_VISION.md), including the approved concept image. The current map is a physically positional pixel raster: left-to-right and then top-to-bottom advances monotonically through the real on-disk allocation-unit address space. No Hilbert, Morton/Z-order or other aesthetic remapping is allowed to move allocation units to different apparent disk positions. The dashboard retains the pinned navigation rail, decorative selected-volume hero, radial allocation summaries, colour-coded operation cards, compact allocation preview and live graphical activity surface. Every visible operation card remains clickable while the UI is idle so unsupported, recovery-only or missing-selection cases produce explicit feedback instead of appearing dead.
+The graphical dashboard direction is captured in [`docs/UI_VISION.md`](docs/UI_VISION.md), including the approved concept image. The left rail is now navigation rather than a duplicate command surface: Overview is the dashboard, while Analyse, Defragment, Growth Defrag, Recover, Test Media and Settings open dedicated pages with one relevant primary action. The approved concept artwork is installed with the application and its raster landscape, drive and Workbench-inspired sidebar imagery are consumed directly instead of being recreated procedurally. The authoritative allocation map remains a physically positional pixel raster: left-to-right and then top-to-bottom advances monotonically through the real on-disk allocation-unit address space, with no Hilbert, Morton/Z-order or other aesthetic remapping.
 
 The main GTK application supports **Follow system**, **Day** and **Night** appearance modes. Follow system detects the host GTK/Mint light/dark preference and resolves it to the exact Common Day or Night palette; it does not inherit an unrelated toolkit palette. Common 1.19.27 supplies the complete layered Linux MBLINK reference face for Night — including titlebar, connection, heading, summary, detail, note, state-border and hover-accent roles — while Day supplies the matching white semantic palette. Defragmenter maps those neutral roles into its GTK selectors without redefining a private palette. The selected mode is persisted per user and synchronised across open windows.
 

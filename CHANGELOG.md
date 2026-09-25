@@ -2,6 +2,17 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-205
+
+- Remove the large-volume NTFS analysis bottleneck. The $MFT catalogue scanner now reads records in 32 MiB sequential batches instead of issuing one tiny metadata read per file-record segment, retaining the old per-record path only as a damaged-I/O fallback.
+- Parse independent NTFS MFT records across **N−1 CPU workers**, leaving one logical processor available to the desktop, and reuse per-worker fixup buffers instead of allocating raw/fixed record buffers for every record.
+- Replace the NTFS catalogue's repeated linear owner lookup and stream/object aggregation passes with an open-addressed record index and one indexed aggregation pass, eliminating the pathological growth that made a large historical MFT appear hung while a small NTFS volume completed normally.
+- Keep NTFS parsing and mutation semantics unchanged: malformed-record tolerance, attribute-list fail-closed behaviour, movable-stream qualification, hibernation detection, fragmentation accounting, Growth Defrag reserve checks and writer/recovery safety remain authoritative.
+- Turn the left rail into genuine navigation rather than duplicate command buttons. Overview keeps convenient quick actions; Analyse, Defragment, Growth Defrag, Recover, Test Media and Settings now open dedicated pages with task-specific information and one relevant primary action.
+- Replace the procedural hero landscape, checker sphere and selected-drive drawing with raster artwork taken directly from the approved UI concept. The approved concept image is installed with the application under `/usr/lib/linux-defragger/art/`; gauges and the physical allocation map remain live data visualisations rather than decorative raster substitutes.
+- Add permanent architecture/regression guards for 32 MiB NTFS batching, N−1 worker policy, hashed catalogue ownership, raster concept artwork, dedicated navigation pages and the existing exact physical disk-map ordering.
+- Qualify production source commit `1d6d609219d360fbd76fc3689d10f7a911940f37` in Project quality gate run 36124937941 and the self-hosted qualification run 36124937769: warnings-as-errors builds, all 44 hosted CTest tests, the local qualification subsets and the separate ASan/UBSan lane pass; both ordinary candidate gates stop only on the deliberately stale audited-source marker advanced by this release.
+
 ## 1.8.0-204
 
 - Fix a selected-volume identity regression introduced by the graphical hero: changing the volume combo box now immediately refreshes the hero title, detail line, footer identity and mounted/offline badge from the revalidated `Volume` object.
