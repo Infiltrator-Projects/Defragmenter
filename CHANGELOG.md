@@ -2,6 +2,15 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-203
+
+- Correct the allocation-map semantics after the 1.8.0-202 Hilbert experiment: display pixels now preserve exact physical disk order instead of moving allocation units to aesthetically convenient coordinates.
+- Map the first physical allocation unit to the top-left pixel and advance monotonically left-to-right, then top-to-bottom, through the real on-disk unit address space. A fully compacted leading allocation region therefore remains one compact leading region on screen instead of being split into unrelated shapes.
+- Build the raster at the actual drawing-surface resolution and paint it 1:1 without interpolation, so category boundaries are not shifted or blurred. Tooltip hit-testing uses the same physical-position mapping and returns the exact source cell rendered at that pixel.
+- Replace the obsolete grid-geometry helper with pure physical-position mapping helpers and add a regression proving a 0–99 unit disk maps exactly to the 100 display pixels in monotonic order, including the packed-used/free boundary.
+- Make the physical-position rule explicit in the UI vision and regression suite: Hilbert, Morton/Z-order and future space-filling curves are forbidden for the authoritative allocation map.
+- Qualify production source commit `d11f3085718064121fa8f98ef25aff87617933e4` in Project quality gate run 36118695325: the warnings-as-errors build and all 44 hosted CTest tests pass, and the separate ASan/UBSan lane passes; the ordinary candidate gate stops only on the deliberately stale audited-source marker advanced by this release.
+
 ## 1.8.0-202
 
 - Recompose the GTK dashboard much closer to the approved concept: pin the navigation rail to the actual left edge with a Paned layout, move version/status into a decorative selected-volume hero, add Workbench-inspired checker artwork, richer colour-coded navigation and operation cards, a compact current-allocation preview, a live activity surface and a denser footer/status strip.
