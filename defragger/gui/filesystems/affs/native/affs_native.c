@@ -354,9 +354,13 @@ int affs_scan(const char *path, bool writable, AffsVolume *v, char **e) {
         affs_set_error(e, "target is not Amiga OFS/FFS DOS\\0..DOS\\7");
         goto fail;
     }
+    if (boot[3] >= 6U) {
+        affs_set_error(e,
+            "Amiga DOS\\6/DOS\\7 long-name media is outside the validated classic OFS/FFS writer");
+        goto fail;
+    }
     v->dostype = boot[3];
     v->ffs = (v->dostype & 1U) != 0;
-    v->longname = v->dostype >= 6;
     v->root = v->blocks / 2U;
     v->free_map = calloc(v->blocks, 1);
     v->fixed_map = calloc(v->blocks, 1);
@@ -368,6 +372,11 @@ int affs_scan(const char *path, bool writable, AffsVolume *v, char **e) {
     unsigned char root[BS];
     if (rd(v->fd, v->root, root, e) || !block_ok(root, T_SHORT, ST_ROOT, 5)) {
         affs_set_error(e, "invalid Amiga root block at %u", v->root);
+        goto fail;
+    }
+    if (lng(root, -50) != UINT32_MAX) {
+        affs_set_error(e,
+            "Amiga root marks the allocation bitmap invalid; repair is required before Defragmenter may trust it");
         goto fail;
     }
     if (read_bitmap(v, root, e)) goto fail;
