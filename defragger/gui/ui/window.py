@@ -226,6 +226,9 @@ class MainWindow(Gtk.ApplicationWindow):
         selection = self.volumes.select(combo.get_active())
         self.view.reset_summary()
         volume = selection.volume
+        self.view.show_selected_volume(
+            volume.display_name if volume is not None else None
+        )
         if volume is None:
             self.coordinator.reset_map()
             self.update_controls()
