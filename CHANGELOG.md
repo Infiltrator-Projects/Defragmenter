@@ -2,6 +2,15 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-202
+
+- Recompose the GTK dashboard much closer to the approved concept: pin the navigation rail to the actual left edge with a Paned layout, move version/status into a decorative selected-volume hero, add Workbench-inspired checker artwork, richer colour-coded navigation and operation cards, a compact current-allocation preview, a live activity surface and a denser footer/status strip.
+- Replace the still-blocky Morton allocation image with a Hilbert-curve raster stretched through bilinear filtering so source locality remains deterministic while the map reads as a continuous picture rather than vertical bars or a visible grid; tooltip reverse-mapping remains exact to the originating analysed cell.
+- Keep displayed storage metrics factual: radial gauges continue to derive only from analyser-returned fragmentation, free/used allocation and file counts; the decorative hero and checker artwork are data-neutral.
+- Make visible dashboard operations responsive rather than inert. Analyse now reports a missing-selection error instead of silently returning; Analyse, Defragment, Growth Defrag and Recover cards remain clickable while idle and delegate validation to the existing controllers so unsupported, mounted, missing-journal and recovery-only cases produce explicit feedback.
+- Drive the graphical Activity panel from real runner lifecycle and progress events without changing the native operation engine, mounted-target refusal, transaction journal, recovery or final verification contracts.
+- Qualify production source commit `fd0c41471b92fd88a099395a76d9942d8c387086` in Project quality gate run 36115039259: warnings-as-errors builds and all 44 hosted CTest tests pass and the separate ASan/UBSan lane passes; the ordinary candidate gate stops only on the deliberately stale audited-source marker advanced by this release.
+
 ## 1.8.0-201
 
 - Replace the first-pass row-major allocation raster that produced diagonal scan-line stripes with a locality-preserving Morton/Z-order pixel image, retaining exact source-cell tooltips while making contiguous disk regions read as a graphical picture rather than a grid.

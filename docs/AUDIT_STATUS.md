@@ -5,8 +5,8 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-09-25
 
-Applies to: release version 1.8.0-201
-Audited source commit: ff054b617e57482c2ebb6dcae929e79fed191b16
+Applies to: release version 1.8.0-202
+Audited source commit: fd0c41471b92fd88a099395a76d9942d8c387086
 Audited release-governance commit: 1a61ff57bdf939fcbfcc84300b66b30411276113
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
@@ -15,13 +15,13 @@ This document records the current release safety case. Historical audit-developm
 
 ## Qualification evidence
 
-The current audited production-source baseline is commit `ff054b617e57482c2ebb6dcae929e79fed191b16`. In [Project quality gate run 36112649677](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/36112649677), that exact candidate passed the warnings-as-errors build and all 44 hosted CTest tests. The separate hosted ASan/UBSan lane also passed. The overall ordinary-candidate gate stopped only because this audit document still named the 1.8.0-200 production baseline, which is the deliberate pre-release control resolved by version 1.8.0-201.
+The current audited production-source baseline is commit `fd0c41471b92fd88a099395a76d9942d8c387086`. In [Project quality gate run 36115039259](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/36115039259), that exact candidate passed the warnings-as-errors build and all 44 hosted CTest tests. The separate hosted ASan/UBSan lane also passed. The overall ordinary-candidate gate stopped only because this audit document still named the 1.8.0-201 production baseline, which is the deliberate pre-release control resolved by version 1.8.0-202.
 
-The reviewed production delta remains confined to GTK presentation and GUI orchestration around already-existing safe storage operations. The allocation display no longer lays linear cells into row-major scan lines; it maps the same authoritative cells through a deterministic locality-preserving pixel image and maps pointer coordinates back to the exact originating allocation range for tooltips. Radial summaries are derived only from returned allocation counts and do not invent filesystem-health or performance claims.
+The reviewed production delta remains confined to GTK presentation and GUI orchestration around already-existing safe storage operations. The allocation display now maps analysed cells through a deterministic Hilbert curve and bilinear presentation filter, preserving exact reverse mapping from pointer coordinates to the originating source cell while avoiding the visible row stripes, empty quadrants and block-grid appearance of the earlier prototypes. Radial summaries remain derived only from analyser-returned fragmentation, allocation and file-count data; the selected-volume landscape and Workbench-inspired checker artwork are decorative and data-neutral.
 
-The graphical navigation now has concrete actions for Overview, Test Media and appearance Settings. For write-capable operations on a mounted physical volume, the GUI explicitly asks the user before calling the existing privileged `udisksctl unmount` path, refreshes and revalidates the selected volume identity, verifies that it is unmounted, and only then calls the existing mutation planner. Unsupported operations are checked before any unmount attempt. The native mutation planner, operation engine and filesystem writers retain their independent mounted-target refusal, identity binding, journal and verification contracts; no raw writer was weakened to make the buttons clickable.
+The dashboard now pins navigation to the physical left edge through a GTK Paned layout, adds a compact mirrored allocation preview, colour-coded operation cards and a live Activity surface driven from real command-runner lifecycle/progress events. Analyse, Defragment, Growth Defrag and Recover cards remain clickable whenever the UI is idle so validation failures are explicit rather than represented by visually dead controls. Analyse reports a missing selection; mutation validation still owns unsupported-operation, mounted-target, journal and recovery-state errors.
 
-The startup canvas is larger but remains capped to the actual monitor work area with normal scrolling available on smaller desktops. Test Media is launched as the separately installed companion executable, while appearance settings continue to use Defragmenter's existing persisted Common-backed System/Day/Night theme policy.
+For write-capable operations on a mounted physical volume, the GUI still asks the user before calling the existing privileged `udisksctl unmount` path, refreshes and revalidates the selected volume identity, verifies that it is unmounted, and only then calls the existing mutation planner. The native mutation planner, operation engine and filesystem writers retain their independent mounted-target refusal, identity binding, journal and final-verification contracts. No raw filesystem writer changed in this visual pass.
 
 The release-governance baseline is extended through `1a61ff57bdf939fcbfcc84300b66b30411276113`, which retains the pull-only APT ownership boundary and adds the intended self-hosted qualification run on main pushes. Defragmenter's release path validates its exact immutable GitHub release identity but never dispatches, authenticates to, waits on or synchronously verifies Infiltrator-Repository. The central repository independently discovers released packages on its own schedule, and the release-gate regression now rejects any reintroduction of cross-repository dispatch-token plumbing.
 
