@@ -40,8 +40,14 @@ def deterministic_noise(length: int) -> bytes:
 
 CASES = (
     ("empty", b""),
+    ("one-byte", deterministic_noise(1)),
+    ("block-minus-one", deterministic_noise(511)),
     ("short-zero", bytes(512)),
+    ("block-plus-one", deterministic_noise(513)),
+    ("page-minus-one", deterministic_noise(4095)),
     ("all-ff", bytes([0xFF]) * 4096),
+    ("page-plus-one", deterministic_noise(4097)),
+    ("small-noise", deterministic_noise(64 * 1024)),
     ("deterministic-noise", deterministic_noise(256 * 1024)),
 )
 
