@@ -1181,7 +1181,7 @@ bool apfs_probe(const char *path)
 /*
  * This writer is intentionally narrower than the exact read-only analyser.
  * It only mutates a single active checkpoint with no older descriptor-ring
- * checkpoint, one direct CIB/bitmap chunk, zero spaceman free-queue state,
+ * checkpoint, one direct CIB with bounded per-chunk allocation bitmaps, zero spaceman free-queue state,
  * one unencrypted snapshot-free volume, flat catalog/extentref roots and
  * unshared plain regular-file extents. The source is never changed until a
  * complete independently verified stage exists.
@@ -1233,7 +1233,12 @@ typedef struct {
     uint8_t *volume;
     uint8_t *spaceman;
     uint8_t *cib;
+    /* Whole-container packed view assembled from direct per-chunk bitmaps. */
     uint8_t *bitmap;
+    size_t bitmap_bytes;
+    uint64_t *bitmap_blocks;
+    uint32_t chunk_count;
+    uint32_t blocks_per_chunk;
     uint64_t checkpoint_map_block;
     uint64_t container_omap_block;
     uint64_t container_omap_tree_block;
@@ -1242,7 +1247,6 @@ typedef struct {
     uint64_t catalog_block;
     uint64_t extentref_block;
     uint64_t cib_block;
-    uint64_t bitmap_block;
     uint64_t desc_base;
     uint32_t desc_blocks;
     uint32_t desc_index;
@@ -1371,6 +1375,7 @@ static void writer_model_free(ApfsWriterModel *model)
     free(model->spaceman);
     free(model->cib);
     free(model->bitmap);
+    free(model->bitmap_blocks);
     free(model->extents.items);
     free(model->files.items);
     apfs_analysis_free(&model->analysis);
@@ -1489,7 +1494,15 @@ static int writer_load_spaceman(ApfsWriterModel *model,
 {
     model->spaceman = malloc(model->reader.block_size);
     model->cib = malloc(model->reader.block_size);
-    model->bitmap = malloc(model->reader.block_size);
+    const uint64_t bitmap_bytes64 =
+        (model->reader.block_count + 7U) / 8U;
+    if (bitmap_bytes64 == 0U || bitmap_bytes64 > SIZE_MAX) {
+        set_error(error, error_size,
+                  "APFS writer allocation bitmap is too large");
+        return -1;
+    }
+    model->bitmap_bytes = (size_t)bitmap_bytes64;
+    model->bitmap = calloc(model->bitmap_bytes, 1U);
     if (model->spaceman == NULL || model->cib == NULL ||
         model->bitmap == NULL) {
         set_error(error, error_size,
@@ -1510,7 +1523,7 @@ static int writer_load_spaceman(ApfsWriterModel *model,
     const uint64_t main_blocks =
         infiltratr_load_le64(model->spaceman +
                              APFS_SPACEMAN_MAIN_OFFSET);
-    const uint64_t chunk_count =
+    const uint64_t chunk_count64 =
         infiltratr_load_le64(model->spaceman +
                              APFS_SPACEMAN_MAIN_OFFSET + 8U);
     const uint32_t cib_count =
@@ -1528,12 +1541,28 @@ static int writer_load_spaceman(ApfsWriterModel *model,
     const uint64_t ip_count =
         infiltratr_load_le64(model->spaceman +
                              APFS_SPACEMAN_IP_BLOCK_COUNT_OFFSET);
+    model->blocks_per_chunk =
+        infiltratr_load_le32(model->spaceman + 36U);
+    const uint32_t chunks_per_cib =
+        infiltratr_load_le32(model->spaceman + 40U);
     if (main_blocks != model->reader.block_count ||
-        chunk_count != 1U || cib_count != 1U || cab_count != 0U ||
-        ip_count != 0U ||
+        chunk_count64 == 0U || chunk_count64 > UINT32_MAX ||
+        cib_count != 1U || cab_count != 0U || ip_count != 0U ||
+        model->blocks_per_chunk == 0U ||
+        model->blocks_per_chunk >
+            model->reader.block_size * 8U ||
+        chunks_per_cib < chunk_count64 ||
         (uint64_t)addr_offset + 8U > model->reader.block_size) {
         set_error(error, error_size,
-                  "APFS writer requires one direct CIB, one main-device chunk and no internal-pool allocation");
+                  "APFS writer requires one direct CIB with complete per-chunk bitmaps and no internal-pool allocation");
+        return -1;
+    }
+    model->chunk_count = (uint32_t)chunk_count64;
+    model->bitmap_blocks =
+        calloc(model->chunk_count, sizeof(*model->bitmap_blocks));
+    if (model->bitmap_blocks == NULL) {
+        set_error(error, error_size,
+                  "out of memory storing APFS chunk bitmap addresses");
         return -1;
     }
     for (uint32_t queue = 0U;
@@ -1556,40 +1585,72 @@ static int writer_load_spaceman(ApfsWriterModel *model,
         (obj_type(model->cib) & APFS_OBJ_TYPE_MASK) !=
             APFS_OBJECT_TYPE_SPACEMAN_CIB ||
         obj_xid(model->cib) != model->analysis.xid ||
-        (infiltratr_load_le32(model->cib + 36U) & 0x000fffffU) != 1U) {
+        (infiltratr_load_le32(model->cib + 36U) & 0x000fffffU) !=
+            model->chunk_count ||
+        (uint64_t)40U + (uint64_t)model->chunk_count * 32U >
+            model->reader.block_size) {
         set_error(error, error_size,
-                  "APFS writer requires one checksum-valid chunk-info record");
+                  "APFS writer requires one checksum-valid direct chunk-info block");
         return -1;
     }
-    const uint8_t *ci = model->cib + 40U;
-    const uint64_t chunk_addr = infiltratr_load_le64(ci + 8U);
-    const uint32_t chunk_blocks = infiltratr_load_le32(ci + 16U);
-    const uint32_t chunk_free = infiltratr_load_le32(ci + 20U);
-    model->bitmap_block = infiltratr_load_le64(ci + 24U);
-    if (chunk_addr != 0U ||
-        chunk_blocks != model->reader.block_count ||
-        chunk_free != model->recorded_free ||
-        model->bitmap_block == 0U ||
-        model->bitmap_block >= model->reader.block_count ||
-        model->reader.block_count >
-            (uint64_t)model->reader.block_size * 8U ||
-        read_block(&model->reader, model->bitmap_block,
-                   model->bitmap, error, error_size) != 0) {
+
+    uint8_t *chunk_bitmap = malloc(model->reader.block_size);
+    if (chunk_bitmap == NULL) {
         set_error(error, error_size,
-                  "APFS writer requires one complete direct allocation bitmap");
+                  "out of memory reading APFS chunk bitmaps");
         return -1;
     }
+    uint64_t expected_address = 0U;
     uint64_t free_count = 0U;
-    for (uint64_t block = 0U;
-         block < model->reader.block_count; ++block)
-        if (!writer_bit_get(model->bitmap, block))
-            free_count++;
-    if (free_count != model->recorded_free) {
-        set_error(error, error_size,
-                  "APFS writer bitmap/free-count mismatch");
-        return -1;
+    int result = -1;
+    for (uint32_t chunk = 0U; chunk < model->chunk_count; ++chunk) {
+        const uint8_t *ci =
+            model->cib + 40U + (size_t)chunk * 32U;
+        const uint64_t address = infiltratr_load_le64(ci + 8U);
+        const uint32_t block_count = infiltratr_load_le32(ci + 16U);
+        const uint32_t recorded_chunk_free =
+            infiltratr_load_le32(ci + 20U);
+        const uint64_t bitmap_block =
+            infiltratr_load_le64(ci + 24U);
+        if (address != expected_address || block_count == 0U ||
+            block_count > model->blocks_per_chunk ||
+            block_count > model->reader.block_count - address ||
+            bitmap_block == 0U ||
+            bitmap_block >= model->reader.block_count ||
+            read_block(&model->reader, bitmap_block,
+                       chunk_bitmap, error, error_size) != 0) {
+            set_error(error, error_size,
+                      "APFS writer found incomplete per-chunk allocation metadata");
+            goto done;
+        }
+        model->bitmap_blocks[chunk] = bitmap_block;
+        uint32_t counted_chunk_free = 0U;
+        for (uint32_t bit = 0U; bit < block_count; ++bit) {
+            const bool used =
+                (chunk_bitmap[bit >> 3U] &
+                 (uint8_t)(1U << (bit & 7U))) != 0U;
+            writer_bit_set(model->bitmap, address + bit, used);
+            if (!used) ++counted_chunk_free;
+        }
+        if (counted_chunk_free != recorded_chunk_free) {
+            set_error(error, error_size,
+                      "APFS writer chunk bitmap/free-count mismatch");
+            goto done;
+        }
+        free_count += counted_chunk_free;
+        expected_address += block_count;
     }
-    return 0;
+    if (expected_address != model->reader.block_count ||
+        free_count != model->recorded_free) {
+        set_error(error, error_size,
+                  "APFS writer allocation chunks do not account for the complete container");
+        goto done;
+    }
+    result = 0;
+
+done:
+    free(chunk_bitmap);
+    return result;
 }
 
 static int writer_find_extref(ApfsWriterModel *model,
@@ -1907,7 +1968,6 @@ static int writer_model_load(const char *path,
         model->checkpoint_map_block,
         model->analysis.spaceman_block,
         model->cib_block,
-        model->bitmap_block,
         model->container_omap_block,
         model->container_omap_tree_block,
         model->analysis.volume_super_block,
@@ -1924,6 +1984,15 @@ static int writer_model_load(const char *path,
                             required[index])) {
             set_error(error, error_size,
                       "APFS writer requires all live metadata blocks to be allocator-owned");
+            goto fail;
+        }
+    }
+    for (uint32_t chunk = 0U; chunk < model->chunk_count; ++chunk) {
+        if (model->bitmap_blocks[chunk] >= model->reader.block_count ||
+            !writer_bit_get(model->bitmap,
+                            model->bitmap_blocks[chunk])) {
+            set_error(error, error_size,
+                      "APFS writer requires every chunk bitmap block to be allocator-owned");
             goto fail;
         }
     }
@@ -2426,10 +2495,8 @@ int apfs_build_stage(const char *source_path,
     if (result != 0)
         goto done;
 
-    uint8_t *allocation =
-        malloc(source.reader.block_size);
-    uint8_t *blocked =
-        malloc(source.reader.block_size);
+    uint8_t *allocation = malloc(source.bitmap_bytes);
+    uint8_t *blocked = malloc(source.bitmap_bytes);
     if (allocation == NULL || blocked == NULL) {
         free(allocation); free(blocked);
         set_error(error, error_size,
@@ -2437,10 +2504,8 @@ int apfs_build_stage(const char *source_path,
         result = -1;
         goto done;
     }
-    memcpy(allocation, source.bitmap,
-           source.reader.block_size);
-    memcpy(blocked, source.bitmap,
-           source.reader.block_size);
+    memcpy(allocation, source.bitmap, source.bitmap_bytes);
+    memcpy(blocked, source.bitmap, source.bitmap_bytes);
 
     for (size_t index = 0U;
          index < source.extents.count; ++index) {
@@ -2572,6 +2637,48 @@ int apfs_build_stage(const char *source_path,
             &source, error, error_size) != 0)
         result = -1;
     if (result == 0) {
+        uint8_t *chunk_bitmap = calloc(1U, source.reader.block_size);
+        if (chunk_bitmap == NULL) {
+            set_error(error, error_size,
+                      "out of memory rebuilding APFS chunk bitmaps");
+            result = -1;
+        } else {
+            uint64_t address = 0U;
+            for (uint32_t chunk = 0U;
+                 chunk < source.chunk_count && result == 0; ++chunk) {
+                uint8_t *ci =
+                    source.cib + 40U + (size_t)chunk * 32U;
+                const uint32_t block_count =
+                    infiltratr_load_le32(ci + 16U);
+                memset(chunk_bitmap, 0, source.reader.block_size);
+                uint32_t chunk_free = 0U;
+                for (uint32_t bit = 0U; bit < block_count; ++bit) {
+                    if (writer_bit_get(allocation, address + bit))
+                        writer_bit_set(chunk_bitmap, bit, true);
+                    else
+                        ++chunk_free;
+                }
+                infiltratr_store_le32(ci + 20U, chunk_free);
+                if (writer_write_block(
+                        stage_fd, &source,
+                        source.bitmap_blocks[chunk],
+                        chunk_bitmap,
+                        error, error_size) != 0)
+                    result = -1;
+                address += block_count;
+            }
+            free(chunk_bitmap);
+            if (result == 0) {
+                writer_checksum_store(
+                    source.cib, source.reader.block_size);
+                if (writer_write_block(
+                        stage_fd, &source, source.cib_block,
+                        source.cib, error, error_size) != 0)
+                    result = -1;
+            }
+        }
+    }
+    if (result == 0) {
         writer_checksum_store(
             source.catalog.raw,
             source.reader.block_size);
@@ -2584,11 +2691,6 @@ int apfs_build_stage(const char *source_path,
                 stage_fd, &source,
                 source.extentref_block,
                 source.extentref.raw,
-                error, error_size) != 0 ||
-            writer_write_block(
-                stage_fd, &source,
-                source.bitmap_block,
-                allocation,
                 error, error_size) != 0 ||
             fsync(stage_fd) != 0) {
             if (error != NULL && error[0] == '\0')
