@@ -3,10 +3,10 @@
 Status: **complete**
 
 Completed: 2026-09-22
-Extended: 2026-09-25
+Extended: 2026-09-26
 
-Applies to: release version 1.8.0-209
-Audited source commit: 6c066eca248747f7150f84f1e7744caf36199ae2
+Applies to: release version 1.8.0-210
+Audited source commit: c047cfa152b238c1b5684cd15fffaadef93e77a8
 Audited release-governance commit: 1a61ff57bdf939fcbfcc84300b66b30411276113
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
@@ -15,11 +15,11 @@ This document records the current release safety case. Historical audit-developm
 
 ## Qualification evidence
 
-The current audited production-source baseline is commit `6c066eca248747f7150f84f1e7744caf36199ae2`. In Project quality gate run 36141377186, that exact candidate completed the warnings-as-errors build and all 44 hosted CTest tests successfully; the independent hosted ASan/UBSan lane also passed. The self-hosted Local Linux / heavy qualification run 36141376019 completed its build, functional test subsets and architecture checks successfully. Both ordinary-candidate gates stopped only because this audit document still named the 1.8.0-208 production baseline, which is the deliberate pre-release control resolved by version 1.8.0-209.
+The current audited production-source baseline is commit `c047cfa152b238c1b5684cd15fffaadef93e77a8`. In Project quality gate run 36216799567, that exact candidate completed the warnings-as-errors C/C++ build, the complete native/filesystem/GUI/release CTest suite and the independent hosted ASan/UBSan lane successfully. Self-hosted Local Linux / heavy qualification run 36216799410 likewise completed its dependency check, strict build and native/filesystem/GUI test subsets successfully. Both candidate runs stopped only at the deliberate stale audited-source control, which is advanced by version 1.8.0-210.
 
-The reviewed filesystem-analysis delta completes the SFS and PFS3 exact-allocation presentation contract by emitting the already-computed regular-file, directory and fragmented-file counts together with a calculated file-fragmentation percentage and an explicit zero fragmented-directory count for the qualified formats. No SFS/PFS3 placement, write, transaction, recovery or verification semantics changed. Linux swap presentation now states the format distinction explicitly: swap is page-slot storage rather than a file/extent filesystem, so file fragmentation is not applicable whether the area is active or inactive; raw swap header/bad-page/allocation semantics are unchanged.
+The reviewed Test Media delta strengthens the destructive qualification contract. Preparation now rejects system-backed and unsuitable targets more aggressively, binds confirmation and persisted state to a stable disk fingerprint instead of a reusable `/dev` pathname, stores root-owned state beneath `/var/lib`, waits for the expected repartitioned device topology instead of relying on a fixed sleep, verifies retained directory-test payload bytes rather than entry count alone, and adds deterministic boundary-sized files around common 512-byte and 4096-byte allocation boundaries. The malformed-media matrix is broadened across the native filesystem identifiers. These changes do not relax any production writer subset or recovery invariant.
 
-The reviewed GTK delta is layout-only. The redundant miniature allocation preview has been removed from Overview, the idle Activity area is compacted into one horizontal strip, root spacing is reduced, and the authoritative DiskMap minimum height is reduced from 250 to 64 pixels while remaining vertically expandable. This lets the real map yield height first on constrained laptop work areas so the quick-action row, activity strip and status/footer remain visible without unnecessary vertical scrolling. Filesystem analysis data, map physical ordering, mutation planning and writer safety are unchanged.
+The reviewed performance delta preserves the authoritative allocation map's exact row-major physical ordering while reducing unnecessary work. Resize-triggered remaps now use hysteresis instead of rescanning for small geometry changes, map rasterisation paints physical spans rather than performing the former full per-pixel source-cell search, and the shared parallel worker default leaves one online CPU available to the desktop while still applying media-specific I/O limits. APFS Test Media discovery also avoids a redundant AFFS probe. Filesystem interpretation, placement, mutation and final-verification semantics are unchanged.
 
 The release-governance baseline is extended through `1a61ff57bdf939fcbfcc84300b66b30411276113`, which retains the pull-only APT ownership boundary and adds the intended self-hosted qualification run on main pushes. Defragmenter's release path validates its exact immutable GitHub release identity but never dispatches, authenticates to, waits on or synchronously verifies Infiltrator-Repository. The central repository independently discovers released packages on its own schedule, and the release-gate regression now rejects any reintroduction of cross-repository dispatch-token plumbing.
 
