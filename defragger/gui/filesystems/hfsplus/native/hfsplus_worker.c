@@ -340,12 +340,12 @@ static int stage_sha256(const char *path, char output[65], char **error) {
     int rc = 0;
     uint32_t block = 0;
     while (block < stage.total_blocks && rc == 0) {
-        if (!stage.used_map[block]) {
+        if (!ld_bitmap_get(stage.used_map, block)) {
             ++block;
             continue;
         }
         uint32_t start = block++;
-        while (block < stage.total_blocks && stage.used_map[block]) ++block;
+        while (block < stage.total_blocks && ld_bitmap_get(stage.used_map, block)) ++block;
         uint64_t offset = (uint64_t)start * stage.block_size;
         uint64_t length = (uint64_t)(block - start) * stage.block_size;
         rc = hash_update_region(context, stage.fd, offset, length,
@@ -447,12 +447,12 @@ static int safe_commit_stage(const char *stage_path, const char *target_path,
     if (ld_stop_requested()) rc = STOPPED;
     uint32_t block = 0;
     while (block < stage.total_blocks && rc == 0) {
-        if (!stage.used_map[block]) {
+        if (!ld_bitmap_get(stage.used_map, block)) {
             ++block;
             continue;
         }
         uint32_t start = block++;
-        while (block < stage.total_blocks && stage.used_map[block]) ++block;
+        while (block < stage.total_blocks && ld_bitmap_get(stage.used_map, block)) ++block;
         uint64_t offset = (uint64_t)start * stage.block_size;
         uint64_t remain = (uint64_t)(block - start) * stage.block_size;
         uint64_t cursor = 0;
