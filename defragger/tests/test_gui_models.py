@@ -17,6 +17,7 @@ from ui.backend_catalog import BackendCatalog
 from ui.devices import Volume
 from ui.map_geometry import (
     physical_unit_at_pixel,
+    pixel_span_for_unit_range,
     source_cell_at_pixel,
     source_cell_for_unit,
 )
@@ -199,6 +200,13 @@ def test_allocation_raster_preserves_physical_disk_order() -> None:
     assert source_cell_for_unit(starts, ends, 99) == 1
     assert source_cell_at_pixel(starts, ends, 10, 10, 9, 4) == 0
     assert source_cell_at_pixel(starts, ends, 10, 10, 0, 5) == 1
+
+    # Span filling is exactly equivalent to the per-pixel physical mapping.
+    assert pixel_span_for_unit_range(0, 99, 10, 10, 0, 49) == (0, 50)
+    assert pixel_span_for_unit_range(0, 99, 10, 10, 50, 99) == (50, 100)
+    assert pixel_span_for_unit_range(0, 99, 10, 1, 10, 10) == (1, 2)
+    assert pixel_span_for_unit_range(0, 99, 10, 1, 1, 1) == (1, 1)
+    assert pixel_span_for_unit_range(0, 99, 10, 1, -10, -1) == (0, 0)
 
     # Regression: a fully packed beginning followed by free space must remain
     # one monotonic before/after boundary on screen. No Hilbert/Morton spatial
@@ -465,7 +473,7 @@ def test_ui_polish_preserves_allocation_map_visual_contract() -> None:
         '"bad": (1.000, 0.625, 0.040)',
         '"background": (0.010, 0.020, 0.040)',
         "self.set_size_request(-1, 64)",
-        "physical_unit_at_pixel(",
+        "pixel_span_for_unit_range(",
         "source_cell_at_pixel(",
         "Pixbuf.new_from_bytes(",
         "class GaugeCard(Gtk.Frame):",

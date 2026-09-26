@@ -43,6 +43,51 @@ def physical_unit_at_pixel(
     )
 
 
+
+def pixel_span_for_unit_range(
+    first_unit: int,
+    last_unit: int,
+    width: int,
+    height: int,
+    start_unit: int,
+    end_unit: int,
+) -> tuple[int, int]:
+    """Return the exact row-major pixel interval occupied by a unit range.
+
+    The interval is half-open [start, end) and is mathematically equivalent to
+    testing every pixel through physical_unit_at_pixel(). It lets the renderer
+    fill contiguous byte ranges rather than executing Python once per pixel.
+    """
+
+    width = max(1, int(width))
+    height = max(1, int(height))
+    first_unit = int(first_unit)
+    last_unit = int(last_unit)
+    start_unit = int(start_unit)
+    end_unit = int(end_unit)
+    if first_unit < 0 or last_unit < first_unit or end_unit < start_unit:
+        return (0, 0)
+
+    start = max(first_unit, start_unit)
+    end = min(last_unit, end_unit)
+    if end < start:
+        return (0, 0)
+
+    pixel_count = width * height
+    unit_count = last_unit - first_unit + 1
+
+    def ceil_ratio(numerator: int, denominator: int) -> int:
+        return (numerator + denominator - 1) // denominator
+
+    relative_start = start - first_unit
+    relative_end = end - first_unit + 1
+    pixel_start = ceil_ratio(relative_start * pixel_count, unit_count)
+    pixel_end = ceil_ratio(relative_end * pixel_count, unit_count)
+    return (
+        max(0, min(pixel_count, pixel_start)),
+        max(0, min(pixel_count, pixel_end)),
+    )
+
 def source_cell_for_unit(
     starts: Sequence[int],
     ends: Sequence[int],

@@ -9,7 +9,7 @@ from typing import Any
 
 from gi.repository import Gdk, GdkPixbuf, GLib, Gtk
 
-from .map_geometry import physical_unit_at_pixel, source_cell_at_pixel
+from .map_geometry import pixel_span_for_unit_range, source_cell_at_pixel
 from .theme_tokens import TYPOGRAPHY
 
 MIN_MAP_CELLS = 256
@@ -154,48 +154,38 @@ class DiskMap(Gtk.DrawingArea):
             return self._pixbuf
 
         pixel_count = width * height
-        pixels = bytearray(pixel_count * 3)
+        background = bytes(
+            max(0, min(255, int(round(channel * 255.0))))
+            for channel in self.COLORS["background"]
+        )
+        pixels = bytearray(background * pixel_count)
         first_unit = self._cell_starts[0]
         last_unit = self._cell_ends[-1]
 
-        # Both the analyser contract and map presenter guarantee monotonically
-        # ordered physical cell bounds.  Walk them once while the display
-        # pixels advance monotonically through the real on-disk unit range.
-        # This is deliberately row-major: no Hilbert/Morton/other spatial curve
-        # may move an allocation unit to a different apparent disk position.
-        cell_index = 0
-        for pixel_index in range(pixel_count):
-            x = pixel_index % width
-            y = pixel_index // width
-            unit = physical_unit_at_pixel(
+        # The physical mapping is still exactly row-major and monotonic. Fill
+        # the contiguous pixel interval represented by each source cell instead
+        # of recalculating the inverse mapping in Python for every pixel. Gaps
+        # remain prefilled with the background colour. No Hilbert/Morton/other
+        # spatial curve may move a unit to a different apparent disk position.
+        for index, cell in enumerate(self.cells):
+            pixel_start, pixel_end = pixel_span_for_unit_range(
                 first_unit,
                 last_unit,
                 width,
                 height,
-                x,
-                y,
+                self._cell_starts[index],
+                self._cell_ends[index],
             )
-            assert unit is not None
-            while (
-                cell_index + 1 < len(self.cells)
-                and unit > self._cell_ends[cell_index]
-            ):
-                cell_index += 1
-
-            if (
-                unit < self._cell_starts[cell_index]
-                or unit > self._cell_ends[cell_index]
-            ):
-                colour = self.COLORS["background"]
-            else:
-                colour = self._cell_colour(self.cells[cell_index])
-
+            if pixel_end <= pixel_start:
+                continue
+            colour = self._cell_colour(cell)
             rgb = bytes(
                 max(0, min(255, int(round(channel * 255.0))))
                 for channel in colour
             )
-            offset = pixel_index * 3
-            pixels[offset : offset + 3] = rgb
+            pixels[pixel_start * 3 : pixel_end * 3] = rgb * (
+                pixel_end - pixel_start
+            )
 
         rowstride = width * 3
         data = GLib.Bytes.new(bytes(pixels))
