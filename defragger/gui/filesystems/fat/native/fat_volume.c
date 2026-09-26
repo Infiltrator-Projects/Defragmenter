@@ -428,7 +428,6 @@ void fat32_load(
     if (fs->visited_dirs == NULL || fs->claimed_clusters == NULL ||
         fs->chain_seen == NULL)
         ld_die("cannot allocate packed FAT traversal guards");
-    fs->chain_generation = 0;
 }
 
 void fat32_unload(Fat32 *fs) {
