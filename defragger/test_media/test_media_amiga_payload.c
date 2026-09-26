@@ -350,10 +350,9 @@ int ldtm_populate_amiga_volume(const char *path, uint8_t dostype,
     uint32_t fragmented_dir_block;
     uint32_t metadata_cursor = 2U;
     uint32_t data_cursor;
-    uint64_t file_size64;
-    uint32_t file_size;
+    uint64_t file_sizes[AMIGA_MAX_TARGET_FILES] = {0};
+    uint32_t data_blocks[AMIGA_MAX_TARGET_FILES] = {0};
     uint32_t payload_size;
-    uint32_t total_data_blocks;
     size_t file_index;
     uint32_t index;
     int result = -1;
@@ -361,12 +360,19 @@ int ldtm_populate_amiga_volume(const char *path, uint8_t dostype,
     memset(targets, 0, sizeof(targets));
     if (path == NULL || profile == NULL || (dostype != 0U && dostype != 1U) ||
         profile->files == 0U || profile->files > AMIGA_MAX_TARGET_FILES ||
-        profile->chunks < 2U || profile->chunk_kib == 0U) return -1;
-    file_size64 = (uint64_t)profile->chunks * (uint64_t)profile->chunk_kib * UINT64_C(1024);
-    if (file_size64 == 0U || file_size64 > UINT32_MAX) return -1;
-    file_size = (uint32_t)file_size64;
+        profile->chunk_kib == 0U) return -1;
     payload_size = dostype == 0U ? AMIGA_BLOCK_SIZE - 24U : AMIGA_BLOCK_SIZE;
-    total_data_blocks = (uint32_t)((file_size64 + payload_size - 1U) / payload_size);
+    for (file_index = 0U; file_index < profile->files; ++file_index) {
+        const uint32_t chunks = ldtm_profile_file_chunks(profile, file_index);
+        const uint64_t bytes = ldtm_profile_file_bytes(profile, file_index);
+        if (chunks < 2U || bytes == 0U || bytes > UINT32_MAX)
+            return -1;
+        file_sizes[file_index] = bytes;
+        const uint64_t blocks = (bytes + payload_size - 1U) / payload_size;
+        if (blocks == 0U || blocks > UINT32_MAX)
+            return -1;
+        data_blocks[file_index] = (uint32_t)blocks;
+    }
 
     if (affs_scan(path, true, &volume, &error) != 0) goto cleanup_error;
     if (volume.dostype != dostype || volume.files.n != 0U || volume.directory_blocks.n != 1U) goto cleanup_volume;
@@ -378,6 +384,7 @@ int ldtm_populate_amiga_volume(const char *path, uint8_t dostype,
     init_directory_block(fragmented_dir, fragmented_dir_block, data_dir_block, "fragmented-directory");
 
     for (file_index = 0U; file_index < profile->files; ++file_index) {
+        const uint32_t total_data_blocks = data_blocks[file_index];
         const uint32_t list_count = total_data_blocks > AMIGA_HASH_SIZE
             ? (total_data_blocks - AMIGA_HASH_SIZE + AMIGA_HASH_SIZE - 1U) / AMIGA_HASH_SIZE
             : 0U;
@@ -423,17 +430,25 @@ int ldtm_populate_amiga_volume(const char *path, uint8_t dostype,
     if (data_cursor < metadata_cursor + 1024U) data_cursor = metadata_cursor + 1024U;
     for (index = 0U; index < profile->chunks; ++index) {
         for (file_index = 0U; file_index < profile->files; ++file_index) {
-            const uint32_t base = total_data_blocks / profile->chunks;
-            const uint32_t extra = total_data_blocks % profile->chunks;
+            const uint32_t chunks = ldtm_profile_file_chunks(profile, file_index);
+            if (index >= chunks) continue;
+            const uint32_t total_data_blocks = data_blocks[file_index];
+            const uint32_t base = total_data_blocks / chunks;
+            const uint32_t extra = total_data_blocks % chunks;
             const uint32_t run = base + (index < extra ? 1U : 0U);
-            if (allocate_run(&volume, &data_cursor, run, &targets[file_index].data) != 0) goto cleanup_volume;
+            if (run == 0U ||
+                allocate_run(&volume, &data_cursor, run,
+                             &targets[file_index].data) != 0)
+                goto cleanup_volume;
         }
     }
 
     for (file_index = 0U; file_index < profile->files; ++file_index) {
-        if (targets[file_index].data.count != total_data_blocks ||
-            write_target_data(&volume, &targets[file_index], dostype, (uint32_t)file_index, file_size64) != 0 ||
-            write_target_metadata(&volume, &targets[file_index], files_dir_block, file_size) != 0 ||
+        if (targets[file_index].data.count != data_blocks[file_index] ||
+            write_target_data(&volume, &targets[file_index], dostype,
+                              (uint32_t)file_index, file_sizes[file_index]) != 0 ||
+            write_target_metadata(&volume, &targets[file_index], files_dir_block,
+                                  (uint32_t)file_sizes[file_index]) != 0 ||
             link_child(volume.fd, files_dir, targets[file_index].header, targets[file_index].name) != 0) {
             goto cleanup_volume;
         }
@@ -499,7 +514,6 @@ static int verify_amiga_payload_state(
     AffsVolume volume;
     char *error = NULL;
     uint8_t seen[AMIGA_MAX_TARGET_FILES] = {0};
-    uint64_t file_size;
     uint32_t expected_directory_entries;
     uint32_t directory_entries = 0U;
     size_t file_index;
@@ -507,7 +521,6 @@ static int verify_amiga_payload_state(
     if (detail != NULL && detail_capacity > 0U) detail[0] = '\0';
     if (path == NULL || profile == NULL || (dostype != 0U && dostype != 1U) ||
         profile->files == 0U || profile->files > AMIGA_MAX_TARGET_FILES) return -1;
-    file_size = (uint64_t)profile->chunks * (uint64_t)profile->chunk_kib * UINT64_C(1024);
     expected_directory_entries = profile->directory_initial / 2U + profile->directory_second;
     if (affs_scan(path, false, &volume, &error) != 0) goto cleanup_error;
     if (volume.dostype != dostype || volume.directory_blocks.n != 4U) goto cleanup_volume;
@@ -522,11 +535,14 @@ static int verify_amiga_payload_state(
         if (sscanf(name, "fragmented-%02u.bin%n", &target_index, &consumed) == 1 &&
             consumed > 0 && name[consumed] == '\0' && target_index < profile->files) {
             const size_t fragments = affs_fragments(&file->data);
+            const uint64_t file_size =
+                ldtm_profile_file_bytes(profile, target_index);
             if (seen[target_index] != 0U ||
                 (expect_fragmented != 0
-                    ? fragments < profile->chunks
+                    ? fragments < 2U
                     : fragments != 1U) ||
-                verify_target_data(&volume, file, dostype, target_index, file_size) != 0)
+                verify_target_data(&volume, file, dostype, target_index,
+                                   file_size) != 0)
                 goto cleanup_volume;
             seen[target_index] = 1U;
         } else if (infiltratr_string_starts_with(name, "entry-") &&
@@ -544,8 +560,10 @@ static int verify_amiga_payload_state(
         if (expect_fragmented != 0) {
             (void)snprintf(
                 detail, detail_capacity,
-                "raw C Amiga payload verified: %u targets, >=%u fragments each, %u retained directory entries",
-                profile->files, profile->chunks, expected_directory_entries);
+                "raw C Amiga heterogeneous payload verified: %u differently sized targets, %llu MiB total, every target fragmented, %u retained directory entries",
+                profile->files,
+                (unsigned long long)(ldtm_profile_payload_bytes(profile) / LDTM_MIB),
+                expected_directory_entries);
         } else {
             (void)snprintf(
                 detail, detail_capacity,
