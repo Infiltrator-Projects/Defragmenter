@@ -284,9 +284,10 @@ static char *selected_device(LdtmApp *app) {
 }
 
 static gboolean spawn_worker(LdtmApp *app, const char *operation,
-                             const char *device, gboolean confirmed) {
+                             const char *device, gboolean confirmed,
+                             const char *fingerprint) {
     gchar *self = g_file_read_link("/proc/self/exe", NULL);
-    gchar *argv[8];
+    gchar *argv[10];
     gint stdout_fd = -1;
     gint stderr_fd = -1;
     GError *error = NULL;
@@ -299,8 +300,14 @@ static gboolean spawn_worker(LdtmApp *app, const char *operation,
     argv[arg++] = g_strdup(operation);
     argv[arg++] = g_strdup(device);
     if (confirmed) {
+        if (fingerprint == NULL || *fingerprint == '\0') {
+            for (guint index = 0U; index < arg; ++index) g_free(argv[index]);
+            return FALSE;
+        }
         argv[arg++] = g_strdup("--confirmed");
         argv[arg++] = g_strdup(device);
+        argv[arg++] = g_strdup("--fingerprint");
+        argv[arg++] = g_strdup(fingerprint);
     }
     argv[arg] = NULL;
     started = g_spawn_async_with_pipes(NULL, argv, NULL,
@@ -598,13 +605,21 @@ static void prepare_results_for_operation(LdtmApp *app) {
 static void build_clicked(GtkButton *button, gpointer user_data) {
     LdtmApp *app = (LdtmApp *)user_data;
     char *device = selected_device(app);
+    char fingerprint[65];
     (void)button;
     if (device == NULL) return;
+    if (ldtm_device_fingerprint(device, fingerprint) != 0) {
+        show_message(GTK_WINDOW(app->window), GTK_MESSAGE_ERROR,
+                     "Could not bind the selected physical disk",
+                     "The disk identity could not be read. No disk changes were made.");
+        g_free(device);
+        return;
+    }
     if (confirmation_dialog(app, device)) {
         gtk_text_buffer_set_text(app->log_buffer, "", -1);
         prepare_results_for_operation(app);
         append_log(app, "Preparing destructive filesystem test media...\n");
-        (void)spawn_worker(app, "prepare", device, TRUE);
+        (void)spawn_worker(app, "prepare", device, TRUE, fingerprint);
     }
     g_free(device);
 }
@@ -617,7 +632,7 @@ static void verify_clicked(GtkButton *button, gpointer user_data) {
     gtk_text_buffer_set_text(app->log_buffer, "", -1);
     prepare_results_for_operation(app);
     append_log(app, "Verifying retained test payloads against the C-generated manifest...\n");
-    (void)spawn_worker(app, "verify", device, FALSE);
+    (void)spawn_worker(app, "verify", device, FALSE, NULL);
     g_free(device);
 }
 

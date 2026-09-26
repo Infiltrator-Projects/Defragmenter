@@ -9,7 +9,7 @@
 static void usage(const char *program) {
     fprintf(stderr,
             "Usage: %s [--version]\n"
-            "       %s --worker prepare DEVICE --confirmed DEVICE\n"
+            "       %s --worker prepare DEVICE --confirmed DEVICE --fingerprint SHA256\n"
             "       %s --worker verify DEVICE\n",
             program, program, program);
 }
@@ -20,9 +20,10 @@ int main(int argc, char **argv) {
         return 0;
     }
     if (argc >= 2 && strcmp(argv[1], "--worker") == 0) {
-        if (argc == 6 && strcmp(argv[2], "prepare") == 0 &&
-            strcmp(argv[4], "--confirmed") == 0) {
-            int result = ldtm_worker_prepare(argv[3], argv[5]);
+        if (argc == 8 && strcmp(argv[2], "prepare") == 0 &&
+            strcmp(argv[4], "--confirmed") == 0 &&
+            strcmp(argv[6], "--fingerprint") == 0) {
+            int result = ldtm_worker_prepare(argv[3], argv[5], argv[7]);
             if (result != 0) return result;
             if (ldtm_sanitize_reserved_partitions(argv[3]) != 0) {
                 fputs("Test Media build completed, but reserved partition sanitation failed.\n",

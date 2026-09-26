@@ -89,9 +89,11 @@ int ldtm_is_whole_block_device(const char *device);
 int ldtm_is_system_disk(const char *device);
 int ldtm_device_safety_check(const char *device, int allow_non_removable,
                              char *detail, size_t detail_capacity);
+int ldtm_device_fingerprint(const char *device, char output[65]);
 int ldtm_is_reserved_partition_label(const char *label);
 int ldtm_sanitize_reserved_partitions(const char *device);
-int ldtm_worker_prepare(const char *device, const char *confirmed_device);
+int ldtm_worker_prepare(const char *device, const char *confirmed_device,
+                        const char *confirmed_fingerprint);
 int ldtm_worker_verify(const char *device);
 void ldtm_apply_mb_theme(void);
 int ldtm_gui_main(int argc, char **argv);

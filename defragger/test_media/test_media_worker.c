@@ -53,6 +53,9 @@ typedef struct {
     uint32_t directory_entries;
 } LdtmVerifyFilesystem;
 
+static void digest_to_hex(const unsigned char *digest, unsigned int length,
+                          char output[LDTM_HASH_HEX]);
+
 static void emit_status(const char *filesystem, const char *status, const char *detail) {
     const char *safe_detail = detail != NULL ? detail : "";
     printf("LDTM_STATUS\t%s\t%s\t%s\n", filesystem, status, safe_detail);
@@ -349,6 +352,64 @@ static int extract_pair(const char *line, const char *key, char *value, size_t c
     }
     value[used] = '\0';
     return 1;
+}
+
+int ldtm_device_fingerprint(const char *device, char output[65]) {
+    const char *const argv[] = {
+        "lsblk", "-d", "-b", "-n", "-P",
+        "-o", "SIZE,MODEL,SERIAL,WWN,TRAN", "--", device, NULL
+    };
+    char canonical[PATH_MAX];
+    char *properties = NULL;
+    char size_text[64] = "";
+    char model[256] = "";
+    char serial[256] = "";
+    char wwn[256] = "";
+    char transport[64] = "";
+    char material[1024];
+    uint64_t size = 0U;
+    EVP_MD_CTX *context = NULL;
+    unsigned char digest[EVP_MAX_MD_SIZE];
+    unsigned int digest_length = 0U;
+    int length;
+    int result = -1;
+
+    if (device == NULL || output == NULL ||
+        ldtm_canonicalize_device(device, canonical, sizeof(canonical)) != 0 ||
+        capture_process(argv, &properties) != 0)
+        return -1;
+    (void)extract_pair(properties, "SIZE", size_text, sizeof(size_text));
+    (void)extract_pair(properties, "MODEL", model, sizeof(model));
+    (void)extract_pair(properties, "SERIAL", serial, sizeof(serial));
+    (void)extract_pair(properties, "WWN", wwn, sizeof(wwn));
+    (void)extract_pair(properties, "TRAN", transport, sizeof(transport));
+    free(properties);
+    if (!infiltratr_parse_u64(size_text, 10U, &size) || size == 0U)
+        return -1;
+
+    /*
+     * Deliberately exclude /dev/sdX from the persistent fingerprint: the same
+     * physical test disk may acquire a different kernel name after a reboot.
+     * Serial/WWN dominate when supplied; model, transport and exact capacity
+     * provide a fail-closed secondary binding for inexpensive media that omit
+     * those identifiers.
+     */
+    length = snprintf(material, sizeof(material),
+                      "size=%llu\nmodel=%s\nserial=%s\nwwn=%s\ntransport=%s\n",
+                      (unsigned long long)size, model, serial, wwn, transport);
+    if (length < 0 || (size_t)length >= sizeof(material))
+        return -1;
+    context = EVP_MD_CTX_new();
+    if (context == NULL ||
+        EVP_DigestInit_ex(context, EVP_sha256(), NULL) != 1 ||
+        EVP_DigestUpdate(context, material, (size_t)length) != 1 ||
+        EVP_DigestFinal_ex(context, digest, &digest_length) != 1)
+        goto cleanup;
+    digest_to_hex(digest, digest_length, output);
+    result = 0;
+cleanup:
+    if (context != NULL) EVP_MD_CTX_free(context);
+    return result;
 }
 
 int ldtm_is_whole_block_device(const char *device) {
@@ -1814,9 +1875,11 @@ static int recursive_remove(const char *path) {
     return rmdir(path);
 }
 
-int ldtm_worker_prepare(const char *device, const char *confirmed_device) {
+int ldtm_worker_prepare(const char *device, const char *confirmed_device,
+                        const char *confirmed_fingerprint) {
     char canonical[PATH_MAX];
     char confirmed[PATH_MAX];
+    char current_fingerprint[LDTM_HASH_HEX];
     char safety[512];
     char script[8192];
     char work_template[] = "/tmp/linux-defragger-test-media.XXXXXX";
@@ -1836,6 +1899,14 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device) {
         fputs("Destructive confirmation does not match the selected device.\n", stderr);
         return 2;
     }
+    if (confirmed_fingerprint == NULL ||
+        strlen(confirmed_fingerprint) != LDTM_HASH_HEX - 1U ||
+        ldtm_device_fingerprint(canonical, current_fingerprint) != 0 ||
+        strcmp(current_fingerprint, confirmed_fingerprint) != 0) {
+        fputs("The selected physical disk changed after confirmation; refusing destructive preparation.\n",
+              stderr);
+        return 2;
+    }
     if (ldtm_device_safety_check(canonical, 0, safety, sizeof(safety)) != 0) {
         fprintf(stderr, "%s\n", safety);
         return 2;
@@ -1844,6 +1915,12 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device) {
     fflush(stdout);
     if (unmount_descendants(canonical) != 0) {
         fputs("Unable to unmount all descendants.\n", stderr);
+        return 2;
+    }
+    if (ldtm_device_fingerprint(canonical, current_fingerprint) != 0 ||
+        strcmp(current_fingerprint, confirmed_fingerprint) != 0) {
+        fputs("The physical disk identity changed before repartitioning; refusing to continue.\n",
+              stderr);
         return 2;
     }
     if (ldtm_build_sfdisk_script(script, sizeof(script)) != 0) return 2;
@@ -1866,7 +1943,8 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device) {
                 strerror(errno));
         goto cleanup;
     }
-    if (fprintf(state, "schema\t1\ndevice\t%s\n", canonical) < 0 ||
+    if (fprintf(state, "schema\t2\ndevice\t%s\nfingerprint\t%s\n",
+                canonical, confirmed_fingerprint) < 0 ||
         fflush(state) != 0)
         goto cleanup;
 
@@ -1976,9 +2054,13 @@ static uint32_t directory_entry_count(const char *path) {
     return count;
 }
 
-static int load_verify_state(const char *state_path, LdtmVerifyFilesystem state[LDTM_SPEC_COUNT]) {
+static int load_verify_state(const char *state_path, const char *device,
+                             LdtmVerifyFilesystem state[LDTM_SPEC_COUNT]) {
     FILE *stream = open_state_stream(state_path, 0);
     char line[LDTM_LINE_MAX];
+    char saved_fingerprint[LDTM_HASH_HEX] = "";
+    char current_fingerprint[LDTM_HASH_HEX] = "";
+    uint64_t schema = 0U;
     if (stream == NULL) return -1;
     memset(state, 0, sizeof(LdtmVerifyFilesystem) * LDTM_SPEC_COUNT);
     while (fgets(line, sizeof(line), stream) != NULL) {
@@ -1994,7 +2076,19 @@ static int load_verify_state(const char *state_path, LdtmVerifyFilesystem state[
             token = strtok_r(NULL, "\t", &saveptr);
         }
         if (field_count < 2U) continue;
-        if (strcmp(fields[0], "fs") == 0 && field_count >= 3U) {
+        if (strcmp(fields[0], "schema") == 0) {
+            if (!infiltratr_parse_u64(fields[1], 10U, &schema)) {
+                (void)fclose(stream);
+                return -1;
+            }
+        } else if (strcmp(fields[0], "fingerprint") == 0) {
+            if (strlen(fields[1]) != LDTM_HASH_HEX - 1U) {
+                (void)fclose(stream);
+                return -1;
+            }
+            (void)snprintf(saved_fingerprint, sizeof(saved_fingerprint),
+                           "%s", fields[1]);
+        } else if (strcmp(fields[0], "fs") == 0 && field_count >= 3U) {
             size_t index;
             for (index = 0U; index < LDTM_SPEC_COUNT; ++index) {
                 if (strcmp(ldtm_specs()[index].key, fields[1]) == 0 && strcmp(fields[2], "populated") == 0) {
@@ -2041,6 +2135,10 @@ static int load_verify_state(const char *state_path, LdtmVerifyFilesystem state[
         }
     }
     (void)fclose(stream);
+    if (schema != 2U || saved_fingerprint[0] == '\0' ||
+        ldtm_device_fingerprint(device, current_fingerprint) != 0 ||
+        strcmp(saved_fingerprint, current_fingerprint) != 0)
+        return -1;
     return 0;
 }
 
@@ -2130,8 +2228,8 @@ int ldtm_worker_verify(const char *device) {
         return 2;
     }
     if (state_path_for_device(canonical, state_path, sizeof(state_path)) != 0 ||
-        load_verify_state(state_path, expected) != 0) {
-        fprintf(stderr, "No test-media state found for %s.\n", canonical);
+        load_verify_state(state_path, canonical, expected) != 0) {
+        fprintf(stderr, "No matching protected test-media state found for %s.\n", canonical);
         return 2;
     }
     if (unmount_descendants(canonical) != 0 ||
