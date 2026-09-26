@@ -608,6 +608,8 @@ static int verify_current_payload(const char *path,
             goto done;
         uint64_t logical_sectors = 0U;
         uint32_t chain_count = 0U;
+        uint32_t previous_end = 0U;
+        int physically_fragmented = 0;
         while (anode != 0U) {
             uint32_t start = 0U;
             if (++chain_count > PFS_TM_FRAGMENTS ||
@@ -616,6 +618,9 @@ static int verify_current_payload(const char *path,
                 clusters == 0U || start >= total_sectors ||
                 clusters > total_sectors - start)
                 goto done;
+            if (chain_count > 1U && start != previous_end)
+                physically_fragmented = 1;
+            previous_end = start + clusters;
             for (uint32_t within = 0U; within < clusters; ++within) {
                 if ((logical_sectors + 1U) * PFS_TM_SECTOR_SIZE >
                         expected_bytes ||
@@ -630,7 +635,9 @@ static int verify_current_payload(const char *path,
             anode = next;
         }
         if (logical_sectors * PFS_TM_SECTOR_SIZE != expected_bytes ||
-            (expect_fragmented != 0 ? chain_count < 2U : chain_count != 1U))
+            (expect_fragmented != 0
+                ? !physically_fragmented
+                : physically_fragmented))
             goto done;
         entry_offset += entry[0];
     }
