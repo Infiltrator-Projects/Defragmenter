@@ -3,6 +3,7 @@
 #include "hfsplus_native.h"
 
 #include "ld_device.h"
+#include "ld_io.h"
 
 #include "infiltratr/endian.h"
 #include "infiltratr/arithmetic.h"
@@ -310,15 +311,15 @@ static int scan_overflow(HfsPlusVolume *volume, OverflowVec *overflow, char **er
     if (btree_geometry(volume, &volume->extents_fork, &node_size, &first_leaf, &total_nodes, error)) return -1;
     unsigned char *node = malloc(node_size);
     if (!node) { hfsplus_set_error(error, "out of memory reading HFS+ extents B-tree"); return -1; }
-    uint8_t *seen = calloc(total_nodes, 1U);
+    uint8_t *seen = ld_bitmap_calloc(total_nodes);
     if (!seen) { free(node); hfsplus_set_error(error, "out of memory tracking HFS+ extents B-tree"); return -1; }
     uint32_t current = first_leaf;
     while (current) {
-        if (current >= total_nodes || seen[current]) {
+        if (current >= total_nodes || ld_bitmap_get(seen, current)) {
             hfsplus_set_error(error, "HFS+ extents leaf chain is cyclic or out of range");
             free(seen); free(node); return -1;
         }
-        seen[current] = 1U;
+        ld_bitmap_set(seen, current, true);
         if (fork_read(volume, &volume->extents_fork, (uint64_t)current * node_size, node, node_size, error)) {
             free(seen); free(node); return -1;
         }
@@ -383,17 +384,17 @@ static int scan_catalog(HfsPlusVolume *volume, const OverflowVec *overflow, char
     if (btree_geometry(volume, &volume->catalog_fork, &node_size, &first_leaf, &total_nodes, error)) return -1;
     volume->catalog_node_size = node_size;
     unsigned char *node = malloc(node_size);
-    uint8_t *seen = calloc(total_nodes, 1U);
+    uint8_t *seen = ld_bitmap_calloc(total_nodes);
     if (!node || !seen) {
         free(node); free(seen); hfsplus_set_error(error, "out of memory scanning HFS+ catalog"); return -1;
     }
     uint32_t current = first_leaf;
     while (current) {
-        if (current >= total_nodes || seen[current]) {
+        if (current >= total_nodes || ld_bitmap_get(seen, current)) {
             hfsplus_set_error(error, "HFS+ catalog leaf chain is cyclic or out of range");
             free(seen); free(node); return -1;
         }
-        seen[current] = 1U;
+        ld_bitmap_set(seen, current, true);
         uint64_t node_logical = (uint64_t)current * node_size;
         if (fork_read(volume, &volume->catalog_fork, node_logical, node, node_size, error)) {
             free(seen); free(node); return -1;
@@ -456,7 +457,7 @@ static int load_allocation_map(HfsPlusVolume *volume, const OverflowVec *overflo
         return -1;
     }
     unsigned char *bitmap = malloc((size_t)bytes);
-    volume->used_map = calloc(volume->total_blocks, 1U);
+    volume->used_map = ld_bitmap_calloc(volume->total_blocks);
     if (!bitmap || !volume->used_map) {
         free(bitmap); hfsplus_set_error(error, "out of memory reading HFS+ allocation bitmap"); return -1;
     }
@@ -464,7 +465,9 @@ static int load_allocation_map(HfsPlusVolume *volume, const OverflowVec *overflo
         free(bitmap); return -1;
     }
     for (uint32_t block = 0; block < volume->total_blocks; ++block) {
-        volume->used_map[block] = (bitmap[block / 8U] & (unsigned char)(1U << (7U - (block % 8U)))) ? 1U : 0U;
+        ld_bitmap_set(volume->used_map, block,
+                      (bitmap[block / 8U] &
+                       (unsigned char)(1U << (7U - (block % 8U)))) != 0U);
     }
     free(bitmap);
     return 0;
@@ -511,7 +514,7 @@ static int validate_clean_journal(HfsPlusVolume *volume, char **error) {
         hfsplus_set_error(error, "HFS+ journal info block is outside the volume");
         return -1;
     }
-    if (!volume->used_map[volume->journal_info_block]) {
+    if (!ld_bitmap_get(volume->used_map, volume->journal_info_block)) {
         hfsplus_set_error(error, "HFS+ journal info block is marked free in the allocation bitmap");
         return -1;
     }
@@ -542,7 +545,7 @@ static int validate_clean_journal(HfsPlusVolume *volume, char **error) {
         return -1;
     }
     for (uint64_t block = first_block; block < last_block; ++block) {
-        if (!volume->used_map[block]) {
+        if (!ld_bitmap_get(volume->used_map, block)) {
             hfsplus_set_error(error, "HFS+ journal block %" PRIu64 " is marked free in the allocation bitmap", block);
             return -1;
         }
@@ -722,10 +725,10 @@ static void emit_ranges_json(const HfsPlusVolume *volume, bool used, const char 
     bool first = true;
     uint32_t block = 0;
     while (block < volume->total_blocks) {
-        bool state = volume->used_map[block] != 0U;
+        bool state = ld_bitmap_get(volume->used_map, block);
         if (state != used) { ++block; continue; }
         uint32_t start = block++;
-        while (block < volume->total_blocks && (volume->used_map[block] != 0U) == used) ++block;
+        while (block < volume->total_blocks && (ld_bitmap_get(volume->used_map, block)) == used) ++block;
         if (!first) putchar(',');
         printf("[%u,%u]", start, block);
         first = false;
@@ -808,9 +811,9 @@ static int copy_bytes(int from, int to, uint64_t offset, uint64_t length, char *
 static int copy_allocated(const HfsPlusVolume *source, int target, char **error) {
     uint32_t block = 0;
     while (block < source->total_blocks) {
-        if (!source->used_map[block]) { ++block; continue; }
+        if (!ld_bitmap_get(source->used_map, block)) { ++block; continue; }
         uint32_t start = block++;
-        while (block < source->total_blocks && source->used_map[block]) ++block;
+        while (block < source->total_blocks && ld_bitmap_get(source->used_map, block)) ++block;
         uint64_t offset = (uint64_t)start * source->block_size;
         uint64_t length = (uint64_t)(block - start) * source->block_size;
         if (copy_bytes(source->fd, target, offset, length, error)) return -1;
@@ -933,11 +936,12 @@ static int choose_run(uint8_t *claimed, uint32_t total, uint32_t need, uint32_t 
     for (uint32_t s = 0; (uint64_t)s + span <= total; ++s) {
         bool ok = true;
         for (uint32_t k = 0; k < need + reserve; ++k) {
-            if (claimed[s + k]) { s += k; ok = false; break; }
+            if (ld_bitmap_get(claimed, (uint64_t)s + k)) { s += k; ok = false; break; }
         }
         if (ok) {
             *start = s;
-            for (uint32_t k = 0; k < need + reserve; ++k) claimed[s + k] = 1U;
+            for (uint32_t k = 0; k < need + reserve; ++k)
+                ld_bitmap_set(claimed, (uint64_t)s + k, true);
             return 0;
         }
     }
@@ -1039,11 +1043,17 @@ static int rewrite_allocation_bitmap(HfsPlusVolume *stage, const uint8_t *final_
     unsigned char *bitmap = calloc((size_t)bytes, 1U);
     if (!bitmap) { hfsplus_set_error(error, "out of memory rebuilding HFS+ allocation bitmap"); return -1; }
     for (uint32_t block = 0; block < stage->total_blocks; ++block) {
-        if (final_used[block]) bitmap[block / 8U] |= (unsigned char)(1U << (7U - (block % 8U)));
+        if (ld_bitmap_get(final_used, block))
+            bitmap[block / 8U] |= (unsigned char)(1U << (7U - (block % 8U)));
     }
     if (fork_write(stage, &stage->allocation_fork, 0, bitmap, (size_t)bytes, error)) { free(bitmap); return -1; }
     free(bitmap);
-    memcpy(stage->used_map, final_used, stage->total_blocks);
+    size_t map_bytes = 0U;
+    if (!ld_bitmap_size(stage->total_blocks, &map_bytes)) {
+        hfsplus_set_error(error, "HFS+ packed allocation-map size overflow");
+        return -1;
+    }
+    memcpy(stage->used_map, final_used, map_bytes);
     return 0;
 }
 
@@ -1092,14 +1102,16 @@ int hfsplus_build_stage(const char *source_path, const char *stage_path, bool gr
     close(out);
     HfsPlusVolume stage;
     if (hfsplus_scan(stage_path, true, &stage, error)) { hfsplus_close(&source); return -1; }
-    uint8_t *claimed = calloc(stage.total_blocks, 1U);
-    uint8_t *final_used = calloc(stage.total_blocks, 1U);
-    if (!claimed || !final_used) {
+    uint8_t *claimed = ld_bitmap_calloc(stage.total_blocks);
+    uint8_t *final_used = ld_bitmap_calloc(stage.total_blocks);
+    size_t allocation_map_bytes = 0U;
+    if (!claimed || !final_used ||
+        !ld_bitmap_size(stage.total_blocks, &allocation_map_bytes)) {
         free(claimed); free(final_used); hfsplus_close(&stage); hfsplus_close(&source);
         hfsplus_set_error(error, "out of memory planning HFS+ layout"); return -1;
     }
-    memcpy(claimed, source.used_map, source.total_blocks);
-    memcpy(final_used, source.used_map, source.total_blocks);
+    memcpy(claimed, source.used_map, allocation_map_bytes);
+    memcpy(final_used, source.used_map, allocation_map_bytes);
     for (size_t i = 0; i < source.files.count; ++i) {
         HfsPlusFile *file = &source.files.items[i];
         HfsPlusFork *forks[2] = {&file->data_fork, &file->resource_fork};
@@ -1111,8 +1123,8 @@ int hfsplus_build_stage(const char *source_path, const char *stage_path, bool gr
             for (size_t e = 0; e < fork->extent_count && described < fork->total_blocks; ++e) {
                 HfsPlusExtent ex = fork->extents[e];
                 for (uint32_t b = 0; b < ex.count && described < fork->total_blocks; ++b, ++described) {
-                    claimed[ex.start + b] = 0U;
-                    final_used[ex.start + b] = 0U;
+                    ld_bitmap_set(claimed, (uint64_t)ex.start + b, false);
+                    ld_bitmap_set(final_used, (uint64_t)ex.start + b, false);
                 }
             }
         }
@@ -1141,7 +1153,7 @@ int hfsplus_build_stage(const char *source_path, const char *stage_path, bool gr
             if (move_fork(&source, &stage, before->file_id,
                           k == 0U ? HFS_FORK_DATA : HFS_FORK_RESOURCE,
                           bf[k], af[k], destination, error)) goto fail;
-            for (uint32_t b = 0; b < bf[k]->total_blocks; ++b) final_used[destination + b] = 1U;
+            for (uint32_t b = 0; b < bf[k]->total_blocks; ++b) ld_bitmap_set(final_used, (uint64_t)destination + b, true);
             relocated += bf[k]->total_blocks;
             if (live) {
                 printf("@@LIVE_RANGES {\"ranges\":[[%u,%u,1]],\"sequence\":%zu}\n",
@@ -1150,7 +1162,7 @@ int hfsplus_build_stage(const char *source_path, const char *stage_path, bool gr
             }
         }
     }
-    if (rewrite_allocation_bitmap(&stage, final_used, error) || fsync(stage.fd)) goto fail;
+    if (rewrite_allocation_bitmap(&stage, final_used, error) || ld_sync_fd(stage.fd)) goto fail;
     free(claimed); free(final_used);
     hfsplus_close(&stage);
     HfsPlusVolume verified;
@@ -1158,7 +1170,7 @@ int hfsplus_build_stage(const char *source_path, const char *stage_path, bool gr
     if (compare_payloads(&source, &verified, error)) { hfsplus_close(&verified); hfsplus_close(&source); return -1; }
     if (commit_bytes) {
         uint64_t total = 0;
-        for (uint32_t b = 0; b < verified.total_blocks; ++b) if (verified.used_map[b]) total += verified.block_size;
+        for (uint32_t b = 0; b < verified.total_blocks; ++b) if (ld_bitmap_get(verified.used_map, b)) total += verified.block_size;
         *commit_bytes = total;
     }
     printf("HFS+ native C layout: relocated %" PRIu64 " allocation blocks; special files and B-tree topology remained fixed.\n", relocated);
@@ -1176,7 +1188,7 @@ static int reserve_is_free(const HfsPlusVolume *volume, const HfsPlusFork *fork,
     HfsPlusExtent tail = fork->extents[fork->extent_count - 1U];
     uint32_t end = tail.start + tail.count;
     for (uint32_t r = 0; r < reserve; ++r) {
-        if (end + r >= volume->total_blocks || volume->used_map[end + r]) {
+        if (end + r >= volume->total_blocks || ld_bitmap_get(volume->used_map, (uint64_t)end + r)) {
             hfsplus_set_error(error, "HFS+ file %u fork does not have its required 10 percent growth reserve", file_id);
             return -1;
         }
@@ -1204,7 +1216,7 @@ int hfsplus_verify_layout(const char *path, bool growth, unsigned gp, char **err
             for (size_t e = 0; e < forks[k]->extent_count && described < forks[k]->total_blocks; ++e) {
                 HfsPlusExtent ex = forks[k]->extents[e];
                 for (uint32_t b = 0; b < ex.count && described < forks[k]->total_blocks; ++b, ++described) {
-                    if (!volume.used_map[ex.start + b]) {
+                    if (!ld_bitmap_get(volume.used_map, (uint64_t)ex.start + b)) {
                         hfsplus_set_error(error, "HFS+ file %u references a block marked free in the allocation file", file->file_id);
                         hfsplus_close(&volume); return -1;
                     }
@@ -1227,9 +1239,9 @@ int hfsplus_commit_stage(const char *stage_path, const char *target_path,
     uint64_t total_written = 0;
     uint32_t block = 0;
     while (block < stage.total_blocks) {
-        if (!stage.used_map[block]) { ++block; continue; }
+        if (!ld_bitmap_get(stage.used_map, block)) { ++block; continue; }
         uint32_t start = block++;
-        while (block < stage.total_blocks && stage.used_map[block]) ++block;
+        while (block < stage.total_blocks && ld_bitmap_get(stage.used_map, block)) ++block;
         uint64_t offset = (uint64_t)start * stage.block_size;
         uint64_t remain = (uint64_t)(block - start) * stage.block_size;
         uint64_t cursor = 0;
