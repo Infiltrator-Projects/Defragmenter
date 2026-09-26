@@ -30,6 +30,7 @@
 #define ST_DIR 2U
 #define ST_FILE 0xfffffffdU
 #define AFFS_IO_BATCH_BLOCKS 8192U
+#define AFFS_MAX_DIRECTORY_DEPTH 256U
 #define AFFS_IO_BATCH_BYTES ((size_t)AFFS_IO_BATCH_BLOCKS * BS)
 
 static uint32_t lng(const unsigned char *b, int i) {
@@ -222,7 +223,12 @@ fail:
     return -1;
 }
 
-static int scan_dir(AffsVolume *v, uint32_t blk, bool root, uint8_t *seen, char **e) {
+static int scan_dir(AffsVolume *v, uint32_t blk, bool root, uint8_t *seen,
+                    unsigned depth, char **e) {
+    if (depth > AFFS_MAX_DIRECTORY_DEPTH) {
+        affs_set_error(e, "Amiga directory nesting exceeds supported depth");
+        return -1;
+    }
     if (blk >= v->blocks || ld_bitmap_get(seen, blk)) {
         affs_set_error(e, "Amiga directory graph contains a loop or invalid block %u", blk);
         return -1;
@@ -262,7 +268,7 @@ static int scan_dir(AffsVolume *v, uint32_t blk, bool root, uint8_t *seen, char 
             if (st == ST_FILE) {
                 if (scan_file(v, x, eb, e)) return -1;
             } else if (st == ST_DIR) {
-                if (scan_dir(v, x, false, seen, e)) return -1;
+                if (scan_dir(v, x, false, seen, depth + 1U, e)) return -1;
             } else {
                 affs_set_error(e, "unsupported Amiga directory entry subtype 0x%08x at block %u",
                                st, x);
@@ -388,7 +394,7 @@ int affs_scan(const char *path, bool writable, AffsVolume *v, char **e) {
         affs_set_error(e, "out of memory scanning Amiga filesystem");
         goto fail;
     }
-    int rc = scan_dir(v, v->root, true, seen, e);
+    int rc = scan_dir(v, v->root, true, seen, 0U, e);
     free(seen);
     if (rc) goto fail;
     for (uint32_t i = 0; i < v->blocks; ++i) {
