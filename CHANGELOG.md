@@ -2,6 +2,15 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-210
+
+- Harden destructive Test Media target selection and state handling. System-backed disks are rejected more broadly, preparation is bound to a stable disk fingerprint rather than only a reusable /dev pathname, root-owned qualification state lives under /var/lib, and repartitioning waits for the expected device topology instead of trusting a fixed delay.
+- Strengthen the Test Media integrity contract with deterministic boundary-sized payloads around 512-byte and 4096-byte allocation edges, retained directory-test payload verification, fail-closed preparation/verification aggregation, and the corrected APFS/UFS qualification paths.
+- Preserve the allocation map's exact monotonic physical ordering while reducing GUI work: resize-driven remaps now use hysteresis, rasterisation paints physical spans instead of repeatedly searching source cells per pixel, and APFS Test Media discovery avoids a redundant AFFS probe.
+- Apply the shared parallel-work policy consistently so parallel-capable native work leaves one online logical CPU available to the desktop while storage-specific limits remain independent I/O constraints.
+- Broaden malformed-media boundary coverage across native filesystem identifiers and keep the authoritative visual-order regression pinned.
+- Qualify production source commit `c047cfa152b238c1b5684cd15fffaadef93e77a8`: Project quality gate run 36216799567 completed the strict C/C++ build, complete native/filesystem/GUI/release test suite and hosted ASan/UBSan lane successfully; self-hosted run 36216799410 completed its dependency check, strict build and native/filesystem/GUI tests successfully. Both candidate runs stopped only at the deliberately stale audited-source control advanced by this release.
+
 ## 1.8.0-209
 
 - Fix the Overview layout so the bottom of the screen remains present on laptop work areas. Remove the duplicate miniature "Current allocation" map, compact the activity area into a single horizontal strip and make the authoritative disk map vertically elastic with a 64-pixel minimum instead of forcing a 250-pixel minimum that caused avoidable scrolling.
