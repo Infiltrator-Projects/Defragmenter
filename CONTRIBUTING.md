@@ -28,7 +28,9 @@ Clone recursively because the project pins Infiltratr Common:
 git clone --recurse-submodules https://github.com/Infiltrator-Projects/Defragmenter.git
 cd Defragmenter/defragger
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DLD_ENABLE_WERROR=ON
-cmake --build build --parallel
+jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || printf '2')
+[ "$jobs" -gt 1 ] && jobs=$((jobs - 1))
+cmake --build build -j"$jobs"
 ctest --test-dir build --output-on-failure
 ```
 

@@ -2,6 +2,14 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-212
+
+- Make first-party filesystem code the authority that unlocks physical mutation. Linux filesystem metadata and Test Media GPT labels now provide routing candidates only; Defragment, Growth Defrag and Recover remain disabled until a successful native Analyse proves a compatible filesystem identity.
+- Replace the APFS-only/raw-Amiga discovery special cases with one mapper-backed first-party probe path. Readable unknown/Test Media targets can be positively identified during discovery; root-only targets remain visible as mutation-disabled candidates until privileged analysis verifies them.
+- Preserve a verified identity across rediscovery only when stable filesystem/partition identity still matches, and reject analyser results that conflict with the selected candidate family.
+- Strengthen allocation-map validation in both the native C++ mapper and GTK presentation layer: every cell must account exactly for its physical span and fragmentation/directory overlays may never exceed used allocation.
+- Remove the duplicated current-version statement from the repository README and align all documented local builds with the project-wide N-1 CPU policy.
+
 ## 1.8.0-211
 
 - Remove the stale source-tree GUI release literal. In-tree launches now read the canonical VERSION file while installed builds continue to consume CMake's generated build metadata.

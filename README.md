@@ -8,13 +8,13 @@
 
 Defragmenter is a C-first offline filesystem allocation analyser and defragmenter for Linux. Native C owns the raw filesystem engines and storage-safety core; C++17 owns selected filesystem-neutral application services where RAII, stronger value types and explicit process/protocol ownership improve the implementation. Write-capable engines operate directly on unmounted block devices or filesystem images and do not delegate production mutations to mounted kernel filesystem drivers or external repair/defragmentation tools.
 
-**Current version:** 1.8.0-210
+**Version authority:** see `defragger/VERSION` and the immutable GitHub release tag.
 
 **Platform:** Linux
 
 **Licence:** GPL-3.0-or-later
 
-> **Safety status:** The version 1.8.0-210 filesystem-safety audit is complete. Defragment, Growth Defrag and Recover are enabled behind exact target confirmation, mounted-target refusal, durable filesystem-specific recovery and final verification. The separate Test Media utility is deliberately destructive and must be used only on sacrificial targets. See `docs/AUDIT_STATUS.md`.
+> **Safety status:** The completed release safety decision is recorded in `docs/AUDIT_STATUS.md` rather than duplicated here. Defragment, Growth Defrag and Recover remain behind exact target confirmation, mounted-target refusal, durable filesystem-specific recovery and final verification. The separate Test Media utility is deliberately destructive and must be used only on sacrificial targets.
 
 ## Engineering ethos
 
@@ -47,7 +47,7 @@ Production operations are:
 
 Unsupported layouts fail closed rather than being guessed. Write-capable engines perform verified staging/recovery and a final read-only rescan before reporting success.
 
-Test Media GPT labels are treated as slot names, not filesystem proof. In particular, an `LD_APFS` partition is exposed as APFS only when Linux reports APFS or the first-party APFS worker positively identifies the container; stale or partially rebuilt media no longer routes arbitrary bytes into the APFS analyser.
+Linux filesystem metadata and Test Media GPT labels are routing hints, not write authority. Physical volumes expose no mutation operations until a successful first-party native Analyse positively identifies the selected filesystem. Root-only Test Media slots may therefore appear briefly as identity-pending candidates; a stale or mismatched label cannot enable a writer.
 
 ## Architecture
 
@@ -66,7 +66,9 @@ From the canonical project directory:
 ```bash
 cd defragger
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DLD_ENABLE_WERROR=ON
-cmake --build build -j"$(nproc)"
+jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || printf '2')
+[ "$jobs" -gt 1 ] && jobs=$((jobs - 1))
+cmake --build build -j"$jobs"
 ctest --test-dir build --output-on-failure
 ```
 
