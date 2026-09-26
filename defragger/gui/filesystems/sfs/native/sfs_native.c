@@ -564,7 +564,7 @@ static int scan_object_catalogue(int fd, const Root *root,
                                  SfsAnalysis *analysis, SfsMapCell *cells,
                                  uint64_t cell_count, SfsFileVec *files,
                                  char *error, size_t error_size) {
-    uint8_t *visited = calloc(root->total_blocks, 1U);
+    uint8_t *visited = ld_bitmap_calloc(root->total_blocks);
     if (visited == NULL) {
         set_error(error, error_size, "out of memory tracking SFS object containers");
         return -1;
@@ -953,7 +953,7 @@ static int model_open(const char *path, SfsModel *model,
             }
         }
         for (uint32_t block = 0U; block < extent->blocks; ++block) {
-            if (model->ld_bitmap_get(free_map, (uint64_t)extent->key + block)) {
+            if (ld_bitmap_get(model->free_map, (uint64_t)extent->key + block)) {
                 set_error(error, error_size,
                           "SFS extent B-tree references bitmap-free data");
                 model_close(model);
@@ -1245,7 +1245,7 @@ static int refresh_btree_node(int fd, const Root *root, uint32_t block_no,
 
 static int refresh_btree(int fd, const Root *root,
                          char *error, size_t error_size) {
-    uint8_t *visited = calloc(root->total_blocks, 1U);
+    uint8_t *visited = ld_bitmap_calloc(root->total_blocks);
     if (visited == NULL) {
         set_error(error, error_size, "out of memory refreshing SFS extent B-tree");
         return -1;
