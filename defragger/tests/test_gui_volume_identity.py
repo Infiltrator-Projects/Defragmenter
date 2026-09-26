@@ -308,27 +308,34 @@ def test_rebuilt_same_path_does_not_reuse_cached_map() -> None:
     assert store.cached_map() is None
 
 
-def test_selection_revalidates_rebuilt_path_without_manual_refresh() -> None:
+def test_selection_revalidation_applies_background_snapshot() -> None:
     original = _volume()
     rebuilt = _volume(
         filesystem_uuid="BEEF-1170",
         partition_uuid="11701170-2222-3333-4444-555555555555",
     )
-    state = {"volume": original}
+    discover_calls = 0
 
     def discover(_catalog: BackendCatalog) -> list[Volume]:
-        return [state["volume"]]
+        nonlocal discover_calls
+        discover_calls += 1
+        return [rebuilt]
 
     coordinator = VolumeCoordinator(_catalog(), discover=discover)
-    assert coordinator.refresh() == 0
-    coordinator.store.select(0)
+    coordinator.apply_discovery([original])
     coordinator.remember_map({"filesystem": "FAT12", "marker": "old"})
     assert coordinator.cached_map() is not None
 
-    # No explicit refresh call here: selecting the old in-memory path must
-    # rediscover it, see the new identities, discard the old map and analyse.
-    state["volume"] = rebuilt
+    # Selection itself is presentation-only and must not perform device I/O.
     selection = coordinator.select(0)
+    assert discover_calls == 0
+    assert selection.cached_map is not None
+
+    # The GTK controller obtains this snapshot on a worker thread and applies
+    # it back on the GUI thread. A rebuilt filesystem invalidates the old map.
+    snapshot = coordinator.discover()
+    assert discover_calls == 1
+    selection = coordinator.revalidate_selected(original.path, snapshot)
     assert selection.volume is not None
     assert selection.volume.filesystem_uuid == "BEEF-1170"
     assert selection.cached_map is None
@@ -385,7 +392,7 @@ def main() -> None:
     test_block_devices_sort_by_numeric_partition_number()
     test_unknown_generic_fat_is_not_labeled_fat32()
     test_rebuilt_same_path_does_not_reuse_cached_map()
-    test_selection_revalidates_rebuilt_path_without_manual_refresh()
+    test_selection_revalidation_applies_background_snapshot()
     test_uuidless_devices_use_refresh_ephemeral_cache_identity()
     test_replaced_image_at_same_path_does_not_reuse_cached_map()
     test_invalidate_removes_every_identity_for_one_path()
