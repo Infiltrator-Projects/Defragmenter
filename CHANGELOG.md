@@ -2,6 +2,14 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-213
+
+- Move physical-volume enumeration and first-party identification probes off the GTK main thread. Discovery now produces a detached snapshot and applies only the newest completed generation on the GUI thread, preventing slow block devices or native probes from freezing startup/Refresh.
+- Preserve the safe unmount-and-continue mutation path across asynchronous rediscovery: Defragmenter waits for the refreshed device snapshot before deciding whether the selected target is still present and unmounted.
+- Make window resizing a presentation-only operation. Resizing rerasterises the already-authoritative physical allocation sample and never launches another filesystem analysis merely because the window dimensions changed.
+- Keep Defragment, Growth Defrag and Recover controls disabled until a successful first-party native Analyse has positively verified the physical filesystem identity; the planner continues to enforce the same rule independently.
+- Add GUI/service regressions for detached discovery/application, resize-without-rescan and identity-gated mutation controls.
+
 ## 1.8.0-212
 
 - Make first-party filesystem code the authority that unlocks physical mutation. Linux filesystem metadata and Test Media GPT labels now provide routing candidates only; Defragment, Growth Defrag and Recover remain disabled until a successful native Analyse proves a compatible filesystem identity.
