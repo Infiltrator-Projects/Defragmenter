@@ -15,11 +15,14 @@
 static int run_command(const char *const argv[]) {
     pid_t child;
     int status = 0;
-    if (argv == NULL || argv[0] == NULL) return -1;
+    char program[PATH_MAX];
+    if (argv == NULL || argv[0] == NULL ||
+        ldtm_resolve_program(argv[0], program, sizeof(program)) != 0)
+        return -1;
     child = fork();
     if (child < 0) return -1;
     if (child == 0) {
-        execvp(argv[0], (char *const *)argv);
+        execv(program, (char *const *)argv);
         _exit(127);
     }
     while (waitpid(child, &status, 0) < 0) {
@@ -33,7 +36,10 @@ static int capture_command(const char *const argv[], char *output, size_t capaci
     pid_t child;
     int status = 0;
     size_t used = 0U;
-    if (argv == NULL || argv[0] == NULL || output == NULL || capacity < 2U) return -1;
+    char program[PATH_MAX];
+    if (argv == NULL || argv[0] == NULL || output == NULL || capacity < 2U ||
+        ldtm_resolve_program(argv[0], program, sizeof(program)) != 0)
+        return -1;
     if (pipe(pipefd) != 0) return -1;
     child = fork();
     if (child < 0) {
@@ -45,7 +51,7 @@ static int capture_command(const char *const argv[], char *output, size_t capaci
         (void)close(pipefd[0]);
         if (dup2(pipefd[1], STDOUT_FILENO) < 0) _exit(126);
         (void)close(pipefd[1]);
-        execvp(argv[0], (char *const *)argv);
+        execv(program, (char *const *)argv);
         _exit(127);
     }
     (void)close(pipefd[1]);

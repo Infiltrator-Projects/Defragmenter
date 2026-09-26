@@ -207,37 +207,50 @@ const char *ldtm_creator_display_name(const LdtmFilesystemSpec *spec) {
     return program != NULL ? program : "Unavailable";
 }
 
-int ldtm_program_available(const char *program) {
+int ldtm_resolve_program(const char *program, char *output,
+                         size_t output_capacity) {
     static const char *const directories[] = {
-        "/usr/sbin", "/usr/bin", "/sbin", "/bin", "/usr/local/sbin", "/usr/local/bin"
+        "/usr/sbin", "/usr/bin", "/sbin", "/bin",
+        "/usr/local/sbin", "/usr/local/bin"
     };
+    char candidate[PATH_MAX];
+    char resolved[PATH_MAX];
     size_t index;
-    char path[PATH_MAX];
-    const char *path_env;
-    char *copy;
-    char *token;
-    char *saveptr = NULL;
-    if (program == NULL || *program == '\0') return 0;
-    if (strchr(program, '/') != NULL) return access(program, X_OK) == 0;
+
+    if (program == NULL || *program == '\0' ||
+        output == NULL || output_capacity == 0U)
+        return -1;
+
+    if (strchr(program, '/') != NULL) {
+        if (program[0] != '/' ||
+            realpath(program, resolved) == NULL ||
+            access(resolved, X_OK) != 0)
+            return -1;
+        if (snprintf(output, output_capacity, "%s", resolved) < 0 ||
+            strlen(resolved) + 1U > output_capacity)
+            return -1;
+        return 0;
+    }
+
     for (index = 0U; index < sizeof(directories) / sizeof(directories[0]); ++index) {
-        if (snprintf(path, sizeof(path), "%s/%s", directories[index], program) > 0 &&
-            access(path, X_OK) == 0) return 1;
+        const int count = snprintf(candidate, sizeof(candidate), "%s/%s",
+                                   directories[index], program);
+        if (count <= 0 || (size_t)count >= sizeof(candidate) ||
+            access(candidate, X_OK) != 0)
+            continue;
+        if (realpath(candidate, resolved) == NULL)
+            continue;
+        if (snprintf(output, output_capacity, "%s", resolved) < 0 ||
+            strlen(resolved) + 1U > output_capacity)
+            return -1;
+        return 0;
     }
-    path_env = getenv("PATH");
-    if (path_env == NULL) return 0;
-    copy = strdup(path_env);
-    if (copy == NULL) return 0;
-    token = strtok_r(copy, ":", &saveptr);
-    while (token != NULL) {
-        if (snprintf(path, sizeof(path), "%s/%s", token, program) > 0 &&
-            access(path, X_OK) == 0) {
-            free(copy);
-            return 1;
-        }
-        token = strtok_r(NULL, ":", &saveptr);
-    }
-    free(copy);
-    return 0;
+    return -1;
+}
+
+int ldtm_program_available(const char *program) {
+    char resolved[PATH_MAX];
+    return ldtm_resolve_program(program, resolved, sizeof(resolved)) == 0;
 }
 
 int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,

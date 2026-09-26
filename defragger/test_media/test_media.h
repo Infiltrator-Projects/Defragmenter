@@ -65,6 +65,7 @@ int ldtm_transport_is_field_media(int removable, const char *transport);
 int ldtm_decode_hex_byte(char high, char low, unsigned char *value);
 const char *ldtm_creator_program(const LdtmFilesystemSpec *spec);
 const char *ldtm_creator_display_name(const LdtmFilesystemSpec *spec);
+int ldtm_resolve_program(const char *program, char *output, size_t output_capacity);
 int ldtm_program_available(const char *program);
 int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
                                 char *detail, size_t detail_capacity);

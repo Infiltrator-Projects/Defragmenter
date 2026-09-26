@@ -1076,6 +1076,24 @@ def test_source_version_and_image_detection_have_single_authority() -> None:
     assert "backend_identified_filesystem" in mapper
     assert "backend_identified_filesystem" in map_runtime
 
+
+def test_test_media_privileged_exec_and_identity_are_fail_closed() -> None:
+    media_core = (ROOT / "test_media" / "test_media_core.c").read_text()
+    media_worker = (ROOT / "test_media" / "test_media_worker.c").read_text()
+    media_reserved = (ROOT / "test_media" / "test_media_reserved.c").read_text()
+    media_gui = (ROOT / "test_media" / "test_media_gui.c").read_text()
+
+    assert "ldtm_resolve_program" in media_core
+    assert '"/usr/sbin", "/usr/bin", "/sbin", "/bin"' in media_core
+    assert 'getenv("PATH")' not in media_core
+    assert "execvp(" not in media_worker
+    assert "execvp(" not in media_reserved
+    assert "execv(program" in media_worker
+    assert "execv(program" in media_reserved
+    assert "*serial == '\\0' && *wwn == '\\0'" in media_worker
+    assert "PATH,SIZE,MODEL,SERIAL,WWN,TRAN,RM,RO" in media_gui
+    assert "stable_identity" in media_gui
+
 def main() -> None:
     test_top_level_cmake_owns_native_language_declaration()
     test_native_registry_is_the_single_capability_authority()
@@ -1092,6 +1110,7 @@ def main() -> None:
     test_sfs_and_pfs3_maps_expose_complete_fragmentation_summary()
     test_cpp_mapper_reuses_common_arithmetic_and_has_no_legacy_apfs_adapter()
     test_source_version_and_image_detection_have_single_authority()
+    test_test_media_privileged_exec_and_identity_are_fail_closed()
     test_user_facing_branding_is_defragmenter()
     test_version_and_native_registry_ownership()
     print("current C-first native-registry architecture tests passed")

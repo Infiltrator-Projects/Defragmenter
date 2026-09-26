@@ -74,7 +74,10 @@ static int run_process(const char *const argv[], const char *stdin_text, int qui
     int input_pipe[2] = {-1, -1};
     pid_t child;
     int status = 0;
-    if (argv == NULL || argv[0] == NULL) return -1;
+    char program[PATH_MAX];
+    if (argv == NULL || argv[0] == NULL ||
+        ldtm_resolve_program(argv[0], program, sizeof(program)) != 0)
+        return -1;
     if (!quiet) {
         size_t index = 0U;
         fputs("+", stdout);
@@ -100,7 +103,7 @@ static int run_process(const char *const argv[], const char *stdin_text, int qui
             if (dup2(input_pipe[0], STDIN_FILENO) < 0) _exit(126);
             (void)close(input_pipe[0]);
         }
-        execvp(argv[0], (char *const *)argv);
+        execv(program, (char *const *)argv);
         _exit(127);
     }
     if (stdin_text != NULL) {
@@ -127,7 +130,10 @@ static int capture_process(const char *const argv[], char **output) {
     size_t capacity = 0U;
     size_t used = 0U;
     char *buffer = NULL;
-    if (output == NULL || argv == NULL || argv[0] == NULL) return -1;
+    char program[PATH_MAX];
+    if (output == NULL || argv == NULL || argv[0] == NULL ||
+        ldtm_resolve_program(argv[0], program, sizeof(program)) != 0)
+        return -1;
     *output = NULL;
     if (pipe(output_pipe) != 0) return -1;
     child = fork();
@@ -140,7 +146,7 @@ static int capture_process(const char *const argv[], char **output) {
         (void)close(output_pipe[0]);
         if (dup2(output_pipe[1], STDOUT_FILENO) < 0) _exit(126);
         (void)close(output_pipe[1]);
-        execvp(argv[0], (char *const *)argv);
+        execv(program, (char *const *)argv);
         _exit(127);
     }
     (void)close(output_pipe[1]);
@@ -396,11 +402,19 @@ int ldtm_device_fingerprint(const char *device, char output[65]) {
         return -1;
 
     /*
+     * A destructive confirmation must identify a physical medium, not merely
+     * a model/capacity class. Two anonymous USB devices can legitimately have
+     * identical model, transport and size fields, so accepting those fields
+     * alone would allow a hot-swapped lookalike disk to satisfy confirmation.
+     */
+    if (*serial == '\0' && *wwn == '\0')
+        return -1;
+
+    /*
      * Deliberately exclude /dev/sdX from the persistent fingerprint: the same
      * physical test disk may acquire a different kernel name after a reboot.
-     * Serial/WWN dominate when supplied; model, transport and exact capacity
-     * provide a fail-closed secondary binding for inexpensive media that omit
-     * those identifiers.
+     * A serial or WWN supplies the stable device identity; model, transport
+     * and exact capacity strengthen that binding.
      */
     length = snprintf(material, sizeof(material),
                       "size=%llu\nmodel=%s\nserial=%s\nwwn=%s\ntransport=%s\n",

@@ -491,7 +491,7 @@ static void refresh_devices(LdtmApp *app) {
     GError *error = NULL;
     gchar *argv[] = {
         (gchar *)"lsblk", (gchar *)"-d", (gchar *)"-b", (gchar *)"-n", (gchar *)"-P",
-        (gchar *)"-o", (gchar *)"PATH,SIZE,MODEL,SERIAL,TRAN,RM,RO", NULL
+        (gchar *)"-o", (gchar *)"PATH,SIZE,MODEL,SERIAL,WWN,TRAN,RM,RO", NULL
     };
     gchar **lines;
     gint first_safe = -1;
@@ -514,6 +514,7 @@ static void refresh_devices(LdtmApp *app) {
         char *size_text;
         char *model;
         char *serial;
+        char *wwn;
         char *transport;
         char *rm_text;
         char *ro_text;
@@ -525,6 +526,7 @@ static void refresh_devices(LdtmApp *app) {
         gboolean system_disk;
         gboolean field_media;
         gboolean enough;
+        gboolean stable_identity;
         gboolean safe;
         char *display;
         char *summary;
@@ -534,6 +536,7 @@ static void refresh_devices(LdtmApp *app) {
         size_text = pair_value(lines[index], "SIZE");
         model = pair_value(lines[index], "MODEL");
         serial = pair_value(lines[index], "SERIAL");
+        wwn = pair_value(lines[index], "WWN");
         transport = pair_value(lines[index], "TRAN");
         rm_text = pair_value(lines[index], "RM");
         ro_text = pair_value(lines[index], "RO");
@@ -546,21 +549,27 @@ static void refresh_devices(LdtmApp *app) {
         system_disk = ldtm_is_system_disk(path) != 0;
         field_media = ldtm_transport_is_field_media(removable, transport) != 0;
         enough = bytes >= ldtm_required_capacity_bytes();
-        safe = !system_disk && readonly == 0 && field_media && enough;
+        stable_identity = *serial != '\0' || *wwn != '\0';
+        safe = !system_disk && readonly == 0 && field_media && enough &&
+               stable_identity;
         display = g_strdup_printf("%s   %.1f GiB   %s%s",
                                   path, (double)bytes / (double)LDTM_GIB,
                                   (*model != '\0') ? model : "unknown model",
                                   system_disk ? "   PROTECTED SYSTEM DISK" :
                                   (safe ? "   field-media candidate" : ""));
         summary = g_strdup_printf(
-            "Device: %s\nModel: %s    Serial: %s\nSize: %.1f GiB    Transport: %s    RM=%d    RO=%d\n%s",
-            path, *model != '\0' ? model : "unknown", *serial != '\0' ? serial : "unknown",
-            (double)bytes / (double)LDTM_GIB, *transport != '\0' ? transport : "unknown",
+            "Device: %s\nModel: %s    Serial: %s    WWN: %s\nSize: %.1f GiB    Transport: %s    RM=%d    RO=%d\n%s",
+            path, *model != '\0' ? model : "unknown",
+            *serial != '\0' ? serial : "unknown",
+            *wwn != '\0' ? wwn : "unknown",
+            (double)bytes / (double)LDTM_GIB,
+            *transport != '\0' ? transport : "unknown",
             removable, readonly,
-            system_disk ? "PROTECTED — this disk contains /, /boot or /boot/efi." :
+            system_disk ? "PROTECTED — this disk backs active system storage." :
             (!field_media ? "Not accepted as removable/USB/MMC field media." :
              (!enough ? "Too small for the full 21-partition test layout." :
-              "✓ Safety pre-check passed. The privileged worker verifies the device again before writing.")));
+              (!stable_identity ? "PROTECTED — no stable serial or WWN is available to bind destructive confirmation." :
+               "✓ Safety pre-check passed. The privileged worker verifies the device identity again before writing."))));
         gtk_list_store_append(app->device_store, &iter);
         gtk_list_store_set(app->device_store, &iter,
                            LDTM_DEVICE_COL_PATH, path,
@@ -575,6 +584,7 @@ static void refresh_devices(LdtmApp *app) {
         g_free(ro_text);
         g_free(rm_text);
         g_free(transport);
+        g_free(wwn);
         g_free(serial);
         g_free(model);
         g_free(size_text);
