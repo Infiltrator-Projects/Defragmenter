@@ -173,7 +173,31 @@ static int test_amiga_formatters_and_payload(void) {
         ldtm_populate_amiga_volume(path, 0U, &tiny) != 0 ||
         ldtm_verify_amiga_payload(path, 0U, &tiny, detail, sizeof(detail)) != 0 ||
         production_parser_accepts(path, 0U, 0, expected_files, tiny.files, tiny.chunks) != 0 ||
-        corrupt_first_payload_block(path) != 0 ||
+        0) {
+        (void)unlink(path);
+        return 1;
+    }
+    {
+        char stage[256];
+        char *stage_error = NULL;
+        uint64_t commit_bytes = 0U;
+        if (snprintf(stage, sizeof(stage), "%s.ofs-stage", path) <= 0 ||
+            affs_build_stage(path, stage, false, 10U, false,
+                             &commit_bytes, &stage_error) != 0 ||
+            ldtm_verify_amiga_payload_after_defrag(
+                stage, 0U, &tiny, detail, sizeof(detail)) != 0) {
+            free(stage_error);
+            (void)unlink(stage);
+            (void)unlink(path);
+            return 1;
+        }
+        free(stage_error);
+        if (unlink(stage) != 0) {
+            (void)unlink(path);
+            return 1;
+        }
+    }
+    if (corrupt_first_payload_block(path) != 0 ||
         ldtm_verify_amiga_payload(path, 0U, &tiny, detail, sizeof(detail)) == 0) {
         (void)unlink(path);
         return 1;
@@ -185,7 +209,31 @@ static int test_amiga_formatters_and_payload(void) {
         ldtm_populate_amiga_volume(path, 1U, &tiny) != 0 ||
         ldtm_verify_amiga_payload(path, 1U, &tiny, detail, sizeof(detail)) != 0 ||
         production_parser_accepts(path, 1U, 1, expected_files, tiny.files, tiny.chunks) != 0 ||
-        corrupt_first_payload_block(path) != 0 ||
+        0) {
+        (void)unlink(path);
+        return 1;
+    }
+    {
+        char stage[256];
+        char *stage_error = NULL;
+        uint64_t commit_bytes = 0U;
+        if (snprintf(stage, sizeof(stage), "%s.ffs-stage", path) <= 0 ||
+            affs_build_stage(path, stage, false, 10U, false,
+                             &commit_bytes, &stage_error) != 0 ||
+            ldtm_verify_amiga_payload_after_defrag(
+                stage, 1U, &tiny, detail, sizeof(detail)) != 0) {
+            free(stage_error);
+            (void)unlink(stage);
+            (void)unlink(path);
+            return 1;
+        }
+        free(stage_error);
+        if (unlink(stage) != 0) {
+            (void)unlink(path);
+            return 1;
+        }
+    }
+    if (corrupt_first_payload_block(path) != 0 ||
         ldtm_verify_amiga_payload(path, 1U, &tiny, detail, sizeof(detail)) == 0) {
         (void)unlink(path);
         return 1;
@@ -218,6 +266,23 @@ static int test_sfs_formatter_and_payload(void) {
         analysis.data_blocks != 6400U || analysis.growth_10_satisfied) {
         (void)unlink(path);
         return 1;
+    }
+    {
+        char stage[256];
+        uint64_t commit_bytes = 0U;
+        if (snprintf(stage, sizeof(stage), "%s.stage", path) <= 0 ||
+            sfs_build_stage(path, stage, false, 10U, false,
+                            &commit_bytes, error, sizeof(error)) != 0 ||
+            ldtm_verify_sfs_payload_after_defrag(
+                stage, &profile, detail, sizeof(detail)) != 0) {
+            (void)unlink(stage);
+            (void)unlink(path);
+            return 1;
+        }
+        if (unlink(stage) != 0) {
+            (void)unlink(path);
+            return 1;
+        }
     }
     fd = open(path, O_RDWR | O_CLOEXEC);
     if (fd < 0 || pread(fd, &byte, 1U, (off_t)128U * 4096U) != 1) {
@@ -265,6 +330,23 @@ static int test_pfs3_formatter_and_payload(void) {
         (void)unlink(path);
         return 1;
     }
+    {
+        char stage[256];
+        uint64_t commit_bytes = 0U;
+        if (snprintf(stage, sizeof(stage), "%s.stage", path) <= 0 ||
+            pfs3_build_stage(path, stage, false, 10U, false,
+                             &commit_bytes, error, sizeof(error)) != 0 ||
+            ldtm_verify_pfs3_payload_after_defrag(
+                stage, &profile, detail, sizeof(detail)) != 0) {
+            (void)unlink(stage);
+            (void)unlink(path);
+            return 1;
+        }
+        if (unlink(stage) != 0) {
+            (void)unlink(path);
+            return 1;
+        }
+    }
     fd = open(path, O_RDWR | O_CLOEXEC);
     if (fd < 0 || pread(fd, &byte, 1U, (off_t)4096U * 512U) != 1) {
         if (fd >= 0) (void)close(fd);
@@ -307,7 +389,7 @@ static int test_apfs_formatter_and_payload(void) {
         return 1;
     }
     if (analysis.block_size != 4096U ||
-        analysis.block_count != 16384U ||
+        analysis.block_count != 32768U ||
         analysis.regular_files != 1U ||
         analysis.fragmented_files != 1U) {
         apfs_analysis_free(&analysis);
@@ -315,6 +397,23 @@ static int test_apfs_formatter_and_payload(void) {
         return 1;
     }
     apfs_analysis_free(&analysis);
+    {
+        char stage[256];
+        uint64_t commit_bytes = 0U;
+        if (snprintf(stage, sizeof(stage), "%s.stage", path) <= 0 ||
+            apfs_build_stage(path, stage, false, 10U, false,
+                             &commit_bytes, error, sizeof(error)) != 0 ||
+            ldtm_verify_apfs_payload_after_defrag(
+                stage, detail, sizeof(detail)) != 0) {
+            (void)unlink(stage);
+            (void)unlink(path);
+            return 1;
+        }
+        if (unlink(stage) != 0) {
+            (void)unlink(path);
+            return 1;
+        }
+    }
 
     fd = open(path, O_RDWR | O_CLOEXEC);
     if (fd < 0) {
@@ -364,8 +463,8 @@ int main(void) {
     const char *cursor;
 
     CHECK(ldtm_spec_count() == 21U);
-    CHECK(ldtm_allocated_capacity_bytes() == UINT64_C(35456) * LDTM_MIB);
-    CHECK(ldtm_required_capacity_bytes() == (UINT64_C(35456) * LDTM_MIB) + LDTM_GIB);
+    CHECK(ldtm_allocated_capacity_bytes() == UINT64_C(41024) * LDTM_MIB);
+    CHECK(ldtm_required_capacity_bytes() == (UINT64_C(41024) * LDTM_MIB) + LDTM_GIB);
     CHECK(fat12 != NULL && fat16 != NULL && ofs != NULL && ffs != NULL && sfs != NULL && pfs3 != NULL);
     CHECK(ufs != NULL && zfs != NULL && apfs != NULL);
 
@@ -409,6 +508,10 @@ int main(void) {
     CHECK(zfs->package_hint != NULL && strcmp(zfs->package_hint, "zfsutils-linux") == 0);
     CHECK(strstr(zfs->note, "ZFS v28") != NULL &&
           strstr(zfs->note, "native exact analyser") != NULL);
+    CHECK(fat16->size_mib == 2048U);
+    CHECK(ofs->size_mib == 2048U && ffs->size_mib == 2048U);
+    CHECK(sfs->size_mib == 2048U && pfs3->size_mib == 2048U);
+    CHECK(zfs->size_mib == 2048U && apfs->size_mib == 2048U);
     CHECK(apfs->creator == LDTM_CREATOR_APFS && ldtm_creator_program(apfs) == NULL);
     CHECK(ldtm_spec_creator_available(apfs, script, sizeof(script)) == 1);
     CHECK(strstr(script, "Built-in raw C creator") != NULL);
