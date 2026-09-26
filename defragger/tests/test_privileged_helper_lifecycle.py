@@ -63,6 +63,14 @@ def run_case(mode, program):
         pid = None
         try:
             event_of("ready")
+            # A single malformed client frame must be bounded and rejected
+            # without terminating or desynchronising the persistent root helper.
+            send({"action": "ping", "id": 90, "padding": "x" * 70000})
+            oversized = events.get(timeout=5)
+            assert oversized["type"] == "error", oversized
+            send({"action": "ping", "id": 91})
+            assert event_of("pong", 91)["id"] == 91
+
             arguments = ["/dev/test", "--fstype", "fat12"]
             if program == "operation-engine":
                 arguments = ["defrag", "/dev/test", "--filesystem", "fat12",
