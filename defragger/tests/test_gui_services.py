@@ -204,6 +204,17 @@ def test_operation_planner_is_pure_and_complete() -> None:
     # planner still refuses any mounted write that bypasses that UI sequence.
     assert blocked.unmount and blocked.defrag and blocked.growth_defrag
 
+    unverified = _volume("/dev/unverified", image=False)
+    unverified.identity_verified = False
+    locked = control_state(
+        unverified,
+        busy=False,
+        stop_requested=False,
+        journal_exists=False,
+    )
+    assert locked.analyse
+    assert not locked.defrag and not locked.growth_defrag and not locked.recover
+
 
 def test_live_event_controller_returns_view_model_updates() -> None:
     controller = LiveEventController()
