@@ -2204,7 +2204,6 @@ static int verify_edge_pattern_file(const char *path, uint32_t size,
     unsigned char expected[8192];
     struct stat st;
     int fd;
-    size_t done = 0U;
     int result = -1;
 
     if ((size_t)size > sizeof(actual))
@@ -2215,27 +2214,11 @@ static int verify_edge_pattern_file(const char *path, uint32_t size,
     if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) ||
         st.st_size < 0 || (uint64_t)st.st_size != (uint64_t)size)
         goto cleanup;
-    while (done < (size_t)size) {
-        ssize_t got = read(fd, actual + done, (size_t)size - done);
-        if (got < 0) {
-            if (errno == EINTR) continue;
-            goto cleanup;
-        }
-        if (got == 0) goto cleanup;
-        done += (size_t)got;
-    }
     if (size > 0U) {
+        if (infiltratr_pread_full(fd, actual, (size_t)size, 0U) != 0)
+            goto cleanup;
         deterministic_fill(expected, (size_t)size, seed);
         if (memcmp(actual, expected, (size_t)size) != 0)
-            goto cleanup;
-    }
-    {
-        unsigned char extra;
-        ssize_t got;
-        do {
-            got = read(fd, &extra, 1U);
-        } while (got < 0 && errno == EINTR);
-        if (got != 0)
             goto cleanup;
     }
     result = 0;
