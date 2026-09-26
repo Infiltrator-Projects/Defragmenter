@@ -1020,6 +1020,7 @@ int main(int argc, char **argv) {
     if (strcmp(operation, "growth-defrag") == 0 && growth_percent != 10) {
         fprintf(stderr, "%s: Growth Defrag requires exactly 10%%\n", PROGRAM_NAME); return 2;
     }
+    ld_stop_report_ready();
     char *error = NULL; int result;
     if (strcmp(operation, "recover") == 0) result = recover(device, journal, &error);
     else {
