@@ -45,6 +45,8 @@ typedef struct {
     size_t count;
 } LdtmPartitionMap;
 
+static int load_partition_map(const char *device, LdtmPartitionMap *map);
+
 typedef struct {
     int populated;
     char pool[96];
@@ -624,13 +626,29 @@ static int unmount_descendants(const char *device) {
     return result;
 }
 
-static int settle_partitions(const char *device) {
+static int settle_partitions(const char *device, LdtmPartitionMap *map) {
     const char *const partx_argv[] = {"partx", "-u", device, NULL};
     const char *const udev_argv[] = {"udevadm", "settle", NULL};
-    (void)run_process(partx_argv, NULL, 0);
-    if (ldtm_program_available("udevadm")) (void)run_process(udev_argv, NULL, 0);
-    sleep(1U);
-    return 0;
+    unsigned int attempt;
+
+    if (map == NULL || run_process(partx_argv, NULL, 0) != 0)
+        return -1;
+    if (ldtm_program_available("udevadm") &&
+        run_process(udev_argv, NULL, 0) != 0)
+        return -1;
+
+    /*
+     * A fixed sleep is neither necessary nor sufficient.  Wait until the
+     * kernel view actually contains the complete labelled GPT layout, with a
+     * bounded five-second ceiling so a broken device can never hang the GUI.
+     */
+    for (attempt = 0U; attempt < 50U; ++attempt) {
+        if (load_partition_map(device, map) == 0 &&
+            map->count == LDTM_SPEC_COUNT)
+            return 0;
+        usleep(100000U);
+    }
+    return -1;
 }
 
 static int load_partition_map(const char *device, LdtmPartitionMap *map) {
@@ -688,6 +706,21 @@ static int remove_flat_directory(const char *path) {
     }
     (void)closedir(directory);
     return rmdir(path);
+}
+
+static int sync_path_filesystem(const char *path) {
+    int fd = open(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    int result;
+    int saved_errno;
+    if (fd < 0) return -1;
+    result = syncfs(fd);
+    saved_errno = errno;
+    if (close(fd) != 0 && result == 0) {
+        result = -1;
+        saved_errno = errno;
+    }
+    errno = saved_errno;
+    return result;
 }
 
 static void deterministic_fill(unsigned char *buffer, size_t length, uint64_t seed) {
@@ -775,7 +808,7 @@ static int generate_fragmented_data(const LdtmFilesystemSpec *spec, const char *
         (void)snprintf(name, sizeof(name), "anchor-%04u.bin", index);
         if (!infiltratr_path_join(path, sizeof(path), anchors, name) || unlink(path) != 0) goto cleanup;
     }
-    sync();
+    if (sync_path_filesystem(root) != 0) goto cleanup;
 
     chunk_buffer = malloc((size_t)profile.chunk_kib * 1024U);
     if (chunk_buffer == NULL) goto cleanup;
@@ -870,9 +903,9 @@ static int generate_fragmented_data(const LdtmFilesystemSpec *spec, const char *
         if (close(fd) != 0) goto cleanup;
     }
     *directory_entries = profile.directory_initial / 2U + profile.directory_second;
-    sync();
+    if (sync_path_filesystem(root) != 0) goto cleanup;
     if (remove_flat_directory(anchors) != 0) goto cleanup;
-    sync();
+    if (sync_path_filesystem(root) != 0) goto cleanup;
     result = 0;
 
 cleanup:
@@ -1931,9 +1964,9 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device,
         const char *const argv[] = {"sfdisk", "--wipe", "always", "--lock", canonical, NULL};
         if (run_process(argv, script, 0) != 0) return 2;
     }
-    (void)settle_partitions(canonical);
-    if (load_partition_map(canonical, &map) != 0) {
-        fputs("New partition table did not settle correctly.\n", stderr);
+    if (settle_partitions(canonical, &map) != 0) {
+        fputs("New partition table did not settle into the complete labelled layout.\n",
+              stderr);
         return 2;
     }
     work = mkdtemp(work_template);
@@ -2043,6 +2076,78 @@ cleanup:
     if (context != NULL) EVP_MD_CTX_free(context);
     (void)close(fd);
     return result;
+}
+
+static int file_matches_text(const char *path, const char *expected,
+                             size_t expected_length) {
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    struct stat st;
+    char buffer[128];
+    size_t done = 0U;
+    int result = -1;
+    if (fd < 0 || expected_length > sizeof(buffer))
+        goto cleanup;
+    if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) ||
+        (uint64_t)st.st_size != (uint64_t)expected_length)
+        goto cleanup;
+    while (done < expected_length) {
+        ssize_t got = read(fd, buffer + done, expected_length - done);
+        if (got < 0) {
+            if (errno == EINTR) continue;
+            goto cleanup;
+        }
+        if (got == 0) goto cleanup;
+        done += (size_t)got;
+    }
+    if (memcmp(buffer, expected, expected_length) != 0)
+        goto cleanup;
+    {
+        char extra;
+        ssize_t got;
+        do {
+            got = read(fd, &extra, 1U);
+        } while (got < 0 && errno == EINTR);
+        if (got != 0) goto cleanup;
+    }
+    result = 0;
+cleanup:
+    if (fd >= 0) (void)close(fd);
+    return result;
+}
+
+static int verify_fragmented_directory_payload(
+    const LdtmFilesystemSpec *spec, const char *directory_path) {
+    const LdtmFragmentProfile profile = ldtm_fragment_profile(spec);
+    uint32_t index;
+
+    for (index = 1U; index < profile.directory_initial; index += 2U) {
+        char path[PATH_MAX];
+        char name[64];
+        char contents[64];
+        int length;
+        (void)snprintf(name, sizeof(name), "entry-%05u.txt", index);
+        if (!infiltratr_path_join(path, sizeof(path), directory_path, name))
+            return -1;
+        length = snprintf(contents, sizeof(contents), "first %u\n", index);
+        if (length < 0 || (size_t)length >= sizeof(contents) ||
+            file_matches_text(path, contents, (size_t)length) != 0)
+            return -1;
+    }
+    for (index = 0U; index < profile.directory_second; ++index) {
+        const uint32_t entry_index = profile.directory_initial + index;
+        char path[PATH_MAX];
+        char name[64];
+        char contents[64];
+        int length;
+        (void)snprintf(name, sizeof(name), "entry-%05u.txt", entry_index);
+        if (!infiltratr_path_join(path, sizeof(path), directory_path, name))
+            return -1;
+        length = snprintf(contents, sizeof(contents), "second %u\n", entry_index);
+        if (length < 0 || (size_t)length >= sizeof(contents) ||
+            file_matches_text(path, contents, (size_t)length) != 0)
+            return -1;
+    }
+    return 0;
 }
 
 static uint32_t directory_entry_count(const char *path) {
@@ -2162,12 +2267,19 @@ static int verify_mounted_payload(const LdtmFilesystemSpec *spec, const char *mo
             return -1;
         }
     }
-    if (!infiltratr_path_join(directory_path, sizeof(directory_path), root, "fragmented-directory") ||
+    if (!infiltratr_path_join(directory_path, sizeof(directory_path), root,
+                              "fragmented-directory") ||
         directory_entry_count(directory_path) != expected->directory_entries) {
         emit_status(spec->key, "verify-failed", "directory-entry count changed");
         return -1;
     }
-    emit_status(spec->key, "verified", "all retained file hashes, sizes and directory entries match");
+    if (verify_fragmented_directory_payload(spec, directory_path) != 0) {
+        emit_status(spec->key, "verify-failed",
+                    "retained directory payload content changed");
+        return -1;
+    }
+    emit_status(spec->key, "verified",
+                "all retained file hashes, sizes, names and directory payload bytes match");
     return 0;
 }
 
