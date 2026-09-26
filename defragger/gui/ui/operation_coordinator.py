@@ -100,7 +100,6 @@ class OperationCoordinator:
         self.minimum_cells = minimum_cells
         self.maximum_cells = maximum_cells
         self.map_data: dict[str, Any] | None = None
-        self.last_map_cell_target = 0
 
     @property
     def journal_path(self) -> str:
@@ -108,7 +107,6 @@ class OperationCoordinator:
 
     def reset_map(self) -> None:
         self.map_data = None
-        self.last_map_cell_target = 0
         self.view.disk_map.set_cells([])
 
     def _bounded_map_cells(self, cells: int) -> int:
@@ -131,9 +129,6 @@ class OperationCoordinator:
         data["cells"] = presentation.cells
         self.map_data = data
         self.volumes.remember_map(data)
-        self.last_map_cell_target = self._bounded_map_cells(
-            presentation.cell_count if requested_cells is None else requested_cells
-        )
         self.view.apply_map_presentation(presentation)
         return presentation
 
@@ -148,23 +143,6 @@ class OperationCoordinator:
         return self._bounded_map_cells(
             self.view.disk_map.desired_cell_count(width, height)
         )
-
-    def map_resolution_needs_refresh(self, target_cells: int) -> bool:
-        """Return whether a resize materially outgrew the current map sample.
-
-        GTK emits many small size changes while a window is being dragged or
-        its surrounding layout settles. Re-reading the filesystem for every
-        one of those changes is expensive and does not improve the visible map
-        meaningfully. Keep the existing physical sample while the requested
-        pixel density stays within a 25% hysteresis band; the drawing surface
-        still rerasterises immediately at its exact new size.
-        """
-
-        if self.map_data is None or self.last_map_cell_target <= 0:
-            return False
-        target = self._bounded_map_cells(target_cells)
-        current = self.last_map_cell_target
-        return target * 4 < current * 3 or target * 4 > current * 5
 
     def analyze(
         self,
