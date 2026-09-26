@@ -884,6 +884,15 @@ static int verify_apfs_payload_state(
         return -1;
     }
 
+    const LdtmFilesystemSpec *spec = ldtm_find_spec("apfs");
+    const LdtmFragmentProfile profile = ldtm_fragment_profile(spec);
+    if (spec == NULL ||
+        ldtm_profile_payload_bytes(&profile) !=
+            UINT64_C(200) * LDTM_MIB) {
+        (void)close(fd);
+        return -1;
+    }
+
     ApfsTmVerifyExtent extents[LDTM_TARGET_FILE_COUNT][2] = {{{0}}};
     const uint32_t records = infiltratr_load_le32(catalog + 36U);
     for (uint32_t record_index = 0U;
@@ -915,14 +924,7 @@ static int verify_apfs_payload_state(
         const uint64_t bytes = infiltratr_load_le64(value);
         const uint64_t paddr = infiltratr_load_le64(value + 8U);
         const uint64_t expected_bytes =
-            ldtm_profile_file_bytes(
-                &(LdtmFragmentProfile){
-                    .files = LDTM_TARGET_FILE_COUNT,
-                    .chunks = 30U,
-                    .chunk_kib = 2048U,
-                    .file_chunks = {2U, 3U, 5U, 8U, 13U, 17U, 22U, 30U},
-                },
-                file);
+            ldtm_profile_file_bytes(&profile, file);
         const uint64_t half = expected_bytes / 2U;
         unsigned slot;
         if (logical == 0U)
@@ -950,14 +952,6 @@ static int verify_apfs_payload_state(
 
     uint8_t actual[APFS_TM_BLOCK];
     uint8_t expected[APFS_TM_BLOCK];
-    const LdtmFilesystemSpec *spec = ldtm_find_spec("apfs");
-    const LdtmFragmentProfile profile = ldtm_fragment_profile(spec);
-    if (spec == NULL ||
-        ldtm_profile_payload_bytes(&profile) !=
-            UINT64_C(200) * LDTM_MIB) {
-        (void)close(fd);
-        return -1;
-    }
     for (uint32_t file = 0U; file < LDTM_TARGET_FILE_COUNT; ++file) {
         const uint64_t file_bytes =
             ldtm_profile_file_bytes(&profile, file);
