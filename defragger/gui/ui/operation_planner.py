@@ -169,6 +169,7 @@ def control_state(
     can_offer_write = (
         enabled
         and mutation_backend
+        and bool(volume and volume.identity_verified)
         and not bool(volume and volume.readonly)
     )
     return ControlState(
