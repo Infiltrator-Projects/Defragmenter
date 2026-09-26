@@ -196,6 +196,18 @@ int main() {
     ok = check(Json::parse(parsed.dump()).at("truth").boolean(),
                "JSON round trip") && ok;
 
+    std::string deeply_nested;
+    for (unsigned index = 0U; index < 70U; ++index) deeply_nested += '[';
+    deeply_nested += '0';
+    for (unsigned index = 0U; index < 70U; ++index) deeply_nested += ']';
+    bool rejected_deep_json = false;
+    try {
+        (void)Json::parse(deeply_nested);
+    } catch (const std::runtime_error&) {
+        rejected_deep_json = true;
+    }
+    ok = check(rejected_deep_json, "JSON nesting depth is bounded") && ok;
+
     const CommandResult command =
         run_capture({"/bin/sh", "-c", "printf native-cpp; printf warning >&2"});
     ok = check(command.return_code == 0, "process exit code") && ok;
