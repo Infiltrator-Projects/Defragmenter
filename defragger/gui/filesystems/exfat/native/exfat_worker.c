@@ -675,7 +675,8 @@ int main(int argc, char **argv) {
             PROGRAM_NAME);
         return 1;
     }
-    ld_stop_install_handlers(); char *error = NULL; int result = strcmp(operation, "recover") == 0
+    ld_stop_install_handlers();
+    ld_stop_report_ready(); char *error = NULL; int result = strcmp(operation, "recover") == 0
         ? recover_transaction(device, journal, ram_bytes, batch_clusters, live_updates, &error)
         : build_and_commit(device, operation, journal, ram_bytes, batch_clusters, live_updates, &error);
     if (result != 0 && result != 130) {
