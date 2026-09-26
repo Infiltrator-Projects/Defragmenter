@@ -361,6 +361,9 @@ static int parse_json_u64_field(const char *json, const char *name,
     if (json == NULL || name == NULL || value == NULL) return -1;
     const size_t wanted_length = strlen(name);
     const char *cursor = json_skip_ws(json);
+    uint64_t parsed_value = 0U;
+    int found = 0;
+
     if (*cursor++ != '{') return -1;
     cursor = json_skip_ws(cursor);
 
@@ -378,27 +381,29 @@ static int parse_json_u64_field(const char *json, const char *name,
             key_length == wanted_length &&
             memcmp(key, name, wanted_length) == 0;
         if (matches) {
-            if (*cursor < '0' || *cursor > '9') return -1;
+            if (found || *cursor < '0' || *cursor > '9') return -1;
             const char *number = cursor;
-            uint64_t parsed = 0U;
-            if (!infiltratr_parse_u64_token(&cursor, 10U, &parsed))
+            if (!infiltratr_parse_u64_token(&cursor, 10U, &parsed_value))
                 return -1;
             if (cursor == number ||
                 (*number == '0' && cursor - number > 1))
                 return -1;
-            const char *after = json_skip_ws(cursor);
-            if (*after != ',' && *after != '}') return -1;
-            *value = parsed;
-            return 0;
+            found = 1;
+        } else if (json_skip_value(&cursor, 0U) != 0) {
+            return -1;
         }
 
-        if (json_skip_value(&cursor, 0U) != 0) return -1;
         cursor = json_skip_ws(cursor);
         if (*cursor == '}') break;
         if (*cursor++ != ',') return -1;
         cursor = json_skip_ws(cursor);
     }
-    return -1;
+
+    if (*cursor++ != '}') return -1;
+    cursor = json_skip_ws(cursor);
+    if (*cursor != '\0' || !found) return -1;
+    *value = parsed_value;
+    return 0;
 }
 
 static int production_map_output(const LdtmFilesystemSpec *spec,
