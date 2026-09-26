@@ -218,6 +218,12 @@ class VolumeCoordinator:
         volume = self.current
         if volume is None:
             return ""
+        identity = "|".join(
+            value
+            for value in (volume.filesystem_uuid, volume.partition_uuid)
+            if value
+        )
         return str(
-            state_directory / f"{safe_journal_name(volume.path)}.journal"
+            state_directory /
+            f"{safe_journal_name(volume.path, identity)}.journal"
         )
