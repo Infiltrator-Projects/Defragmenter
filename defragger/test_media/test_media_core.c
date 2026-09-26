@@ -28,10 +28,10 @@ static const LdtmFilesystemSpec LDTM_SPECS[LDTM_SPEC_COUNT] = {
      "Amiga Old File System DOS\\0; first-party raw C creator uses the full 2 GiB qualification cap."},
     {"ffs", "LD_FFS", 2048U, 200U, LDTM_CREATOR_AFFS, "",
      "Amiga Fast File System DOS\\1; first-party raw C creator uses the full 2 GiB qualification cap."},
-    {"sfs", "LD_SFS", 2048U, 25U, LDTM_CREATOR_AFFS, "",
-     "Amiga Smart File System SFS0 v3; 2 GiB first-party raw C volume with a 25 MiB file in 100 extents and an intentionally unsatisfied Growth Defrag reserve."},
-    {"pfs3", "LD_PFS3", 2048U, 25U, LDTM_CREATOR_PFS3, "",
-     "Amiga Professional File System 3; 2 GiB first-party raw C volume with a 25 MiB file in 100 extents in the qualified small-disk PFS3 subset."},
+    {"sfs", "LD_SFS", 2048U, 200U, LDTM_CREATOR_AFFS, "",
+     "Amiga Smart File System SFS0 v3; first-party raw C creator uses the standard 200 MiB heterogeneous fragmented corpus."},
+    {"pfs3", "LD_PFS3", 2048U, 200U, LDTM_CREATOR_PFS3, "",
+     "Amiga Professional File System 3; first-party raw C creator uses the standard 200 MiB heterogeneous fragmented corpus in the qualified small-disk subset."},
     {"hfs", "LD_HFS", 2048U, 200U, LDTM_CREATOR_HFS, "hfsutils", ""},
     {"hfsplus", "LD_HFSPLUS", 2048U, 200U, LDTM_CREATOR_HFSPLUS, "hfsprogs", ""},
     {"minix", "LD_MINIX", 2048U, 200U, LDTM_CREATOR_MINIX, "util-linux", ""},
@@ -39,8 +39,8 @@ static const LdtmFilesystemSpec LDTM_SPECS[LDTM_SPEC_COUNT] = {
      "Creates a genuine UFS2/FFS image with makefs and requires exact allocation/fragmentation analysis before qualified native mutation testing."},
     {"zfs", "LD_ZFS", 2048U, 200U, LDTM_CREATOR_ZFS, "zfsutils-linux",
      "Creates an isolated single-disk ZFS v28 pool, exports it after population and requires the native exact analyser to accept it."},
-    {"apfs", "LD_APFS", 2048U, 1U, LDTM_CREATOR_APFS, "",
-     "Built-in first-party raw C creator manufactures a 2 GiB qualified bounded APFS checkpoint/spaceman/flat-tree fixture with a deliberately fragmented file."},
+    {"apfs", "LD_APFS", 2048U, 200U, LDTM_CREATOR_APFS, "",
+     "Built-in first-party raw C creator manufactures a 2 GiB qualified bounded APFS checkpoint/spaceman/flat-tree fixture with the standard 200 MiB heterogeneous fragmented corpus."},
     {"swap", "LD_SWAP", 2048U, 0U, LDTM_CREATOR_SWAP, "util-linux",
      "Swap contains no files."}
 };
@@ -71,33 +71,65 @@ uint64_t ldtm_required_capacity_bytes(void) {
 }
 
 LdtmFragmentProfile ldtm_fragment_profile(const LdtmFilesystemSpec *spec) {
-    LdtmFragmentProfile profile = {64U, 2048U, 8U, 100U, 256U, 4096U, 4096U};
+    LdtmFragmentProfile profile = {
+        .anchors = 64U,
+        .anchor_kib = 2048U,
+        .files = LDTM_TARGET_FILE_COUNT,
+        .chunks = 30U,
+        .chunk_kib = 2048U,
+        .directory_initial = 4096U,
+        .directory_second = 4096U,
+        .file_chunks = {2U, 3U, 5U, 8U, 13U, 17U, 22U, 30U},
+    };
     if (spec != NULL && strcmp(spec->key, "fat12") == 0) {
-        profile.anchors = 8U;
+        /*
+         * FAT12's 255 MiB geometry is constrained by cluster count, not by a
+         * 4 MiB payload ceiling. Keep temporary allocator pressure below the
+         * data capacity while retaining the same 200 MiB retained corpus.
+         */
+        profile.anchors = 32U;
         profile.anchor_kib = 512U;
-        profile.files = 2U;
-        profile.chunks = 16U;
-        profile.chunk_kib = 128U;
         profile.directory_initial = 128U;
         profile.directory_second = 128U;
     } else if (spec != NULL &&
-               (strcmp(spec->key, "sfs") == 0 || strcmp(spec->key, "pfs3") == 0)) {
+               (strcmp(spec->key, "sfs") == 0 ||
+                strcmp(spec->key, "pfs3") == 0)) {
+        /* Raw first-party creators manufacture their own fragmentation gaps. */
         profile.anchors = 0U;
         profile.anchor_kib = 0U;
-        profile.files = 1U;
-        profile.chunks = 100U;
-        profile.chunk_kib = 256U;
         profile.directory_initial = 0U;
         profile.directory_second = 0U;
     }
     return profile;
 }
 
+uint32_t ldtm_profile_file_chunks(const LdtmFragmentProfile *profile,
+                                  size_t file_index) {
+    if (profile == NULL || file_index >= profile->files ||
+        file_index >= LDTM_TARGET_FILE_COUNT)
+        return 0U;
+    return profile->file_chunks[file_index] != 0U
+        ? profile->file_chunks[file_index] : profile->chunks;
+}
+
+uint64_t ldtm_profile_file_bytes(const LdtmFragmentProfile *profile,
+                                 size_t file_index) {
+    return (uint64_t)ldtm_profile_file_chunks(profile, file_index) *
+           (uint64_t)profile->chunk_kib * UINT64_C(1024);
+}
+
+uint64_t ldtm_profile_payload_bytes(const LdtmFragmentProfile *profile) {
+    if (profile == NULL) return 0U;
+    uint64_t total = 0U;
+    for (size_t file = 0U; file < profile->files; ++file)
+        total += ldtm_profile_file_bytes(profile, file);
+    return total;
+}
+
 uint64_t ldtm_target_payload_bytes(const LdtmFilesystemSpec *spec) {
-    const LdtmFragmentProfile profile = ldtm_fragment_profile(spec);
     if (spec == NULL || spec->payload_mib == 0U) return 0U;
-    return (uint64_t)profile.files * (uint64_t)profile.chunks *
-           (uint64_t)profile.chunk_kib * UINT64_C(1024);
+    const LdtmFragmentProfile profile = ldtm_fragment_profile(spec);
+    return ldtm_profile_payload_bytes(&profile);
 }
 
 static int appendf(char *buffer, size_t capacity, size_t *used, const char *format, ...) {
