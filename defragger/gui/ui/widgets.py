@@ -165,8 +165,8 @@ class DiskMap(Gtk.DrawingArea):
         # The physical mapping is still exactly row-major and monotonic. Fill
         # the contiguous pixel interval represented by each source cell instead
         # of recalculating the inverse mapping in Python for every pixel. Gaps
-        # remain prefilled with the background colour. No Hilbert/Morton/other
-        # spatial curve may move a unit to a different apparent disk position.
+        # remain prefilled with the background colour; no Hilbert/Morton/other spatial curve
+        # may move a unit to a different apparent disk position.
         for index, cell in enumerate(self.cells):
             pixel_start, pixel_end = pixel_span_for_unit_range(
                 first_unit,
