@@ -22,8 +22,10 @@ assert os.read(0, 1) == b""
 marker.with_suffix(".ready").write_text(str(os.getpid()))
 writer = sys.argv[1] == "defrag"
 if writer:
-    # Exercise a queued Stop while the handler is installed but before output.
+    # Exercise a queued Stop while the handler is installed but before the
+    # worker explicitly declares that cooperative Stop delivery is safe.
     time.sleep(0.25)
+    print("@@STOP_READY", flush=True)
     print("worker initialised", flush=True)
 deadline = time.monotonic() + 10
 while not stopped and time.monotonic() < deadline:
