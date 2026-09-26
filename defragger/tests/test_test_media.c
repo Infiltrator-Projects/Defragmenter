@@ -444,6 +444,18 @@ static int test_apfs_formatter_and_payload(void) {
     return unlink(path) == 0 ? 0 : 1;
 }
 
+static int reset_two_gib_sparse_image(const char *path)
+{
+    int fd = open(path, O_RDWR | O_CLOEXEC);
+    if (fd < 0)
+        return -1;
+    const int result =
+        ftruncate(fd, 0) == 0 &&
+        ftruncate(fd, (off_t)(UINT64_C(2) * LDTM_GIB)) == 0 ? 0 : -1;
+    (void)close(fd);
+    return result;
+}
+
 static int test_two_gib_first_party_media_geometry(void)
 {
     char path[] = "/tmp/linux-defragger-2g-media.XXXXXX";
@@ -451,22 +463,28 @@ static int test_two_gib_first_party_media_geometry(void)
     int fd = mkstemp(path);
     if (fd < 0)
         return 1;
-    if (ftruncate(fd, (off_t)(UINT64_C(2) * LDTM_GIB)) != 0 ||
-        close(fd) != 0) {
+    if (close(fd) != 0 || reset_two_gib_sparse_image(path) != 0) {
         (void)unlink(path);
         return 1;
     }
 
     /*
      * The old 1 GiB OFS/FFS and 64 MiB SFS limits were Test Media
-     * constants, not format limits in our native creators.  Exercise the
-     * actual 2 GiB qualification cap on a sparse image so regressions cannot
-     * silently shrink these formats again.
+     * constants, not format limits in our native creators.  Exercise each
+     * creator on a fresh sparse 2 GiB image, matching the real worker's
+     * wipefs-and-reformat contract rather than carrying bytes from the
+     * previous filesystem into the next one.
      */
     if (ldtm_format_amiga_volume(path, 0U, "LD_OFS") != 0 ||
-        ldtm_validate_amiga_volume(path, 0U) != 0 ||
+        ldtm_validate_amiga_volume(path, 0U) != 0) {
+        (void)fprintf(stderr, "2 GiB OFS qualification fixture failed\n");
+        (void)unlink(path);
+        return 1;
+    }
+    if (reset_two_gib_sparse_image(path) != 0 ||
         ldtm_format_amiga_volume(path, 1U, "LD_FFS") != 0 ||
         ldtm_validate_amiga_volume(path, 1U) != 0) {
+        (void)fprintf(stderr, "2 GiB FFS qualification fixture failed\n");
         (void)unlink(path);
         return 1;
     }
@@ -479,16 +497,32 @@ static int test_two_gib_first_party_media_geometry(void)
     }
     const LdtmFragmentProfile sfs_profile = ldtm_fragment_profile(sfs);
     const LdtmFragmentProfile pfs3_profile = ldtm_fragment_profile(pfs3);
-    if (ldtm_format_amiga_volume(path, 1U, "LD_SFS") != 0 ||
+
+    if (reset_two_gib_sparse_image(path) != 0 ||
+        ldtm_format_amiga_volume(path, 1U, "LD_SFS") != 0 ||
         ldtm_populate_amiga_volume(path, 1U, &sfs_profile) != 0 ||
         ldtm_verify_amiga_payload(
-            path, 1U, &sfs_profile, detail, sizeof(detail)) != 0 ||
+            path, 1U, &sfs_profile, detail, sizeof(detail)) != 0) {
+        (void)fprintf(stderr, "2 GiB SFS qualification fixture failed: %s\n",
+                      detail[0] != '\0' ? detail : "unknown");
+        (void)unlink(path);
+        return 1;
+    }
+    if (reset_two_gib_sparse_image(path) != 0 ||
         ldtm_format_amiga_volume(path, 1U, "LD_PFS3") != 0 ||
         ldtm_populate_amiga_volume(path, 1U, &pfs3_profile) != 0 ||
         ldtm_verify_amiga_payload(
-            path, 1U, &pfs3_profile, detail, sizeof(detail)) != 0 ||
+            path, 1U, &pfs3_profile, detail, sizeof(detail)) != 0) {
+        (void)fprintf(stderr, "2 GiB PFS3 qualification fixture failed: %s\n",
+                      detail[0] != '\0' ? detail : "unknown");
+        (void)unlink(path);
+        return 1;
+    }
+    if (reset_two_gib_sparse_image(path) != 0 ||
         ldtm_format_apfs_volume(path) != 0 ||
         ldtm_verify_apfs_payload(path, detail, sizeof(detail)) != 0) {
+        (void)fprintf(stderr, "2 GiB APFS qualification fixture failed: %s\n",
+                      detail[0] != '\0' ? detail : "unknown");
         (void)unlink(path);
         return 1;
     }
@@ -589,7 +623,7 @@ int main(void) {
 
     CHECK(ldtm_build_sfdisk_script(script, sizeof(script)) == 0);
     CHECK(strstr(script, "label: gpt") != NULL);
-    CHECK(strstr(script, "size=64MiB, type=linux, name=\"LD_SFS\"") != NULL);
+    CHECK(strstr(script, "size=2048MiB, type=linux, name=\"LD_SFS\"") != NULL);
     CHECK(strstr(script, "name=\"LD_FAT12\"") != NULL);
     CHECK(strstr(script, "name=\"LD_OFS\"") != NULL);
     CHECK(strstr(script, "name=\"LD_FFS\"") != NULL);
