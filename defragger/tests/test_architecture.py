@@ -1091,7 +1091,7 @@ def test_test_media_privileged_exec_and_identity_are_fail_closed() -> None:
     assert "execvp(" not in media_reserved
     assert "execv(program" in media_worker
     assert "execv(program" in media_reserved
-    assert "*serial == '\\0' && *wwn == '\\0'" in media_worker
+    assert "info.serial[0] == '\\0' && info.wwn[0] == '\\0'" in media_worker
     assert "PATH,SIZE,MODEL,SERIAL,WWN,TRAN,RM,RO" in media_gui
     assert "stable_identity" in media_gui
 
