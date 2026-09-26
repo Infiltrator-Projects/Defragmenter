@@ -244,7 +244,7 @@ Json map_ext(const BackendInfo& backend, const std::string& path,
              std::size_t cells) {
     Json payload = parse_worker_json(
         worker(backend, "analyse-json", path), "native EXT analyser");
-    const std::string filesystem = payload.at("filesystem").string();
+    const std::string filesystem(payload.at("filesystem").string());
     if (filesystem != "ext2" && filesystem != "ext3" &&
         filesystem != "ext4") {
         throw std::runtime_error("native EXT analyser returned wrong identity");
