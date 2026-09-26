@@ -1044,7 +1044,7 @@ static int rewrite_bitmap_and_root(int fd, const PfsModel *model,
     uint64_t free_count = 0U;
     const uint32_t first_data = model->root.last_reserved + 1U;
     for (uint32_t block = first_data; block < model->root.disksize; ++block)
-        if (final_free[block] != 0U)
+        if (ld_bitmap_get(final_free, block))
             free_count++;
     if (free_count > UINT32_MAX) {
         set_error(error, error_size, "PFS3 free-block count exceeds the root field");
@@ -1078,7 +1078,7 @@ static int rewrite_bitmap_and_root(int fd, const PfsModel *model,
                 const uint32_t block = base + bit;
                 if (block >= model->root.disksize)
                     break;
-                if (final_free[block] != 0U) {
+                if (ld_bitmap_get(final_free, block)) {
                     const uint32_t word = bit / 32U;
                     const uint32_t within = bit % 32U;
                     uint32_t value =
@@ -1183,14 +1183,15 @@ int pfs3_build_stage(const char *source, const char *stage, bool growth,
         return -1;
     }
 
-    uint8_t *final_free = calloc(model.root.disksize, 1U);
+    uint8_t *final_free = ld_bitmap_calloc(model.root.disksize);
     if (final_free == NULL) {
         model_free(&model);
         set_error(error, error_size, "out of memory planning PFS3 relayout");
         return -1;
     }
     const uint32_t first_data = model.root.last_reserved + 1U;
-    memset(final_free + first_data, 1, model.root.disksize - first_data);
+    for (uint32_t block = first_data; block < model.root.disksize; ++block)
+        ld_bitmap_set(final_free, block, true);
 
     uint64_t cursor = first_data;
     for (size_t index = 0U; index < model.file_count; ++index) {
@@ -1207,7 +1208,7 @@ int pfs3_build_stage(const char *source, const char *stage, bool growth,
         }
         file->target = (uint32_t)cursor;
         for (uint64_t block = 0U; block < file->blocks; ++block)
-            final_free[cursor + block] = 0U;
+            ld_bitmap_set(final_free, cursor + block, false);
         cursor += file->blocks + reserve;
     }
 
@@ -1241,7 +1242,7 @@ int pfs3_build_stage(const char *source, const char *stage, bool growth,
     }
     if (rewrite_bitmap_and_root(stage_fd, &model, final_free,
                                 error, error_size) != 0 ||
-        fsync(stage_fd) != 0) {
+        ld_sync_fd(stage_fd) != 0) {
         if (error == NULL || *error == '\0')
             set_errno_error(error, error_size, "cannot persist PFS3 stage");
         goto cleanup;
@@ -1288,7 +1289,7 @@ int pfs3_commit_stage(const char *stage, const char *target, uint64_t *written,
     }
     int result = copy_bytes(source_fd, target_fd, analysis.filesystem_bytes,
                             written, error, error_size);
-    if (result == 0 && fsync(target_fd) != 0) {
+    if (result == 0 && ld_sync_fd(target_fd) != 0) {
         set_errno_error(error, error_size, "cannot persist PFS3 target");
         result = -1;
     }
