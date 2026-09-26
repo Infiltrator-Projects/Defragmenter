@@ -217,11 +217,19 @@ static uint8_t *map_cluster_flag_bitmap(MapClusterFlags *flags,
     case MAP_CLUSTER_BAD: return flags->bad;
     }
     ld_die("invalid FAT map flag");
+    return NULL;
 }
 
 static const uint8_t *map_cluster_flag_bitmap_const(
     const MapClusterFlags *flags, MapClusterFlag flag) {
-    return map_cluster_flag_bitmap((MapClusterFlags *)flags, flag);
+    switch (flag) {
+    case MAP_CLUSTER_USED: return flags->used;
+    case MAP_CLUSTER_FRAGMENTED: return flags->fragmented;
+    case MAP_CLUSTER_DIRECTORY: return flags->directory;
+    case MAP_CLUSTER_BAD: return flags->bad;
+    }
+    ld_die("invalid FAT map flag");
+    return NULL;
 }
 
 static void map_cluster_flag_set(MapClusterFlags *flags, uint64_t cluster,
