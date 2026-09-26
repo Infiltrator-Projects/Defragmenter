@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 from pathlib import Path
@@ -12,9 +13,14 @@ from core.paths import resolve_program
 PROGRAM_ANCHOR = Path(__file__).resolve().parents[1] / "core"
 
 
-def safe_journal_name(path: str) -> str:
+def safe_journal_name(path: str, identity: str = "") -> str:
+    """Return a readable, collision-resistant journal stem."""
+
     cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "_", path.strip("/"))
-    return cleaned or "volume"
+    prefix = (cleaned or "volume")[-80:]
+    material = f"{path}\0{identity}".encode("utf-8", "surrogatepass")
+    digest = hashlib.sha256(material).hexdigest()[:16]
+    return f"{prefix}-{digest}"
 
 
 STATE_ROOT = Path("/var/lib/linux-defragger/state")
