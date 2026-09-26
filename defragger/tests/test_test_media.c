@@ -605,7 +605,7 @@ int main(void) {
     CHECK(strcmp(ldtm_creator_display_name(NULL), "Unavailable") == 0);
     CHECK(strstr(sfs->note, "SFS0") != NULL &&
           strstr(sfs->note, "200 MiB heterogeneous") != NULL);
-    CHECK(pfs3->creator == LDTM_CREATOR_PFS3 && strstr(pfs3->note, "PFS3") != NULL);
+    CHECK(pfs3->creator == LDTM_CREATOR_PFS3 &&\n          strstr(pfs3->note, "200 MiB heterogeneous") != NULL);
     CHECK(strcmp(ldtm_creator_program(ufs), "makefs") == 0);
     CHECK(ufs->package_hint != NULL && strcmp(ufs->package_hint, "makefs") == 0);
     CHECK(strstr(ufs->note, "UFS2") != NULL &&
