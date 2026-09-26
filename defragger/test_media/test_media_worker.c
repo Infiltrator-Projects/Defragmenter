@@ -1016,7 +1016,16 @@ static int format_regular(const LdtmFilesystemSpec *spec, const char *partition)
     if (run_process(wipe_argv, NULL, 0) != 0) return -1;
     switch (spec->creator) {
         case LDTM_CREATOR_FAT12: {
-            const char *const argv[] = {program, "-F", "12", "-n", spec->label, partition, NULL};
+            /*
+             * The 255 MiB qualification volume stays below the FAT12
+             * 4085-cluster boundary only with the maximum mkfs.fat-supported
+             * 128 sectors/cluster geometry.  Do not leave that safety-critical
+             * width decision to mkfs heuristics.
+             */
+            const char *const argv[] = {
+                program, "-F", "12", "-s", "128",
+                "-n", spec->label, partition, NULL
+            };
             return run_process(argv, NULL, 0);
         }
         case LDTM_CREATOR_FAT16: {
