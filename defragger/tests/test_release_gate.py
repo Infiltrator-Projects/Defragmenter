@@ -135,7 +135,7 @@ def main() -> None:
         'Applies to: release version ${VERSION}',
         "Audited source commit:",
         'git diff --quiet "$AUDITED_COMMIT" HEAD',
-        "CMakeLists.txt cmake native gui src shared packaging",
+        "CMakeLists.txt cmake native gui src shared packaging test_media",
         "Audited release-governance commit:",
         "GOVERNANCE_COMMIT",
         ":(top).github/workflows",
@@ -281,6 +281,7 @@ def main() -> None:
         "defragger/src",
         "defragger/shared",
         "defragger/packaging",
+        "defragger/test_media",
     )
     drift = subprocess.run(
         ["git", "diff", "--quiet", audited_commit, "HEAD", "--", *audited_paths],

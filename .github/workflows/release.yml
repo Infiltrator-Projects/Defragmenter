@@ -55,7 +55,7 @@ jobs:
           test -n "$AUDITED_COMMIT"
           git cat-file -e "${AUDITED_COMMIT}^{commit}"
           git merge-base --is-ancestor "$AUDITED_COMMIT" HEAD
-          if ! git diff --quiet "$AUDITED_COMMIT" HEAD -- CMakeLists.txt cmake native gui src shared packaging; then
+          if ! git diff --quiet "$AUDITED_COMMIT" HEAD -- CMakeLists.txt cmake native gui src shared packaging test_media; then
             echo "Audited production/build/package source changed after ${AUDITED_COMMIT}; refresh the safety audit before release." >&2
             exit 1
           fi
