@@ -13,8 +13,8 @@
 #include <unistd.h>
 
 static const LdtmFilesystemSpec LDTM_SPECS[LDTM_SPEC_COUNT] = {
-    {"fat12", "LD_FAT12", 255U, 4U, LDTM_CREATOR_FAT12, "dosfstools",
-     "FAT12 uses the largest whole-MiB geometry that remains below the 4085-cluster FAT16 threshold with mkfs.fat's supported 128-sector cluster ceiling."},
+    {"fat12", "LD_FAT12", 255U, 200U, LDTM_CREATOR_FAT12, "dosfstools",
+     "FAT12 uses the largest whole-MiB geometry that remains below the 4085-cluster FAT16 threshold; the standard 200 MiB corpus fits by using smaller temporary fragmentation anchors."},
     {"fat16", "LD_FAT16", 2048U, 200U, LDTM_CREATOR_FAT16, "dosfstools", ""},
     {"fat32", "LD_FAT32", 2048U, 200U, LDTM_CREATOR_FAT32, "dosfstools", ""},
     {"exfat", "LD_EXFAT", 2048U, 200U, LDTM_CREATOR_EXFAT, "exfatprogs", ""},
