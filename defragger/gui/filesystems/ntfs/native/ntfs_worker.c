@@ -819,6 +819,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "%s: Growth Defrag requires exactly 10%%%%\n", PROGRAM_NAME); return 2;
     }
     ld_stop_install_handlers();
+    ld_stop_report_ready();
     char *error = NULL; int result;
     if (strcmp(operation, "recover") == 0) result = recover_transaction(device, journal, &error);
     else if (access(journal, F_OK) == 0) {
