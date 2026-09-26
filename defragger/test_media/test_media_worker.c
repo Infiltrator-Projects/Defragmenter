@@ -189,20 +189,39 @@ static const char *production_mapper_program(void) {
     return NULL;
 }
 
-static int production_fragment_count(const LdtmFilesystemSpec *spec,
-                                     const char *partition,
-                                     uint64_t *fragmented_files,
-                                     char *detail, size_t detail_capacity) {
-    const char *program;
-    char *output = NULL;
+static int parse_json_u64_field(const char *json, const char *name,
+                                uint64_t *value) {
+    char needle[96];
     const char *field;
     const char *cursor;
     char number[32];
     size_t used = 0U;
-    if (fragmented_files == NULL || spec == NULL || partition == NULL ||
+    if (json == NULL || name == NULL || value == NULL ||
+        snprintf(needle, sizeof(needle), "\"%s\"", name) <= 0)
+        return -1;
+    field = strstr(json, needle);
+    if (field == NULL || (cursor = strchr(field, ':')) == NULL)
+        return -1;
+    ++cursor;
+    while (*cursor != '\0' && isspace((unsigned char)*cursor))
+        ++cursor;
+    while (*cursor >= '0' && *cursor <= '9' &&
+           used + 1U < sizeof(number))
+        number[used++] = *cursor++;
+    number[used] = '\0';
+    return used != 0U &&
+           infiltratr_parse_u64(number, 10U, value) ? 0 : -1;
+}
+
+static int production_map_output(const LdtmFilesystemSpec *spec,
+                                 const char *partition,
+                                 char **output,
+                                 char *detail, size_t detail_capacity) {
+    const char *program;
+    if (output == NULL || spec == NULL || partition == NULL ||
         detail == NULL || detail_capacity == 0U)
         return -1;
-    *fragmented_files = 0U;
+    *output = NULL;
     detail[0] = '\0';
     program = production_mapper_program();
     if (program == NULL) {
@@ -213,38 +232,63 @@ static int production_fragment_count(const LdtmFilesystemSpec *spec,
     const char *const argv[] = {
         program, partition, "--fstype", spec->key, "--cells", "1", NULL
     };
-    if (capture_process(argv, &output) != 0 || output == NULL) {
-        free(output);
+    if (capture_process(argv, output) != 0 || *output == NULL) {
+        free(*output);
+        *output = NULL;
         (void)snprintf(detail, detail_capacity,
                        "production analyser rejected the generated filesystem");
         return -1;
     }
-    field = strstr(output, "\"fragmented_files\"");
-    if (field == NULL || (cursor = strchr(field, ':')) == NULL) {
-        free(output);
-        (void)snprintf(detail, detail_capacity,
-                       "production analyser did not report fragmented_files");
+    return 0;
+}
+
+static int production_fragment_counts(const LdtmFilesystemSpec *spec,
+                                      const char *partition,
+                                      uint64_t *fragmented_files,
+                                      uint64_t *fragmented_directories,
+                                      char *detail,
+                                      size_t detail_capacity) {
+    char *output = NULL;
+    if (fragmented_files == NULL || fragmented_directories == NULL)
         return -1;
-    }
-    ++cursor;
-    while (*cursor != '\0' && isspace((unsigned char)*cursor))
-        ++cursor;
-    while (*cursor >= '0' && *cursor <= '9' &&
-           used + 1U < sizeof(number))
-        number[used++] = *cursor++;
-    number[used] = '\0';
-    if (used == 0U ||
-        !infiltratr_parse_u64(number, 10U, fragmented_files)) {
+    *fragmented_files = 0U;
+    *fragmented_directories = 0U;
+    if (production_map_output(spec, partition, &output,
+                              detail, detail_capacity) != 0)
+        return -1;
+    if (parse_json_u64_field(
+            output, "fragmented_files", fragmented_files) != 0 ||
+        parse_json_u64_field(
+            output, "fragmented_directories",
+            fragmented_directories) != 0) {
         free(output);
-        (void)snprintf(detail, detail_capacity,
-                       "production analyser returned an invalid fragmented_files value");
+        (void)snprintf(
+            detail, detail_capacity,
+            "production analyser did not report complete fragmentation totals");
         return -1;
     }
     free(output);
-    (void)snprintf(detail, detail_capacity,
-                   "production analyser reports %llu fragmented file%s",
-                   (unsigned long long)*fragmented_files,
-                   *fragmented_files == 1U ? "" : "s");
+    (void)snprintf(
+        detail, detail_capacity,
+        "production analyser reports %llu fragmented file%s and %llu fragmented director%s",
+        (unsigned long long)*fragmented_files,
+        *fragmented_files == 1U ? "" : "s",
+        (unsigned long long)*fragmented_directories,
+        *fragmented_directories == 1U ? "y" : "ies");
+    return 0;
+}
+
+static int production_map_accepts(const LdtmFilesystemSpec *spec,
+                                  const char *partition,
+                                  char *detail, size_t detail_capacity) {
+    char *output = NULL;
+    if (production_map_output(spec, partition, &output,
+                              detail, detail_capacity) != 0)
+        return -1;
+    free(output);
+    (void)snprintf(
+        detail, detail_capacity,
+        "production mapper accepted the complete filesystem geometry");
     return 0;
 }
 
@@ -252,23 +296,27 @@ static int require_fragmentation_state(const LdtmFilesystemSpec *spec,
                                        const char *partition,
                                        int expect_fragmented,
                                        char *detail, size_t detail_capacity) {
-    uint64_t fragmented = 0U;
-    if (production_fragment_count(spec, partition, &fragmented,
-                                  detail, detail_capacity) != 0)
+    uint64_t fragmented_files = 0U;
+    uint64_t fragmented_directories = 0U;
+    if (production_fragment_counts(
+            spec, partition, &fragmented_files,
+            &fragmented_directories, detail, detail_capacity) != 0)
         return -1;
-    if ((expect_fragmented != 0 && fragmented == 0U) ||
-        (expect_fragmented == 0 && fragmented != 0U)) {
-        char observed[128];
-        (void)snprintf(observed, sizeof(observed),
-                       "%llu fragmented file%s",
-                       (unsigned long long)fragmented,
-                       fragmented == 1U ? "" : "s");
+    if (expect_fragmented != 0 && fragmented_files == 0U) {
         (void)snprintf(
             detail, detail_capacity,
-            expect_fragmented != 0
-                ? "qualification requires real fragmentation before Defragment; production analyser saw %s"
-                : "post-Defragment qualification requires zero fragmented files; production analyser saw %s",
-            observed);
+            "qualification requires a genuinely fragmented retained file before Defragment; production analyser reported zero fragmented files");
+        return -1;
+    }
+    if (expect_fragmented == 0 &&
+        (fragmented_files != 0U || fragmented_directories != 0U)) {
+        (void)snprintf(
+            detail, detail_capacity,
+            "post-Defragment qualification requires zero fragmented files and directories; production analyser saw %llu file%s and %llu director%s",
+            (unsigned long long)fragmented_files,
+            fragmented_files == 1U ? "" : "s",
+            (unsigned long long)fragmented_directories,
+            fragmented_directories == 1U ? "y" : "ies");
         return -1;
     }
     return 0;
@@ -916,8 +964,28 @@ static int create_regular_and_populate(const LdtmFilesystemSpec *spec, const cha
         return 0;
     }
     if (spec->payload_mib == 0U) {
-        emit_status(spec->key, "formatted", "formatted successfully; no file payload required");
-        (void)state_write_status(state, spec, "formatted", "no file payload required");
+        char detail[512];
+        if (spec->creator != LDTM_CREATOR_SWAP ||
+            production_map_accepts(
+                spec, partition, detail, sizeof(detail)) != 0) {
+            emit_status(
+                spec->key, "qualification-failed",
+                spec->creator == LDTM_CREATOR_SWAP
+                    ? detail
+                    : "filesystem has no retained payload qualification contract");
+            (void)state_write_status(
+                state, spec, "qualification-failed",
+                spec->creator == LDTM_CREATOR_SWAP
+                    ? detail
+                    : "no retained payload qualification contract");
+            return 0;
+        }
+        emit_status(
+            spec->key, "populated",
+            "swap header/page-map geometry accepted by the production analyser; file fragmentation is not applicable");
+        (void)state_write_status(
+            state, spec, "populated",
+            "swap header/page-map geometry accepted by the production analyser; file fragmentation is not applicable");
         return 0;
     }
     if (snprintf(mountpoint, sizeof(mountpoint), "%s/%s", work, spec->key) <= 0 ||
@@ -1583,7 +1651,10 @@ int ldtm_worker_verify(const char *device) {
         if (spec->creator == LDTM_CREATOR_APFS) {
             char detail[512] = {0};
             if (ldtm_verify_apfs_payload_after_defrag(
-                    partition, detail, sizeof(detail)) != 0) {
+                    partition, detail, sizeof(detail)) != 0 ||
+                require_fragmentation_state(
+                    spec, partition, 0,
+                    detail, sizeof(detail)) != 0) {
                 emit_status(
                     spec->key, "verify-failed",
                     detail[0] != '\0'
@@ -1591,7 +1662,9 @@ int ldtm_worker_verify(const char *device) {
                         : "raw C APFS post-defrag verification failed");
                 failures++;
             } else {
-                emit_status(spec->key, "verified", detail);
+                emit_status(
+                    spec->key, "verified",
+                    "APFS payload is byte-identical and the production analyser reports zero fragmentation");
             }
             continue;
         }
@@ -1605,6 +1678,9 @@ int ldtm_worker_verify(const char *device) {
             char detail[512] = {0};
             if (ldtm_verify_amiga_payload_after_defrag(
                     partition, dostype, &profile,
+                    detail, sizeof(detail)) != 0 ||
+                require_fragmentation_state(
+                    spec, partition, 0,
                     detail, sizeof(detail)) != 0) {
                 emit_status(
                     spec->key, "verify-failed",
@@ -1613,7 +1689,23 @@ int ldtm_worker_verify(const char *device) {
                         : "raw C Amiga post-defrag verification failed");
                 failures++;
             } else {
-                emit_status(spec->key, "verified", detail);
+                emit_status(
+                    spec->key, "verified",
+                    "Amiga payload is byte-identical and the production analyser reports zero file/directory fragmentation");
+            }
+            continue;
+        }
+
+        if (spec->creator == LDTM_CREATOR_SWAP) {
+            char detail[512] = {0};
+            if (production_map_accepts(
+                    spec, partition, detail, sizeof(detail)) != 0) {
+                emit_status(spec->key, "verify-failed", detail);
+                failures++;
+            } else {
+                emit_status(
+                    spec->key, "verified",
+                    "swap header, reserved/bad-page geometry and inactive page map are accepted by the production analyser");
             }
             continue;
         }
