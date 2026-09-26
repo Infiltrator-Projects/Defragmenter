@@ -317,7 +317,7 @@ static int test_pfs3_formatter_and_payload(void) {
     profile = ldtm_fragment_profile(pfs3);
     fd = mkstemp(path);
     if (fd < 0) return 1;
-    if (ftruncate(fd, (off_t)(1024U * LDTM_MIB)) != 0 || close(fd) != 0) {
+    if (ftruncate(fd, (off_t)(128U * LDTM_MIB)) != 0 || close(fd) != 0) {
         (void)unlink(path);
         return 1;
     }
