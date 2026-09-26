@@ -5,6 +5,7 @@
 #include "map.hpp"
 #include "process.hpp"
 
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <stdexcept>
@@ -212,6 +213,16 @@ int main() {
         rejected_over_limit = true;
     }
     ok = check(rejected_over_limit, "output beyond limit is rejected") && ok;
+
+    bool rejected_timeout = false;
+    try {
+        (void)run_capture(
+            {"/bin/sh", "-c", "sleep 2"},
+            1024U, std::chrono::milliseconds(50));
+    } catch (const std::runtime_error&) {
+        rejected_timeout = true;
+    }
+    ok = check(rejected_timeout, "child execution timeout is enforced") && ok;
 
     const BackendInfo* btrfs = backend_by_fstype("btrfs");
     ok = check(btrfs != nullptr, "Btrfs lookup") && ok;
