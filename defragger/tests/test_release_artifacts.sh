@@ -64,6 +64,12 @@ grep -q -- '-march=x86-64' "$CMAKE_SOURCE"
 grep -q -- '-mtune=generic' "$CMAKE_SOURCE"
 grep -q -- '-march=native' "$CMAKE_SOURCE"
 grep -q -- '-mtune=native' "$CMAKE_SOURCE"
+grep -q -- '-fstack-protector-strong' "$CMAKE_SOURCE"
+grep -q -- '-fPIE' "$CMAKE_SOURCE"
+grep -q -- '-Wl,-z,relro' "$CMAKE_SOURCE"
+grep -q -- '-Wl,-z,now' "$CMAKE_SOURCE"
+grep -Fq 'online - 1' "$ROOT/packaging/build-deb.sh"
+grep -Fq 'JOBS=$((JOBS - 1))' "$ROOT/packaging/local-run-header.sh.in"
 grep -Fq "printf 'Version: %s\\n' \"\$PACKAGE_VERSION\"" \
     "$ROOT/packaging/build-deb.sh"
 if grep -Fq "printf 'Version: %s\\n' \"\$VERSION\"" \

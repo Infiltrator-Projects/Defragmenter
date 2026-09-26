@@ -52,13 +52,27 @@ CASES = (
 )
 
 
+def fuzz_smoke_cases() -> tuple[tuple[str, bytes], ...]:
+    """Return bounded deterministic malformed inputs with varied lengths/content."""
+
+    rng = random.Random(0x51A7E5EED)
+    lengths = (2, 7, 63, 255, 1023, 2047, 8191, 16385, 32769, 131071)
+    cases: list[tuple[str, bytes]] = []
+    for index, length in enumerate(lengths):
+        payload = bytearray(rng.getrandbits(8) for _ in range(length))
+        for offset in (0, length // 2, length - 1):
+            payload[offset] ^= (0x5A + index) & 0xFF
+        cases.append((f"fuzz-smoke-{index:02d}-{length}", bytes(payload)))
+    return tuple(cases)
+
+
 def main() -> None:
     with tempfile.TemporaryDirectory(prefix="defragger-malformed-") as directory:
         root = Path(directory)
         for worker_name in WORKERS:
             worker = BUILD / worker_name
             assert worker.is_file() and os.access(worker, os.X_OK), worker
-            for case_name, payload in CASES:
+            for case_name, payload in (*CASES, *fuzz_smoke_cases()):
                 image = root / f"{worker_name}-{case_name}.img"
                 image.write_bytes(payload)
                 try:

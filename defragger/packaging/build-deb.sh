@@ -26,6 +26,13 @@ case "$BUILD_FLAVOR" in
 esac
 case "$BUILD_TESTING" in ON|OFF) ;; *) printf 'LD_BUILD_TESTING must be ON or OFF, not %s\n' "$BUILD_TESTING" >&2; exit 1 ;; esac
 
+default_build_jobs() {
+    online=$(getconf _NPROCESSORS_ONLN 2>/dev/null || printf '2')
+    case "$online" in ''|*[!0-9]*) online=2 ;; esac
+    [ "$online" -gt 1 ] && printf '%s\n' "$((online - 1))" || printf '1\n'
+}
+BUILD_JOBS_EFFECTIVE=${BUILD_JOBS:-$(default_build_jobs)}
+
 set -- -S "$ROOT" -B "$BUILD" -DCMAKE_BUILD_TYPE=Release -DLD_ENABLE_WERROR=ON \
     -DBUILD_TESTING="$BUILD_TESTING" -DCMAKE_INSTALL_PREFIX=/usr
 if [ "$BUILD_FLAVOR" = generic ]; then
@@ -34,7 +41,7 @@ else
     set -- "$@" -DLD_GENERIC_AMD64=OFF -DLD_NATIVE_OPTIMIZATION=ON
 fi
 cmake "$@"
-cmake --build "$BUILD" -j"${BUILD_JOBS:-2}"
+cmake --build "$BUILD" -j"$BUILD_JOBS_EFFECTIVE"
 DESTDIR="$STAGE/root" cmake --install "$BUILD"
 
 SOURCE_ICON="$ROOT/packaging/io.github.linuxdefragger.png"

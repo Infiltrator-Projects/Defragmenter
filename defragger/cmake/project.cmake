@@ -68,6 +68,7 @@ endif()
 
 option(LD_ENABLE_WERROR "Treat first-party compiler warnings as errors" OFF)
 option(LD_ENABLE_SANITIZERS "Enable address and undefined-behaviour sanitizers" OFF)
+option(LD_ENABLE_HARDENING "Enable release compiler/linker hardening" ON)
 option(LD_GENERIC_AMD64 "Build for the baseline x86-64 instruction set" OFF)
 option(LD_NATIVE_OPTIMIZATION "Optimise native code for this build machine" OFF)
 
@@ -126,6 +127,40 @@ endif()
 if(LD_ENABLE_SANITIZERS)
     add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
     add_link_options(-fsanitize=address,undefined)
+endif()
+
+if(LD_ENABLE_HARDENING AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    include(CheckCXXCompilerFlag)
+    include(CheckLinkerFlag)
+
+    check_c_compiler_flag("-fstack-protector-strong" LD_C_STACK_PROTECTOR_STRONG)
+    check_cxx_compiler_flag("-fstack-protector-strong" LD_CXX_STACK_PROTECTOR_STRONG)
+    if(LD_C_STACK_PROTECTOR_STRONG AND LD_CXX_STACK_PROTECTOR_STRONG)
+        add_compile_options(-fstack-protector-strong)
+    endif()
+
+    check_c_compiler_flag("-fPIE" LD_C_FPIE)
+    check_cxx_compiler_flag("-fPIE" LD_CXX_FPIE)
+    if(LD_C_FPIE AND LD_CXX_FPIE)
+        add_compile_options(-fPIE)
+        check_linker_flag(C "-pie" LD_C_PIE_LINK)
+        check_linker_flag(CXX "-pie" LD_CXX_PIE_LINK)
+        if(LD_C_PIE_LINK AND LD_CXX_PIE_LINK)
+            add_link_options(-pie)
+        endif()
+    endif()
+
+    check_linker_flag(C "-Wl,-z,relro" LD_C_RELRO)
+    check_linker_flag(CXX "-Wl,-z,relro" LD_CXX_RELRO)
+    if(LD_C_RELRO AND LD_CXX_RELRO)
+        add_link_options("-Wl,-z,relro")
+    endif()
+
+    check_linker_flag(C "-Wl,-z,now" LD_C_BIND_NOW)
+    check_linker_flag(CXX "-Wl,-z,now" LD_CXX_BIND_NOW)
+    if(LD_C_BIND_NOW AND LD_CXX_BIND_NOW)
+        add_link_options("-Wl,-z,now")
+    endif()
 endif()
 
 # Infiltratr Common owns generic parsing, arithmetic, byte-order, exact-I/O,
@@ -600,7 +635,7 @@ if(BUILD_TESTING)
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_native_malformed_matrix.py")
     set_tests_properties(linux-defragger-native-malformed-matrix PROPERTIES
         ENVIRONMENT "LINUX_DEFRAGGER_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}"
-        TIMEOUT 120)
+        TIMEOUT 180)
 
     add_executable(linux-defragger-apfs-native-test
         tests/test_apfs_native.c)

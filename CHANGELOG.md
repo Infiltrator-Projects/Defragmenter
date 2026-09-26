@@ -2,6 +2,15 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-211
+
+- Remove the stale source-tree GUI release literal. In-tree launches now read the canonical VERSION file while installed builds continue to consume CMake's generated build metadata.
+- Make Open Image identification first-party end to end: the GUI asks the native mapper to probe the image, and the mapper preserves the exact detected filesystem identity (including FAT width and EXT aliases) alongside its backend ID instead of relying on host blkid support.
+- Harden destructive Test Media execution. Root-side child processes resolve commands only through trusted absolute system locations, PATH lookup is no longer part of the privileged execution contract, and destructive targets without a stable serial or WWN are rejected rather than treating model/capacity lookalikes as the same disk.
+- Enable explicit Linux compiler/linker hardening when supported: strong stack protection, PIE, RELRO and immediate binding. Local and package builds also follow the N-1 CPU policy by default so compilation leaves one logical processor available to the desktop.
+- Expand malformed-media qualification with deterministic bounded fuzz-smoke payloads of varied lengths and content across every installed native filesystem identifier.
+- Add permanent architecture and end-to-end regressions for first-party image identification, exact probe identity, trusted Test Media execution, source-version ownership, hardening flags and N-1 build policy.
+
 ## 1.8.0-210
 
 - Harden destructive Test Media target selection and state handling. System-backed disks are rejected more broadly, preparation is bound to a stable disk fingerprint rather than only a reusable /dev pathname, root-owned qualification state lives under /var/lib, and repartitioning waits for the expected device topology instead of trusting a fixed delay.

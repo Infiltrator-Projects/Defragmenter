@@ -1094,6 +1094,26 @@ def test_test_media_privileged_exec_and_identity_are_fail_closed() -> None:
     assert "PATH,SIZE,MODEL,SERIAL,WWN,TRAN,RM,RO" in media_gui
     assert "stable_identity" in media_gui
 
+
+def test_release_hardening_and_n_minus_one_build_policy() -> None:
+    cmake = (ROOT / "cmake" / "project.cmake").read_text()
+    build_deb = (ROOT / "packaging" / "build-deb.sh").read_text()
+    local_run = (ROOT / "packaging" / "local-run-header.sh.in").read_text()
+    malformed = (ROOT / "tests" / "test_native_malformed_matrix.py").read_text()
+
+    for required in (
+        "LD_ENABLE_HARDENING",
+        "-fstack-protector-strong",
+        "-fPIE",
+        "-Wl,-z,relro",
+        "-Wl,-z,now",
+    ):
+        assert required in cmake
+    assert "online - 1" in build_deb
+    assert "BUILD_JOBS_EFFECTIVE" in build_deb
+    assert "JOBS=$((JOBS - 1))" in local_run
+    assert "fuzz_smoke_cases" in malformed
+
 def main() -> None:
     test_top_level_cmake_owns_native_language_declaration()
     test_native_registry_is_the_single_capability_authority()
@@ -1111,6 +1131,7 @@ def main() -> None:
     test_cpp_mapper_reuses_common_arithmetic_and_has_no_legacy_apfs_adapter()
     test_source_version_and_image_detection_have_single_authority()
     test_test_media_privileged_exec_and_identity_are_fail_closed()
+    test_release_hardening_and_n_minus_one_build_policy()
     test_user_facing_branding_is_defragmenter()
     test_version_and_native_registry_ownership()
     print("current C-first native-registry architecture tests passed")

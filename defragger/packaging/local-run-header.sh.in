@@ -89,6 +89,11 @@ case "$JOBS" in
     ''|*[!0-9]*) JOBS=2 ;;
 esac
 [ "$JOBS" -gt 0 ] || JOBS=2
+if [ "$JOBS" -gt 1 ]; then
+    JOBS=$((JOBS - 1))
+else
+    JOBS=1
+fi
 
 BUILD="$WORK/native-build"
 PACKAGE="$WORK/infiltrator-defragmenter_${NATIVE_PACKAGE_VERSION}_amd64.deb"
