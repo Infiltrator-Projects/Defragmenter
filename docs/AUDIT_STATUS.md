@@ -66,7 +66,7 @@ The audited writers preserve these release invariants:
 
 ## Dependency baseline
 
-The audited production tree consumes Infiltratr Common 1.19.27 at exact commit `3ef3710df6563df305b6d8e2dc9d1a41c61843ba`. CMake, the local installer, the Git submodule and release regressions assert the same released pin.
+The audited production tree consumes Infiltratr Common 1.19.35 at exact commit `7cc5de3de0e94ed2cfcff0840bbb5346eb5c9c9f`. CMake, the local installer, the Git submodule and release regressions assert the same released pin.
 
 Common owns generic checked arithmetic, strict numeric/config parsing, endian access, bounded growth, path/string primitives, exact I/O, generic durable-file operations, design metrics/semantic roles, typography identity and canonical font provenance. Defragmenter retains filesystem geometry and interpretation, target-safety policy, placement, transaction/recovery semantics and allocation-map meaning. This boundary is enforced by architecture tests rather than documentation alone.
 
