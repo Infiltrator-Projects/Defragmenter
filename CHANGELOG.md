@@ -2,6 +2,17 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-214
+
+- Reduce large-volume analysis and staging memory pressure by replacing remaining byte-per-allocation-unit state with packed bitmaps across HFS, Amiga OFS/FFS/SFS/PFS3 and FAT map paths. PFS3 staging now packs its final-free map; FAT stores its four map classifications as independent bitsets rather than one byte per cluster.
+- Move destructive Test Media whole-disk identity/system-use decisions onto the shared native block-device layer backed by sysfs, mountinfo, swap state and udev metadata instead of parsing lsblk/findmnt output at the safety boundary.
+- Tighten native mapper protocol handling so optional fields default only when absent; present-but-malformed numeric, Boolean or string values fail the protocol instead of silently becoming plausible defaults.
+- Replace Test Media's substring-based mapper-result extraction with a bounded structural JSON scanner, cap captured child output at 8 MiB and terminate a child that exceeds that contract.
+- Standardise checked dynamic-array growth in remaining native analysis paths and route filesystem transaction sync points through the shared EINTR-safe durable-sync primitive.
+- Fix the Test Media Amiga payload builder after the packed AFFS allocation-map conversion: all free-map reads/writes now use the packed bitmap API, eliminating the sanitizer-detected heap overrun.
+- Activate the forensic scalability/protocol/safety architecture regression that had accidentally been placed after the script entry point, and update stale regression expectations to the new native safety/sync contracts.
+- Qualify source commit `07e731c99c53c59d2f12fad779eef166332699a2`: all 44 hosted CTest tests pass, the hosted ASan/UBSan lane passes, and the self-hosted Linux build/test subset passes; ordinary gates stop only at the deliberate stale-audit lock advanced by this release.
+
 ## 1.8.0-213
 
 - Move physical-volume enumeration and first-party identification probes off the GTK main thread. Discovery now produces a detached snapshot and applies only the newest completed generation on the GUI thread, preventing slow block devices or native probes from freezing startup/Refresh.
