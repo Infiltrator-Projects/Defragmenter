@@ -57,7 +57,7 @@ from .support import (
     find_privileged_helper,
     state_dir,
 )
-from .volume_coordinator import VolumeCoordinator
+from .volume_coordinator import VolumeCoordinator, VolumeSelection
 from .widgets import MAX_MAP_CELLS, MIN_MAP_CELLS
 from .window_view import APP_NAME
 
