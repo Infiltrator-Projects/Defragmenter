@@ -24,12 +24,11 @@
 #define PFS_TM_ROOT_ANODE 5U
 #define PFS_TM_FILE_ANODE 6U
 #define PFS_TM_FRAGMENTS 100U
-#define PFS_TM_CHUNK_SECTORS 512U
-#define PFS_TM_CHUNK_KIB 256U
+#define PFS_TM_CHUNK_SECTORS 4096U
+#define PFS_TM_CHUNK_KIB 2048U
 #define PFS_TM_DATA_START 4096U
-#define PFS_TM_DATA_STRIDE 768U
+#define PFS_TM_DATA_STRIDE 6144U
 #define PFS_TM_DATA_SECTORS (PFS_TM_FRAGMENTS * PFS_TM_CHUNK_SECTORS)
-#define PFS_TM_FILE_BYTES ((uint64_t)PFS_TM_DATA_SECTORS * PFS_TM_SECTOR_SIZE)
 #define PFS_TM_BITMAP_BITS (((PFS_TM_RESBLOCK_SIZE / 4U) - 3U) * 32U)
 #define PFS_TM_INDEX_POINTERS ((PFS_TM_RESBLOCK_SIZE - 12U) / 4U)
 #define PFS_TM_MAX_BITMAP_INDEXES 5U
@@ -50,6 +49,50 @@ typedef struct {
 static uint32_t fragment_start(uint32_t index)
 {
     return PFS_TM_DATA_START + index * PFS_TM_DATA_STRIDE;
+}
+
+static int profile_matches(const LdtmFragmentProfile *profile)
+{
+    if (profile == NULL ||
+        profile->files != LDTM_TARGET_FILE_COUNT ||
+        profile->chunks != 30U ||
+        profile->chunk_kib != PFS_TM_CHUNK_KIB ||
+        profile->directory_initial != 0U ||
+        profile->directory_second != 0U)
+        return 0;
+    static const uint32_t expected[LDTM_TARGET_FILE_COUNT] =
+        {2U, 3U, 5U, 8U, 13U, 17U, 22U, 30U};
+    for (size_t file = 0U; file < LDTM_TARGET_FILE_COUNT; ++file)
+        if (ldtm_profile_file_chunks(profile, file) != expected[file])
+            return 0;
+    return ldtm_profile_payload_bytes(profile) == UINT64_C(200) * LDTM_MIB;
+}
+
+static int fragment_owner(const LdtmFragmentProfile *profile,
+                          uint32_t fragment,
+                          uint32_t *file_index,
+                          uint32_t *within_file)
+{
+    uint32_t first = 0U;
+    for (uint32_t file = 0U; file < profile->files; ++file) {
+        const uint32_t count = ldtm_profile_file_chunks(profile, file);
+        if (fragment < first + count) {
+            if (file_index != NULL) *file_index = file;
+            if (within_file != NULL) *within_file = fragment - first;
+            return 0;
+        }
+        first += count;
+    }
+    return -1;
+}
+
+static uint32_t first_fragment_for_file(const LdtmFragmentProfile *profile,
+                                        uint32_t file_index)
+{
+    uint32_t first = 0U;
+    for (uint32_t file = 0U; file < file_index; ++file)
+        first += ldtm_profile_file_chunks(profile, file);
+    return first;
 }
 
 static uint32_t extent_anode(uint32_t index)
@@ -294,6 +337,7 @@ static void make_anode_index(uint8_t block[PFS_TM_RESBLOCK_SIZE],
 
 static void make_anode_block(uint8_t block[PFS_TM_RESBLOCK_SIZE],
                              const PfsTmGeometry *geometry,
+                             const LdtmFragmentProfile *profile,
                              uint32_t sequence)
 {
     const uint32_t per_block =
@@ -306,42 +350,59 @@ static void make_anode_block(uint8_t block[PFS_TM_RESBLOCK_SIZE],
         put_anode(block, PFS_TM_ROOT_ANODE, 1U,
                   geometry->root_dir, 0U);
     for (uint32_t index = 0U; index < PFS_TM_FRAGMENTS; ++index) {
+        uint32_t file = 0U;
+        uint32_t within = 0U;
+        if (fragment_owner(profile, index, &file, &within) != 0)
+            continue;
         const uint32_t number = extent_anode(index);
         const uint32_t seq = number >> 16U;
         const uint32_t offset = number & UINT32_C(0xffff);
         if (seq != sequence || offset >= per_block)
             continue;
+        const uint32_t chunks = ldtm_profile_file_chunks(profile, file);
         const uint32_t next =
-            index + 1U < PFS_TM_FRAGMENTS
-                ? extent_anode(index + 1U) : 0U;
+            within + 1U < chunks ? extent_anode(index + 1U) : 0U;
         put_anode(block, offset, PFS_TM_CHUNK_SECTORS,
                   fragment_start(index), next);
     }
 }
 
-static void make_root_directory(uint8_t block[PFS_TM_RESBLOCK_SIZE])
+static void make_root_directory(uint8_t block[PFS_TM_RESBLOCK_SIZE],
+                                const LdtmFragmentProfile *profile)
 {
     memset(block, 0, PFS_TM_RESBLOCK_SIZE);
     infiltratr_store_be16(block, UINT16_C(0x4442));
     infiltratr_store_be32(block + 4U, UINT32_C(0x20260926));
     infiltratr_store_be32(block + 12U, PFS_TM_ROOT_ANODE);
     infiltratr_store_be32(block + 16U, 0U);
-    uint8_t *entry = block + 20U;
-    entry[0] = 40U;
-    entry[1] = UINT8_C(0xfd);
-    infiltratr_store_be32(entry + 2U, PFS_TM_FILE_ANODE);
-    infiltratr_store_be32(entry + 6U, (uint32_t)PFS_TM_FILE_BYTES);
-    entry[17U] = 17U;
-    memcpy(entry + 18U, "fragmented-00.bin", 17U);
-    entry[35U] = 0U;
+    size_t offset = 20U;
+    for (uint32_t file = 0U; file < profile->files; ++file) {
+        char name[32];
+        (void)snprintf(name, sizeof(name), "fragmented-%02u.bin", file);
+        const size_t name_length = strlen(name);
+        const uint64_t file_bytes = ldtm_profile_file_bytes(profile, file);
+        const uint32_t first = first_fragment_for_file(profile, file);
+        if (offset + 40U > PFS_TM_RESBLOCK_SIZE ||
+            file_bytes == 0U || file_bytes > UINT32_MAX)
+            return;
+        uint8_t *entry = block + offset;
+        entry[0] = 40U;
+        entry[1] = UINT8_C(0xfd);
+        infiltratr_store_be32(entry + 2U, extent_anode(first));
+        infiltratr_store_be32(entry + 6U, (uint32_t)file_bytes);
+        entry[17U] = (uint8_t)name_length;
+        memcpy(entry + 18U, name, name_length);
+        entry[18U + name_length] = 0U;
+        offset += 40U;
+    }
 }
 
 static void make_payload(uint8_t sector[PFS_TM_SECTOR_SIZE],
-                         uint32_t fragment, uint32_t within)
+                         uint32_t file_index, uint32_t logical_sector)
 {
     uint64_t state = UINT64_C(0x243f6a8885a308d3) ^
-                     ((uint64_t)fragment << 32U) ^
-                     ((uint64_t)within *
+                     ((uint64_t)file_index << 40U) ^
+                     ((uint64_t)logical_sector *
                       UINT64_C(0x9e3779b97f4a7c15));
     for (size_t offset = 0U; offset < PFS_TM_SECTOR_SIZE; ++offset) {
         state ^= state >> 12U;
@@ -354,8 +415,11 @@ static void make_payload(uint8_t sector[PFS_TM_SECTOR_SIZE],
 
 int ldtm_format_pfs3_volume(const char *path)
 {
+    const LdtmFilesystemSpec *spec = ldtm_find_spec("pfs3");
+    const LdtmFragmentProfile profile = ldtm_fragment_profile(spec);
     PfsTmGeometry geometry;
-    if (geometry_for_path(path, &geometry) != 0)
+    if (spec == NULL || !profile_matches(&profile) ||
+        geometry_for_path(path, &geometry) != 0)
         return -1;
     int fd = open(path, O_RDWR | O_CLOEXEC);
     if (fd < 0)
@@ -393,15 +457,15 @@ int ldtm_format_pfs3_volume(const char *path)
     if (write_sector_block(fd, geometry.anode_index,
                            block, PFS_TM_RESBLOCK_SIZE) != 0)
         goto done;
-    make_anode_block(block, &geometry, 0U);
+    make_anode_block(block, &geometry, &profile, 0U);
     if (write_sector_block(fd, geometry.anode_block0,
                            block, PFS_TM_RESBLOCK_SIZE) != 0)
         goto done;
-    make_anode_block(block, &geometry, 1U);
+    make_anode_block(block, &geometry, &profile, 1U);
     if (write_sector_block(fd, geometry.anode_block1,
                            block, PFS_TM_RESBLOCK_SIZE) != 0)
         goto done;
-    make_root_directory(block);
+    make_root_directory(block, &profile);
     if (write_sector_block(fd, geometry.root_dir,
                            block, PFS_TM_RESBLOCK_SIZE) != 0)
         goto done;
@@ -418,10 +482,16 @@ int ldtm_format_pfs3_volume(const char *path)
     }
 
     for (uint32_t fragment = 0U; fragment < PFS_TM_FRAGMENTS; ++fragment) {
+        uint32_t file = 0U;
+        uint32_t within_file = 0U;
+        if (fragment_owner(&profile, fragment, &file, &within_file) != 0)
+            goto done;
         const uint32_t start = fragment_start(fragment);
         for (uint32_t within = 0U;
              within < PFS_TM_CHUNK_SECTORS; ++within) {
-            make_payload(block, fragment, within);
+            make_payload(
+                block, file,
+                within_file * PFS_TM_CHUNK_SECTORS + within);
             if (write_sector_block(fd, start + within,
                                    block, PFS_TM_SECTOR_SIZE) != 0)
                 goto done;
@@ -437,15 +507,6 @@ done:
     return result;
 }
 
-static int profile_matches(const LdtmFragmentProfile *profile)
-{
-    return profile != NULL && profile->files == 1U &&
-           profile->chunks == PFS_TM_FRAGMENTS &&
-           profile->chunk_kib == PFS_TM_CHUNK_KIB &&
-           profile->directory_initial == 0U &&
-           profile->directory_second == 0U;
-}
-
 int ldtm_populate_pfs3_volume(
     const char *path, const LdtmFragmentProfile *profile)
 {
@@ -455,9 +516,9 @@ int ldtm_populate_pfs3_volume(
         return -1;
     return pfs3_analyse(path, &analysis, NULL, 0U,
                         error, sizeof(error)) == 0 &&
-           analysis.regular_files == 1U &&
+           analysis.regular_files == LDTM_TARGET_FILE_COUNT &&
            analysis.data_blocks == PFS_TM_DATA_SECTORS &&
-           analysis.fragmented_files == 1U &&
+           analysis.fragmented_files == LDTM_TARGET_FILE_COUNT &&
            !analysis.growth_10_satisfied ? 0 : -1;
 }
 
@@ -493,7 +554,9 @@ static int read_anode(int fd, uint32_t anode_index_sector,
     return 0;
 }
 
-static int verify_current_payload(const char *path)
+static int verify_current_payload(const char *path,
+                                  const LdtmFragmentProfile *profile,
+                                  int expect_fragmented)
 {
     uint8_t root[PFS_TM_SECTOR_SIZE];
     uint8_t directory[PFS_TM_RESBLOCK_SIZE];
@@ -528,43 +591,49 @@ static int verify_current_payload(const char *path)
         infiltratr_load_be16(directory) != UINT16_C(0x4442))
         goto done;
 
-    const uint8_t *entry = directory + 20U;
-    if (entry[0] < 35U || entry[1] != UINT8_C(0xfd) ||
-        infiltratr_load_be32(entry + 6U) !=
-            (uint32_t)PFS_TM_FILE_BYTES)
-        goto done;
-    uint32_t anode = infiltratr_load_be32(entry + 2U);
-    if (anode == 0U)
-        goto done;
-
-    uint32_t logical = 0U;
-    for (uint32_t chain = 0U;
-         chain < PFS_TM_FRAGMENTS + 8U && anode != 0U;
-         ++chain) {
-        uint32_t start = 0U;
-        if (read_anode(fd, anode_index, anode,
-                       &clusters, &start, &next) != 0 ||
-            clusters == 0U || start >= total_sectors ||
-            clusters > total_sectors - start)
+    size_t entry_offset = 20U;
+    for (uint32_t file = 0U; file < profile->files; ++file) {
+        if (entry_offset + 40U > sizeof(directory))
             goto done;
-        for (uint32_t within_extent = 0U;
-             within_extent < clusters;
-             ++within_extent, ++logical) {
-            if (logical >= PFS_TM_DATA_SECTORS ||
-                read_sector_block(fd, start + within_extent,
-                                  actual, sizeof(actual)) != 0)
+        const uint8_t *entry = directory + entry_offset;
+        const uint64_t expected_bytes =
+            ldtm_profile_file_bytes(profile, file);
+        if (entry[0] < 35U || entry[1] != UINT8_C(0xfd) ||
+            expected_bytes == 0U || expected_bytes > UINT32_MAX ||
+            infiltratr_load_be32(entry + 6U) != (uint32_t)expected_bytes)
+            goto done;
+
+        uint32_t anode = infiltratr_load_be32(entry + 2U);
+        if (anode == 0U)
+            goto done;
+        uint64_t logical_sectors = 0U;
+        uint32_t chain_count = 0U;
+        while (anode != 0U) {
+            uint32_t start = 0U;
+            if (++chain_count > PFS_TM_FRAGMENTS ||
+                read_anode(fd, anode_index, anode,
+                           &clusters, &start, &next) != 0 ||
+                clusters == 0U || start >= total_sectors ||
+                clusters > total_sectors - start)
                 goto done;
-            make_payload(
-                expected,
-                logical / PFS_TM_CHUNK_SECTORS,
-                logical % PFS_TM_CHUNK_SECTORS);
-            if (memcmp(actual, expected, sizeof(actual)) != 0)
-                goto done;
+            for (uint32_t within = 0U; within < clusters; ++within) {
+                if ((logical_sectors + 1U) * PFS_TM_SECTOR_SIZE >
+                        expected_bytes ||
+                    read_sector_block(fd, start + within,
+                                      actual, sizeof(actual)) != 0)
+                    goto done;
+                make_payload(expected, file, (uint32_t)logical_sectors);
+                if (memcmp(actual, expected, sizeof(actual)) != 0)
+                    goto done;
+                ++logical_sectors;
+            }
+            anode = next;
         }
-        anode = next;
+        if (logical_sectors * PFS_TM_SECTOR_SIZE != expected_bytes ||
+            (expect_fragmented != 0 ? chain_count < 2U : chain_count != 1U))
+            goto done;
+        entry_offset += entry[0];
     }
-    if (anode != 0U || logical != PFS_TM_DATA_SECTORS)
-        goto done;
     result = 0;
 
 done:
@@ -586,20 +655,20 @@ static int verify_pfs3_payload_state(
         geometry_for_path(path, &geometry) != 0 ||
         pfs3_analyse(path, &analysis, NULL, 0U,
                      error, sizeof(error)) != 0 ||
-        analysis.regular_files != 1U ||
+        analysis.regular_files != LDTM_TARGET_FILE_COUNT ||
         analysis.data_blocks != PFS_TM_DATA_SECTORS ||
         analysis.fragmented_files !=
-            (expect_fragmented != 0 ? 1U : 0U) ||
+            (expect_fragmented != 0 ? LDTM_TARGET_FILE_COUNT : 0U) ||
         analysis.block_size != PFS_TM_SECTOR_SIZE ||
         analysis.transaction_pending ||
-        verify_current_payload(path) != 0)
+        verify_current_payload(path, profile, expect_fragmented) != 0)
         goto done;
 
     if (detail != NULL && detail_capacity > 0U) {
         (void)snprintf(
             detail, detail_capacity,
             expect_fragmented != 0
-                ? "native PFS3 payload verified on %u MiB media: 1 x 25 MiB file, 100 fragments"
+                ? "native PFS3 payload verified on %u MiB media: 8 differently sized fragmented files, 200 MiB total"
                 : "native PFS3 post-defrag payload verified byte-for-byte; production analyser reports zero fragmented files",
             (unsigned)((uint64_t)geometry.total_sectors *
                        PFS_TM_SECTOR_SIZE / LDTM_MIB));
