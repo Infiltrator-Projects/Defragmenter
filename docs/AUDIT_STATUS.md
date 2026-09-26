@@ -5,8 +5,8 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-09-26
 
-Applies to: release version 1.8.0-212
-Audited source commit: 3539ed2b4b80d216618f0295b9c79f2728745eba
+Applies to: release version 1.8.0-213
+Audited source commit: e7a5e04662e986d43474db5bfb9be534c3229f93
 Audited release-governance commit: 36be157f932006672f4dfae1c41b83317a914f46
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
@@ -15,15 +15,15 @@ This document records the current release safety case. Historical audit-developm
 
 ## Qualification evidence
 
-The current audited production-source baseline is commit `3539ed2b4b80d216618f0295b9c79f2728745eba`. In Project quality gate run 36222148610, that exact candidate completed the warnings-as-errors C/C++ build and all 44 native/filesystem/GUI/release CTest tests successfully; the independent hosted ASan/UBSan lane also passed. Self-hosted Local Linux / heavy qualification run 36222148336 completed its dependency check, strict build and native/filesystem/GUI tests successfully. Both candidate runs stopped only at the deliberate stale completed-audit control, which this 1.8.0-212 audit advance resolves.
+The current audited production-source baseline is commit `e7a5e04662e986d43474db5bfb9be534c3229f93`. In Project quality gate run 36224060894, that exact candidate completed the warnings-as-errors C/C++ build and all 44 native/filesystem/GUI/release CTest tests successfully; the independent hosted ASan/UBSan lane also passed. The run then stopped only at the deliberate stale completed-audit control, which this 1.8.0-213 audit advance resolves. The self-hosted Local Linux run for this exact candidate was queued but had not executed when this audit was advanced, so no new self-hosted result is claimed as evidence here; the preceding released 1.8.0-212 baseline remains the latest completed self-hosted qualification.
 
-The reviewed identity delta makes first-party filesystem code the authority that unlocks physical mutation. Linux filesystem metadata and Test Media GPT labels remain useful routing candidates, but they do not expose write operations. A physical target stays mutation-disabled until the selected native analyser successfully returns a compatible filesystem identity. Root-only Test Media slots can remain visible as identity-pending candidates so privileged read-only Analyse can prove them; a stale or mismatched slot label cannot enable a writer. Verified identity is retained across rediscovery only when stable filesystem or partition identity still matches, and a conflicting native result fails closed.
+The reviewed GUI lifecycle delta moves physical-volume discovery and first-party identification probing off the GTK main thread. Discovery returns an isolated snapshot, GTK state is mutated only by the newest generation on the main loop, and stale overlapping refreshes are discarded. The safe unmount-and-continue path now waits for asynchronous rediscovery before revalidating the selected device and resuming mutation.
 
-The reviewed allocation-map delta strengthens the filesystem-neutral protocol boundary. Native map validation and GTK presentation now require every cell to account exactly for its physical span across free, used, unknown, outside and bad primary states; fragmented and directory overlays may never exceed used allocation. This adds a second independent contract check around the filesystem-specific mappers without changing placement or mutation semantics.
+The reviewed allocation-map delta removes resize-triggered filesystem analysis. Window-size changes rerasterise the already-authoritative physical allocation sample only; explicit Analyse and post-mutation refresh remain the operations that reread filesystem state. This preserves monotonic physical map semantics while preventing UI geometry from causing disk I/O or parser work.
 
-The reviewed documentation delta removes another duplicated release-version authority and aligns repository/source/contributor build examples with the established N-1 CPU policy. The release-governance baseline remains `36be157f932006672f4dfae1c41b83317a914f46`; workflow semantics are unchanged.
+The reviewed identity-control delta aligns presentation with the existing fail-closed mutation planner. Defragment, Growth Defrag and Recover controls now remain disabled until first-party native Analyse has positively verified the physical filesystem identity. The planner independently retains the same identity check, so the change removes a misleading enabled-button state without weakening any writer boundary.
 
-The malformed-media matrix, transaction/recovery tests, native integration fixtures, GUI contract tests, release/package tests and architecture ownership checks remain part of the permanent **Project quality gate**. Environment-dependent destructive media evidence is supplementary and is not represented as hosted-CI proof.
+The release-governance baseline remains `36be157f932006672f4dfae1c41b83317a914f46`; workflow semantics are unchanged. The malformed-media matrix, transaction/recovery tests, native integration fixtures, GUI contract tests, release/package tests and architecture ownership checks remain part of the permanent **Project quality gate**. Environment-dependent destructive media evidence is supplementary and is not represented as hosted-CI proof.
 
 ## Current safety case
 
