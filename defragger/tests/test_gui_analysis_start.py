@@ -259,7 +259,6 @@ def test_gui_analysis_dispatches_mapper() -> None:
     assert request.privileged
     assert view.logs == ["Analysing EXT4 volume /dev/test…"]
     assert coordinator.desired_map_cells(640, 320) == 204_800
-    assert not coordinator.map_resolution_needs_refresh(204_800)
 
     runner.busy = False
     coordinator.analyze(target_cells=2_000_000)
@@ -279,17 +278,9 @@ def test_complete_gui_operation_lifecycle() -> None:
         assert coordinator.map_data is not None
         assert len(view.presentations) == 1
         assert len(volumes.remembered) == 1
-        # The backend may legitimately return fewer cells than requested when
-        # the filesystem itself has fewer units. Remember the requested pixel
-        # density so resizing does not loop forever trying the same resolution.
-        assert coordinator.last_map_cell_target == 250_000
-        assert not coordinator.map_resolution_needs_refresh(250_000)
-        # Minor GTK resize churn reuses the same physical sample.
-        assert not coordinator.map_resolution_needs_refresh(200_000)
-        assert not coordinator.map_resolution_needs_refresh(312_500)
-        # A material resolution change still requests a fresh map.
-        assert coordinator.map_resolution_needs_refresh(150_000)
-        assert coordinator.map_resolution_needs_refresh(350_000)
+        # Display resizing is a pure raster operation. The filesystem is
+        # analysed again only for an explicit refresh or after mutation.
+        assert coordinator.map_data is not None
 
         coordinator.analyze()
         runner.complete(0, "not-json")
