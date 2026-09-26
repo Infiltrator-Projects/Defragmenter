@@ -439,8 +439,10 @@ static int verify_current_payload(const char *path,
 
         uint32_t key = load_be32(object + 12U);
         uint32_t previous = 0U;
+        uint32_t previous_end = 0U;
         uint64_t logical_blocks = 0U;
         uint32_t chain_count = 0U;
+        int physically_fragmented = 0;
         while (key != 0U) {
             if (++chain_count > SFS_TM_FRAGMENTS)
                 goto cleanup;
@@ -460,6 +462,9 @@ static int verify_current_payload(const char *path,
             if (blocks == 0U || key >= total_blocks ||
                 blocks > total_blocks - key)
                 goto cleanup;
+            if (chain_count > 1U && key != previous_end)
+                physically_fragmented = 1;
+            previous_end = key + blocks;
 
             for (uint32_t within = 0U; within < blocks; ++within) {
                 if ((logical_blocks + 1U) * SFS_TM_BLOCK_SIZE >
@@ -475,7 +480,9 @@ static int verify_current_payload(const char *path,
             key = next;
         }
         if (logical_blocks * SFS_TM_BLOCK_SIZE != expected_bytes ||
-            (expect_fragmented != 0 ? chain_count < 2U : chain_count != 1U))
+            (expect_fragmented != 0
+                ? !physically_fragmented
+                : physically_fragmented))
             goto cleanup;
 
         const size_t name_offset = object_offset + 25U;
