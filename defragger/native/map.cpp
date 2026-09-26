@@ -5,6 +5,7 @@
 #include <infiltratr/arithmetic.h>
 
 #include <algorithm>
+#include <chrono>
 #include <limits>
 #include <stdexcept>
 #include <utility>
@@ -75,15 +76,17 @@ Json parse_worker_json(const CommandResult& result, const char* action) {
     return parsed;
 }
 
-CommandResult worker(const BackendInfo& backend,
-                     const std::string& mode,
-                     const std::string& path,
-                     const std::vector<std::string>& options = {},
-                     std::size_t output_limit = 64U * 1024U * 1024U) {
+CommandResult worker(
+    const BackendInfo& backend,
+    const std::string& mode,
+    const std::string& path,
+    const std::vector<std::string>& options = {},
+    std::size_t output_limit = 64U * 1024U * 1024U,
+    std::chrono::milliseconds timeout = std::chrono::milliseconds::zero()) {
     std::vector<std::string> command{
         resolve_program(backend.worker), mode, path};
     command.insert(command.end(), options.begin(), options.end());
-    return run_capture(command, output_limit);
+    return run_capture(command, output_limit, timeout);
 }
 
 std::vector<UnitRange> pair_ranges(
@@ -764,7 +767,10 @@ std::string backend_identified_filesystem(
     const std::string& path) {
     try {
         const Json payload = parse_worker_json(
-            worker(backend, "identify", path), "filesystem identifier");
+            worker(
+                backend, "identify", path, {}, 1024U * 1024U,
+                std::chrono::seconds(30)),
+            "filesystem identifier");
         const Json* filesystem = payload.find("filesystem");
         if (filesystem == nullptr || !filesystem->is_string()) return {};
         std::string identified(filesystem->string());
