@@ -16,6 +16,7 @@
 #include <string.h>
 
 #include "fat_relayout.h"
+#include "ld_io.h"
 #include "ld_runtime.h"
 #include "version.h"
 
@@ -173,6 +174,66 @@ typedef enum {
     MAP_CLUSTER_BAD = 1u << 3
 } MapClusterFlag;
 
+typedef struct {
+    uint8_t *used;
+    uint8_t *fragmented;
+    uint8_t *directory;
+    uint8_t *bad;
+} MapClusterFlags;
+
+static MapClusterFlags map_cluster_flags_create(uint64_t bits) {
+    MapClusterFlags flags = {
+        .used = ld_bitmap_calloc(bits),
+        .fragmented = ld_bitmap_calloc(bits),
+        .directory = ld_bitmap_calloc(bits),
+        .bad = ld_bitmap_calloc(bits),
+    };
+    if (flags.used == NULL || flags.fragmented == NULL ||
+        flags.directory == NULL || flags.bad == NULL) {
+        free(flags.used);
+        free(flags.fragmented);
+        free(flags.directory);
+        free(flags.bad);
+        ld_die("cannot allocate packed FAT allocation map");
+    }
+    return flags;
+}
+
+static void map_cluster_flags_free(MapClusterFlags *flags) {
+    if (flags == NULL) return;
+    free(flags->used);
+    free(flags->fragmented);
+    free(flags->directory);
+    free(flags->bad);
+    memset(flags, 0, sizeof(*flags));
+}
+
+static uint8_t *map_cluster_flag_bitmap(MapClusterFlags *flags,
+                                        MapClusterFlag flag) {
+    switch (flag) {
+    case MAP_CLUSTER_USED: return flags->used;
+    case MAP_CLUSTER_FRAGMENTED: return flags->fragmented;
+    case MAP_CLUSTER_DIRECTORY: return flags->directory;
+    case MAP_CLUSTER_BAD: return flags->bad;
+    }
+    ld_die("invalid FAT map flag");
+}
+
+static const uint8_t *map_cluster_flag_bitmap_const(
+    const MapClusterFlags *flags, MapClusterFlag flag) {
+    return map_cluster_flag_bitmap((MapClusterFlags *)flags, flag);
+}
+
+static void map_cluster_flag_set(MapClusterFlags *flags, uint64_t cluster,
+                                 MapClusterFlag flag) {
+    ld_bitmap_set(map_cluster_flag_bitmap(flags, flag), cluster, true);
+}
+
+static bool map_cluster_flag_test(const MapClusterFlags *flags,
+                                  uint64_t cluster, MapClusterFlag flag) {
+    return ld_bitmap_get(map_cluster_flag_bitmap_const(flags, flag), cluster);
+}
+
 static void json_print_string(const char *value) {
     putchar('"');
     for (const unsigned char *p = (const unsigned char *)value; *p != '\0'; p++) {
@@ -198,17 +259,17 @@ static void json_print_string(const char *value) {
    every cluster of a fragmented file red made a large file look as though its
    entire allocation were physically fragmented, which was both misleading and
    visually overwhelmed small FAT maps. */
-static void mark_map_chain(uint8_t *flags, const U32Vec *chain, bool directory) {
-    uint8_t base = MAP_CLUSTER_USED;
+static void mark_map_chain(MapClusterFlags *flags, const U32Vec *chain,
+                           bool directory) {
     bool displaced_extent = false;
-    if (directory) base |= MAP_CLUSTER_DIRECTORY;
     for (size_t i = 0; i < chain->len; i++) {
-        if (i != 0 && chain->v[i] != chain->v[i - 1] + 1) {
+        if (i != 0 && chain->v[i] != chain->v[i - 1] + 1)
             displaced_extent = true;
-        }
-        uint8_t value = base;
-        if (displaced_extent) value |= MAP_CLUSTER_FRAGMENTED;
-        flags[chain->v[i]] |= value;
+        map_cluster_flag_set(flags, chain->v[i], MAP_CLUSTER_USED);
+        if (directory)
+            map_cluster_flag_set(flags, chain->v[i], MAP_CLUSTER_DIRECTORY);
+        if (displaced_extent)
+            map_cluster_flag_set(flags, chain->v[i], MAP_CLUSTER_FRAGMENTED);
     }
 }
 
@@ -244,7 +305,7 @@ void fat_analysis_print_map_json(Fat32 *fs, const FileList *files, size_t reques
     if (cells > fs->cluster_count) cells = fs->cluster_count;
     if (cells == 0) cells = 1;
 
-    uint8_t *flags = ld_xcalloc((size_t)fs->max_cluster + 1, sizeof(*flags));
+    MapClusterFlags flags = map_cluster_flags_create((uint64_t)fs->max_cluster + 1U);
     uint64_t regular = 0, directories = 1, fragmented_files = 0, fragmented_dirs = 0;
     size_t worst_fragments = 0;
     const char *worst_path = NULL;
@@ -252,15 +313,15 @@ void fat_analysis_print_map_json(Fat32 *fs, const FileList *files, size_t reques
     for (uint32_t c = 2; c <= fs->max_cluster; c++) {
         uint32_t v = fat_value(fs, c);
         if (v == 0) continue;
-        flags[c] |= MAP_CLUSTER_USED;
+        map_cluster_flag_set(&flags, c, MAP_CLUSTER_USED);
         if (v == fat_bad_value(fs) || (v >= fat_reserved_min(fs) && v < fat_eoc_min(fs))) {
-            flags[c] |= MAP_CLUSTER_BAD;
+            map_cluster_flag_set(&flags, c, MAP_CLUSTER_BAD);
         }
     }
 
     U32Vec root_chain = filesystem_root_chain(fs);
     size_t root_fragments = filesystem_root_fragments(fs);
-    mark_map_chain(flags, &root_chain, true);
+    mark_map_chain(&flags, &root_chain, true);
     if (root_fragments > worst_fragments) {
         worst_fragments = root_fragments;
         worst_path = "<root directory>";
@@ -275,7 +336,7 @@ void fat_analysis_print_map_json(Fat32 *fs, const FileList *files, size_t reques
             regular++;
             if (f->fragments > 1) fragmented_files++;
         }
-        mark_map_chain(flags, &f->chain, f->is_dir);
+        mark_map_chain(&flags, &f->chain, f->is_dir);
         if (f->fragments > worst_fragments) {
             worst_fragments = f->fragments;
             worst_path = f->path;
@@ -326,12 +387,16 @@ void fat_analysis_print_map_json(Fat32 *fs, const FileList *files, size_t reques
         uint64_t free_count = 0, used_count = 0, fragmented_count = 0;
         uint64_t directory_count = 0, bad_count = 0;
         for (uint32_t c = start; c <= end; c++) {
-            uint8_t state = flags[c];
-            if ((state & MAP_CLUSTER_USED) == 0) free_count++;
-            else used_count++;
-            if ((state & MAP_CLUSTER_FRAGMENTED) != 0) fragmented_count++;
-            if ((state & MAP_CLUSTER_DIRECTORY) != 0) directory_count++;
-            if ((state & MAP_CLUSTER_BAD) != 0) bad_count++;
+            if (!map_cluster_flag_test(&flags, c, MAP_CLUSTER_USED))
+                free_count++;
+            else
+                used_count++;
+            if (map_cluster_flag_test(&flags, c, MAP_CLUSTER_FRAGMENTED))
+                fragmented_count++;
+            if (map_cluster_flag_test(&flags, c, MAP_CLUSTER_DIRECTORY))
+                directory_count++;
+            if (map_cluster_flag_test(&flags, c, MAP_CLUSTER_BAD))
+                bad_count++;
         }
         printf("    {\"start\":%" PRIu32 ",\"end\":%" PRIu32
                ",\"free\":%" PRIu64 ",\"used\":%" PRIu64
@@ -342,7 +407,7 @@ void fat_analysis_print_map_json(Fat32 *fs, const FileList *files, size_t reques
     }
     fputs("  ]\n}\n", stdout);
 
-    free(flags);
+    map_cluster_flags_free(&flags);
     u32vec_free(&root_chain);
 }
 
@@ -353,24 +418,24 @@ static LiveMapCell *build_live_map_cells(Fat32 *fs, const FileList *files, size_
     size_t cells = requested_cells == 0 ? 4096 : requested_cells;
     if (cells > fs->cluster_count) cells = fs->cluster_count;
     if (cells == 0) cells = 1;
-    uint8_t *flags = ld_xcalloc((size_t)fs->max_cluster + 1, sizeof(*flags));
+    MapClusterFlags flags = map_cluster_flags_create((uint64_t)fs->max_cluster + 1U);
     uint64_t ff = 0, fd = 0;
     for (uint32_t c = 2; c <= fs->max_cluster; c++) {
         uint32_t v = fat_value(fs, c);
         if (v == 0) continue;
-        flags[c] |= MAP_CLUSTER_USED;
+        map_cluster_flag_set(&flags, c, MAP_CLUSTER_USED);
         if (v == fat_bad_value(fs) || (v >= fat_reserved_min(fs) && v < fat_eoc_min(fs)))
-            flags[c] |= MAP_CLUSTER_BAD;
+            map_cluster_flag_set(&flags, c, MAP_CLUSTER_BAD);
     }
     U32Vec root_chain = filesystem_root_chain(fs);
     size_t root_fragments = filesystem_root_fragments(fs);
-    mark_map_chain(flags, &root_chain, true);
+    mark_map_chain(&flags, &root_chain, true);
     if (root_fragments > 1) fd++;
     for (size_t i = 0; i < files->len; i++) {
         const FileRecord *f = &files->v[i];
         if (f->is_dir) { if (f->fragments > 1) fd++; }
         else { if (f->fragments > 1) ff++; }
-        mark_map_chain(flags, &f->chain, f->is_dir);
+        mark_map_chain(&flags, &f->chain, f->is_dir);
     }
     LiveMapCell *out = ld_xcalloc(cells, sizeof(*out));
     for (size_t i = 0; i < cells; i++) {
@@ -382,15 +447,19 @@ static LiveMapCell *build_live_map_cells(Fat32 *fs, const FileList *files, size_
         if (end > fs->max_cluster) end = fs->max_cluster;
         out[i].start = start; out[i].end = end;
         for (uint32_t c = start; c <= end; c++) {
-            uint8_t state = flags[c];
-            if ((state & MAP_CLUSTER_USED) == 0) out[i].free_count++;
-            else out[i].used_count++;
-            if ((state & MAP_CLUSTER_FRAGMENTED) != 0) out[i].fragmented_count++;
-            if ((state & MAP_CLUSTER_DIRECTORY) != 0) out[i].directory_count++;
-            if ((state & MAP_CLUSTER_BAD) != 0) out[i].bad_count++;
+            if (!map_cluster_flag_test(&flags, c, MAP_CLUSTER_USED))
+                out[i].free_count++;
+            else
+                out[i].used_count++;
+            if (map_cluster_flag_test(&flags, c, MAP_CLUSTER_FRAGMENTED))
+                out[i].fragmented_count++;
+            if (map_cluster_flag_test(&flags, c, MAP_CLUSTER_DIRECTORY))
+                out[i].directory_count++;
+            if (map_cluster_flag_test(&flags, c, MAP_CLUSTER_BAD))
+                out[i].bad_count++;
         }
     }
-    free(flags);
+    map_cluster_flags_free(&flags);
     u32vec_free(&root_chain);
     uint32_t highest = 1;
     if (actual_cells) *actual_cells = cells;
