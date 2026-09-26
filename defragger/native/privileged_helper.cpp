@@ -32,6 +32,35 @@ namespace defragger {
 namespace {
 
 constexpr std::uint64_t kProtocolVersion = 1U;
+constexpr std::size_t kMaxRequestBytes = 64U * 1024U;
+constexpr std::size_t kMaxArgumentCount = 128U;
+constexpr std::size_t kMaxArgumentBytes = 4096U;
+
+enum class RequestLineStatus {
+    End,
+    Ok,
+    TooLarge,
+};
+
+RequestLineStatus read_request_line(FILE* stream, std::string& line) {
+    line.clear();
+    for (;;) {
+        const int value = std::fgetc(stream);
+        if (value == EOF)
+            return line.empty() ? RequestLineStatus::End : RequestLineStatus::Ok;
+        if (value == '\n')
+            return RequestLineStatus::Ok;
+        if (line.size() >= kMaxRequestBytes) {
+            while (value != '\n') {
+                const int discard = std::fgetc(stream);
+                if (discard == EOF || discard == '\n') break;
+            }
+            line.clear();
+            return RequestLineStatus::TooLarge;
+        }
+        line.push_back(static_cast<char>(value));
+    }
+}
 
 class Fd {
 public:
@@ -104,17 +133,21 @@ Json id_value(const Json& message) {
 
 std::int64_t request_id(const Json& message) {
     const Json* id = message.find("id");
-    return id == nullptr ? 0 : id->integer_or(0);
+    return id == nullptr ? 0 : id->integer_value();
 }
 
 std::vector<std::string> string_array(const Json& value) {
     if (!value.is_array())
         throw std::runtime_error("argv must be a list of strings");
+    if (value.array().size() > kMaxArgumentCount)
+        throw std::runtime_error("argv contains too many arguments");
     std::vector<std::string> result;
     result.reserve(value.array().size());
     for (const auto& item : value.array()) {
         if (!item.is_string())
             throw std::runtime_error("argv must be a list of strings");
+        if (item.string().size() > kMaxArgumentBytes)
+            throw std::runtime_error("argv argument exceeds protocol limit");
         result.emplace_back(item.string());
     }
     return result;
@@ -240,17 +273,24 @@ public:
             return 1;
         }
 
-        char* line = nullptr;
-        std::size_t capacity = 0U;
-        while (!transport_failed_.load(std::memory_order_acquire) &&
-               getline(&line, &capacity, stdin) >= 0) {
+        std::string line;
+        while (!transport_failed_.load(std::memory_order_acquire)) {
+            const RequestLineStatus status = read_request_line(stdin, line);
+            if (status == RequestLineStatus::End)
+                break;
+            if (status == RequestLineStatus::TooLarge) {
+                (void)fail(Json(nullptr),
+                           "invalid request: protocol frame exceeds size limit");
+                continue;
+            }
             try {
                 Json message = Json::parse(line);
                 if (!message.is_object())
                     throw std::runtime_error("request must be an object");
-                const std::string action =
-                    message.find("action") != nullptr
-                        ? message.at("action").string_or() : "";
+                const Json* action_value = message.find("action");
+                if (action_value == nullptr)
+                    throw std::runtime_error("request is missing action");
+                const std::string action(action_value->string());
                 if (action == "run") {
                     handle_run(message);
                 } else if (action == "stop") {
@@ -262,7 +302,6 @@ public:
                 } else if (action == "quit") {
                     stop_active_and_wait();
                     (void)emit(Json::Object{{"type", Json("bye")}});
-                    std::free(line);
                     return 0;
                 } else {
                     (void)fail(id_value(message), "unknown helper action");
@@ -272,7 +311,6 @@ public:
                            std::string("invalid request: ") + error.what());
             }
         }
-        std::free(line);
         stop_active_and_wait();
         return transport_failed_.load(std::memory_order_acquire) ? 1 : 0;
     }
