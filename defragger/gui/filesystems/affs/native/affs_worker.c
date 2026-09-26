@@ -641,6 +641,7 @@ int main(int argc, char **argv) {
 
     ld_stop_clear();
     ld_stop_install_handlers();
+    ld_stop_report_ready();
     if (recover) {
         int rc = handle_recovery(device, journal, live, &error);
         if (rc != 0 && rc != STOPPED)
