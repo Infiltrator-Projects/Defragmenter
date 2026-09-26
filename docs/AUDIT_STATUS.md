@@ -5,9 +5,9 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-09-26
 
-Applies to: release version 1.8.0-210
-Audited source commit: c047cfa152b238c1b5684cd15fffaadef93e77a8
-Audited release-governance commit: 1a61ff57bdf939fcbfcc84300b66b30411276113
+Applies to: release version 1.8.0-211
+Audited source commit: 637cec0dcf7a479e48a7e9264c110494b69ff634
+Audited release-governance commit: 36be157f932006672f4dfae1c41b83317a914f46
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
@@ -15,13 +15,15 @@ This document records the current release safety case. Historical audit-developm
 
 ## Qualification evidence
 
-The current audited production-source baseline is commit `c047cfa152b238c1b5684cd15fffaadef93e77a8`. In Project quality gate run 36216799567, that exact candidate completed the warnings-as-errors C/C++ build, the complete native/filesystem/GUI/release CTest suite and the independent hosted ASan/UBSan lane successfully. Self-hosted Local Linux / heavy qualification run 36216799410 likewise completed its dependency check, strict build and native/filesystem/GUI test subsets successfully. Both candidate runs stopped only at the deliberate stale audited-source control, which is advanced by version 1.8.0-210.
+The current audited production-source baseline is commit `637cec0dcf7a479e48a7e9264c110494b69ff634`. In Project quality gate run 36220152987, that exact candidate completed the warnings-as-errors C/C++ build, all 44 native/filesystem/GUI/release CTest tests, and the independent hosted ASan/UBSan lane successfully. Self-hosted Local Linux / heavy qualification run 36220152736 likewise completed its dependency check, strict build and native/filesystem/GUI tests successfully. Both candidate runs then stopped only at the deliberate stale completed-audit control, which this 1.8.0-211 audit advance resolves.
 
-The reviewed Test Media delta strengthens the destructive qualification contract. Preparation now rejects system-backed and unsuitable targets more aggressively, binds confirmation and persisted state to a stable disk fingerprint instead of a reusable `/dev` pathname, stores root-owned state beneath `/var/lib`, waits for the expected repartitioned device topology instead of relying on a fixed sleep, verifies retained directory-test payload bytes rather than entry count alone, and adds deterministic boundary-sized files around common 512-byte and 4096-byte allocation boundaries. The malformed-media matrix is broadened across the native filesystem identifiers. These changes do not relax any production writer subset or recovery invariant.
+The reviewed filesystem-identification delta removes the remaining host-`blkid` authority from Open Image. The GUI now asks the native mapper to probe the image, the mapper validates the worker-reported filesystem against the authoritative backend registry, preserves the detected filesystem identity rather than guessing from a shared backend, and canonicalises that identity for the GUI. Source-tree GUI launches likewise no longer carry a stale duplicate release literal: the fallback reads the canonical VERSION file while installed builds continue to use CMake-generated build metadata.
 
-The reviewed performance delta preserves the authoritative allocation map's exact row-major physical ordering while reducing unnecessary work. Resize-triggered remaps now use hysteresis instead of rescanning for small geometry changes, map rasterisation paints physical spans rather than performing the former full per-pixel source-cell search, and the shared parallel worker default leaves one online CPU available to the desktop while still applying media-specific I/O limits. APFS Test Media discovery also avoids a redundant AFFS probe. Filesystem interpretation, placement, mutation and final-verification semantics are unchanged.
+The reviewed Test Media delta hardens the destructive privilege boundary. Root-side child execution now resolves programs only through trusted absolute system locations and uses `execv`; PATH lookup is not part of privileged command selection. Destructive confirmation additionally requires a stable serial or WWN, preventing two anonymous lookalike USB/SD devices with the same model and capacity from satisfying the same fingerprint. The GUI exposes that requirement before enabling preparation. The production/build/package audit boundary now explicitly includes `defragger/test_media`, so future Test Media source drift invalidates the completed release audit just like writer/runtime drift.
 
-The release-governance baseline is extended through `1a61ff57bdf939fcbfcc84300b66b30411276113`, which retains the pull-only APT ownership boundary and adds the intended self-hosted qualification run on main pushes. Defragmenter's release path validates its exact immutable GitHub release identity but never dispatches, authenticates to, waits on or synchronously verifies Infiltrator-Repository. The central repository independently discovers released packages on its own schedule, and the release-gate regression now rejects any reintroduction of cross-repository dispatch-token plumbing.
+The reviewed build and parser-hardening delta enables supported Linux release mitigations for strong stack protection, PIE, RELRO and immediate binding, while retaining ASan/UBSan qualification. Generic and local package builds default to the project's N-1 CPU policy so compilation leaves one online logical processor available to the desktop. The malformed-media matrix now supplements its fixed boundary corpus with deterministic fuzz-smoke payloads spanning varied short, block-adjacent and larger malformed lengths across every installed native filesystem identifier.
+
+The release-governance baseline is extended through `36be157f932006672f4dfae1c41b83317a914f46`. The release workflow's audited production-source diff now includes Test Media, while the existing main-only hosted quality gate, explicit `Release <version>` publication signal, immutable release identity, permanent history protection and pull-only APT ownership boundary remain unchanged.
 
 The malformed-media matrix, transaction/recovery tests, native integration fixtures, GUI contract tests, release/package tests and architecture ownership checks remain part of the permanent **Project quality gate**. Environment-dependent destructive media evidence is supplementary and is not represented as hosted-CI proof.
 

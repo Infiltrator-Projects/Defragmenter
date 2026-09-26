@@ -10,6 +10,7 @@ This changelog records user-visible, compatibility, architecture and validation 
 - Enable explicit Linux compiler/linker hardening when supported: strong stack protection, PIE, RELRO and immediate binding. Local and package builds also follow the N-1 CPU policy by default so compilation leaves one logical processor available to the desktop.
 - Expand malformed-media qualification with deterministic bounded fuzz-smoke payloads of varied lengths and content across every installed native filesystem identifier.
 - Add permanent architecture and end-to-end regressions for first-party image identification, exact probe identity, trusted Test Media execution, source-version ownership, hardening flags and N-1 build policy.
+- Extend the release audit boundary to include the destructive Test Media implementation itself, so any future Test Media source drift requires a fresh completed safety audit before publication.
 
 ## 1.8.0-210
 
