@@ -2,6 +2,17 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-216
+
+- Standardise destructive Test Media on a 200 MiB retained fragmented payload wherever the filesystem can represent it. FAT12, SFS, PFS3 and APFS now join the existing 200 MiB profiles; Linux swap remains payload-less by design.
+- Replace the former uniform eight-by-25-MiB workload with eight differently sized deterministic fragmented files totalling exactly 200 MiB: 4, 6, 10, 16, 26, 34, 44 and 60 MiB. Mounted filesystems retain the separate byte-boundary edge-case corpus and fragmented-directory stress workload.
+- Keep FAT12 at its real 255 MiB FAT12 geometry while raising its retained payload from 4 MiB to 200 MiB. Temporary fragmentation anchors are reduced so construction and exact 10% Growth Defrag reserve remain feasible, and mkfs.fat is explicitly pinned to 128 sectors per cluster so the volume cannot drift across the 4085-cluster FAT16 boundary.
+- Extend the first-party SFS and PFS3 fixture creators from a single 25 MiB file to eight differently sized fragmented files totalling 200 MiB, with production analysis and byte-for-byte post-defrag verification.
+- Extend the bounded APFS fixture from one two-block file to eight differently sized files totalling 200 MiB, each represented by two deliberately separated extents within the qualified flat-tree checkpoint/spaceman subset.
+- Correct SFS/PFS3 post-defrag verification: physical continuity, not the number of retained extent/anode records, defines whether a file is fragmented. Writers may preserve multiple adjacent records while the production analyser correctly reports an unfragmented file.
+- Keep GUI payload reporting tied to the actual generated retained payload rather than historical fixture constants.
+- Qualify source commit `edb7b62b0673340607a21acc67bbf22c001d7f81`: all 44 hosted CTest tests pass, hosted ASan/UBSan passes, and the self-hosted Linux build/test qualification passes; ordinary gates stop only at the deliberate stale-audit control advanced by this release.
+
 ## 1.8.0-215
 
 - Bound native child-process execution as well as output size. Bounded capture now runs children in their own process group, kills and reaps runaway output producers, and supports explicit execution deadlines; native filesystem image probing uses that timeout.
