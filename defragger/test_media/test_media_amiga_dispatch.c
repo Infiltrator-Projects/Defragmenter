@@ -14,14 +14,24 @@ int ldtm_populate_amiga_volume_affs(const char *path, uint8_t dostype,
 int ldtm_verify_amiga_payload_affs(const char *path, uint8_t dostype,
                                    const LdtmFragmentProfile *profile,
                                    char *detail, size_t detail_capacity);
+int ldtm_verify_amiga_payload_affs_after_defrag(
+    const char *path, uint8_t dostype,
+    const LdtmFragmentProfile *profile,
+    char *detail, size_t detail_capacity);
 int ldtm_format_sfs_volume(const char *path);
 int ldtm_populate_sfs_volume(const char *path, const LdtmFragmentProfile *profile);
 int ldtm_verify_sfs_payload(const char *path, const LdtmFragmentProfile *profile,
                             char *detail, size_t detail_capacity);
+int ldtm_verify_sfs_payload_after_defrag(
+    const char *path, const LdtmFragmentProfile *profile,
+    char *detail, size_t detail_capacity);
 int ldtm_format_pfs3_volume(const char *path);
 int ldtm_populate_pfs3_volume(const char *path, const LdtmFragmentProfile *profile);
 int ldtm_verify_pfs3_payload(const char *path, const LdtmFragmentProfile *profile,
                              char *detail, size_t detail_capacity);
+int ldtm_verify_pfs3_payload_after_defrag(
+    const char *path, const LdtmFragmentProfile *profile,
+    char *detail, size_t detail_capacity);
 
 static int path_is_pfs3(const char *path) {
     int fd;
@@ -68,4 +78,19 @@ int ldtm_verify_amiga_payload(const char *path, uint8_t dostype,
     if (path_is_pfs3(path))
         return ldtm_verify_pfs3_payload(path, profile, detail, detail_capacity);
     return ldtm_verify_amiga_payload_affs(path, dostype, profile, detail, detail_capacity);
+}
+
+
+int ldtm_verify_amiga_payload_after_defrag(
+    const char *path, uint8_t dostype,
+    const LdtmFragmentProfile *profile,
+    char *detail, size_t detail_capacity) {
+    if (path_is_sfs(path))
+        return ldtm_verify_sfs_payload_after_defrag(
+            path, profile, detail, detail_capacity);
+    if (path_is_pfs3(path))
+        return ldtm_verify_pfs3_payload_after_defrag(
+            path, profile, detail, detail_capacity);
+    return ldtm_verify_amiga_payload_affs_after_defrag(
+        path, dostype, profile, detail, detail_capacity);
 }
