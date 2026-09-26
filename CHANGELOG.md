@@ -2,6 +2,19 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-215
+
+- Bound native child-process execution as well as output size. Bounded capture now runs children in their own process group, kills and reaps runaway output producers, and supports explicit execution deadlines; native filesystem image probing uses that timeout.
+- Bound protocol complexity at the privileged boundary. The shared JSON parser rejects nesting beyond 64 levels and the privileged helper rejects oversized protocol frames instead of allowing unbounded root-process memory/stack growth.
+- Move selected-volume identity revalidation off the GTK event path. Selection is now pure in-memory state; physical revalidation runs asynchronously with generation checks so changing disks cannot freeze the interface while retaining stale-device protection.
+- Add explicit recursion limits to AFFS and exFAT directory traversal so deeply nested or malicious directory trees fail closed instead of exhausting the C stack.
+- Finish large-volume allocation-state packing across FAT, classic HFS, HFS+ and Minix. FAT traversal/ownership guards and chain-loop state, HFS/HFS+ allocation/claimed maps, and Minix zone ownership no longer retain byte- or word-per-unit state where packed representations suffice.
+- Make recovery journal namespaces collision-resistant and bind them to stable volume identity rather than only sanitised path text.
+- Make Test Media state durable and identity-stable: state filenames are derived from the physical-disk fingerprint, updates are durably synced, and verification can follow the same disk across kernel device-name changes.
+- Replace the privileged helper's "first child output means Stop-safe" heuristic with an explicit typed Stop-ready worker event emitted after writer validation/initialisation. All write-capable workers participate in that contract.
+- Add regression coverage for bounded child lifetime/output, JSON depth/frame limits, asynchronous selection identity checks, packed-state invariants, hashed journals, durable Test Media state and explicit Stop readiness.
+- Qualify source commit `b6520bb9815a240c2ef16545a03ca910c37a5245`: all 44 hosted CTest tests pass, hosted ASan/UBSan passes, and self-hosted Linux build/test qualification passes; ordinary gates stop only at the deliberate stale-audit control advanced by this release.
+
 ## 1.8.0-214
 
 - Reduce large-volume analysis and staging memory pressure by replacing remaining byte-per-allocation-unit state with packed bitmaps across HFS, Amiga OFS/FFS/SFS/PFS3 and FAT map paths. PFS3 staging now packs its final-free map; FAT stores its four map classifications as independent bitsets rather than one byte per cluster.
