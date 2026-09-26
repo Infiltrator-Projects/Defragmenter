@@ -444,6 +444,57 @@ static int test_apfs_formatter_and_payload(void) {
     return unlink(path) == 0 ? 0 : 1;
 }
 
+static int test_two_gib_first_party_media_geometry(void)
+{
+    char path[] = "/tmp/linux-defragger-2g-media.XXXXXX";
+    char detail[512];
+    int fd = mkstemp(path);
+    if (fd < 0)
+        return 1;
+    if (ftruncate(fd, (off_t)(UINT64_C(2) * LDTM_GIB)) != 0 ||
+        close(fd) != 0) {
+        (void)unlink(path);
+        return 1;
+    }
+
+    /*
+     * The old 1 GiB OFS/FFS and 64 MiB SFS limits were Test Media
+     * constants, not format limits in our native creators.  Exercise the
+     * actual 2 GiB qualification cap on a sparse image so regressions cannot
+     * silently shrink these formats again.
+     */
+    if (ldtm_format_amiga_volume(path, 0U, "LD_OFS") != 0 ||
+        ldtm_validate_amiga_volume(path, 0U) != 0 ||
+        ldtm_format_amiga_volume(path, 1U, "LD_FFS") != 0 ||
+        ldtm_validate_amiga_volume(path, 1U) != 0) {
+        (void)unlink(path);
+        return 1;
+    }
+
+    const LdtmFilesystemSpec *sfs = ldtm_find_spec("sfs");
+    const LdtmFilesystemSpec *pfs3 = ldtm_find_spec("pfs3");
+    if (sfs == NULL || pfs3 == NULL) {
+        (void)unlink(path);
+        return 1;
+    }
+    const LdtmFragmentProfile sfs_profile = ldtm_fragment_profile(sfs);
+    const LdtmFragmentProfile pfs3_profile = ldtm_fragment_profile(pfs3);
+    if (ldtm_format_amiga_volume(path, 1U, "LD_SFS") != 0 ||
+        ldtm_populate_amiga_volume(path, 1U, &sfs_profile) != 0 ||
+        ldtm_verify_amiga_payload(
+            path, 1U, &sfs_profile, detail, sizeof(detail)) != 0 ||
+        ldtm_format_amiga_volume(path, 1U, "LD_PFS3") != 0 ||
+        ldtm_populate_amiga_volume(path, 1U, &pfs3_profile) != 0 ||
+        ldtm_verify_amiga_payload(
+            path, 1U, &pfs3_profile, detail, sizeof(detail)) != 0 ||
+        ldtm_format_apfs_volume(path) != 0 ||
+        ldtm_verify_apfs_payload(path, detail, sizeof(detail)) != 0) {
+        (void)unlink(path);
+        return 1;
+    }
+    return unlink(path) == 0 ? 0 : 1;
+}
+
 int main(void) {
     char script[8192];
     const LdtmFilesystemSpec *fat12 = ldtm_find_spec("fat12");
@@ -521,6 +572,7 @@ int main(void) {
     CHECK(ldtm_is_reserved_partition_label("LD_OFS") == 0);
     CHECK(ldtm_is_reserved_partition_label("LD_HFSPLUS") == 0);
     CHECK(test_amiga_formatters_and_payload() == 0);
+    CHECK(test_two_gib_first_party_media_geometry() == 0);
     CHECK(test_sfs_formatter_and_payload() == 0);
     CHECK(test_pfs3_formatter_and_payload() == 0);
     CHECK(test_apfs_formatter_and_payload() == 0);
