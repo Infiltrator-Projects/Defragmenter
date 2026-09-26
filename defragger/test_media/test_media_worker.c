@@ -9,6 +9,7 @@
 #include "infiltratr/posix.h"
 #include "infiltratr/posix_io.h"
 
+#include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -173,6 +174,103 @@ static int capture_process(const char *const argv[], char **output) {
         return -1;
     }
     *output = buffer;
+    return 0;
+}
+
+static const char *production_mapper_program(void) {
+    const char *configured = getenv("LINUX_DEFRAGGER_MAPPER");
+    if (configured != NULL && *configured != '\0' &&
+        access(configured, X_OK) == 0)
+        return configured;
+    if (access("/usr/lib/linux-defragger/linux-defragger-mapper", X_OK) == 0)
+        return "/usr/lib/linux-defragger/linux-defragger-mapper";
+    if (ldtm_program_available("linux-defragger-mapper"))
+        return "linux-defragger-mapper";
+    return NULL;
+}
+
+static int production_fragment_count(const LdtmFilesystemSpec *spec,
+                                     const char *partition,
+                                     uint64_t *fragmented_files,
+                                     char *detail, size_t detail_capacity) {
+    const char *program;
+    char *output = NULL;
+    const char *field;
+    const char *cursor;
+    char number[32];
+    size_t used = 0U;
+    if (fragmented_files == NULL || spec == NULL || partition == NULL ||
+        detail == NULL || detail_capacity == 0U)
+        return -1;
+    *fragmented_files = 0U;
+    detail[0] = '\0';
+    program = production_mapper_program();
+    if (program == NULL) {
+        (void)snprintf(detail, detail_capacity,
+                       "production allocation mapper is unavailable");
+        return -1;
+    }
+    const char *const argv[] = {
+        program, partition, "--fstype", spec->key, "--cells", "1", NULL
+    };
+    if (capture_process(argv, &output) != 0 || output == NULL) {
+        free(output);
+        (void)snprintf(detail, detail_capacity,
+                       "production analyser rejected the generated filesystem");
+        return -1;
+    }
+    field = strstr(output, "\"fragmented_files\"");
+    if (field == NULL || (cursor = strchr(field, ':')) == NULL) {
+        free(output);
+        (void)snprintf(detail, detail_capacity,
+                       "production analyser did not report fragmented_files");
+        return -1;
+    }
+    ++cursor;
+    while (*cursor != '\0' && isspace((unsigned char)*cursor))
+        ++cursor;
+    while (*cursor >= '0' && *cursor <= '9' &&
+           used + 1U < sizeof(number))
+        number[used++] = *cursor++;
+    number[used] = '\0';
+    if (used == 0U ||
+        !infiltratr_parse_u64(number, 10U, fragmented_files)) {
+        free(output);
+        (void)snprintf(detail, detail_capacity,
+                       "production analyser returned an invalid fragmented_files value");
+        return -1;
+    }
+    free(output);
+    (void)snprintf(detail, detail_capacity,
+                   "production analyser reports %llu fragmented file%s",
+                   (unsigned long long)*fragmented_files,
+                   *fragmented_files == 1U ? "" : "s");
+    return 0;
+}
+
+static int require_fragmentation_state(const LdtmFilesystemSpec *spec,
+                                       const char *partition,
+                                       int expect_fragmented,
+                                       char *detail, size_t detail_capacity) {
+    uint64_t fragmented = 0U;
+    if (production_fragment_count(spec, partition, &fragmented,
+                                  detail, detail_capacity) != 0)
+        return -1;
+    if ((expect_fragmented != 0 && fragmented == 0U) ||
+        (expect_fragmented == 0 && fragmented != 0U)) {
+        char observed[128];
+        (void)snprintf(observed, sizeof(observed),
+                       "%llu fragmented file%s",
+                       (unsigned long long)fragmented,
+                       fragmented == 1U ? "" : "s");
+        (void)snprintf(
+            detail, detail_capacity,
+            expect_fragmented != 0
+                ? "qualification requires real fragmentation before Defragment; production analyser saw %s"
+                : "post-Defragment qualification requires zero fragmented files; production analyser saw %s",
+            observed);
+        return -1;
+    }
     return 0;
 }
 
@@ -777,10 +875,26 @@ static int create_amiga_and_populate(const LdtmFilesystemSpec *spec, const char 
         (void)state_write_status(state, spec, "formatted-unpopulated", "raw C payload self-check failed");
         return 0;
     }
-    if (state_write_status(state, spec, "populated",
-                           "raw C fragmented deterministic payload created without kernel mounting") != 0) return -1;
-    emit_status(spec->key, "populated",
-                "raw C fragmented deterministic payload created without kernel mounting");
+    {
+        char analyser_detail[512];
+        if (require_fragmentation_state(
+                spec, partition, 1,
+                analyser_detail, sizeof(analyser_detail)) != 0) {
+            emit_status(spec->key, "qualification-failed",
+                        analyser_detail);
+            (void)state_write_status(
+                state, spec, "qualification-failed",
+                analyser_detail);
+            return 0;
+        }
+    }
+    if (state_write_status(
+            state, spec, "populated",
+            "raw C deterministic payload created; independent raw verifier and production analyser both prove fragmentation") != 0)
+        return -1;
+    emit_status(
+        spec->key, "populated",
+        "raw C deterministic payload created; independent raw verifier and production analyser both prove fragmentation");
     return 0;
 }
 
@@ -824,9 +938,24 @@ static int create_regular_and_populate(const LdtmFilesystemSpec *spec, const cha
         const char *const umount_argv[] = {"umount", mountpoint, NULL};
         if (run_process(umount_argv, NULL, 0) != 0) return -1;
     }
-    if (state_write_status(state, spec, "populated", "fragmented deterministic payload created") != 0 ||
-        state_write_targets(state, spec, records, record_count, directory_entries) != 0) return -1;
-    emit_status(spec->key, "populated", "fragmented deterministic payload created");
+    {
+        char detail[512];
+        if (require_fragmentation_state(
+                spec, partition, 1, detail, sizeof(detail)) != 0) {
+            emit_status(spec->key, "qualification-failed", detail);
+            (void)state_write_status(
+                state, spec, "qualification-failed", detail);
+            return 0;
+        }
+    }
+    if (state_write_status(
+            state, spec, "populated",
+            "fragmented deterministic payload created and production analyser proved fragmentation") != 0 ||
+        state_write_targets(state, spec, records, record_count, directory_entries) != 0)
+        return -1;
+    emit_status(
+        spec->key, "populated",
+        "fragmented deterministic payload created and production analyser proved fragmentation");
     return 0;
 }
 
@@ -903,6 +1032,7 @@ static int create_ufs_and_populate(const LdtmFilesystemSpec *spec, const char *p
     uint32_t directory_entries = 0U;
     const char *const wipe_argv[] = {"wipefs", "--all", "--force", partition, NULL};
     const char *makefs_argv[12];
+    char image_size[32];
     if (!ldtm_program_available("makefs")) {
         emit_status(spec->key, "skipped", "makefs is not installed");
         (void)state_write_status(state, spec, "skipped", "makefs is not installed");
@@ -927,7 +1057,10 @@ static int create_ufs_and_populate(const LdtmFilesystemSpec *spec, const char *p
     makefs_argv[3] = "-B";
     makefs_argv[4] = "little";
     makefs_argv[5] = "-s";
-    makefs_argv[6] = "512m";
+    if (snprintf(image_size, sizeof(image_size), "%um",
+                 spec->size_mib) <= 0)
+        return -1;
+    makefs_argv[6] = image_size;
     makefs_argv[7] = "-o";
     makefs_argv[8] = "version=2,bsize=8192,fsize=1024,minfree=5";
     makefs_argv[9] = image;
@@ -945,11 +1078,24 @@ static int create_ufs_and_populate(const LdtmFilesystemSpec *spec, const char *p
         (void)state_write_status(state, spec, "format-failed", "UFS2 partition validation failed");
         return 0;
     }
-    if (state_write_status(state, spec, "populated",
-                           "deterministic UFS2 payload created with makefs; exact fragmentation not asserted") != 0 ||
-        state_write_targets(state, spec, records, record_count, directory_entries) != 0) return -1;
-    emit_status(spec->key, "populated",
-                "deterministic UFS2 payload created with makefs; exact fragmentation not asserted");
+    {
+        char detail[512];
+        if (require_fragmentation_state(
+                spec, partition, 1, detail, sizeof(detail)) != 0) {
+            emit_status(spec->key, "qualification-failed", detail);
+            (void)state_write_status(
+                state, spec, "qualification-failed", detail);
+            return 0;
+        }
+    }
+    if (state_write_status(
+            state, spec, "populated",
+            "deterministic UFS2 payload created at the capped media size and production analyser proved fragmentation") != 0 ||
+        state_write_targets(state, spec, records, record_count, directory_entries) != 0)
+        return -1;
+    emit_status(
+        spec->key, "populated",
+        "deterministic UFS2 payload created at the capped media size and production analyser proved fragmentation");
     return 0;
 }
 
@@ -1005,11 +1151,27 @@ static int create_zfs_and_populate(const LdtmFilesystemSpec *spec, const char *p
             "native exact analyser rejected the exported ZFS v28 pool");
         return 0;
     }
-    if (state_write_status(state, spec, "populated", "fragmented deterministic ZFS v28 payload created and accepted by the native exact analyser") != 0 ||
-        fprintf(state, "pool\t%s\t%s\n", spec->key, pool) < 0 || fflush(state) != 0 ||
-        state_write_targets(state, spec, records, record_count, directory_entries) != 0) return -1;
-    emit_status(spec->key, "populated",
-                "fragmented deterministic ZFS v28 payload created and accepted by the native exact analyser");
+    {
+        char detail[512];
+        if (require_fragmentation_state(
+                spec, partition, 1, detail, sizeof(detail)) != 0) {
+            emit_status(spec->key, "qualification-failed", detail);
+            (void)state_write_status(
+                state, spec, "qualification-failed", detail);
+            return 0;
+        }
+    }
+    if (state_write_status(
+            state, spec, "populated",
+            "deterministic ZFS v28 payload created; exact production analyser proved real fragmentation") != 0 ||
+        fprintf(state, "pool\t%s\t%s\n", spec->key, pool) < 0 ||
+        fflush(state) != 0 ||
+        state_write_targets(state, spec, records, record_count,
+                            directory_entries) != 0)
+        return -1;
+    emit_status(
+        spec->key, "populated",
+        "deterministic ZFS v28 payload created; exact production analyser proved real fragmentation");
     return 0;
 }
 
@@ -1050,13 +1212,26 @@ static int create_apfs_and_populate(const LdtmFilesystemSpec *spec,
             "APFS fixture self-check failed");
         return 0;
     }
+    {
+        char analyser_detail[512];
+        if (require_fragmentation_state(
+                spec, partition, 1,
+                analyser_detail, sizeof(analyser_detail)) != 0) {
+            emit_status(spec->key, "qualification-failed",
+                        analyser_detail);
+            (void)state_write_status(
+                state, spec, "qualification-failed",
+                analyser_detail);
+            return 0;
+        }
+    }
     if (state_write_status(
             state, spec, "populated",
-            "first-party raw C bounded APFS fragmented fixture created and independently verified") != 0)
+            "first-party raw C capped APFS fixture created; independent payload verifier and production analyser prove fragmentation") != 0)
         return -1;
     emit_status(
         spec->key, "populated",
-        "first-party raw C bounded APFS fragmented fixture created and independently verified");
+        "first-party raw C capped APFS fixture created; independent payload verifier and production analyser prove fragmentation");
     return 0;
 }
 
@@ -1143,23 +1318,6 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device) {
         if (spec->creator == LDTM_CREATOR_MANUAL) {
             emit_status(spec->key, "reserved", spec->note);
             (void)state_write_status(state, spec, "reserved", spec->note);
-            continue;
-        }
-        if (spec->creator == LDTM_CREATOR_APFS) {
-            char detail[512];
-            detail[0] = '\0';
-            if (ldtm_verify_apfs_payload(
-                    partition, detail, sizeof(detail)) == 0) {
-                emit_status(
-                    spec->key, "verified",
-                    detail[0] != '\0'
-                        ? detail : "raw C APFS fixture verified");
-            } else {
-                emit_status(
-                    spec->key, "verify-failed",
-                    detail[0] != '\0'
-                        ? detail : "raw C APFS fixture verification failed");
-            }
             continue;
         }
         if ((spec->creator == LDTM_CREATOR_AFFS || spec->creator == LDTM_CREATOR_PFS3)) {
@@ -1326,8 +1484,8 @@ static int verify_zfs(const LdtmFilesystemSpec *spec, const char *work,
     char altroot[PATH_MAX];
     char mountpoint[PATH_MAX];
     if (*expected->pool == '\0' || !ldtm_program_available("zpool") || !ldtm_program_available("zfs")) {
-        emit_status(spec->key, "unverified", "ZFS verification tools are unavailable");
-        return 0;
+        emit_status(spec->key, "verify-failed", "ZFS verification tools are unavailable");
+        return -1;
     }
     if (snprintf(altroot, sizeof(altroot), "%s/zfs-verify", work) <= 0 ||
         ensure_directory(altroot, 0755) != 0 ||
@@ -1338,8 +1496,8 @@ static int verify_zfs(const LdtmFilesystemSpec *spec, const char *work,
             expected->pool, NULL
         };
         if (run_process(import_argv, NULL, 0) != 0) {
-            emit_status(spec->key, "unverified", "host could not import ZFS pool read-only");
-            return 0;
+            emit_status(spec->key, "verify-failed", "host could not import ZFS pool read-only");
+            return -1;
         }
     }
     {
@@ -1347,16 +1505,18 @@ static int verify_zfs(const LdtmFilesystemSpec *spec, const char *work,
         if (run_process(mount_argv, NULL, 0) != 0) {
             const char *const export_argv[] = {"zpool", "export", expected->pool, NULL};
             (void)run_process(export_argv, NULL, 0);
-            emit_status(spec->key, "unverified", "host could not mount imported ZFS pool");
-            return 0;
+            emit_status(spec->key, "verify-failed", "host could not mount imported ZFS pool");
+            return -1;
         }
     }
-    (void)verify_mounted_payload(spec, mountpoint, expected);
+    const int payload_result =
+        verify_mounted_payload(spec, mountpoint, expected);
     {
         const char *const export_argv[] = {"zpool", "export", expected->pool, NULL};
-        (void)run_process(export_argv, NULL, 0);
+        if (run_process(export_argv, NULL, 0) != 0)
+            return -1;
     }
-    return 0;
+    return payload_result;
 }
 
 int ldtm_worker_verify(const char *device) {
@@ -1368,6 +1528,7 @@ int ldtm_worker_verify(const char *device) {
     LdtmPartitionMap map;
     LdtmVerifyFilesystem expected[LDTM_SPEC_COUNT];
     size_t index;
+    int failures = 0;
     if (geteuid() != 0) {
         fputs("Test-media verify worker must run as root.\n", stderr);
         return 2;
@@ -1382,51 +1543,127 @@ int ldtm_worker_verify(const char *device) {
         fprintf(stderr, "No test-media state found for %s.\n", canonical);
         return 2;
     }
-    if (unmount_descendants(canonical) != 0 || load_partition_map(canonical, &map) != 0) return 2;
+    if (unmount_descendants(canonical) != 0 ||
+        load_partition_map(canonical, &map) != 0)
+        return 2;
     work = mkdtemp(work_template);
-    if (work == NULL) return 2;
+    if (work == NULL)
+        return 2;
+
     for (index = 0U; index < LDTM_SPEC_COUNT; ++index) {
         const LdtmFilesystemSpec *spec = &ldtm_specs()[index];
         const char *partition;
         char mountpoint[PATH_MAX];
-        if (!expected[index].populated) continue;
+        if (!expected[index].populated)
+            continue;
         printf("\n=== verify %s ===\n", spec->key);
         fflush(stdout);
-        if (spec->creator == LDTM_CREATOR_ZFS) {
-            (void)verify_zfs(spec, work, &expected[index]);
-            continue;
-        }
+
         partition = partition_for_label(&map, spec->label);
         if (partition == NULL) {
-            emit_status(spec->key, "verify-failed", "partition label is missing");
+            emit_status(spec->key, "verify-failed",
+                        "partition label is missing");
+            failures++;
             continue;
         }
-        if ((spec->creator == LDTM_CREATOR_AFFS || spec->creator == LDTM_CREATOR_PFS3)) {
-            const uint8_t dostype = strcmp(spec->key, "ofs") == 0 ? (uint8_t)0 : (uint8_t)1;
-            const LdtmFragmentProfile profile = ldtm_fragment_profile(spec);
-            char detail[512];
-            detail[0] = '\0';
-            if (ldtm_verify_amiga_payload(partition, dostype, &profile, detail, sizeof(detail)) == 0) {
-                emit_status(spec->key, "verified",
-                            detail[0] != '\0' ? detail : "raw C Amiga payload verified");
+
+        /*
+         * ZFS is intentionally analysis-only in Defragmenter.  It therefore
+         * keeps its pre-existing fragmented layout, but its retained payload
+         * still has to survive byte-for-byte and the exact analyser must still
+         * accept the pool.
+         */
+        if (spec->creator == LDTM_CREATOR_ZFS) {
+            if (!zfs_exact_analysis_ok(partition) ||
+                verify_zfs(spec, work, &expected[index]) != 0)
+                failures++;
+            continue;
+        }
+
+        if (spec->creator == LDTM_CREATOR_APFS) {
+            char detail[512] = {0};
+            if (ldtm_verify_apfs_payload_after_defrag(
+                    partition, detail, sizeof(detail)) != 0) {
+                emit_status(
+                    spec->key, "verify-failed",
+                    detail[0] != '\0'
+                        ? detail
+                        : "raw C APFS post-defrag verification failed");
+                failures++;
             } else {
-                emit_status(spec->key, "verify-failed",
-                            detail[0] != '\0' ? detail : "raw C Amiga payload verification failed");
+                emit_status(spec->key, "verified", detail);
             }
             continue;
         }
-        if (snprintf(mountpoint, sizeof(mountpoint), "%s/%s", work, spec->key) <= 0 ||
-            ensure_directory(mountpoint, 0755) != 0) continue;
-        if (mount_regular(partition, mountpoint, 1) != 0) {
-            emit_status(spec->key, "unverified", "host kernel could not mount this filesystem read-only");
+
+        if (spec->creator == LDTM_CREATOR_AFFS ||
+            spec->creator == LDTM_CREATOR_PFS3) {
+            const uint8_t dostype =
+                strcmp(spec->key, "ofs") == 0 ? (uint8_t)0 : (uint8_t)1;
+            const LdtmFragmentProfile profile =
+                ldtm_fragment_profile(spec);
+            char detail[512] = {0};
+            if (ldtm_verify_amiga_payload_after_defrag(
+                    partition, dostype, &profile,
+                    detail, sizeof(detail)) != 0) {
+                emit_status(
+                    spec->key, "verify-failed",
+                    detail[0] != '\0'
+                        ? detail
+                        : "raw C Amiga post-defrag verification failed");
+                failures++;
+            } else {
+                emit_status(spec->key, "verified", detail);
+            }
             continue;
         }
-        (void)verify_mounted_payload(spec, mountpoint, &expected[index]);
+
         {
-            const char *const umount_argv[] = {"umount", mountpoint, NULL};
-            (void)run_process(umount_argv, NULL, 0);
+            char detail[512];
+            if (require_fragmentation_state(
+                    spec, partition, 0,
+                    detail, sizeof(detail)) != 0) {
+                emit_status(spec->key, "verify-failed", detail);
+                failures++;
+                continue;
+            }
+        }
+
+        if (snprintf(mountpoint, sizeof(mountpoint), "%s/%s",
+                     work, spec->key) <= 0 ||
+            ensure_directory(mountpoint, 0755) != 0) {
+            emit_status(spec->key, "verify-failed",
+                        "could not create verification mountpoint");
+            failures++;
+            continue;
+        }
+        if (mount_regular(partition, mountpoint, 1) != 0) {
+            emit_status(
+                spec->key, "verify-failed",
+                "host kernel could not mount this qualified filesystem read-only for independent payload verification");
+            failures++;
+            continue;
+        }
+        if (verify_mounted_payload(
+                spec, mountpoint, &expected[index]) != 0)
+            failures++;
+        {
+            const char *const umount_argv[] = {
+                "umount", mountpoint, NULL
+            };
+            if (run_process(umount_argv, NULL, 0) != 0) {
+                emit_status(spec->key, "verify-failed",
+                            "verification mount could not be cleanly unmounted");
+                failures++;
+            }
         }
     }
     (void)recursive_remove(work);
+    if (failures != 0) {
+        fprintf(stderr,
+                "Test-media verification failed closed: %d filesystem qualification failure%s.\n",
+                failures, failures == 1 ? "" : "s");
+        return 1;
+    }
     return 0;
 }
