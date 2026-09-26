@@ -548,8 +548,8 @@ int main(void) {
     const char *cursor;
 
     CHECK(ldtm_spec_count() == 21U);
-    CHECK(ldtm_allocated_capacity_bytes() == UINT64_C(41024) * LDTM_MIB);
-    CHECK(ldtm_required_capacity_bytes() == (UINT64_C(41024) * LDTM_MIB) + LDTM_GIB);
+    CHECK(ldtm_allocated_capacity_bytes() == UINT64_C(41215) * LDTM_MIB);
+    CHECK(ldtm_required_capacity_bytes() == (UINT64_C(41215) * LDTM_MIB) + LDTM_GIB);
     CHECK(fat12 != NULL && fat16 != NULL && ofs != NULL && ffs != NULL && sfs != NULL && pfs3 != NULL);
     CHECK(ufs != NULL && zfs != NULL && apfs != NULL);
 
@@ -593,6 +593,7 @@ int main(void) {
     CHECK(zfs->package_hint != NULL && strcmp(zfs->package_hint, "zfsutils-linux") == 0);
     CHECK(strstr(zfs->note, "ZFS v28") != NULL &&
           strstr(zfs->note, "native exact analyser") != NULL);
+    CHECK(fat12->size_mib == 255U);
     CHECK(fat16->size_mib == 2048U);
     CHECK(ofs->size_mib == 2048U && ffs->size_mib == 2048U);
     CHECK(sfs->size_mib == 2048U && pfs3->size_mib == 2048U);
@@ -623,6 +624,7 @@ int main(void) {
 
     CHECK(ldtm_build_sfdisk_script(script, sizeof(script)) == 0);
     CHECK(strstr(script, "label: gpt") != NULL);
+    CHECK(strstr(script, "size=255MiB, type=linux, name=\"LD_FAT12\"") != NULL);
     CHECK(strstr(script, "size=2048MiB, type=linux, name=\"LD_SFS\"") != NULL);
     CHECK(strstr(script, "name=\"LD_FAT12\"") != NULL);
     CHECK(strstr(script, "name=\"LD_OFS\"") != NULL);
