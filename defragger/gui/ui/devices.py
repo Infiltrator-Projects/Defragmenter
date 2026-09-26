@@ -18,8 +18,7 @@ from .backend_catalog import BackendCatalog
 
 
 RunCommand = Callable[..., subprocess.CompletedProcess[str]]
-UnknownFilesystemProbe = Callable[[str], str]
-TestMediaFilesystemProbe = Callable[[str, str], str]
+NativeFilesystemProbe = Callable[[str, str], str]
 _GENERIC_FAT_TYPES = frozenset({"vfat", "fat", "msdos"})
 _EXT_TYPES = frozenset({"ext2", "ext3", "ext4"})
 _AMIGA_TYPES = frozenset({"ofs", "ffs"})
@@ -81,66 +80,27 @@ def fat_variant(fstype: str, fs_version: str) -> str:
     return ""
 
 
-def first_party_unknown_filesystem_probe(path: str) -> str:
-    """Probe formats that the host discovery stack commonly leaves unnamed.
+def first_party_filesystem_probe(path: str, expected: str = "") -> str:
+    """Identify one readable target through Defragmenter's native mapper.
 
-    Device enumeration stays independent from Linux filesystem support.  The
-    native Amiga parser is consulted when lsblk/libblkid cannot classify a
-    device.  Permission failures are expected for some physical devices and
-    simply leave the result unknown; deterministic Test Media partition labels
-    provide a second, non-authoritative hint for those root-only devices.
+    Linux metadata and Test Media GPT labels are routing hints only. When this
+    process can read the target, the mapper delegates identification to the same
+    first-party filesystem implementation used for analysis and mutation.
+    Root-only block devices remain unverified candidates until privileged
+    read-only analysis succeeds; discovery itself never escalates privileges.
     """
 
-    if not path:
+    if not path or not os.access(path, os.R_OK):
         return ""
     anchor = Path(__file__).resolve().parents[1] / "core"
     try:
-        worker = resolve_program("affs-native", anchor=anchor)
+        mapper = resolve_program("mapper", anchor=anchor)
+        arguments = [mapper, path, "--probe"]
+        expected = str(expected or "").strip().lower()
+        if expected:
+            arguments.extend(("--fstype", expected))
         completed = subprocess.run(
-            [worker, "identify", path],
-            check=False,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=2.0,
-            env={**os.environ, "LC_ALL": "C", "LANG": "C"},
-        )
-    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
-        return ""
-    if completed.returncode != 0:
-        return ""
-    try:
-        payload = json.loads(completed.stdout)
-    except json.JSONDecodeError:
-        return ""
-    if not isinstance(payload, dict) or payload.get("filesystem") != "affs":
-        return ""
-    variant = str(payload.get("variant") or "").strip().lower()
-    return variant if variant in _AMIGA_TYPES else "affs"
-
-
-_TEST_MEDIA_NATIVE_PROBES = {
-    "apfs": ("apfs-native", "apfs"),
-}
-
-
-def first_party_test_media_probe(path: str, expected: str) -> str:
-    """Verify raw Test Media identities that cannot safely rely on GPT labels.
-
-    LD_APFS is merely a partition slot label. Older or partially rebuilt
-    qualification media may carry that label while the partition still
-    contains another filesystem or no filesystem at all.
-    """
-
-    spec = _TEST_MEDIA_NATIVE_PROBES.get(expected)
-    if not path or spec is None:
-        return ""
-    program_id, filesystem = spec
-    anchor = Path(__file__).resolve().parents[1] / "core"
-    try:
-        worker = resolve_program(program_id, anchor=anchor)
-        completed = subprocess.run(
-            [worker, "identify", path],
+            arguments,
             check=False,
             text=True,
             stdout=subprocess.PIPE,
@@ -158,44 +118,41 @@ def first_party_test_media_probe(path: str, expected: str) -> str:
         return ""
     if not isinstance(payload, dict):
         return ""
-    return filesystem if str(payload.get("filesystem") or "").lower() == filesystem else ""
+    return str(payload.get("filesystem") or "").strip().lower()
 
 
 def _resolved_discovery_fstype(
     catalog: BackendCatalog,
     node: dict[str, Any],
-    probe_unknown: UnknownFilesystemProbe,
-    probe_test_media: TestMediaFilesystemProbe,
-) -> str:
-    """Resolve one lsblk node without turning partition labels into evidence."""
+    probe: NativeFilesystemProbe,
+) -> tuple[str, bool]:
+    """Return a routing candidate and whether first-party code proved it."""
 
     raw = str(node.get("fstype") or "").strip().lower()
     if raw and catalog.supports(raw):
-        return raw
+        # Host metadata chooses a parser but never authorises raw mutation.
+        return raw, False
 
     path = str(node.get("path") or "")
     partlabel = str(node.get("partlabel") or "").strip().lower()
     hinted = _TEST_MEDIA_RAW_PARTLABELS.get(partlabel, "")
 
-    # APFS Test Media has its own positive first-party identity probe. Skip the
-    # unrelated AFFS subprocess entirely for this known slot; doing both probes
-    # only adds process/timeout latency and cannot improve the APFS decision.
-    # A stale label still proves nothing: only apfs-native identify can accept it.
-    if hinted == "apfs" and catalog.supports(hinted):
-        verified = str(probe_test_media(path, hinted) or "").strip().lower()
-        return verified if verified == hinted else ""
+    if hinted and catalog.supports(hinted):
+        identified = str(probe(path, hinted) or "").strip().lower()
+        if (
+            identified
+            and catalog.supports(identified)
+            and catalog.normalize(identified) == catalog.normalize(hinted)
+        ):
+            return identified, True
+        # Keep a root-only Test Media slot visible as a candidate. Mutation
+        # remains disabled until privileged Analyse verifies the filesystem.
+        return hinted, False
 
-    probed = str(probe_unknown(path) or "").strip().lower()
-    if probed and catalog.supports(probed):
-        return probed
-
-    if not hinted or not catalog.supports(hinted):
-        return ""
-
-    # OFS/FFS/SFS/PFS3 deliberately retain native AFFS probing ahead of their
-    # deterministic Test Media slot hints, so stale labels can never override a
-    # real Amiga filesystem identity.
-    return hinted
+    identified = str(probe(path, "") or "").strip().lower()
+    if identified and catalog.supports(identified):
+        return identified, True
+    return "", False
 
 
 @dataclass(slots=True)
@@ -215,6 +172,7 @@ class Volume:
     fs_version: str = ""
     filesystem_uuid: str = ""
     partition_uuid: str = ""
+    identity_verified: bool = True
     _cache_nonce: object = field(
         default_factory=object,
         init=False,
@@ -258,8 +216,10 @@ class Volume:
 
     @property
     def operations(self) -> Mapping[str, Mapping[str, Any]]:
-        """Return operations from the authoritative native backend manifest."""
+        """Return write operations only after native identity verification."""
 
+        if not self.identity_verified:
+            return {}
         return self.catalog.operations_for(self.normalized_fstype)
 
     @property
@@ -280,6 +240,9 @@ class Volume:
                 stat.st_mtime_ns,
                 self.normalized_fstype,
             )
+
+        if not self.identity_verified:
+            return ("device-candidate", self.path, self._cache_nonce)
 
         filesystem_uuid = self.filesystem_uuid.strip().lower()
         partition_uuid = self.partition_uuid.strip().lower()
@@ -303,9 +266,10 @@ class Volume:
         status = "mounted" if self.mounted else "unmounted"
         kind = "image" if self.image else (self.transport or "device")
         filesystem = self.display_fstype.upper()
+        identity = "" if self.identity_verified else ", native identity pending"
         return (
             f"{self.path} — {label} — {filesystem} — {human_bytes(self.size)} — "
-            f"{kind}, {status}"
+            f"{kind}, {status}{identity}"
         )
 
 
@@ -313,8 +277,7 @@ def discover_volumes(
     catalog: BackendCatalog,
     *,
     run: RunCommand = subprocess.run,
-    probe_unknown: UnknownFilesystemProbe = first_party_unknown_filesystem_probe,
-    probe_test_media: TestMediaFilesystemProbe = first_party_test_media_probe,
+    probe: NativeFilesystemProbe = first_party_filesystem_probe,
 ) -> list[Volume]:
     columns = (
         "NAME,PATH,TYPE,FSTYPE,FSVER,LABEL,PARTLABEL,UUID,PARTUUID,SIZE,"
@@ -331,8 +294,8 @@ def discover_volumes(
     data = json.loads(result.stdout)
     volumes: list[Volume] = []
     for node in flatten_lsblk(data.get("blockdevices", [])):
-        fstype = _resolved_discovery_fstype(
-            catalog, node, probe_unknown, probe_test_media
+        fstype, identity_verified = _resolved_discovery_fstype(
+            catalog, node, probe
         )
         if not fstype:
             continue
@@ -357,6 +320,7 @@ def discover_volumes(
                 fs_version=str(node.get("fsver") or ""),
                 filesystem_uuid=str(node.get("uuid") or ""),
                 partition_uuid=str(node.get("partuuid") or ""),
+                identity_verified=identity_verified,
             )
         )
     volumes.sort(

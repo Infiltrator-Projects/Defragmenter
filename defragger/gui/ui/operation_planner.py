@@ -81,6 +81,13 @@ def prepare_mutation(
         raise OperationValidationError(
             "Unknown operation", f"Defragmenter does not recognise {operation!r}."
         )
+    if not volume.identity_verified:
+        raise OperationValidationError(
+            "Filesystem identity not verified",
+            "Run Analyse first. Defragmenter enables raw mutation only after its "
+            "own native filesystem implementation has positively identified the "
+            "selected target.",
+        )
     operation_manifest = catalog.operations_for(volume.normalized_fstype).get(operation)
     if operation_manifest is None:
         raise OperationValidationError(
@@ -201,6 +208,16 @@ def operation_tooltips(
         }
 
     filesystem = volume.normalized_fstype.upper()
+    if not volume.identity_verified:
+        pending = (
+            "Run Analyse first. Native filesystem identity must be verified "
+            "before any raw mutation operation is offered."
+        )
+        return {
+            "defrag": pending,
+            "growth-defrag": pending,
+            "recover": pending,
+        }
     manifests = catalog.operations_for(volume.normalized_fstype)
     result: dict[str, str] = {}
     for operation, label in (

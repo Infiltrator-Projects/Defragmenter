@@ -77,6 +77,8 @@ The mapper probes FAT geometry when discovery supplies only a generic FAT name. 
 
 Paths and device-provided metadata are external input. A previously valid path may refer to a different object later, so persistent transactions bind to stable target and filesystem identity where the format exposes it.
 
+Linux/libblkid metadata and GPT labels may choose a candidate parser, but they never authorise a write. A physical volume starts mutation-disabled until the selected first-party native analyser successfully returns an identity consistent with that candidate. Only that native proof promotes the volume to a write-capable GUI state; the filesystem worker still repeats its own target/format preflight before mutation.
+
 ## Filesystem engine contract
 
 A read-only native backend may probe and map a filesystem without implementing mutation. A write-capable backend additionally owns a first-party native mutation path and an explicit Recover contract.

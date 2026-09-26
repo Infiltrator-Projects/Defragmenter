@@ -120,8 +120,13 @@ class OperationCoordinator:
         *,
         requested_cells: int | None = None,
     ) -> MapPresentation:
-        volume = self.volumes.current
-        operations = volume.operations if volume else ()
+        try:
+            volume = self.volumes.accept_native_identity(
+                str(data.get("filesystem") or "")
+            )
+        except ValueError as exc:
+            raise AllocationMapError(str(exc)) from exc
+        operations = volume.operations
         presentation = present_allocation_map(data, operations)
         data["cells"] = presentation.cells
         self.map_data = data

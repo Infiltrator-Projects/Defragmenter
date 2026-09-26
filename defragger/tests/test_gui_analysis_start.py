@@ -129,6 +129,7 @@ class _Volumes:
             mounted=False,
             image=image,
             readonly=False,
+            identity_verified=True,
             operations={"defrag": {}, "growth-defrag": {}, "recover": {}},
         )
         self.invalidated: list[str] = []
@@ -139,6 +140,12 @@ class _Volumes:
 
     def remember_map(self, data) -> None:
         self.remembered.append(data)
+
+    def accept_native_identity(self, filesystem: str):
+        self.current.normalized_fstype = filesystem
+        self.current.display_fstype = filesystem
+        self.current.identity_verified = True
+        return self.current
 
     def invalidate(self, path: str) -> None:
         self.invalidated.append(path)

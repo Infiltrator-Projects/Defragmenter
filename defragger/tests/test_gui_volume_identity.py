@@ -110,6 +110,7 @@ def test_lsblk_metadata_refines_generic_vfat() -> None:
     assert "— FAT12 —" in volume.display_name
     assert volume.filesystem_uuid == "ABCD-1234"
     assert volume.partition_uuid.startswith("11111111-")
+    assert not volume.identity_verified
 
 
 def test_amiga_discovery_does_not_depend_on_lsblk_fstype() -> None:
@@ -134,34 +135,22 @@ def test_amiga_discovery_does_not_depend_on_lsblk_fstype() -> None:
 
     payload = {
         "blockdevices": [
-            # libblkid commonly leaves these two blank.  Their Test Media GPT
-            # labels are a deterministic fallback when an unprivileged probe
-            # cannot open the physical block device.
             node("/dev/mmcblk0p11", partlabel="LD_OFS"),
             node("/dev/mmcblk0p12", partlabel="LD_FFS"),
-            # A normal Amiga partition with no Test Media label is recovered
-            # from the authoritative first-party native probe.
-            node("/dev/mmcblk0p20", partlabel="DH0"),
-            # Raw SFS/PFS3 creators are identified from their Test Media labels
-            # when an unprivileged native probe cannot open the physical device.
             node("/dev/mmcblk0p13", partlabel="LD_SFS"),
             node("/dev/mmcblk0p14", partlabel="LD_PFS3"),
-            # APFS Test Media labels are not filesystem identity. A stale
-            # pre-rebuild HFS+ signature must remain HFS+, not become APFS.
+            node("/dev/mmcblk0p20", partlabel="DH0"),
             node(
                 "/dev/mmcblk0p15",
                 fstype="hfsplus",
                 partlabel="LD_APFS",
                 label="LD_APFS",
             ),
-            # When the host leaves APFS unnamed, the first-party APFS worker
-            # may positively identify the raw Test Media slot.
             node(
                 "/dev/mmcblk0p16",
                 partlabel="LD_APFS",
                 label="LD_APFS",
             ),
-            # A labelled but unformatted/stale slot must not be advertised.
             node(
                 "/dev/mmcblk0p17",
                 partlabel="LD_APFS",
@@ -173,24 +162,21 @@ def test_amiga_discovery_does_not_depend_on_lsblk_fstype() -> None:
     def fake_run(args, **_kwargs):
         return CompletedProcess(args, 0, stdout=json.dumps(payload), stderr="")
 
-    unknown_probe_paths: list[str] = []
-    apfs_probe_paths: list[str] = []
+    probe_calls: list[tuple[str, str]] = []
 
-    def fake_probe(path: str) -> str:
-        unknown_probe_paths.append(path)
-        return "ffs" if path.endswith("p20") else ""
+    def fake_probe(path: str, expected: str) -> str:
+        probe_calls.append((path, expected))
+        answers = {
+            ("/dev/mmcblk0p11", "ofs"): "ofs",
+            ("/dev/mmcblk0p12", "ffs"): "ffs",
+            ("/dev/mmcblk0p13", "sfs"): "sfs",
+            ("/dev/mmcblk0p14", "pfs3"): "pfs3",
+            ("/dev/mmcblk0p16", "apfs"): "apfs",
+            ("/dev/mmcblk0p20", ""): "ffs",
+        }
+        return answers.get((path, expected), "")
 
-    def fake_test_media_probe(path: str, expected: str) -> str:
-        assert expected == "apfs"
-        apfs_probe_paths.append(path)
-        return "apfs" if path.endswith("p16") else ""
-
-    volumes = discover_volumes(
-        _catalog(),
-        run=fake_run,
-        probe_unknown=fake_probe,
-        probe_test_media=fake_test_media_probe,
-    )
+    volumes = discover_volumes(_catalog(), run=fake_run, probe=fake_probe)
     by_path = {volume.path: volume for volume in volumes}
     assert set(by_path) == {
         "/dev/mmcblk0p11",
@@ -199,27 +185,68 @@ def test_amiga_discovery_does_not_depend_on_lsblk_fstype() -> None:
         "/dev/mmcblk0p14",
         "/dev/mmcblk0p15",
         "/dev/mmcblk0p16",
+        "/dev/mmcblk0p17",
         "/dev/mmcblk0p20",
     }
-    assert by_path["/dev/mmcblk0p11"].normalized_fstype == "affs"
     assert by_path["/dev/mmcblk0p11"].display_fstype == "ofs"
-    assert "— LD_OFS — OFS —" in by_path["/dev/mmcblk0p11"].display_name
-    assert by_path["/dev/mmcblk0p12"].normalized_fstype == "affs"
     assert by_path["/dev/mmcblk0p12"].display_fstype == "ffs"
     assert by_path["/dev/mmcblk0p13"].display_fstype == "sfs"
     assert by_path["/dev/mmcblk0p14"].display_fstype == "pfs3"
     assert by_path["/dev/mmcblk0p15"].display_fstype == "hfsplus"
     assert by_path["/dev/mmcblk0p16"].display_fstype == "apfs"
-    assert "/dev/mmcblk0p17" not in by_path
     assert by_path["/dev/mmcblk0p20"].display_fstype == "ffs"
 
-    # APFS-labelled unknown slots go directly to the APFS identity probe. The
-    # generic AFFS probe remains authoritative for unlabeled/Amiga candidates.
-    assert "/dev/mmcblk0p16" not in unknown_probe_paths
-    assert "/dev/mmcblk0p17" not in unknown_probe_paths
-    assert "/dev/mmcblk0p20" in unknown_probe_paths
-    assert apfs_probe_paths == ["/dev/mmcblk0p16", "/dev/mmcblk0p17"]
+    for path in (
+        "/dev/mmcblk0p11",
+        "/dev/mmcblk0p12",
+        "/dev/mmcblk0p13",
+        "/dev/mmcblk0p14",
+        "/dev/mmcblk0p16",
+        "/dev/mmcblk0p20",
+    ):
+        assert by_path[path].identity_verified
 
+    assert not by_path["/dev/mmcblk0p15"].identity_verified
+    assert not by_path["/dev/mmcblk0p17"].identity_verified
+    assert "native identity pending" in by_path["/dev/mmcblk0p17"].display_name
+
+    assert ("/dev/mmcblk0p11", "ofs") in probe_calls
+    assert ("/dev/mmcblk0p12", "ffs") in probe_calls
+    assert ("/dev/mmcblk0p13", "sfs") in probe_calls
+    assert ("/dev/mmcblk0p14", "pfs3") in probe_calls
+    assert ("/dev/mmcblk0p16", "apfs") in probe_calls
+    assert ("/dev/mmcblk0p17", "apfs") in probe_calls
+    assert ("/dev/mmcblk0p20", "") in probe_calls
+
+
+
+def test_native_analysis_promotes_candidate_identity() -> None:
+    candidate = _volume(fstype="vfat", fs_version="")
+    candidate.identity_verified = False
+    coordinator = VolumeCoordinator(_catalog(), discover=lambda _catalog: [candidate])
+    coordinator.store.refresh([candidate])
+    coordinator.store.select(0)
+    assert coordinator.current is not None
+    assert not coordinator.current.identity_verified
+
+    promoted = coordinator.accept_native_identity("fat12")
+    assert promoted.identity_verified
+    assert promoted.fstype == "fat12"
+    assert promoted.fs_version == "FAT12"
+
+
+def test_conflicting_native_identity_is_rejected() -> None:
+    candidate = _volume(fstype="ext2", fs_version="")
+    candidate.identity_verified = False
+    coordinator = VolumeCoordinator(_catalog(), discover=lambda _catalog: [candidate])
+    coordinator.store.refresh([candidate])
+    coordinator.store.select(0)
+    try:
+        coordinator.accept_native_identity("apfs")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("conflicting native filesystem identity was accepted")
 
 def test_block_devices_sort_by_numeric_partition_number() -> None:
     paths = [
@@ -353,6 +380,8 @@ def test_invalidate_removes_every_identity_for_one_path() -> None:
 def main() -> None:
     test_lsblk_metadata_refines_generic_vfat()
     test_amiga_discovery_does_not_depend_on_lsblk_fstype()
+    test_native_analysis_promotes_candidate_identity()
+    test_conflicting_native_identity_is_rejected()
     test_block_devices_sort_by_numeric_partition_number()
     test_unknown_generic_fat_is_not_labeled_fat32()
     test_rebuilt_same_path_does_not_reuse_cached_map()
