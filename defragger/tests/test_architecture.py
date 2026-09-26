@@ -1134,11 +1134,9 @@ def main() -> None:
     test_release_hardening_and_n_minus_one_build_policy()
     test_user_facing_branding_is_defragmenter()
     test_version_and_native_registry_ownership()
+    test_forensic_scalability_protocol_and_safety_contracts()
     print("current C-first native-registry architecture tests passed")
 
-
-if __name__ == "__main__":
-    main()
 
 def test_forensic_scalability_protocol_and_safety_contracts() -> None:
     io_header = (ROOT / "src" / "core" / "ld_io.h").read_text()
@@ -1234,4 +1232,21 @@ def test_forensic_scalability_protocol_and_safety_contracts() -> None:
         assert "fsync(" not in source, (
             f"{path.relative_to(ROOT)} retains a private transaction sync path"
         )
+
+    fat_analysis = (
+        GUI / "filesystems" / "fat" / "native" / "fat_analysis.c"
+    ).read_text()
+    assert "MapClusterFlags" in fat_analysis
+    assert "ld_bitmap_calloc" in fat_analysis
+    assert "ld_xcalloc((size_t)fs->max_cluster + 1" not in fat_analysis
+
+    pfs3_native = (
+        GUI / "filesystems" / "pfs3" / "native" / "pfs3_native.c"
+    ).read_text()
+    assert "uint8_t *final_free = ld_bitmap_calloc" in pfs3_native
+    assert "calloc(model.root.disksize, 1U)" not in pfs3_native
+
+
+if __name__ == "__main__":
+    main()
 
