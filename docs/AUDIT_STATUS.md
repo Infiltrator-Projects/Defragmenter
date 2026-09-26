@@ -5,8 +5,8 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-09-26
 
-Applies to: release version 1.8.0-213
-Audited source commit: e7a5e04662e986d43474db5bfb9be534c3229f93
+Applies to: release version 1.8.0-214
+Audited source commit: 07e731c99c53c59d2f12fad779eef166332699a2
 Audited release-governance commit: 36be157f932006672f4dfae1c41b83317a914f46
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
@@ -15,13 +15,17 @@ This document records the current release safety case. Historical audit-developm
 
 ## Qualification evidence
 
-The current audited production-source baseline is commit `e7a5e04662e986d43474db5bfb9be534c3229f93`. In Project quality gate run 36224060894, that exact candidate completed the warnings-as-errors C/C++ build and all 44 native/filesystem/GUI/release CTest tests successfully; the independent hosted ASan/UBSan lane also passed. The run then stopped only at the deliberate stale completed-audit control, which this 1.8.0-213 audit advance resolves. The self-hosted Local Linux run for this exact candidate was queued but had not executed when this audit was advanced, so no new self-hosted result is claimed as evidence here; the preceding released 1.8.0-212 baseline remains the latest completed self-hosted qualification.
+The current audited production-source baseline is commit `07e731c99c53c59d2f12fad779eef166332699a2`. In Project quality gate run 36233678874, that exact candidate completed the warnings-as-errors C/C++ build and all 44 native/filesystem/GUI/release CTest tests successfully; the independent hosted ASan/UBSan lane also passed. Self-hosted Local Linux / heavy qualification run 36233678598 completed its dependency check, strict build and native/filesystem/GUI tests successfully. Both ordinary candidate gates stopped only at the deliberate stale completed-audit control, which this 1.8.0-214 audit advance resolves.
 
-The reviewed GUI lifecycle delta moves physical-volume discovery and first-party identification probing off the GTK main thread. Discovery returns an isolated snapshot, GTK state is mutated only by the newest generation on the main loop, and stale overlapping refreshes are discarded. The safe unmount-and-continue path now waits for asynchronous rediscovery before revalidating the selected device and resuming mutation.
+The reviewed scalability delta packs boolean allocation state instead of retaining one byte per allocation unit where only yes/no state is required. HFS, Amiga OFS/FFS/SFS/PFS3 and the remaining PFS3 staging map use the shared bitmap primitive; FAT's four independent map classifications are stored as four bitsets. This reduces memory growth on large media without changing filesystem placement semantics.
 
-The reviewed allocation-map delta removes resize-triggered filesystem analysis. Window-size changes rerasterise the already-authoritative physical allocation sample only; explicit Analyse and post-mutation refresh remain the operations that reread filesystem state. This preserves monotonic physical map semantics while preventing UI geometry from causing disk I/O or parser work.
+The reviewed safety-boundary delta moves destructive Test Media disk identity, whole-disk validation and active-system-use detection to the filesystem-neutral native device layer. The boundary reads sysfs, udev metadata, /proc/self/mountinfo and /proc/swaps directly and fails closed when identity or topology cannot be established; lsblk/findmnt remain convenience/discovery tools rather than destructive authorities.
 
-The reviewed identity-control delta aligns presentation with the existing fail-closed mutation planner. Defragment, Growth Defrag and Recover controls now remain disabled until first-party native Analyse has positively verified the physical filesystem identity. The planner independently retains the same identity check, so the change removes a misleading enabled-button state without weakening any writer boundary.
+The reviewed protocol delta makes optional native mapper fields strict when present, replaces Test Media substring extraction with bounded structural JSON scanning and caps captured mapper output at 8 MiB. Malformed fields and runaway child output are now explicit failures rather than default values or unbounded memory growth.
+
+The reviewed transaction/runtime delta standardises remaining checked vector growth and routes writer durability barriers through the shared EINTR-safe sync primitive while retaining filesystem-specific journal schemas, placement rules and recovery state machines.
+
+The reviewed regression delta fixes the Test Media Amiga payload builder to consume the packed AFFS allocation bitmap correctly and activates the forensic scalability/protocol/safety architecture guard that had previously been defined after the test script entry point.
 
 The release-governance baseline remains `36be157f932006672f4dfae1c41b83317a914f46`; workflow semantics are unchanged. The malformed-media matrix, transaction/recovery tests, native integration fixtures, GUI contract tests, release/package tests and architecture ownership checks remain part of the permanent **Project quality gate**. Environment-dependent destructive media evidence is supplementary and is not represented as hosted-CI proof.
 
