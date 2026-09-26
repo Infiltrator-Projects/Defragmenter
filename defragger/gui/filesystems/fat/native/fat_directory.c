@@ -74,7 +74,7 @@ size_t chain_fragments(const U32Vec *chain) {
 static void claim_chain(Fat32 *fs, const U32Vec *chain, const char *owner) {
     for (size_t i = 0; i < chain->len; i++) {
         uint32_t cluster = chain->v[i];
-        if (fs->claimed_clusters[cluster]) {
+        if (ld_bitmap_get(fs->claimed_clusters, cluster)) {
             fprintf(
                 stderr,
                 "%s: cross-linked cluster %" PRIu32 " while scanning %s\n",
@@ -84,7 +84,7 @@ static void claim_chain(Fat32 *fs, const U32Vec *chain, const char *owner) {
             );
             exit(EXIT_FAILURE);
         }
-        fs->claimed_clusters[cluster] = 1;
+        ld_bitmap_set(fs->claimed_clusters, cluster, true);
     }
 }
 
@@ -285,10 +285,10 @@ static void scan_directory(
         if (first_cluster < 2 || first_cluster > fs->max_cluster) {
             ld_die("invalid directory cluster");
         }
-        if (fs->visited_dirs[first_cluster]) {
+        if (ld_bitmap_get(fs->visited_dirs, first_cluster)) {
             ld_die("directory cycle or cross-link detected");
         }
-        fs->visited_dirs[first_cluster] = 1;
+        ld_bitmap_set(fs->visited_dirs, first_cluster, true);
         chain = fat32_read_chain(fs, first_cluster);
         units = chain.len;
     }
@@ -429,8 +429,11 @@ U32Vec filesystem_root_chain(Fat32 *fs) {
 }
 
 FileList scan_files(Fat32 *fs, DirRefList *dir_refs) {
-    memset(fs->visited_dirs, 0, (size_t)fs->max_cluster + 1);
-    memset(fs->claimed_clusters, 0, (size_t)fs->max_cluster + 1);
+    size_t guard_bytes = 0U;
+    if (!ld_bitmap_size((uint64_t)fs->max_cluster + 1U, &guard_bytes))
+        ld_die("FAT traversal guard size overflow");
+    memset(fs->visited_dirs, 0, guard_bytes);
+    memset(fs->claimed_clusters, 0, guard_bytes);
     if (dir_refs != NULL) {
         dirreflist_free(dir_refs);
     }
@@ -464,7 +467,7 @@ FileList scan_files(Fat32 *fs, DirRefList *dir_refs) {
             );
             exit(EXIT_FAILURE);
         }
-        if (!fs->claimed_clusters[cluster]) {
+        if (!ld_bitmap_get(fs->claimed_clusters, cluster)) {
             fprintf(
                 stderr,
                 "%s: allocated but unreferenced cluster %" PRIu32
