@@ -2,6 +2,10 @@
 #include "helper_policy.hpp"
 #include "json.hpp"
 
+extern "C" {
+#include "ld_stop.h"
+}
+
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
@@ -323,7 +327,7 @@ private:
     std::atomic<bool> transport_failed_{false};
     pid_t active_pid_ = -1;
     std::int64_t active_id_ = 0;
-    bool active_has_output_ = false;
+    bool active_stop_ready_ = false;
     bool active_waits_for_output_ = false;
     bool pending_stop_ = false;
     bool worker_running_ = false;
@@ -445,7 +449,7 @@ private:
                 std::lock_guard<std::mutex> lock(active_mutex_);
                 active_pid_ = child;
                 active_id_ = id;
-                active_has_output_ = false;
+                active_stop_ready_ = false;
                 stop_on_start = pending_stop_ && !active_waits_for_output_;
                 if (stop_on_start) pending_stop_ = false;
             }
@@ -484,13 +488,19 @@ private:
                 }
 
                 bool deliver_queued_stop = false;
-                {
-                    std::lock_guard<std::mutex> lock(active_mutex_);
-                    if (!active_has_output_) {
-                        active_has_output_ = true;
-                        deliver_queued_stop = pending_stop_;
-                        pending_stop_ = false;
+                if (clean == LD_STOP_READY_MARKER) {
+                    {
+                        std::lock_guard<std::mutex> lock(active_mutex_);
+                        if (!active_stop_ready_) {
+                            active_stop_ready_ = true;
+                            deliver_queued_stop = pending_stop_;
+                            pending_stop_ = false;
+                        }
                     }
+                    if (deliver_queued_stop)
+                        deliver_stop(child, Json(nullptr), id,
+                                     "queued SIGINT delivered after worker Stop readiness");
+                    continue;
                 }
 
                 std::smatch match;
@@ -526,9 +536,6 @@ private:
                     line = nullptr;
                     throw std::runtime_error("GUI protocol output closed");
                 }
-                if (deliver_queued_stop)
-                    deliver_stop(child, Json(nullptr), id,
-                                 "queued SIGINT delivered after engine initialisation");
             }
             std::free(line);
 
@@ -551,7 +558,7 @@ private:
             std::lock_guard<std::mutex> lock(active_mutex_);
             active_pid_ = -1;
             active_id_ = 0;
-            active_has_output_ = false;
+            active_stop_ready_ = false;
             active_waits_for_output_ = false;
             pending_stop_ = false;
             worker_running_ = false;
@@ -593,10 +600,10 @@ private:
             pid = active_pid_;
             active_id = active_id_;
             running = worker_running_;
-            // Writers need their cooperative handler installed. Read-only
-            // analysis may be stopped before producing any map output.
+            // Writers explicitly announce that their cooperative handlers are
+            // installed. Read-only analysis may be interrupted immediately.
             defer = running && (pid <= 0 ||
-                (active_waits_for_output_ && !active_has_output_));
+                (active_waits_for_output_ && !active_stop_ready_));
             if (defer) pending_stop_ = true;
         }
 
