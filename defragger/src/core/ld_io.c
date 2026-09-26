@@ -84,9 +84,15 @@ size_t ld_online_cpu_count(void) {
 }
 
 size_t ld_default_worker_count(bool rotational, bool serial_flash) {
-    size_t cpus = ld_online_cpu_count();
-    if (rotational) return 1;
-    if (serial_flash) return cpus > 1 ? 2 : 1;
-    if (cpus > 8) cpus = 8;
-    return cpus == 0 ? 1 : cpus;
+    const size_t cpus = ld_online_cpu_count();
+    const size_t cpu_budget = cpus > 1U ? cpus - 1U : 1U;
+
+    /*
+     * Parallel-capable work leaves one logical processor available to the
+     * desktop. Storage media may impose a lower useful I/O concurrency, but
+     * they never raise the CPU ceiling above N-1.
+     */
+    if (rotational) return 1U;
+    if (serial_flash) return cpu_budget > 2U ? 2U : cpu_budget;
+    return cpu_budget;
 }

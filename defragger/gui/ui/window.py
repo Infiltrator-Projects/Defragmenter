@@ -59,7 +59,7 @@ from .widgets import MAX_MAP_CELLS, MIN_MAP_CELLS
 from .window_view import APP_NAME
 
 
-MAP_RESIZE_DEBOUNCE_MS = 180
+MAP_RESIZE_DEBOUNCE_MS = 350
 
 
 class MainWindow(Gtk.ApplicationWindow):
@@ -325,10 +325,10 @@ class MainWindow(Gtk.ApplicationWindow):
         if self.coordinator.map_data is None:
             return
 
-        # Drawing geometry already follows the current GTK allocation. The
-        # native mapper must follow it too: one requested map cell per drawable
-        # pixel (within the bounded GUI limit) keeps clusters-per-cell coupled
-        # to the visible map resolution instead of freezing at the first size.
+        # Drawing geometry follows the current GTK allocation immediately.
+        # The coordinator applies hysteresis before asking the native mapper
+        # for a denser/coarser physical sample, avoiding filesystem rescans for
+        # the small geometry changes emitted while a window is being resized.
         self.view.disk_map.queue_draw()
         target = self.coordinator.desired_map_cells(
             _allocation.width,

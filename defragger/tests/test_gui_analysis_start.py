@@ -277,7 +277,12 @@ def test_complete_gui_operation_lifecycle() -> None:
         # density so resizing does not loop forever trying the same resolution.
         assert coordinator.last_map_cell_target == 250_000
         assert not coordinator.map_resolution_needs_refresh(250_000)
-        assert coordinator.map_resolution_needs_refresh(200_000)
+        # Minor GTK resize churn reuses the same physical sample.
+        assert not coordinator.map_resolution_needs_refresh(200_000)
+        assert not coordinator.map_resolution_needs_refresh(312_500)
+        # A material resolution change still requests a fresh map.
+        assert coordinator.map_resolution_needs_refresh(150_000)
+        assert coordinator.map_resolution_needs_refresh(350_000)
 
         coordinator.analyze()
         runner.complete(0, "not-json")

@@ -145,12 +145,21 @@ class OperationCoordinator:
         )
 
     def map_resolution_needs_refresh(self, target_cells: int) -> bool:
-        """Return whether the current map was sampled for a different pixel target."""
+        """Return whether a resize materially outgrew the current map sample.
 
-        return (
-            self.map_data is not None
-            and self.last_map_cell_target != self._bounded_map_cells(target_cells)
-        )
+        GTK emits many small size changes while a window is being dragged or
+        its surrounding layout settles. Re-reading the filesystem for every
+        one of those changes is expensive and does not improve the visible map
+        meaningfully. Keep the existing physical sample while the requested
+        pixel density stays within a 25% hysteresis band; the drawing surface
+        still rerasterises immediately at its exact new size.
+        """
+
+        if self.map_data is None or self.last_map_cell_target <= 0:
+            return False
+        target = self._bounded_map_cells(target_cells)
+        current = self.last_map_cell_target
+        return target * 4 < current * 3 or target * 4 > current * 5
 
     def analyze(
         self,
