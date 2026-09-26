@@ -24,8 +24,9 @@
 #include <unistd.h>
 
 #define APFS_TM_BLOCK 4096U
-#define APFS_TM_BLOCKS UINT64_C(16384)
-#define APFS_TM_BYTES (APFS_TM_BLOCKS * APFS_TM_BLOCK)
+#define APFS_TM_MAX_BYTES (UINT64_C(2) * LDTM_GIB)
+#define APFS_TM_MAX_BLOCKS (APFS_TM_MAX_BYTES / APFS_TM_BLOCK)
+#define APFS_TM_BLOCKS_PER_CHUNK UINT32_C(32768)
 #define APFS_TM_XID UINT64_C(7)
 #define APFS_TM_CPM UINT64_C(1)
 #define APFS_TM_NX UINT64_C(2)
@@ -266,6 +267,44 @@ static void apfs_tm_make_omap_object(
     apfs_tm_checksum(raw);
 }
 
+static int apfs_tm_geometry(int fd, uint64_t *block_count)
+{
+    if (block_count == NULL)
+        return -1;
+    const off_t end = lseek(fd, 0, SEEK_END);
+    if (end <= 0)
+        return -1;
+    uint64_t bytes = (uint64_t)end;
+    if (bytes > APFS_TM_MAX_BYTES)
+        bytes = APFS_TM_MAX_BYTES;
+    if (bytes % APFS_TM_BLOCK != 0U)
+        return -1;
+    const uint64_t blocks = bytes / APFS_TM_BLOCK;
+    if (blocks <= APFS_TM_DATA_B || blocks > APFS_TM_MAX_BLOCKS)
+        return -1;
+    const uint64_t chunks =
+        (blocks + APFS_TM_BLOCKS_PER_CHUNK - 1U) /
+        APFS_TM_BLOCKS_PER_CHUNK;
+    if (chunks == 0U || chunks > 126U)
+        return -1;
+    *block_count = blocks;
+    return 0;
+}
+
+static int apfs_tm_expected_blocks(const char *path, uint64_t *block_count)
+{
+    int flags = O_RDONLY | O_CLOEXEC;
+#ifdef O_NOFOLLOW
+    flags |= O_NOFOLLOW;
+#endif
+    const int fd = open(path, flags);
+    if (fd < 0)
+        return -1;
+    const int result = apfs_tm_geometry(fd, block_count);
+    (void)close(fd);
+    return result;
+}
+
 int ldtm_format_apfs_volume(const char *path)
 {
     if (path == NULL || *path == '\0')
@@ -278,42 +317,30 @@ int ldtm_format_apfs_volume(const char *path)
     if (fd < 0)
         return -1;
     struct stat status;
-    if (fstat(fd, &status) != 0) {
+    uint64_t total_blocks = 0U;
+    if (fstat(fd, &status) != 0 ||
+        (!S_ISREG(status.st_mode) && !S_ISBLK(status.st_mode)) ||
+        apfs_tm_geometry(fd, &total_blocks) != 0) {
         (void)close(fd);
         return -1;
     }
-    if (S_ISREG(status.st_mode) &&
-        (uint64_t)status.st_size < APFS_TM_BYTES) {
-        if (ftruncate(fd, (off_t)APFS_TM_BYTES) != 0) {
-            (void)close(fd);
-            return -1;
-        }
-    } else if (!S_ISREG(status.st_mode) &&
-               !S_ISBLK(status.st_mode)) {
-        (void)close(fd);
-        return -1;
-    }
+    const uint32_t chunk_count = (uint32_t)(
+        (total_blocks + APFS_TM_BLOCKS_PER_CHUNK - 1U) /
+        APFS_TM_BLOCKS_PER_CHUNK);
 
-    uint8_t *zero = calloc(1024U * 1024U, 1U);
-    if (zero == NULL) {
-        (void)close(fd);
-        return -1;
-    }
-    for (uint64_t offset = 0U; offset < APFS_TM_BYTES;
-         offset += 1024U * 1024U) {
-        const size_t take =
-            APFS_TM_BYTES - offset > 1024U * 1024U
-                ? 1024U * 1024U
-                : (size_t)(APFS_TM_BYTES - offset);
-        if (apfs_tm_pwrite_full(fd, zero, take, offset) != 0) {
-            free(zero);
-            (void)close(fd);
-            return -1;
-        }
-    }
-    free(zero);
-
+    /*
+     * The fixture owns only its active checkpoint and referenced objects.
+     * Clear the unused descriptor-ring blocks so stale bytes from an older
+     * APFS container cannot be mistaken for historical checkpoints, without
+     * pointlessly streaming zeroes across the complete 2 GiB qualification
+     * volume.
+     */
     uint8_t raw[APFS_TM_BLOCK];
+    memset(raw, 0, sizeof(raw));
+    for (uint64_t block = 3U; block < 9U; ++block) {
+        if (apfs_tm_write_block(fd, block, raw) != 0)
+            goto fail;
+    }
 
     /* NX block zero and the sole active NX checkpoint object. */
     memset(raw, 0, sizeof(raw));
@@ -321,7 +348,7 @@ int ldtm_format_apfs_volume(const char *path)
                           APFS_TM_OBJ_PHYSICAL | 1U, 0U);
     memcpy(raw + 32U, "NXSB", 4U);
     infiltratr_store_le32(raw + 36U, APFS_TM_BLOCK);
-    infiltratr_store_le64(raw + 40U, APFS_TM_BLOCKS);
+    infiltratr_store_le64(raw + 40U, total_blocks);
     memcpy(raw + 72U, APFS_TM_FSID, sizeof(APFS_TM_FSID));
     infiltratr_store_le64(raw + 96U, APFS_TM_XID + 1U);
     infiltratr_store_le32(raw + 104U, 8U);
@@ -356,18 +383,18 @@ int ldtm_format_apfs_volume(const char *path)
     if (apfs_tm_write_block(fd, APFS_TM_CPM, raw) != 0)
         goto fail;
 
-    /* Spaceman, one CIB, one allocation bitmap. */
+    /* Spaceman: one direct CIB describes every chunk up to the 2 GiB cap. */
     const uint64_t used_count = 15U;
-    const uint64_t free_count = APFS_TM_BLOCKS - used_count;
+    const uint64_t free_count = total_blocks - used_count;
     memset(raw, 0, sizeof(raw));
     apfs_tm_object_header(
         raw, APFS_TM_SPACEMAN_OID,
         APFS_TM_OBJ_EPHEMERAL | APFS_TM_TYPE_SPACEMAN, 0U);
     infiltratr_store_le32(raw + 32U, APFS_TM_BLOCK);
-    infiltratr_store_le32(raw + 36U, (uint32_t)APFS_TM_BLOCKS);
-    infiltratr_store_le32(raw + 40U, 1U);
-    infiltratr_store_le64(raw + 48U, APFS_TM_BLOCKS);
-    infiltratr_store_le64(raw + 56U, 1U);
+    infiltratr_store_le32(raw + 36U, APFS_TM_BLOCKS_PER_CHUNK);
+    infiltratr_store_le32(raw + 40U, 126U);
+    infiltratr_store_le64(raw + 48U, total_blocks);
+    infiltratr_store_le64(raw + 56U, chunk_count);
     infiltratr_store_le32(raw + 64U, 1U);
     infiltratr_store_le32(raw + 68U, 0U);
     infiltratr_store_le64(raw + 72U, free_count);
@@ -401,12 +428,25 @@ int ldtm_format_apfs_volume(const char *path)
         raw, APFS_TM_CIB,
         APFS_TM_OBJ_PHYSICAL | APFS_TM_TYPE_CIB, 0U);
     infiltratr_store_le32(raw + 32U, 0U);
-    infiltratr_store_le32(raw + 36U, 1U);
-    infiltratr_store_le64(raw + 40U, APFS_TM_XID);
-    infiltratr_store_le64(raw + 48U, 0U);
-    infiltratr_store_le32(raw + 56U, (uint32_t)APFS_TM_BLOCKS);
-    infiltratr_store_le32(raw + 60U, (uint32_t)free_count);
-    infiltratr_store_le64(raw + 64U, APFS_TM_BITMAP);
+    infiltratr_store_le32(raw + 36U, chunk_count);
+    for (uint32_t chunk = 0U; chunk < chunk_count; ++chunk) {
+        uint8_t *record = raw + 40U + (size_t)chunk * 32U;
+        const uint64_t address =
+            (uint64_t)chunk * APFS_TM_BLOCKS_PER_CHUNK;
+        const uint64_t remaining = total_blocks - address;
+        const uint32_t block_count =
+            remaining > APFS_TM_BLOCKS_PER_CHUNK
+                ? APFS_TM_BLOCKS_PER_CHUNK : (uint32_t)remaining;
+        const uint32_t chunk_used =
+            chunk == 0U ? (uint32_t)used_count : 0U;
+        infiltratr_store_le64(record, APFS_TM_XID);
+        infiltratr_store_le64(record + 8U, address);
+        infiltratr_store_le32(record + 16U, block_count);
+        infiltratr_store_le32(
+            record + 20U, block_count - chunk_used);
+        infiltratr_store_le64(
+            record + 24U, chunk == 0U ? APFS_TM_BITMAP : 0U);
+    }
     apfs_tm_checksum(raw);
     if (apfs_tm_write_block(fd, APFS_TM_CIB, raw) != 0)
         goto fail;
@@ -565,31 +605,37 @@ fail:
     return -1;
 }
 
-int ldtm_verify_apfs_payload(const char *path,
-                             char *detail, size_t detail_capacity)
+static int verify_apfs_payload_state(
+    const char *path, int expect_fragmented,
+    char *detail, size_t detail_capacity)
 {
     if (detail != NULL && detail_capacity != 0U)
         detail[0] = '\0';
+
+    uint64_t expected_blocks = 0U;
     ApfsAnalysis analysis;
     char error[512] = {0};
-    if (apfs_analyse(path, &analysis,
-                     error, sizeof(error)) != 0) {
+    if (apfs_tm_expected_blocks(path, &expected_blocks) != 0 ||
+        apfs_analyse(path, &analysis, error, sizeof(error)) != 0) {
         if (detail != NULL && detail_capacity != 0U)
-            (void)snprintf(detail, detail_capacity,
-                           "APFS analyser rejected fixture: %s",
-                           error[0] != '\0' ? error : "unknown");
+            (void)snprintf(
+                detail, detail_capacity,
+                "APFS analyser rejected fixture: %s",
+                error[0] != '\0' ? error : "invalid capped media geometry");
         return -1;
     }
     const int shape_ok =
         analysis.block_size == APFS_TM_BLOCK &&
-        analysis.block_count == APFS_TM_BLOCKS &&
+        analysis.block_count == expected_blocks &&
         analysis.regular_files == 1U &&
-        analysis.fragmented_files == 1U;
+        analysis.fragmented_files ==
+            (expect_fragmented != 0 ? 1U : 0U);
     apfs_analysis_free(&analysis);
     if (!shape_ok) {
         if (detail != NULL && detail_capacity != 0U)
-            (void)snprintf(detail, detail_capacity,
-                           "APFS fixture geometry/fragmentation does not match the qualification contract");
+            (void)snprintf(
+                detail, detail_capacity,
+                "APFS fixture geometry/fragmentation does not match the qualification contract");
         return -1;
     }
 
@@ -601,9 +647,13 @@ int ldtm_verify_apfs_payload(const char *path,
     if (fd < 0)
         return -1;
     uint8_t block[APFS_TM_BLOCK];
+    const uint64_t first =
+        expect_fragmented != 0 ? APFS_TM_DATA_A : UINT64_C(10);
+    const uint64_t second =
+        expect_fragmented != 0 ? APFS_TM_DATA_B : UINT64_C(11);
     if (apfs_tm_pread_full(
             fd, block, sizeof(block),
-            APFS_TM_DATA_A * APFS_TM_BLOCK) != 0) {
+            first * APFS_TM_BLOCK) != 0) {
         (void)close(fd);
         return -1;
     }
@@ -611,14 +661,15 @@ int ldtm_verify_apfs_payload(const char *path,
         if (block[index] != (uint8_t)'A') {
             (void)close(fd);
             if (detail != NULL && detail_capacity != 0U)
-                (void)snprintf(detail, detail_capacity,
-                               "APFS fixture first payload block changed");
+                (void)snprintf(
+                    detail, detail_capacity,
+                    "APFS fixture first payload block changed");
             return -1;
         }
     }
     if (apfs_tm_pread_full(
             fd, block, sizeof(block),
-            APFS_TM_DATA_B * APFS_TM_BLOCK) != 0) {
+            second * APFS_TM_BLOCK) != 0) {
         (void)close(fd);
         return -1;
     }
@@ -626,14 +677,31 @@ int ldtm_verify_apfs_payload(const char *path,
     for (size_t index = 0U; index < sizeof(block); ++index) {
         if (block[index] != (uint8_t)'B') {
             if (detail != NULL && detail_capacity != 0U)
-                (void)snprintf(detail, detail_capacity,
-                               "APFS fixture second payload block changed");
+                (void)snprintf(
+                    detail, detail_capacity,
+                    "APFS fixture second payload block changed");
             return -1;
         }
     }
     if (detail != NULL && detail_capacity != 0U)
         (void)snprintf(
             detail, detail_capacity,
-            "bounded APFS fixture verified: one deliberately fragmented two-block regular file");
+            expect_fragmented != 0
+                ? "bounded APFS fixture verified across capped media: one deliberately fragmented two-block regular file"
+                : "bounded APFS post-defrag fixture verified byte-for-byte; production analyser reports zero fragmented files");
     return 0;
+}
+
+int ldtm_verify_apfs_payload(
+    const char *path, char *detail, size_t detail_capacity)
+{
+    return verify_apfs_payload_state(
+        path, 1, detail, detail_capacity);
+}
+
+int ldtm_verify_apfs_payload_after_defrag(
+    const char *path, char *detail, size_t detail_capacity)
+{
+    return verify_apfs_payload_state(
+        path, 0, detail, detail_capacity);
 }
