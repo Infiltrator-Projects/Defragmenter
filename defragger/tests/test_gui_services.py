@@ -129,9 +129,12 @@ def test_volume_coordinator_owns_discovery_images_and_journals() -> None:
         assert coordinator.current is image
         coordinator.remember_map({"filesystem": "ext4", "cells": []})
         assert coordinator.select(1).cached_map is not None
-        assert coordinator.journal_path(Path(directory)).endswith(
-            "disk.ext4.journal"
-        )
+        journal_name = Path(
+            coordinator.journal_path(Path(directory))
+        ).name
+        assert journal_name.startswith("disk.ext4-")
+        assert journal_name.endswith(".journal")
+        assert len(journal_name.removesuffix(".journal").rsplit("-", 1)[-1]) == 16
         assert coordinator.refresh(preserve_path=image.path) == 1
         assert coordinator.current is image
 
