@@ -148,13 +148,22 @@ cleanup:
 
 static int test_amiga_formatters_and_payload(void) {
     char path[] = "/tmp/linux-defragger-amiga-media.XXXXXX";
-    const LdtmFragmentProfile tiny = {0U, 0U, 2U, 4U, 8U, 16U, 16U};
+    const LdtmFragmentProfile tiny = {
+        .anchors = 0U,
+        .anchor_kib = 0U,
+        .files = 2U,
+        .chunks = 4U,
+        .chunk_kib = 8U,
+        .directory_initial = 16U,
+        .directory_second = 16U,
+        .file_chunks = {0U},
+    };
     const size_t retained_entries = tiny.directory_initial / 2U + tiny.directory_second;
     const size_t expected_files = (size_t)tiny.files + retained_entries;
     char detail[512];
     int fd = mkstemp(path);
     if (fd < 0) return 1;
-    if (ftruncate(fd, (off_t)(128U * LDTM_MIB)) != 0 || close(fd) != 0) {
+    if (ftruncate(fd, (off_t)(384U * LDTM_MIB)) != 0 || close(fd) != 0) {
         (void)unlink(path);
         return 1;
     }
@@ -254,7 +263,7 @@ static int test_sfs_formatter_and_payload(void) {
     profile = ldtm_fragment_profile(sfs);
     fd = mkstemp(path);
     if (fd < 0) return 1;
-    if (ftruncate(fd, (off_t)(64U * LDTM_MIB)) != 0 || close(fd) != 0) {
+    if (ftruncate(fd, (off_t)(384U * LDTM_MIB)) != 0 || close(fd) != 0) {
         (void)unlink(path);
         return 1;
     }
@@ -262,8 +271,9 @@ static int test_sfs_formatter_and_payload(void) {
         ldtm_populate_amiga_volume(path, 1U, &profile) != 0 ||
         ldtm_verify_amiga_payload(path, 1U, &profile, detail, sizeof(detail)) != 0 ||
         sfs_analyse(path, &analysis, NULL, 0U, error, sizeof(error)) != 0 ||
-        analysis.regular_files != 1U || analysis.fragmented_files != 1U ||
-        analysis.data_blocks != 6400U || analysis.growth_10_satisfied) {
+        analysis.regular_files != LDTM_TARGET_FILE_COUNT ||
+        analysis.fragmented_files != LDTM_TARGET_FILE_COUNT ||
+        analysis.data_blocks != 51200U || analysis.growth_10_satisfied) {
         (void)unlink(path);
         return 1;
     }
@@ -325,8 +335,9 @@ static int test_pfs3_formatter_and_payload(void) {
         ldtm_populate_amiga_volume(path, 1U, &profile) != 0 ||
         ldtm_verify_amiga_payload(path, 1U, &profile, detail, sizeof(detail)) != 0 ||
         pfs3_analyse(path, &analysis, NULL, 0U, error, sizeof(error)) != 0 ||
-        analysis.regular_files != 1U || analysis.fragmented_files != 1U ||
-        analysis.data_blocks != 51200U || analysis.growth_10_satisfied) {
+        analysis.regular_files != LDTM_TARGET_FILE_COUNT ||
+        analysis.fragmented_files != LDTM_TARGET_FILE_COUNT ||
+        analysis.data_blocks != 409600U || analysis.growth_10_satisfied) {
         (void)unlink(path);
         return 1;
     }
@@ -389,9 +400,9 @@ static int test_apfs_formatter_and_payload(void) {
         return 1;
     }
     if (analysis.block_size != 4096U ||
-        analysis.block_count != 32768U ||
-        analysis.regular_files != 1U ||
-        analysis.fragmented_files != 1U) {
+        analysis.block_count != 98304U ||
+        analysis.regular_files != LDTM_TARGET_FILE_COUNT ||
+        analysis.fragmented_files != LDTM_TARGET_FILE_COUNT) {
         apfs_analysis_free(&analysis);
         (void)unlink(path);
         return 1;
@@ -557,18 +568,26 @@ int main(void) {
     normal = ldtm_fragment_profile(fat16);
     sfs_profile = ldtm_fragment_profile(sfs);
     pfs3_profile = ldtm_fragment_profile(pfs3);
-    CHECK(ldtm_target_payload_bytes(fat12) == UINT64_C(4) * LDTM_MIB);
+    CHECK(ldtm_target_payload_bytes(fat12) == UINT64_C(200) * LDTM_MIB);
     CHECK(ldtm_target_payload_bytes(fat16) == UINT64_C(200) * LDTM_MIB);
     CHECK(ldtm_target_payload_bytes(ofs) == UINT64_C(200) * LDTM_MIB);
     CHECK(ldtm_target_payload_bytes(ffs) == UINT64_C(200) * LDTM_MIB);
-    CHECK(ldtm_target_payload_bytes(sfs) == UINT64_C(25) * LDTM_MIB);
-    CHECK(ldtm_target_payload_bytes(pfs3) == UINT64_C(25) * LDTM_MIB);
+    CHECK(ldtm_target_payload_bytes(sfs) == UINT64_C(200) * LDTM_MIB);
+    CHECK(ldtm_target_payload_bytes(pfs3) == UINT64_C(200) * LDTM_MIB);
     CHECK(small.directory_initial == 128U && small.directory_second == 128U);
-    CHECK(normal.chunks == 100U && normal.directory_initial == 4096U && normal.directory_second == 4096U);
-    CHECK(sfs_profile.files == 1U && sfs_profile.chunks == 100U && sfs_profile.chunk_kib == 256U);
+    CHECK(normal.files == LDTM_TARGET_FILE_COUNT && normal.chunks == 30U &&
+          normal.chunk_kib == 2048U && normal.directory_initial == 4096U &&
+          normal.directory_second == 4096U);
+    CHECK(ldtm_profile_file_chunks(&normal, 0U) == 2U &&
+          ldtm_profile_file_chunks(&normal, 7U) == 30U &&
+          ldtm_profile_file_bytes(&normal, 0U) == UINT64_C(4) * LDTM_MIB &&
+          ldtm_profile_file_bytes(&normal, 7U) == UINT64_C(60) * LDTM_MIB &&
+          ldtm_profile_payload_bytes(&normal) == UINT64_C(200) * LDTM_MIB);
+    CHECK(sfs_profile.files == LDTM_TARGET_FILE_COUNT &&
+          sfs_profile.chunks == 30U && sfs_profile.chunk_kib == 2048U);
     CHECK(sfs_profile.directory_initial == 0U && sfs_profile.directory_second == 0U);
-    CHECK(pfs3_profile.files == 1U && pfs3_profile.chunks == 100U &&
-          pfs3_profile.chunk_kib == 256U);
+    CHECK(pfs3_profile.files == LDTM_TARGET_FILE_COUNT &&
+          pfs3_profile.chunks == 30U && pfs3_profile.chunk_kib == 2048U);
     CHECK(pfs3_profile.directory_initial == 0U && pfs3_profile.directory_second == 0U);
 
     CHECK(ofs->creator == LDTM_CREATOR_AFFS);
@@ -584,7 +603,8 @@ int main(void) {
     CHECK(strcmp(ldtm_creator_display_name(pfs3), "Built-in native") == 0);
     CHECK(strcmp(ldtm_creator_display_name(apfs), "Built-in native") == 0);
     CHECK(strcmp(ldtm_creator_display_name(NULL), "Unavailable") == 0);
-    CHECK(strstr(sfs->note, "SFS0") != NULL && strstr(sfs->note, "100 extents") != NULL);
+    CHECK(strstr(sfs->note, "SFS0") != NULL &&
+          strstr(sfs->note, "200 MiB heterogeneous") != NULL);
     CHECK(pfs3->creator == LDTM_CREATOR_PFS3 && strstr(pfs3->note, "PFS3") != NULL);
     CHECK(strcmp(ldtm_creator_program(ufs), "makefs") == 0);
     CHECK(ufs->package_hint != NULL && strcmp(ufs->package_hint, "makefs") == 0);
