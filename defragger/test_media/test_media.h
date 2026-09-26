@@ -8,6 +8,7 @@
 #define LDTM_MIB UINT64_C(1048576)
 #define LDTM_GIB UINT64_C(1073741824)
 #define LDTM_SPEC_COUNT 21U
+#define LDTM_TARGET_FILE_COUNT 8U
 #define LDTM_STATE_ROOT "/var/lib/linux-defragger-test-media"
 
 typedef enum {
@@ -47,10 +48,13 @@ typedef struct {
     uint32_t anchors;
     uint32_t anchor_kib;
     uint32_t files;
+    /* Maximum chunks in any target. Individual targets may be smaller. */
     uint32_t chunks;
     uint32_t chunk_kib;
     uint32_t directory_initial;
     uint32_t directory_second;
+    /* Zero means use chunks, preserving compact unit-test profiles. */
+    uint32_t file_chunks[LDTM_TARGET_FILE_COUNT];
 } LdtmFragmentProfile;
 
 const LdtmFilesystemSpec *ldtm_specs(void);
@@ -59,6 +63,9 @@ const LdtmFilesystemSpec *ldtm_find_spec(const char *key);
 uint64_t ldtm_required_capacity_bytes(void);
 uint64_t ldtm_allocated_capacity_bytes(void);
 LdtmFragmentProfile ldtm_fragment_profile(const LdtmFilesystemSpec *spec);
+uint32_t ldtm_profile_file_chunks(const LdtmFragmentProfile *profile, size_t file_index);
+uint64_t ldtm_profile_file_bytes(const LdtmFragmentProfile *profile, size_t file_index);
+uint64_t ldtm_profile_payload_bytes(const LdtmFragmentProfile *profile);
 uint64_t ldtm_target_payload_bytes(const LdtmFilesystemSpec *spec);
 int ldtm_build_sfdisk_script(char *buffer, size_t capacity);
 int ldtm_transport_is_field_media(int removable, const char *transport);
