@@ -120,7 +120,9 @@ def test_volume_coordinator_owns_discovery_images_and_journals() -> None:
             discover=lambda _catalog: [physical],
             detect_image=lambda _path, _catalog: "ext4",
         )
-        assert coordinator.refresh() == 0
+        discovered = coordinator.discover()
+        assert discovered == [physical]
+        assert coordinator.apply_discovery(discovered) == 0
         assert coordinator.current is physical
         image = coordinator.open_image(str(image_path))
         assert image.image and image.fstype == "ext4"
