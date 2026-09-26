@@ -53,7 +53,7 @@ public:
 
     Json parse_document() {
         skip_space();
-        Json value = parse_value();
+        Json value = parse_value(0U);
         skip_space();
         if (position_ != input_.size())
             fail("trailing data after JSON value");
@@ -95,7 +95,9 @@ private:
         position_ += value.size();
     }
 
-    Json parse_value() {
+    Json parse_value(std::size_t depth) {
+        if (depth > 64U)
+            fail("maximum JSON nesting depth exceeded");
         skip_space();
         if (position_ >= input_.size()) fail("unexpected end of input");
         switch (input_[position_]) {
@@ -111,9 +113,9 @@ private:
         case '"':
             return Json(parse_string());
         case '[':
-            return Json(parse_array());
+            return Json(parse_array(depth));
         case '{':
-            return Json(parse_object());
+            return Json(parse_object(depth));
         default:
             if (input_[position_] == '-' ||
                 (input_[position_] >= '0' && input_[position_] <= '9')) {
@@ -234,13 +236,13 @@ private:
         return std::string(input_.substr(start, position_ - start));
     }
 
-    Json::Array parse_array() {
+    Json::Array parse_array(std::size_t depth) {
         if (!consume('[')) fail("expected array");
         skip_space();
         Json::Array values;
         if (consume(']')) return values;
         for (;;) {
-            values.push_back(parse_value());
+            values.push_back(parse_value(depth + 1U));
             skip_space();
             if (consume(']')) return values;
             if (!consume(',')) fail("expected comma in array");
@@ -248,7 +250,7 @@ private:
         }
     }
 
-    Json::Object parse_object() {
+    Json::Object parse_object(std::size_t depth) {
         if (!consume('{')) fail("expected object");
         skip_space();
         Json::Object values;
@@ -261,7 +263,7 @@ private:
             if (!consume(':')) fail("expected colon after object key");
             skip_space();
             auto [it, inserted] =
-                values.emplace(std::move(key), parse_value());
+                values.emplace(std::move(key), parse_value(depth + 1U));
             if (!inserted) fail("duplicate object key");
             skip_space();
             if (consume('}')) return values;
