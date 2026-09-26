@@ -92,8 +92,7 @@ typedef struct {
     uint32_t *fat;
     uint8_t *visited_dirs;
     uint8_t *claimed_clusters;
-    uint32_t *chain_seen;
-    uint32_t chain_generation;
+    uint8_t *chain_seen;
     bool recovery_mode;
 } Fat32;
 
