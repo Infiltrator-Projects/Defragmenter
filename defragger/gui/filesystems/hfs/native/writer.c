@@ -135,7 +135,7 @@ static int validate_special_fork_used(const hfs_writer_volume *writer,
             return -1;
         }
         for (uint32_t b = 0U; b < extent.count; ++b) {
-            if (!writer->used_map[(uint32_t)extent.start + b]) {
+            if (!ld_bitmap_get(writer->used_map, (uint32_t)extent.start + b)) {
                 hfs_set_error(error,
                               "HFS %s references allocation block %u marked free",
                               name, (unsigned)((uint32_t)extent.start + b));
@@ -314,7 +314,7 @@ static int writer_scan_catalog(hfs_writer_volume *writer, char **error)
 
 static int validate_file_allocations(hfs_writer_volume *writer, char **error)
 {
-    uint8_t *seen = calloc(writer->volume.total_allocation_blocks, 1U);
+    uint8_t *seen = ld_bitmap_calloc(writer->volume.total_allocation_blocks);
     if (seen == NULL) {
         hfs_set_error(error, "out of memory validating HFS file allocations");
         return -1;
@@ -329,7 +329,7 @@ static int validate_file_allocations(hfs_writer_volume *writer, char **error)
                 hfs_extent extent = fork->extents[e];
                 for (uint32_t b = 0U; b < extent.count; ++b) {
                     const uint16_t block = (uint16_t)((uint32_t)extent.start + b);
-                    if (!writer->used_map[block] || seen[block] ||
+                    if (!ld_bitmap_get(writer->used_map, block) || ld_bitmap_get(seen, block) ||
                         fork_contains_block(&writer->volume.extents_file, block) ||
                         fork_contains_block(&writer->volume.catalog_file, block)) {
                         free(seen);
@@ -338,7 +338,7 @@ static int validate_file_allocations(hfs_writer_volume *writer, char **error)
                                       writer->files[i].file_id, (unsigned)block);
                         return -1;
                     }
-                    seen[block] = 1U;
+                    ld_bitmap_set(seen, block, true);
                 }
             }
         }
@@ -413,7 +413,7 @@ static int writer_volume_open(const char *path, hfs_writer_volume *writer,
         writer_volume_close(writer);
         return -1;
     }
-    writer->used_map = calloc(writer->volume.total_allocation_blocks, 1U);
+    writer->used_map = ld_bitmap_calloc(writer->volume.total_allocation_blocks);
     if (writer->used_map == NULL) {
         free(bitmap);
         hfs_set_error(error, "out of memory reading HFS allocation map");
@@ -423,9 +423,9 @@ static int writer_volume_open(const char *path, hfs_writer_volume *writer,
     uint32_t free_blocks = 0U;
     for (uint32_t block = 0U;
          block < writer->volume.total_allocation_blocks; ++block) {
-        writer->used_map[block] =
-            allocation_block_used(bitmap, (uint16_t)block) ? 1U : 0U;
-        if (!writer->used_map[block])
+        const bool used = allocation_block_used(bitmap, (uint16_t)block);
+        ld_bitmap_set(writer->used_map, block, used);
+        if (!used)
             ++free_blocks;
     }
     free(bitmap);
@@ -585,14 +585,15 @@ static int choose_run(uint8_t *claimed, uint32_t total, uint32_t blocks,
     const uint32_t span = blocks + reserve;
     for (uint32_t start = 0U; start <= total - span; ++start) {
         uint32_t offset = 0U;
-        while (offset < span && claimed[start + offset] == 0U)
+        while (offset < span && !ld_bitmap_get(claimed, (uint64_t)start + offset))
             ++offset;
         if (offset != span) {
             start += offset;
             continue;
         }
         *destination = start;
-        memset(claimed + start, 1, span);
+        for (uint32_t offset = 0U; offset < span; ++offset)
+            ld_bitmap_set(claimed, (uint64_t)start + offset, true);
         return 0;
     }
     return -1;
@@ -610,7 +611,7 @@ static int rewrite_bitmap(const hfs_writer_volume *writer, int stage_fd,
     }
     for (uint32_t block = 0U;
          block < writer->volume.total_allocation_blocks; ++block) {
-        if (final_used[block])
+        if (ld_bitmap_get(final_used, block))
             bitmap[block >> 3U] |=
                 (uint8_t)(UINT8_C(0x80) >> (block & 7U));
     }
@@ -760,9 +761,14 @@ static int hfs_build_stage(const char *source_path, const char *stage_path,
         return copy_rc;
     }
 
-    uint8_t *claimed = malloc(source.volume.total_allocation_blocks);
-    uint8_t *final_used = malloc(source.volume.total_allocation_blocks);
-    if (claimed == NULL || final_used == NULL) {
+    uint8_t *claimed =
+        ld_bitmap_calloc(source.volume.total_allocation_blocks);
+    uint8_t *final_used =
+        ld_bitmap_calloc(source.volume.total_allocation_blocks);
+    size_t allocation_map_bytes = 0U;
+    if (claimed == NULL || final_used == NULL ||
+        !ld_bitmap_size(source.volume.total_allocation_blocks,
+                        &allocation_map_bytes)) {
         free(claimed);
         free(final_used);
         (void)close(stage_fd);
@@ -770,9 +776,8 @@ static int hfs_build_stage(const char *source_path, const char *stage_path,
         hfs_set_error(error, "out of memory planning HFS relocation");
         return -1;
     }
-    memcpy(claimed, source.used_map, source.volume.total_allocation_blocks);
-    memcpy(final_used, source.used_map,
-           source.volume.total_allocation_blocks);
+    memcpy(claimed, source.used_map, allocation_map_bytes);
+    memcpy(final_used, source.used_map, allocation_map_bytes);
 
     for (size_t i = 0U; i < source.file_count; ++i) {
         hfs_writable_fork *forks[2] = {
@@ -781,8 +786,10 @@ static int hfs_build_stage(const char *source_path, const char *stage_path,
         for (size_t k = 0U; k < 2U; ++k) {
             for (size_t e = 0U; e < forks[k]->extent_count; ++e) {
                 const hfs_extent extent = forks[k]->extents[e];
-                memset(claimed + extent.start, 0, extent.count);
-                memset(final_used + extent.start, 0, extent.count);
+                for (uint32_t block = 0U; block < extent.count; ++block) {
+                    ld_bitmap_set(claimed, (uint64_t)extent.start + block, false);
+                    ld_bitmap_set(final_used, (uint64_t)extent.start + block, false);
+                }
             }
         }
     }
@@ -816,7 +823,8 @@ static int hfs_build_stage(const char *source_path, const char *stage_path,
                 rc = -1;
                 break;
             }
-            memset(final_used + destination, 1, fork->blocks);
+            for (uint32_t block = 0U; block < fork->blocks; ++block)
+                ld_bitmap_set(final_used, (uint64_t)destination + block, true);
             relocated += fork->blocks;
             if (live) {
                 (void)printf(
@@ -886,7 +894,7 @@ static int hfs_verify_layout(const char *path, bool growth,
             for (uint32_t block = 0U; block < fork->blocks; ++block) {
                 const uint32_t at = (uint32_t)fork->extents[0].start + block;
                 if (at >= writer.volume.total_allocation_blocks ||
-                    !writer.used_map[at]) {
+                    !ld_bitmap_get(writer.used_map, at)) {
                     hfs_set_error(error,
                                   "HFS file %u %s fork references a block marked free",
                                   writer.files[i].file_id, names[k]);
@@ -902,7 +910,7 @@ static int hfs_verify_layout(const char *path, bool growth,
                 (uint32_t)fork->extents[0].start + fork->blocks;
             for (uint32_t r = 0U; r < reserve; ++r) {
                 if (end + r >= writer.volume.total_allocation_blocks ||
-                    writer.used_map[end + r]) {
+                    ld_bitmap_get(writer.used_map, (uint64_t)end + r)) {
                     hfs_set_error(error,
                                   "HFS file %u %s fork lacks its required 10 percent growth reserve",
                                   writer.files[i].file_id, names[k]);
