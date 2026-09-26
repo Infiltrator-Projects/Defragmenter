@@ -35,6 +35,31 @@ std::uint64_t required_u64(const Json& object, std::string_view key) {
     return object.at(key).unsigned_value();
 }
 
+std::uint64_t optional_u64(const Json& object, std::string_view key,
+                           std::uint64_t fallback = 0U) {
+    const Json* value = object.find(key);
+    return value == nullptr ? fallback : value->unsigned_value();
+}
+
+double optional_real(const Json& object, std::string_view key,
+                     double fallback = 0.0) {
+    const Json* value = object.find(key);
+    return value == nullptr ? fallback : value->real_value();
+}
+
+bool optional_bool(const Json& object, std::string_view key,
+                   bool fallback = false) {
+    const Json* value = object.find(key);
+    return value == nullptr ? fallback : value->boolean();
+}
+
+std::string optional_string(const Json& object, std::string_view key,
+                            std::string_view fallback = {}) {
+    const Json* value = object.find(key);
+    return value == nullptr ? std::string(fallback)
+                            : std::string(value->string());
+}
+
 Json parse_worker_json(const CommandResult& result, const char* action) {
     if (result.return_code != 0) {
         const std::string detail = !result.standard_error.empty()
@@ -116,12 +141,11 @@ void add_fragmentation_summary(Json& result, const Json& payload,
              std::string_view("fragmented_files"),
              std::string_view("fragmented_directories")}) {
         set(result, std::string(key),
-            Json::unsigned_integer(payload.find(key) != nullptr
-                ? payload.at(key).unsigned_or(0U) : 0U));
+            Json::unsigned_integer(optional_u64(payload, key)));
     }
     if (copy_percentage && payload.find("fragmentation_percent") != nullptr)
         set(result, "fragmentation_percent",
-            Json::real(payload.at("fragmentation_percent").real_or(0.0)));
+            Json::real(optional_real(payload, "fragmentation_percent")));
 }
 
 void overlay_fragmentation(Json& result, const Json& payload,
@@ -176,7 +200,7 @@ Json map_affs(const BackendInfo& backend, const std::string& path,
               std::size_t cells) {
     Json payload = parse_worker_json(
         worker(backend, "analyse-json", path), "native Amiga analyser");
-    if (payload.at("filesystem").string_or() != "affs")
+    if (payload.at("filesystem").string() != "affs")
         throw std::runtime_error("native Amiga analyser returned wrong identity");
     const std::uint64_t total = required_u64(payload, "total_blocks");
     const std::uint64_t size = required_u64(payload, "block_size");
@@ -184,9 +208,9 @@ Json map_affs(const BackendInfo& backend, const std::string& path,
     details["block_size"] = Json::unsigned_integer(size);
     details["dostype"] = Json(
         "DOS\\" + std::to_string(payload.find("dostype") != nullptr
-            ? payload.at("dostype").unsigned_or(0U) : 0U));
+            ? optional_u64(payload, "dostype") : 0U));
     details["variant"] = Json(payload.find("variant") != nullptr
-        ? payload.at("variant").string_or("Amiga DOS") : "Amiga DOS");
+        ? optional_string(payload, "variant", "Amiga DOS") : "Amiga DOS");
     details["fragmentation_available"] = Json(true);
     details["fragmentation_basis"] =
         Json("first-party native C OFS/FFS block catalogue");
@@ -199,7 +223,7 @@ Json map_exfat(const BackendInfo& backend, const std::string& path,
                std::size_t cells) {
     Json payload = parse_worker_json(
         worker(backend, "analyse-json", path), "native exFAT analyser");
-    if (payload.at("filesystem").string_or() != "exfat")
+    if (payload.at("filesystem").string() != "exfat")
         throw std::runtime_error("native exFAT analyser returned wrong identity");
     const std::uint64_t size = required_u64(payload, "cluster_size");
     const std::uint64_t total = required_u64(payload, "total_clusters");
@@ -220,7 +244,7 @@ Json map_ext(const BackendInfo& backend, const std::string& path,
              std::size_t cells) {
     Json payload = parse_worker_json(
         worker(backend, "analyse-json", path), "native EXT analyser");
-    const std::string filesystem = payload.at("filesystem").string_or();
+    const std::string filesystem = payload.at("filesystem").string();
     if (filesystem != "ext2" && filesystem != "ext3" &&
         filesystem != "ext4") {
         throw std::runtime_error("native EXT analyser returned wrong identity");
@@ -265,10 +289,10 @@ Json map_ext(const BackendInfo& backend, const std::string& path,
 
     const std::uint64_t regular =
         payload.find("regular_files") != nullptr
-            ? payload.at("regular_files").unsigned_or(0U) : 0U;
+            ? optional_u64(payload, "regular_files") : 0U;
     const std::uint64_t fragmented =
         payload.find("fragmented_files") != nullptr
-            ? payload.at("fragmented_files").unsigned_or(0U) : 0U;
+            ? optional_u64(payload, "fragmented_files") : 0U;
     set(result, "fragmentation_percent",
         Json::real(100.0 * static_cast<double>(fragmented) /
                    static_cast<double>(std::max<std::uint64_t>(1U, regular))));
@@ -351,23 +375,23 @@ Json map_hfsplus(const BackendInfo& backend, const std::string& path,
                   std::size_t cells) {
     Json payload = parse_worker_json(
         worker(backend, "analyse-json", path), "native HFS+ analyser");
-    if (payload.at("filesystem").string_or() != "hfsplus")
+    if (payload.at("filesystem").string() != "hfsplus")
         throw std::runtime_error("native HFS+ analyser returned wrong identity");
     const std::uint64_t total = required_u64(payload, "total_blocks");
     const std::uint64_t size = required_u64(payload, "block_size");
     Json::Object details;
     details["block_size"] = Json::unsigned_integer(size);
     details["variant"] = Json(payload.find("variant") != nullptr
-        ? payload.at("variant").string_or("HFS+") : "HFS+");
+        ? optional_string(payload, "variant", "HFS+") : "HFS+");
     details["journaled"] = Json(payload.find("journaled") != nullptr
-        ? payload.at("journaled").bool_or(false) : false);
+        ? optional_bool(payload, "journaled") : false);
     details["fragmentation_available"] = Json(true);
     details["fragmentation_basis"] =
         Json("first-party native C HFS+/HFSX catalog and allocation-file scan");
     Json result = generic_free_range_map(
         backend, payload, cells, total, size,
         payload.find("signature") != nullptr &&
-                payload.at("signature").string_or() == "HX"
+                payload.at("signature").string() == "HX"
             ? "hfsx" : "hfsplus",
         std::move(details), false, "blocks");
     if (const Json* value = payload.find("free_blocks"))
@@ -379,7 +403,7 @@ Json map_ntfs(const BackendInfo& backend, const std::string& path,
               std::size_t cells) {
     Json payload = parse_worker_json(
         worker(backend, "analyse-json", path), "native NTFS analyser");
-    if (payload.at("filesystem").string_or() != "ntfs")
+    if (payload.at("filesystem").string() != "ntfs")
         throw std::runtime_error("native NTFS analyser returned wrong identity");
     const std::uint64_t size = required_u64(payload, "cluster_size");
     const std::uint64_t total = required_u64(payload, "total_clusters");
@@ -403,7 +427,7 @@ Json map_xfs(const BackendInfo& backend, const std::string& path,
              std::size_t cells) {
     Json payload = parse_worker_json(
         worker(backend, "analyse-json", path), "native XFS analyser");
-    if (payload.at("filesystem").string_or() != "xfs")
+    if (payload.at("filesystem").string() != "xfs")
         throw std::runtime_error("native XFS analyser returned wrong identity");
     const std::uint64_t size = required_u64(payload, "block_size");
     const std::uint64_t total = required_u64(payload, "dblocks");
@@ -451,7 +475,7 @@ bool native_accuracy_matches(const BackendInfo& backend,
 
 void validate_native_map(const BackendInfo& backend, const Json& payload) {
     if (payload.find("schema") == nullptr ||
-        payload.at("schema").unsigned_or(0U) != 1U)
+        payload.at("schema").unsigned_value() != 1U)
         throw std::runtime_error(
             "native filesystem mapper returned incompatible map schema");
 
@@ -504,20 +528,15 @@ void validate_native_map(const BackendInfo& backend, const Json& payload) {
         const std::uint64_t free = required_u64(cell, "free");
         const std::uint64_t used = required_u64(cell, "used");
         const std::uint64_t unknown =
-            cell.find("unknown") != nullptr
-                ? cell.at("unknown").unsigned_or(0U) : 0U;
+            optional_u64(cell, "unknown");
         const std::uint64_t outside =
-            cell.find("outside") != nullptr
-                ? cell.at("outside").unsigned_or(0U) : 0U;
+            optional_u64(cell, "outside");
         const std::uint64_t bad =
-            cell.find("bad") != nullptr
-                ? cell.at("bad").unsigned_or(0U) : 0U;
+            optional_u64(cell, "bad");
         const std::uint64_t fragmented =
-            cell.find("fragmented") != nullptr
-                ? cell.at("fragmented").unsigned_or(0U) : 0U;
+            optional_u64(cell, "fragmented");
         const std::uint64_t directory =
-            cell.find("directory") != nullptr
-                ? cell.at("directory").unsigned_or(0U) : 0U;
+            optional_u64(cell, "directory");
 
         if (free > span || used > span || unknown > span ||
             outside > span || bad > span ||
@@ -733,8 +752,7 @@ std::uint64_t overlay_ranges(
             ++check;
         }
         const std::uint64_t used =
-            cell.find("used") != nullptr
-                ? cell.at("used").unsigned_or(0U) : 0U;
+            optional_u64(cell, "used");
         set(cell, std::string(field),
             Json::unsigned_integer(std::min(used, overlap)));
     }

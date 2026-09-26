@@ -322,7 +322,7 @@ static int create_stage(const char *source_path, const char *stage_path,
         }
     }
     free(buffer);
-    if (result == 0 && fsync(stage) != 0) { xfs_set_error(error, "cannot sync XFS working image: %s", strerror(errno)); result = -1; }
+    if (result == 0 && ld_sync_fd(stage) != 0) { xfs_set_error(error, "cannot sync XFS working image: %s", strerror(errno)); result = -1; }
 done:
     close(stage); close(source);
     if (result != 0) unlink_if_exists(stage_path);
@@ -474,7 +474,7 @@ static int commit_stage(const char *device_path, const char *journal_path, XfsJo
             journal_bytes += amount;
 
             if (journal_bytes >= JOURNAL_INTERVAL) {
-                if (fsync(target.fd) != 0) {
+                if (ld_sync_fd(target.fd) != 0) {
                     xfs_set_error(error, "cannot sync XFS source commit: %s", strerror(errno));
                     result = -1;
                     break;
@@ -500,7 +500,7 @@ static int commit_stage(const char *device_path, const char *journal_path, XfsJo
     }
 
     if (result == 0) {
-        if (fsync(target.fd) != 0) {
+        if (ld_sync_fd(target.fd) != 0) {
             xfs_set_error(error, "cannot sync completed XFS source commit: %s", strerror(errno));
             result = -1;
         } else {

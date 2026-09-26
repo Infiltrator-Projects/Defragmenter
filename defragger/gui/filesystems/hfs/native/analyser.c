@@ -11,6 +11,7 @@
 
 #define _FILE_OFFSET_BITS 64
 
+#include "ld_io.h"
 #include "infiltratr/endian.h"
 #include "infiltratr/core.h"
 #include "infiltratr/arithmetic.h"
@@ -684,7 +685,7 @@ static uint64_t fragmented_in_range(const uint8_t *fragmented,
     uint64_t count = 0U;
     uint64_t block;
     for (block = start; block < end; ++block)
-        if (fragmented[block] != 0U)
+        if (ld_bitmap_get(fragmented, block))
             ++count;
     return count;
 }
@@ -751,7 +752,7 @@ static int map_json(const char *device, uint64_t requested_cells)
         result.directories = volume.header_directories;
     }
 
-    fragmented = (uint8_t *)calloc((size_t)total_units, 1U);
+    fragmented = ld_bitmap_calloc(total_units);
     if (!fragmented) {
         fprintf(stderr, "hfs-analyser: out of memory\n");
         goto done;
@@ -764,7 +765,7 @@ static int map_json(const char *device, uint64_t requested_cells)
             if (end > total_units)
                 end = total_units;
             for (block = start; block < end; ++block)
-                fragmented[block] = 1U;
+                ld_bitmap_set(fragmented, block, true);
         }
     }
 

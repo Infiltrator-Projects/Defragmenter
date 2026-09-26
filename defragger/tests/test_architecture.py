@@ -1139,3 +1139,99 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+def test_forensic_scalability_protocol_and_safety_contracts() -> None:
+    io_header = (ROOT / "src" / "core" / "ld_io.h").read_text()
+    io_source = (ROOT / "src" / "core" / "ld_io.c").read_text()
+    for helper in (
+        "ld_bitmap_size",
+        "ld_bitmap_calloc",
+        "ld_bitmap_get",
+        "ld_bitmap_set",
+        "ld_sync_fd",
+    ):
+        assert helper in io_header
+        assert helper in io_source
+
+    packed_maps = (
+        GUI / "filesystems" / "pfs3" / "native" / "pfs3_native.c",
+        GUI / "filesystems" / "sfs" / "native" / "sfs_native.c",
+        GUI / "filesystems" / "affs" / "native" / "affs_native.c",
+        GUI / "filesystems" / "hfs" / "native" / "analyser.c",
+    )
+    for path in packed_maps:
+        source = path.read_text()
+        assert "ld_bitmap_calloc" in source, (
+            f"{path.relative_to(ROOT)} regressed to byte-per-unit allocation maps"
+        )
+
+    zfs_analysis = (
+        GUI / "filesystems" / "zfs" / "native" / "zfs_analysis.c"
+    ).read_text()
+    minix_native = (
+        GUI / "filesystems" / "minix" / "native" / "minix_native.c"
+    ).read_text()
+    assert "infiltratr_array_reserve" in zfs_analysis
+    assert "realloc(" not in zfs_analysis
+    assert "infiltratr_array_reserve" in minix_native
+    assert "realloc(" not in minix_native
+
+    mapper = (ROOT / "native" / "map.cpp").read_text()
+    for permissive in (".unsigned_or(", ".integer_or(", ".real_or(",
+                       ".bool_or(", ".string_or("):
+        assert permissive not in mapper, (
+            f"native mapper silently defaults malformed protocol field via {permissive}"
+        )
+    for strict_optional in (
+        "optional_u64",
+        "optional_real",
+        "optional_bool",
+        "optional_string",
+    ):
+        assert strict_optional in mapper
+
+    device_header = (ROOT / "src" / "core" / "ld_device.h").read_text()
+    device_source = (ROOT / "src" / "core" / "ld_device.c").read_text()
+    test_media = (ROOT / "test_media" / "test_media_worker.c").read_text()
+    for helper in ("ld_block_device_info", "ld_block_device_has_system_use"):
+        assert helper in device_header
+        assert helper in device_source
+        assert helper in test_media
+    assert '"/proc/self/mountinfo"' in device_source
+    assert '"/proc/swaps"' in device_source
+    assert '"/run/udev/data/b%u:%u"' in device_source
+    assert '"findmnt"' not in test_media
+    assert '"SIZE,MODEL,SERIAL,WWN,TRAN"' not in test_media
+    assert '"SIZE,RM,RO,TRAN"' not in test_media
+    assert "static int source_disk(" not in test_media
+
+    assert "LDTM_CAPTURE_MAX" in test_media
+    assert "SIGKILL" in test_media
+    assert "strstr(json, needle)" not in test_media
+    assert "json_skip_value" in test_media
+    assert "infiltratr_parse_u64_token" in test_media
+
+    transaction_workers = (
+        GUI / "filesystems" / "affs" / "native" / "affs_worker.c",
+        GUI / "filesystems" / "sfs" / "native" / "sfs_worker.c",
+        GUI / "filesystems" / "pfs3" / "native" / "pfs3_worker.c",
+        GUI / "filesystems" / "hfsplus" / "native" / "hfsplus_worker.c",
+        GUI / "filesystems" / "minix" / "native" / "minix_worker.c",
+        GUI / "filesystems" / "apfs" / "native" / "apfs_worker.c",
+        GUI / "filesystems" / "ufs" / "native" / "ufs_worker.c",
+        GUI / "filesystems" / "btrfs" / "native" / "btrfs_worker.c",
+        GUI / "filesystems" / "exfat" / "native" / "exfat_worker.c",
+        GUI / "filesystems" / "ext4" / "native" / "ext_worker.c",
+        GUI / "filesystems" / "ntfs" / "native" / "ntfs_worker.c",
+        GUI / "filesystems" / "xfs" / "native" / "xfs_worker.c",
+        GUI / "filesystems" / "hfs" / "native" / "writer.c",
+    )
+    for path in transaction_workers:
+        source = path.read_text()
+        assert "ld_sync_fd(" in source, (
+            f"{path.relative_to(ROOT)} bypasses the EINTR-safe sync primitive"
+        )
+        assert "fsync(" not in source, (
+            f"{path.relative_to(ROOT)} retains a private transaction sync path"
+        )
+

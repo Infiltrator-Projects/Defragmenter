@@ -277,7 +277,7 @@ static int create_stage(const char *source_path, const char *stage_path,
         }
     }
     free(buffer); ext_fs_close(fs);
-    if (result == 0 && fsync(stage) != 0) { ext_set_error(error, "cannot sync EXT working image: %s", strerror(errno)); result = -1; }
+    if (result == 0 && ld_sync_fd(stage) != 0) { ext_set_error(error, "cannot sync EXT working image: %s", strerror(errno)); result = -1; }
     close(stage); ld_device_close(&source);
     if (result != 0) unlink_if_exists(stage_path);
     return result;
@@ -433,7 +433,7 @@ static int commit_stage(const char *device_path, const char *journal_path,
             offset += amount; committed += amount; since_journal += amount;
             bool last_write = index + 1U == allocated_ranges.count && offset == range.end;
             if (since_journal >= JOURNAL_INTERVAL || last_write) {
-                if (fsync(target.fd) != 0) {
+                if (ld_sync_fd(target.fd) != 0) {
                     ext_set_error(error, "cannot sync EXT source commit: %s", strerror(errno));
                     result = -1; break;
                 }
@@ -452,7 +452,7 @@ static int commit_stage(const char *device_path, const char *journal_path,
     }
     if (result == 0) {
         state->commit_offset = state->filesystem_bytes;
-        if (fsync(target.fd) != 0 || journal_save(journal_path, state, error) != 0) {
+        if (ld_sync_fd(target.fd) != 0 || journal_save(journal_path, state, error) != 0) {
             if (error != NULL && *error == NULL)
                 ext_set_error(error, "cannot sync completed EXT source commit: %s", strerror(errno));
             result = -1;

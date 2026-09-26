@@ -620,7 +620,7 @@ static int stage_sha256(const char *stage, const Pfs3Journal *state,
 
 static int stop_commit(int target, char *error, size_t error_size)
 {
-    if (fsync(target) != 0) {
+    if (ld_sync_fd(target) != 0) {
         worker_error(error, error_size,
                      "cannot sync PFS3 target at Stop boundary: %s",
                      strerror(errno));
@@ -692,7 +692,7 @@ static int safe_commit_stage(const char *stage_path, const char *target_path,
     }
     if (rc == 0 && ld_stop_requested())
         rc = stop_commit(target, error, error_size);
-    if (rc == 0 && fsync(target) != 0) {
+    if (rc == 0 && ld_sync_fd(target) != 0) {
         worker_error(error, error_size,
                      "cannot sync PFS3 source: %s", strerror(errno));
         rc = -1;

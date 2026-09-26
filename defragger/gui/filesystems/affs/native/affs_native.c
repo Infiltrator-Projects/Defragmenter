@@ -3,6 +3,7 @@
 #include "affs_native.h"
 
 #include "ld_device.h"
+#include "ld_io.h"
 
 #include "infiltratr/endian.h"
 #include "infiltratr/arithmetic.h"
@@ -180,7 +181,7 @@ static int scan_file(AffsVolume *v, uint32_t blk, const unsigned char hb[BS], ch
             goto fail;
         }
         if (push(&f.lists, ext)) goto oom;
-        v->fixed_map[ext] = 1;
+        ld_bitmap_set(v->fixed_map, ext, true);
         uint32_t n = lng(b, 2);
         if (n > PTRS) {
             affs_set_error(e, "Amiga file-list block %u has impossible count", ext);
@@ -208,7 +209,7 @@ static int scan_file(AffsVolume *v, uint32_t blk, const unsigned char hb[BS], ch
             affs_set_error(e, "Amiga file data pointer out of range");
             goto fail;
         }
-        v->fixed_map[f.data.v[i]] = 0;
+        ld_bitmap_set(v->fixed_map, f.data.v[i], false);
     }
     if (fpush(&v->files, f)) goto oom;
     return 0;
@@ -222,11 +223,11 @@ fail:
 }
 
 static int scan_dir(AffsVolume *v, uint32_t blk, bool root, uint8_t *seen, char **e) {
-    if (blk >= v->blocks || seen[blk]) {
+    if (blk >= v->blocks || ld_bitmap_get(seen, blk)) {
         affs_set_error(e, "Amiga directory graph contains a loop or invalid block %u", blk);
         return -1;
     }
-    seen[blk] = 1;
+    ld_bitmap_set(seen, blk, true);
     unsigned char b[BS];
     if (rd(v->fd, blk, b, e)) return -1;
     if (root) {
@@ -238,7 +239,7 @@ static int scan_dir(AffsVolume *v, uint32_t blk, bool root, uint8_t *seen, char 
         affs_set_error(e, "invalid Amiga directory block %u", blk);
         return -1;
     }
-    v->fixed_map[blk] = 1;
+    ld_bitmap_set(v->fixed_map, blk, true);
     if (push(&v->directory_blocks, blk)) return -1;
     uint32_t hs = root ? lng(b, 3) : PTRS;
     if (hs > PTRS) hs = PTRS;
@@ -255,7 +256,7 @@ static int scan_dir(AffsVolume *v, uint32_t blk, bool root, uint8_t *seen, char 
                 affs_set_error(e, "invalid Amiga directory entry block %u", x);
                 return -1;
             }
-            v->fixed_map[x] = 1;
+            ld_bitmap_set(v->fixed_map, x, true);
             uint32_t st = lng(eb, -1);
             uint32_t next = lng(eb, -4);
             if (st == ST_FILE) {
@@ -278,7 +279,7 @@ static int read_bitmap(AffsVolume *v, const unsigned char root[BS], char **e) {
         uint32_t x = lng(root, -49 + i);
         if (!x) break;
         if (x >= v->blocks || push(&v->bitmap_blocks, x)) return -1;
-        v->fixed_map[x] = 1;
+        ld_bitmap_set(v->fixed_map, x, true);
     }
     uint32_t ext = lng(root, -24);
     size_t guard = 0;
@@ -290,12 +291,12 @@ static int read_bitmap(AffsVolume *v, const unsigned char root[BS], char **e) {
         unsigned char b[BS];
         if (rd(v->fd, ext, b, e)) return -1;
         if (push(&v->bitmap_ext_blocks, ext)) return -1;
-        v->fixed_map[ext] = 1;
+        ld_bitmap_set(v->fixed_map, ext, true);
         for (int i = 0; i < 127; ++i) {
             uint32_t x = lng(b, i);
             if (!x) break;
             if (x >= v->blocks || push(&v->bitmap_blocks, x)) return -1;
-            v->fixed_map[x] = 1;
+            ld_bitmap_set(v->fixed_map, x, true);
         }
         ext = lng(b, -1);
     }
@@ -316,7 +317,8 @@ static int read_bitmap(AffsVolume *v, const unsigned char root[BS], char **e) {
         for (int li = 1; li < 128 && bit < bits; ++li) {
             uint32_t w = lng(b, li);
             for (unsigned k = 0; k < 32 && bit < bits; ++k, ++bit) {
-                v->free_map[2U + bit] = (w & (1U << k)) ? 1 : 0;
+                ld_bitmap_set(v->free_map, 2U + bit,
+                              (w & (1U << k)) != 0U);
             }
         }
     }
@@ -362,13 +364,14 @@ int affs_scan(const char *path, bool writable, AffsVolume *v, char **e) {
     v->dostype = boot[3];
     v->ffs = (v->dostype & 1U) != 0;
     v->root = v->blocks / 2U;
-    v->free_map = calloc(v->blocks, 1);
-    v->fixed_map = calloc(v->blocks, 1);
+    v->free_map = ld_bitmap_calloc(v->blocks);
+    v->fixed_map = ld_bitmap_calloc(v->blocks);
     if (!v->free_map || !v->fixed_map) {
         affs_set_error(e, "out of memory scanning Amiga filesystem");
         goto fail;
     }
-    v->fixed_map[0] = v->fixed_map[1] = 1;
+    ld_bitmap_set(v->fixed_map, 0U, true);
+    ld_bitmap_set(v->fixed_map, 1U, true);
     unsigned char root[BS];
     if (rd(v->fd, v->root, root, e) || !block_ok(root, T_SHORT, ST_ROOT, 5)) {
         affs_set_error(e, "invalid Amiga root block at %u", v->root);
@@ -380,7 +383,7 @@ int affs_scan(const char *path, bool writable, AffsVolume *v, char **e) {
         goto fail;
     }
     if (read_bitmap(v, root, e)) goto fail;
-    uint8_t *seen = calloc(v->blocks, 1);
+    uint8_t *seen = ld_bitmap_calloc(v->blocks);
     if (!seen) {
         affs_set_error(e, "out of memory scanning Amiga filesystem");
         goto fail;
@@ -389,11 +392,12 @@ int affs_scan(const char *path, bool writable, AffsVolume *v, char **e) {
     free(seen);
     if (rc) goto fail;
     for (uint32_t i = 0; i < v->blocks; ++i) {
-        if (!v->free_map[i]) v->fixed_map[i] = 1;
+        if (!ld_bitmap_get(v->free_map, i))
+            ld_bitmap_set(v->fixed_map, i, true);
     }
     for (size_t f = 0; f < v->files.n; ++f) {
         for (size_t j = 0; j < v->files.v[f].data.n; ++j) {
-            v->fixed_map[v->files.v[f].data.v[j]] = 0;
+            ld_bitmap_set(v->fixed_map, v->files.v[f].data.v[j], false);
         }
     }
     return 0;
@@ -407,10 +411,10 @@ static void print_ranges(const uint8_t *map, uint32_t blocks, bool want) {
     bool first = true;
     printf("[");
     for (uint32_t i = 0; i < blocks;) {
-        while (i < blocks && !!map[i] != want) ++i;
+        while (i < blocks && ld_bitmap_get(map, i) != want) ++i;
         if (i == blocks) break;
         uint32_t s = i;
-        while (i < blocks && !!map[i] == want) ++i;
+        while (i < blocks && ld_bitmap_get(map, i) == want) ++i;
         if (!first) printf(",");
         printf("[%u,%u]", s, i);
         first = false;
@@ -463,7 +467,7 @@ static uint32_t contiguous_map_run(const uint8_t *free_map, uint32_t blocks,
                                    uint32_t start, bool want_free, uint32_t limit) {
     uint32_t count = 0U;
     while (start + count < blocks && count < limit &&
-           (!!free_map[start + count]) == want_free) {
+           (ld_bitmap_get(free_map, (uint64_t)start + count)) == want_free) {
         ++count;
     }
     return count;
@@ -477,7 +481,7 @@ static int copy_allocated(const AffsVolume *v, int out, char **e) {
     }
     int rc = 0;
     for (uint32_t i = 0; i < v->blocks;) {
-        if (v->free_map[i]) {
+        if (ld_bitmap_get(v->free_map, i)) {
             ++i;
             continue;
         }
@@ -507,7 +511,7 @@ static int bitmap_write(AffsVolume *v, char **e) {
         for (int li = 1; li < 128 && bit < bits; ++li) {
             uint32_t w = 0;
             for (unsigned k = 0; k < 32 && bit < bits; ++k, ++bit) {
-                if (v->free_map[2U + bit]) w |= 1U << k;
+                if (ld_bitmap_get(v->free_map, 2U + bit)) w |= 1U << k;
             }
             plng(b, li, w);
         }
@@ -546,7 +550,7 @@ static int choose_run(AffsVolume *v, uint32_t need, uint32_t reserve, uint32_t *
     for (uint32_t s = 2; s + need + reserve <= v->blocks; ++s) {
         bool ok = true;
         for (uint32_t k = 0; k < need + reserve; ++k) {
-            if (v->fixed_map[s + k]) {
+            if (ld_bitmap_get(v->fixed_map, (uint64_t)s + k)) {
                 ok = false;
                 s += k;
                 break;
@@ -554,8 +558,10 @@ static int choose_run(AffsVolume *v, uint32_t need, uint32_t reserve, uint32_t *
         }
         if (ok) {
             *start = s;
-            for (uint32_t k = 0; k < need; ++k) v->fixed_map[s + k] = 1;
-            for (uint32_t k = need; k < need + reserve; ++k) v->fixed_map[s + k] = 1;
+            for (uint32_t k = 0; k < need; ++k)
+                ld_bitmap_set(v->fixed_map, (uint64_t)s + k, true);
+            for (uint32_t k = need; k < need + reserve; ++k)
+                ld_bitmap_set(v->fixed_map, (uint64_t)s + k, true);
             return 0;
         }
     }
@@ -649,8 +655,8 @@ int affs_build_stage(const char *source, const char *stage, bool growth, unsigne
     }
     for (size_t f = 0; f < src.files.n; ++f) {
         for (size_t j = 0; j < src.files.v[f].data.n; ++j) {
-            dst.free_map[src.files.v[f].data.v[j]] = 1;
-            dst.fixed_map[src.files.v[f].data.v[j]] = 0;
+            ld_bitmap_set(dst.free_map, src.files.v[f].data.v[j], true);
+            ld_bitmap_set(dst.fixed_map, src.files.v[f].data.v[j], false);
         }
     }
 
@@ -678,7 +684,7 @@ int affs_build_stage(const char *source, const char *stage, bool growth, unsigne
             free_vec(&nv);
             goto fail;
         }
-        for (uint32_t j = 0; j < reserve; ++j) dst.free_map[start + need + j] = 1;
+        for (uint32_t j = 0; j < reserve; ++j) ld_bitmap_set(dst.free_map, (uint64_t)start + need + j, true);
         if (rewrite_ptrs(&dst, df, &nv, e)) {
             free_vec(&nv);
             goto fail;
@@ -695,7 +701,7 @@ int affs_build_stage(const char *source, const char *stage, bool growth, unsigne
     if (commit_bytes) {
         uint64_t c = 0;
         for (uint32_t i = 0; i < dst.blocks; ++i) {
-            if (!dst.free_map[i]) c += BS;
+            if (!ld_bitmap_get(dst.free_map, i)) c += BS;
         }
         *commit_bytes = c;
     }
@@ -725,7 +731,7 @@ int affs_verify_layout(const char *path, bool growth, unsigned gp, char **e) {
             uint32_t reserve = ((uint32_t)f->data.n * gp + 99U) / 100U;
             uint32_t end = f->data.v[f->data.n - 1] + 1U;
             for (uint32_t k = 0; k < reserve; ++k) {
-                if (end + k >= v.blocks || !v.free_map[end + k]) {
+                if (end + k >= v.blocks || !ld_bitmap_get(v.free_map, (uint64_t)end + k)) {
                     affs_set_error(e, "Amiga file header %u does not have its required growth reserve",
                                    f->header);
                     affs_close(&v);
@@ -757,7 +763,7 @@ int affs_commit_stage(const char *stage, const char *target, uint64_t *written, 
     uint64_t n = 0;
     int rc = 0;
     for (uint32_t i = 0; i < v.blocks;) {
-        if (v.free_map[i]) {
+        if (ld_bitmap_get(v.free_map, i)) {
             ++i;
             continue;
         }

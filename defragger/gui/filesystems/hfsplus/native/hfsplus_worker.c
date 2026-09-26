@@ -415,7 +415,7 @@ static int check_unchanged_target(const char *device,
 }
 
 static int stop_commit(int target, char **error) {
-    if (fsync(target) != 0) {
+    if (ld_sync_fd(target) != 0) {
         hfsplus_set_error(error, "cannot sync HFS+ source at Stop boundary: %s", strerror(errno));
         return -1;
     }
@@ -494,7 +494,7 @@ static int safe_commit_stage(const char *stage_path, const char *target_path,
             rc = -1;
         }
     }
-    if (rc == 0 && fsync(target) != 0) {
+    if (rc == 0 && ld_sync_fd(target) != 0) {
         hfsplus_set_error(error, "cannot sync HFS+ source: %s", strerror(errno));
         rc = -1;
     }

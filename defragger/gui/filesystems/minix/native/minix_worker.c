@@ -542,7 +542,7 @@ static int verify_committed_source(const MinixJournal *state,
 static int stop_commit(int target,
                        char *error, size_t error_size)
 {
-    if (fsync(target) != 0) {
+    if (ld_sync_fd(target) != 0) {
         worker_error(error, error_size,
                      "cannot sync Minix target at Stop boundary: %s",
                      strerror(errno));
@@ -615,7 +615,7 @@ static int safe_commit_stage(const MinixJournal *state,
     }
     if (result == 0 && ld_stop_requested())
         result = stop_commit(target, error, error_size);
-    if (result == 0 && fsync(target) != 0) {
+    if (result == 0 && ld_sync_fd(target) != 0) {
         worker_error(error, error_size,
                      "cannot sync Minix source: %s",
                      strerror(errno));

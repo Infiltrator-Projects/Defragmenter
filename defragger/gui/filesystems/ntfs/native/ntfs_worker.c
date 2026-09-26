@@ -132,7 +132,7 @@ static int create_stage(const char *source_path, const char *stage_path,
         }
     }
     free(buffer);
-    if (fsync(output) != 0) {
+    if (ld_sync_fd(output) != 0) {
         ntfs_set_error(error, "cannot sync NTFS working image: %s", strerror(errno));
         close(input); close(output); remove_partial_stage(stage_path); return -1;
     }
@@ -206,13 +206,13 @@ static int commit_stage(const char *device, const char *journal_path, NtfsJourna
         if (wrote < 0 || (size_t)wrote != stage.cluster_size) { ntfs_set_error(error, "short write during NTFS source commit"); goto fail; }
         copied++; state->commit_cluster = c + 1U;
         if ((copied % JOURNAL_CLUSTER_INTERVAL) == 0U) {
-            if (fsync(source) != 0) { ntfs_set_error(error, "syncing NTFS source commit failed: %s", strerror(errno)); goto fail; }
+            if (ld_sync_fd(source) != 0) { ntfs_set_error(error, "syncing NTFS source commit failed: %s", strerror(errno)); goto fail; }
             if (ntfs_journal_save(journal_path, state, error) != 0) goto fail;
             unsigned percent = total == 0 ? 100U : (unsigned)((copied * 100U) / total);
             printf("NTFS source commit: %u%%\n", percent); fflush(stdout);
         }
     }
-    if (fsync(source) != 0) { ntfs_set_error(error, "syncing NTFS source commit failed: %s", strerror(errno)); goto fail; }
+    if (ld_sync_fd(source) != 0) { ntfs_set_error(error, "syncing NTFS source commit failed: %s", strerror(errno)); goto fail; }
     if (ntfs_journal_save(journal_path, state, error) != 0) goto fail;
     free(buffer); (void)flock(source, LOCK_UN); close(source);
     ntfs_layout_free(&layout); ntfs_close_volume(&stage); return 0;

@@ -396,7 +396,7 @@ static int load_free_map(int fd, const PfsRoot *root,
         return -1;
     }
 
-    uint8_t *free_map = calloc(root->disksize, 1U);
+    uint8_t *free_map = ld_bitmap_calloc(root->disksize);
     if (free_map == NULL) {
         set_error(error, error_size, "out of memory building PFS3 allocation map");
         return -1;
@@ -450,7 +450,7 @@ static int load_free_map(int fd, const PfsRoot *root,
                 const bool is_free =
                     (infiltratr_load_be32(bitmap + 12U + word * 4U) &
                      (UINT32_C(0x80000000) >> within)) != 0U;
-                free_map[block] = is_free ? 1U : 0U;
+                ld_bitmap_set(free_map, block, is_free);
                 if (is_free)
                     counted_free++;
             }
@@ -690,17 +690,17 @@ static int load_file_extents(PfsModel *model, PfsFile *file,
 
         for (uint32_t block = anode.block;
              block < anode.block + anode.clusters; ++block) {
-            if (model->free_map[block] != 0U) {
+            if (ld_bitmap_get(model->free_map, block)) {
                 set_error(error, error_size,
                           "PFS3 file references a block marked free");
                 return -1;
             }
-            if (claimed[block] != 0U) {
+            if (ld_bitmap_get(claimed, block)) {
                 set_error(error, error_size,
                           "PFS3 file allocation overlaps another file");
                 return -1;
             }
-            claimed[block] = 1U;
+            ld_bitmap_set(claimed, block, true);
         }
         total += anode.clusters;
         if (total > needed) {
@@ -737,7 +737,7 @@ static bool file_growth_satisfied(const PfsModel *model, const PfsFile *file,
     if (end + reserve > model->root.disksize)
         return false;
     for (uint64_t block = end; block < end + reserve; ++block)
-        if (model->free_map[block] == 0U)
+        if (!ld_bitmap_get(model->free_map, block))
             return false;
     return true;
 }
@@ -783,8 +783,8 @@ static int model_load(const char *path, PfsModel *model,
         parse_root_directory(model, error, error_size) != 0)
         goto failure;
 
-    uint8_t *claimed = calloc(model->root.disksize, 1U);
-    model->fragmented_map = calloc(model->root.disksize, 1U);
+    uint8_t *claimed = ld_bitmap_calloc(model->root.disksize);
+    model->fragmented_map = ld_bitmap_calloc(model->root.disksize);
     if (claimed == NULL || model->fragmented_map == NULL) {
         free(claimed);
         set_error(error, error_size, "out of memory validating PFS3 allocations");
@@ -802,16 +802,17 @@ static int model_load(const char *path, PfsModel *model,
         if (file->fragmented) {
             for (size_t extent = 0U; extent < file->extent_count; ++extent) {
                 const PfsAnode *anode = &file->extents[extent];
-                memset(model->fragmented_map + anode->block, 1,
-                       anode->clusters);
+                for (uint32_t block = 0U; block < anode->clusters; ++block)
+                    ld_bitmap_set(model->fragmented_map,
+                                  (uint64_t)anode->block + block, true);
             }
         }
     }
 
     const uint32_t first_data = model->root.last_reserved + 1U;
     for (uint32_t block = first_data; block < model->root.disksize; ++block) {
-        const bool used = model->free_map[block] == 0U;
-        if (used != (claimed[block] != 0U)) {
+        const bool used = !ld_bitmap_get(model->free_map, block);
+        if (used != (ld_bitmap_get(claimed, block))) {
             free(claimed);
             set_error(error, error_size,
                       "PFS3 contains allocated normal blocks not owned by the validated root-file subset");
@@ -837,7 +838,7 @@ static void fill_analysis(const PfsModel *model, Pfs3Analysis *analysis)
     uint64_t data_blocks = 0U;
     bool growth_ok = true;
     for (uint32_t block = first_data; block < model->root.disksize; ++block)
-        if (model->free_map[block] != 0U)
+        if (ld_bitmap_get(model->free_map, block))
             free_blocks++;
     for (size_t index = 0U; index < model->file_count; ++index) {
         const PfsFile *file = &model->files[index];
@@ -890,11 +891,11 @@ static void fill_cells(const PfsModel *model, Pfs3MapCell *cells,
         for (uint64_t block = cell->start; block < cell->end; ++block) {
             if (block >= model->root.disksize) {
                 cell->outside_count++;
-            } else if (model->free_map[block] != 0U) {
+            } else if (ld_bitmap_get(model->free_map, block)) {
                 cell->free_count++;
             } else {
                 cell->used_count++;
-                if (model->fragmented_map[block] != 0U)
+                if (ld_bitmap_get(model->fragmented_map, block))
                     cell->fragmented_count++;
             }
         }
@@ -1147,7 +1148,7 @@ int pfs3_verify_layout(const char *path, bool growth, unsigned growth_percent,
                 break;
             }
             for (uint64_t block = cursor; block < cursor + reserve; ++block)
-                if (model.free_map[block] == 0U) {
+                if (!ld_bitmap_get(model.free_map, block)) {
                     set_error(error, error_size,
                               "PFS3 Growth Defrag reserve is not free");
                     result = -1;

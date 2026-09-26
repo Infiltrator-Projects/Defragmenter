@@ -162,6 +162,21 @@ static bool ld_collect_related_devices(dev_t target,
     return true;
 }
 
+static bool ld_related_contains(const LdRelatedDevice *devices,
+                                size_t count, dev_t value) {
+    for (size_t index = 0U; index < count; ++index)
+        if (devices[index].value == value) return true;
+    return false;
+}
+
+static bool ld_mount_target_is_user_media(const char *target) {
+    return target != NULL &&
+           (strcmp(target, "/mnt") == 0 ||
+            infiltratr_string_starts_with(target, "/mnt/") ||
+            infiltratr_string_starts_with(target, "/media/") ||
+            infiltratr_string_starts_with(target, "/run/media/"));
+}
+
 bool ld_device_number_is_mounted(dev_t device_number) {
     LdRelatedDevice related[LD_MAX_RELATED_DEVICES];
     size_t related_count = 0;
@@ -205,6 +220,224 @@ bool ld_device_number_is_mounted(dev_t device_number) {
     free(line);
     fclose(file);
     return mounted;
+}
+
+static bool ld_sysfs_text(const char *sysfs, const char *suffix,
+                          char *output, size_t output_size) {
+    char path[PATH_MAX];
+    const int length = snprintf(path, sizeof(path), "%s/%s", sysfs, suffix);
+    if (length < 0 || (size_t)length >= sizeof(path)) return false;
+    return infiltratr_read_text_file(path, output, output_size);
+}
+
+static void ld_read_udev_properties(dev_t device, LdBlockDeviceInfo *info) {
+    char path[PATH_MAX];
+    const int length = snprintf(path, sizeof(path), "/run/udev/data/b%u:%u",
+                                major(device), minor(device));
+    if (length < 0 || (size_t)length >= sizeof(path)) return;
+
+    FILE *file = fopen(path, "r");
+    if (file == NULL) return;
+    char *line = NULL;
+    size_t capacity = 0U;
+    while (getline(&line, &capacity, file) >= 0) {
+        infiltratr_trim_line_end(line);
+        const char *value = NULL;
+        if (infiltratr_string_starts_with(line, "E:ID_SERIAL_SHORT="))
+            value = line + strlen("E:ID_SERIAL_SHORT=");
+        else if (info->serial[0] == '\0' &&
+                 infiltratr_string_starts_with(line, "E:ID_SERIAL="))
+            value = line + strlen("E:ID_SERIAL=");
+        else if (infiltratr_string_starts_with(line, "E:ID_WWN="))
+            value = line + strlen("E:ID_WWN=");
+        else if (infiltratr_string_starts_with(line, "E:ID_BUS="))
+            value = line + strlen("E:ID_BUS=");
+        else
+            continue;
+
+        if (infiltratr_string_starts_with(line, "E:ID_WWN="))
+            infiltratr_copy_string(info->wwn, sizeof(info->wwn), value);
+        else if (infiltratr_string_starts_with(line, "E:ID_BUS="))
+            infiltratr_copy_string(info->transport, sizeof(info->transport), value);
+        else
+            infiltratr_copy_string(info->serial, sizeof(info->serial), value);
+    }
+    free(line);
+    (void)fclose(file);
+}
+
+int ld_block_device_info(const char *path, LdBlockDeviceInfo *info) {
+    if (path == NULL || info == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    memset(info, 0, sizeof(*info));
+
+    struct stat st;
+    if (stat(path, &st) != 0)
+        return -1;
+    if (!S_ISBLK(st.st_mode)) {
+        errno = ENOTBLK;
+        return -1;
+    }
+
+    char sysfs[PATH_MAX];
+    if (!ld_resolve_sysfs_device(st.st_rdev, sysfs, sizeof(sysfs))) {
+        errno = ENODEV;
+        return -1;
+    }
+
+    char partition_path[PATH_MAX];
+    int length = snprintf(partition_path, sizeof(partition_path),
+                          "%s/partition", sysfs);
+    if (length < 0 || (size_t)length >= sizeof(partition_path)) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+    if (access(partition_path, F_OK) == 0) {
+        info->whole_disk = false;
+    } else if (errno == ENOENT) {
+        info->whole_disk = true;
+    } else {
+        return -1;
+    }
+
+    int fd = open(path, O_RDONLY | O_CLOEXEC | O_NONBLOCK);
+    if (fd < 0) return -1;
+    const int size_result = ld_fd_size_bytes(fd, &info->size_bytes);
+    const int size_error = errno;
+    (void)close(fd);
+    if (size_result != 0) {
+        errno = size_error;
+        return -1;
+    }
+
+    char numeric_path[PATH_MAX];
+    uint64_t value = 0U;
+    length = snprintf(numeric_path, sizeof(numeric_path), "%s/removable", sysfs);
+    if (length < 0 || (size_t)length >= sizeof(numeric_path) ||
+        !infiltratr_read_u64_file(numeric_path, &value) || value > 1U) {
+        errno = EIO;
+        return -1;
+    }
+    info->removable = value != 0U;
+
+    value = 0U;
+    length = snprintf(numeric_path, sizeof(numeric_path), "%s/ro", sysfs);
+    if (length < 0 || (size_t)length >= sizeof(numeric_path) ||
+        !infiltratr_read_u64_file(numeric_path, &value) || value > 1U) {
+        errno = EIO;
+        return -1;
+    }
+    info->read_only = value != 0U;
+
+    (void)ld_sysfs_text(sysfs, "device/model", info->model, sizeof(info->model));
+    (void)ld_sysfs_text(sysfs, "device/serial", info->serial, sizeof(info->serial));
+    if (!ld_sysfs_text(sysfs, "device/wwid", info->wwn, sizeof(info->wwn)))
+        (void)ld_sysfs_text(sysfs, "wwid", info->wwn, sizeof(info->wwn));
+
+    ld_read_udev_properties(st.st_rdev, info);
+
+    if (info->transport[0] == '\0') {
+        const char *base = infiltratr_path_basename(path);
+        const char *transport = "";
+        if (strstr(sysfs, "/usb") != NULL) transport = "usb";
+        else if (base != NULL && infiltratr_string_starts_with(base, "nvme"))
+            transport = "nvme";
+        else if (base != NULL && infiltratr_string_starts_with(base, "mmcblk"))
+            transport = "mmc";
+        else if (strstr(sysfs, "/ata") != NULL) transport = "sata";
+        else if (strstr(sysfs, "/virtio") != NULL) transport = "virtio";
+        else if (strstr(sysfs, "/scsi") != NULL) transport = "scsi";
+        infiltratr_copy_string(info->transport, sizeof(info->transport), transport);
+    }
+    return 0;
+}
+
+int ld_block_device_has_system_use(const char *path, bool *in_use) {
+    if (path == NULL || in_use == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    *in_use = true;
+
+    struct stat target;
+    if (stat(path, &target) != 0)
+        return -1;
+    if (!S_ISBLK(target.st_mode)) {
+        errno = ENOTBLK;
+        return -1;
+    }
+
+    LdRelatedDevice related[LD_MAX_RELATED_DEVICES];
+    size_t related_count = 0U;
+    if (!ld_collect_related_devices(target.st_rdev, related, &related_count)) {
+        errno = EOVERFLOW;
+        return -1;
+    }
+
+    FILE *mounts = fopen("/proc/self/mountinfo", "r");
+    if (mounts == NULL) return -1;
+    char *line = NULL;
+    size_t capacity = 0U;
+    while (getline(&line, &capacity, mounts) >= 0) {
+        char device_text[64] = "";
+        char mountpoint[PATH_MAX] = "";
+        if (sscanf(line, "%*s %*s %63s %*s %4095s",
+                   device_text, mountpoint) != 2)
+            continue;
+        dev_t mounted_device = 0;
+        if (ld_parse_device_number(device_text, &mounted_device) &&
+            ld_related_contains(related, related_count, mounted_device) &&
+            !ld_mount_target_is_user_media(mountpoint)) {
+            free(line);
+            fclose(mounts);
+            *in_use = true;
+            return 0;
+        }
+    }
+    free(line);
+    if (ferror(mounts)) {
+        const int failure = errno == 0 ? EIO : errno;
+        fclose(mounts);
+        errno = failure;
+        return -1;
+    }
+    fclose(mounts);
+
+    FILE *swaps = fopen("/proc/swaps", "r");
+    if (swaps == NULL) return -1;
+    char swap_line[PATH_MAX + 256U];
+    if (fgets(swap_line, sizeof(swap_line), swaps) == NULL) {
+        fclose(swaps);
+        errno = EIO;
+        return -1;
+    }
+    while (fgets(swap_line, sizeof(swap_line), swaps) != NULL) {
+        char source[PATH_MAX];
+        if (sscanf(swap_line, "%4095s", source) != 1) continue;
+        struct stat swap_stat;
+        if (stat(source, &swap_stat) != 0) {
+            fclose(swaps);
+            return -1;
+        }
+        const dev_t device = S_ISBLK(swap_stat.st_mode)
+            ? swap_stat.st_rdev : swap_stat.st_dev;
+        if (ld_related_contains(related, related_count, device)) {
+            fclose(swaps);
+            *in_use = true;
+            return 0;
+        }
+    }
+    if (ferror(swaps)) {
+        const int failure = errno == 0 ? EIO : errno;
+        fclose(swaps);
+        errno = failure;
+        return -1;
+    }
+    fclose(swaps);
+    *in_use = false;
+    return 0;
 }
 
 static void ld_decode_mount_field(char *value) {

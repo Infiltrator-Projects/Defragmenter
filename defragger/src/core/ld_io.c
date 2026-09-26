@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -26,6 +27,49 @@ ssize_t ld_pwrite_full(int fd, const void *buffer, size_t length, uint64_t offse
     }
     return infiltratr_pwrite_full(fd, buffer, length, offset) == 0
         ? (ssize_t)length : -1;
+}
+
+bool ld_bitmap_size(uint64_t bits, size_t *bytes) {
+    if (bytes == NULL || bits > UINT64_MAX - UINT64_C(7)) {
+        errno = EOVERFLOW;
+        return false;
+    }
+    const uint64_t packed = (bits + UINT64_C(7)) / UINT64_C(8);
+    if (packed > SIZE_MAX) {
+        errno = EOVERFLOW;
+        return false;
+    }
+    *bytes = (size_t)packed;
+    return true;
+}
+
+uint8_t *ld_bitmap_calloc(uint64_t bits) {
+    size_t bytes = 0U;
+    if (!ld_bitmap_size(bits, &bytes)) return NULL;
+    return calloc(bytes == 0U ? 1U : bytes, 1U);
+}
+
+bool ld_bitmap_get(const uint8_t *bitmap, uint64_t bit) {
+    return bitmap != NULL &&
+           (bitmap[bit >> 3U] &
+            (uint8_t)(1U << (unsigned int)(bit & UINT64_C(7)))) != 0U;
+}
+
+void ld_bitmap_set(uint8_t *bitmap, uint64_t bit, bool value) {
+    const uint8_t mask =
+        (uint8_t)(1U << (unsigned int)(bit & UINT64_C(7)));
+    if (value)
+        bitmap[bit >> 3U] |= mask;
+    else
+        bitmap[bit >> 3U] &= (uint8_t)~mask;
+}
+
+int ld_sync_fd(int fd) {
+    int result;
+    do {
+        result = fsync(fd);
+    } while (result != 0 && errno == EINTR);
+    return result;
 }
 
 void ld_pread_exact(int fd, void *buffer, size_t length, uint64_t offset, const char *what) {

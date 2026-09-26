@@ -2,6 +2,7 @@
 #include "test_media.h"
 #include "ufs_native.h"
 #include "zfs_native.h"
+#include "ld_device.h"
 
 #include "infiltratr/arithmetic.h"
 #include "infiltratr/core.h"
@@ -9,6 +10,7 @@
 #include "infiltratr/posix_path.h"
 #include "infiltratr/posix.h"
 #include "infiltratr/posix_io.h"
+#include "infiltratr/token.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -16,6 +18,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <openssl/evp.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,6 +31,7 @@
 #define LDTM_MAX_TARGET_FILES 8U
 #define LDTM_HASH_HEX 65U
 #define LDTM_LINE_MAX 4096U
+#define LDTM_CAPTURE_MAX (8U * 1024U * 1024U)
 
 static const uint32_t ldtm_edge_case_sizes[] = {
     0U, 1U, 511U, 512U, 513U, 4095U, 4096U, 4097U
@@ -131,15 +135,17 @@ static int capture_process(const char *const argv[], char **output) {
     size_t used = 0U;
     char *buffer = NULL;
     char program[PATH_MAX];
+
     if (output == NULL || argv == NULL || argv[0] == NULL ||
         ldtm_resolve_program(argv[0], program, sizeof(program)) != 0)
         return -1;
     *output = NULL;
     if (pipe(output_pipe) != 0) return -1;
+
     child = fork();
     if (child < 0) {
-        close(output_pipe[0]);
-        close(output_pipe[1]);
+        (void)close(output_pipe[0]);
+        (void)close(output_pipe[1]);
         return -1;
     }
     if (child == 0) {
@@ -149,36 +155,64 @@ static int capture_process(const char *const argv[], char **output) {
         execv(program, (char *const *)argv);
         _exit(127);
     }
+
     (void)close(output_pipe[1]);
-    if (!infiltratr_array_reserve((void **)&buffer, &capacity, 1U, 4096U, 4096U)) {
+    if (!infiltratr_array_reserve((void **)&buffer, &capacity, 1U,
+                                  4096U, 4096U)) {
         (void)close(output_pipe[0]);
-        (void)waitpid(child, &status, 0);
+        (void)kill(child, SIGKILL);
+        while (waitpid(child, &status, 0) < 0 && errno == EINTR) {}
         return -1;
     }
+
     for (;;) {
-        ssize_t got;
+        if (used == LDTM_CAPTURE_MAX) {
+            unsigned char extra = 0U;
+            ssize_t probe;
+            do {
+                probe = read(output_pipe[0], &extra, 1U);
+            } while (probe < 0 && errno == EINTR);
+            if (probe == 0) break;
+            free(buffer);
+            (void)close(output_pipe[0]);
+            (void)kill(child, SIGKILL);
+            while (waitpid(child, &status, 0) < 0 && errno == EINTR) {}
+            errno = probe < 0 ? errno : EOVERFLOW;
+            return -1;
+        }
+
+        const size_t remaining_limit = LDTM_CAPTURE_MAX - used;
         if (capacity - used < 2048U) {
             size_t required = 0U;
-            if (!infiltratr_size_add_checked(used, 2049U, &required) ||
+            size_t wanted = remaining_limit < 2048U
+                ? remaining_limit + 1U : 2049U;
+            if (!infiltratr_size_add_checked(used, wanted, &required) ||
+                required > LDTM_CAPTURE_MAX + 1U ||
                 !infiltratr_array_reserve((void **)&buffer, &capacity, 1U,
                                           required, 4096U)) {
                 free(buffer);
                 (void)close(output_pipe[0]);
-                (void)waitpid(child, &status, 0);
+                (void)kill(child, SIGKILL);
+                while (waitpid(child, &status, 0) < 0 && errno == EINTR) {}
                 return -1;
             }
         }
-        got = read(output_pipe[0], buffer + used, capacity - used - 1U);
+
+        size_t readable = capacity - used - 1U;
+        if (readable > remaining_limit) readable = remaining_limit;
+        ssize_t got = read(output_pipe[0], buffer + used, readable);
         if (got < 0) {
             if (errno == EINTR) continue;
             free(buffer);
             (void)close(output_pipe[0]);
-            (void)waitpid(child, &status, 0);
+            (void)kill(child, SIGKILL);
+            while (waitpid(child, &status, 0) < 0 && errno == EINTR) {}
             return -1;
         }
         if (got == 0) break;
         used += (size_t)got;
     }
+
     (void)close(output_pipe[0]);
     while (waitpid(child, &status, 0) < 0) {
         if (errno != EINTR) {
@@ -207,28 +241,164 @@ static const char *production_mapper_program(void) {
     return NULL;
 }
 
-static int parse_json_u64_field(const char *json, const char *name,
-                                uint64_t *value) {
-    char needle[96];
-    const char *field;
-    const char *cursor;
-    char number[32];
-    size_t used = 0U;
-    if (json == NULL || name == NULL || value == NULL ||
-        snprintf(needle, sizeof(needle), "\"%s\"", name) <= 0)
-        return -1;
-    field = strstr(json, needle);
-    if (field == NULL || (cursor = strchr(field, ':')) == NULL)
-        return -1;
-    ++cursor;
+static const char *json_skip_ws(const char *cursor) {
     while (*cursor != '\0' && isspace((unsigned char)*cursor))
         ++cursor;
-    while (*cursor >= '0' && *cursor <= '9' &&
-           used + 1U < sizeof(number))
-        number[used++] = *cursor++;
-    number[used] = '\0';
-    return used != 0U &&
-           infiltratr_parse_u64(number, 10U, value) ? 0 : -1;
+    return cursor;
+}
+
+static int json_scan_string(const char **cursor, const char **start,
+                            size_t *length, int *escaped) {
+    const char *p = *cursor;
+    if (*p != '"') return -1;
+    ++p;
+    const char *begin = p;
+    int has_escape = 0;
+    while (*p != '\0') {
+        const unsigned char byte = (unsigned char)*p;
+        if (byte == '"') {
+            if (start != NULL) *start = begin;
+            if (length != NULL) *length = (size_t)(p - begin);
+            if (escaped != NULL) *escaped = has_escape;
+            *cursor = p + 1;
+            return 0;
+        }
+        if (byte < 0x20U) return -1;
+        if (byte == '\\') {
+            has_escape = 1;
+            ++p;
+            if (*p == '\0') return -1;
+            if (*p == 'u') {
+                for (unsigned int digit = 0U; digit < 4U; ++digit) {
+                    ++p;
+                    if (!isxdigit((unsigned char)*p)) return -1;
+                }
+            } else if (strchr("\"\\/bfnrt", *p) == NULL) {
+                return -1;
+            }
+        }
+        ++p;
+    }
+    return -1;
+}
+
+static int json_skip_value(const char **cursor, unsigned int depth) {
+    if (depth > 64U) return -1;
+    const char *p = json_skip_ws(*cursor);
+    if (*p == '"') {
+        if (json_scan_string(&p, NULL, NULL, NULL) != 0) return -1;
+    } else if (*p == '{') {
+        ++p;
+        p = json_skip_ws(p);
+        if (*p == '}') {
+            ++p;
+        } else {
+            for (;;) {
+                if (json_scan_string(&p, NULL, NULL, NULL) != 0) return -1;
+                p = json_skip_ws(p);
+                if (*p++ != ':') return -1;
+                if (json_skip_value(&p, depth + 1U) != 0) return -1;
+                p = json_skip_ws(p);
+                if (*p == '}') {
+                    ++p;
+                    break;
+                }
+                if (*p++ != ',') return -1;
+                p = json_skip_ws(p);
+            }
+        }
+    } else if (*p == '[') {
+        ++p;
+        p = json_skip_ws(p);
+        if (*p == ']') {
+            ++p;
+        } else {
+            for (;;) {
+                if (json_skip_value(&p, depth + 1U) != 0) return -1;
+                p = json_skip_ws(p);
+                if (*p == ']') {
+                    ++p;
+                    break;
+                }
+                if (*p++ != ',') return -1;
+            }
+        }
+    } else if (strncmp(p, "true", 4U) == 0) {
+        p += 4;
+    } else if (strncmp(p, "false", 5U) == 0) {
+        p += 5;
+    } else if (strncmp(p, "null", 4U) == 0) {
+        p += 4;
+    } else {
+        const char *number = p;
+        if (*p == '-') ++p;
+        if (*p == '0') {
+            ++p;
+            if (isdigit((unsigned char)*p)) return -1;
+        } else {
+            if (*p < '1' || *p > '9') return -1;
+            while (isdigit((unsigned char)*p)) ++p;
+        }
+        if (*p == '.') {
+            ++p;
+            if (!isdigit((unsigned char)*p)) return -1;
+            while (isdigit((unsigned char)*p)) ++p;
+        }
+        if (*p == 'e' || *p == 'E') {
+            ++p;
+            if (*p == '+' || *p == '-') ++p;
+            if (!isdigit((unsigned char)*p)) return -1;
+            while (isdigit((unsigned char)*p)) ++p;
+        }
+        if (p == number) return -1;
+    }
+    *cursor = p;
+    return 0;
+}
+
+static int parse_json_u64_field(const char *json, const char *name,
+                                uint64_t *value) {
+    if (json == NULL || name == NULL || value == NULL) return -1;
+    const size_t wanted_length = strlen(name);
+    const char *cursor = json_skip_ws(json);
+    if (*cursor++ != '{') return -1;
+    cursor = json_skip_ws(cursor);
+
+    while (*cursor != '\0' && *cursor != '}') {
+        const char *key = NULL;
+        size_t key_length = 0U;
+        int escaped = 0;
+        if (json_scan_string(&cursor, &key, &key_length, &escaped) != 0)
+            return -1;
+        cursor = json_skip_ws(cursor);
+        if (*cursor++ != ':') return -1;
+        cursor = json_skip_ws(cursor);
+
+        const int matches = escaped == 0 &&
+            key_length == wanted_length &&
+            memcmp(key, name, wanted_length) == 0;
+        if (matches) {
+            if (*cursor < '0' || *cursor > '9') return -1;
+            const char *number = cursor;
+            uint64_t parsed = 0U;
+            if (!infiltratr_parse_u64_token(&cursor, 10U, &parsed))
+                return -1;
+            if (cursor == number ||
+                (*number == '0' && cursor - number > 1))
+                return -1;
+            const char *after = json_skip_ws(cursor);
+            if (*after != ',' && *after != '}') return -1;
+            *value = parsed;
+            return 0;
+        }
+
+        if (json_skip_value(&cursor, 0U) != 0) return -1;
+        cursor = json_skip_ws(cursor);
+        if (*cursor == '}') break;
+        if (*cursor++ != ',') return -1;
+        cursor = json_skip_ws(cursor);
+    }
+    return -1;
 }
 
 static int production_map_output(const LdtmFilesystemSpec *spec,
@@ -369,58 +539,36 @@ static int extract_pair(const char *line, const char *key, char *value, size_t c
 }
 
 int ldtm_device_fingerprint(const char *device, char output[65]) {
-    const char *const argv[] = {
-        "lsblk", "-d", "-b", "-n", "-P",
-        "-o", "SIZE,MODEL,SERIAL,WWN,TRAN", "--", device, NULL
-    };
     char canonical[PATH_MAX];
-    char *properties = NULL;
-    char size_text[64] = "";
-    char model[256] = "";
-    char serial[256] = "";
-    char wwn[256] = "";
-    char transport[64] = "";
     char material[1024];
-    uint64_t size = 0U;
+    LdBlockDeviceInfo info;
     EVP_MD_CTX *context = NULL;
     unsigned char digest[EVP_MAX_MD_SIZE];
     unsigned int digest_length = 0U;
-    int length;
     int result = -1;
 
     if (device == NULL || output == NULL ||
         ldtm_canonicalize_device(device, canonical, sizeof(canonical)) != 0 ||
-        capture_process(argv, &properties) != 0)
-        return -1;
-    (void)extract_pair(properties, "SIZE", size_text, sizeof(size_text));
-    (void)extract_pair(properties, "MODEL", model, sizeof(model));
-    (void)extract_pair(properties, "SERIAL", serial, sizeof(serial));
-    (void)extract_pair(properties, "WWN", wwn, sizeof(wwn));
-    (void)extract_pair(properties, "TRAN", transport, sizeof(transport));
-    free(properties);
-    if (!infiltratr_parse_u64(size_text, 10U, &size) || size == 0U)
+        ld_block_device_info(canonical, &info) != 0 ||
+        !info.whole_disk || info.size_bytes == 0U)
         return -1;
 
     /*
      * A destructive confirmation must identify a physical medium, not merely
-     * a model/capacity class. Two anonymous USB devices can legitimately have
-     * identical model, transport and size fields, so accepting those fields
-     * alone would allow a hot-swapped lookalike disk to satisfy confirmation.
+     * a model/capacity class. Two anonymous devices can legitimately have the
+     * same geometry, so serial or WWN remains mandatory.
      */
-    if (*serial == '\0' && *wwn == '\0')
+    if (info.serial[0] == '\0' && info.wwn[0] == '\0')
         return -1;
 
-    /*
-     * Deliberately exclude /dev/sdX from the persistent fingerprint: the same
-     * physical test disk may acquire a different kernel name after a reboot.
-     * A serial or WWN supplies the stable device identity; model, transport
-     * and exact capacity strengthen that binding.
-     */
-    length = snprintf(material, sizeof(material),
-                      "size=%llu\nmodel=%s\nserial=%s\nwwn=%s\ntransport=%s\n",
-                      (unsigned long long)size, model, serial, wwn, transport);
+    const int length = snprintf(
+        material, sizeof(material),
+        "size=%llu\nmodel=%s\nserial=%s\nwwn=%s\ntransport=%s\n",
+        (unsigned long long)info.size_bytes, info.model, info.serial,
+        info.wwn, info.transport);
     if (length < 0 || (size_t)length >= sizeof(material))
         return -1;
+
     context = EVP_MD_CTX_new();
     if (context == NULL ||
         EVP_DigestInit_ex(context, EVP_sha256(), NULL) != 1 ||
@@ -435,194 +583,77 @@ cleanup:
 }
 
 int ldtm_is_whole_block_device(const char *device) {
-    struct stat st;
-    const char *const argv[] = {"lsblk", "-d", "-n", "-o", "TYPE", "--", device, NULL};
-    char *output = NULL;
-    int result;
-    if (device == NULL || stat(device, &st) != 0 || !S_ISBLK(st.st_mode)) return 0;
-    if (capture_process(argv, &output) != 0) return 0;
-    infiltratr_trim(output);
-    result = strcmp(output, "disk") == 0;
-    free(output);
-    return result;
-}
-
-static int source_disk(const char *source, char *disk, size_t capacity) {
-    char *ancestry = NULL;
-    char *line;
-    char *saveptr = NULL;
-    int found = 0;
-    if (source == NULL || !infiltratr_string_starts_with(source, "/dev/"))
-        return 0;
-    {
-        const char *const lsblk_argv[] = {
-            "lsblk", "-s", "-n", "-p", "-o", "PATH,TYPE", "--", source, NULL
-        };
-        if (capture_process(lsblk_argv, &ancestry) != 0)
-            return 0;
-    }
-    line = strtok_r(ancestry, "\n", &saveptr);
-    while (line != NULL) {
-        char path[PATH_MAX];
-        char type[32];
-        if (sscanf(line, "%4095s %31s", path, type) == 2 &&
-            strcmp(type, "disk") == 0) {
-            char canonical[PATH_MAX];
-            if (ldtm_canonicalize_device(path, canonical, sizeof(canonical)) == 0 &&
-                strlen(canonical) + 1U <= capacity) {
-                memcpy(disk, canonical, strlen(canonical) + 1U);
-                found = 1;
-                break;
-            }
-        }
-        line = strtok_r(NULL, "\n", &saveptr);
-    }
-    free(ancestry);
-    return found;
-}
-
-static int mount_target_is_user_media(const char *target) {
-    if (target == NULL) return 0;
-    return strcmp(target, "/mnt") == 0 ||
-           infiltratr_string_starts_with(target, "/mnt/") ||
-           infiltratr_string_starts_with(target, "/media/") ||
-           infiltratr_string_starts_with(target, "/run/media/");
+    char canonical[PATH_MAX];
+    LdBlockDeviceInfo info;
+    return device != NULL &&
+           ldtm_canonicalize_device(device, canonical, sizeof(canonical)) == 0 &&
+           ld_block_device_info(canonical, &info) == 0 &&
+           info.whole_disk;
 }
 
 int ldtm_is_system_disk(const char *device) {
     char canonical[PATH_MAX];
-    char *mounts = NULL;
-    char *line;
-    char *saveptr = NULL;
-    FILE *swaps;
-    char swap_line[PATH_MAX + 256U];
-
-    if (ldtm_canonicalize_device(device, canonical, sizeof(canonical)) != 0)
+    bool in_use = true;
+    if (device == NULL ||
+        ldtm_canonicalize_device(device, canonical, sizeof(canonical)) != 0 ||
+        ld_block_device_has_system_use(canonical, &in_use) != 0)
         return 1;
-
-    /*
-     * Protect every disk that backs a live system mount, not only /, /boot and
-     * /boot/efi.  User-removable mount roots are deliberately excluded so an
-     * ordinary USB disk mounted by udisks can still be selected and then
-     * cleanly unmounted by the worker.
-     */
-    {
-        const char *const argv[] = {
-            "findmnt", "-r", "-n", "-o", "SOURCE,TARGET", NULL
-        };
-        if (capture_process(argv, &mounts) != 0)
-            return 1;
-    }
-    line = strtok_r(mounts, "\n", &saveptr);
-    while (line != NULL) {
-        char source[PATH_MAX];
-        char target[PATH_MAX];
-        if (sscanf(line, "%4095s %4095s", source, target) == 2 &&
-            infiltratr_string_starts_with(source, "/dev/") &&
-            !mount_target_is_user_media(target)) {
-            char *subvolume = strchr(source, '[');
-            char disk[PATH_MAX];
-            if (subvolume != NULL) *subvolume = '\0';
-            if (source_disk(source, disk, sizeof(disk)) &&
-                strcmp(canonical, disk) == 0) {
-                free(mounts);
-                return 1;
-            }
-        }
-        line = strtok_r(NULL, "\n", &saveptr);
-    }
-    free(mounts);
-
-    /* Active swap is system storage even though it is not a mounted tree. */
-    swaps = fopen("/proc/swaps", "r");
-    if (swaps == NULL)
-        return 1;
-    if (fgets(swap_line, sizeof(swap_line), swaps) == NULL) {
-        (void)fclose(swaps);
-        return 1;
-    }
-    while (fgets(swap_line, sizeof(swap_line), swaps) != NULL) {
-        char source[PATH_MAX];
-        if (sscanf(swap_line, "%4095s", source) == 1 &&
-            infiltratr_string_starts_with(source, "/dev/")) {
-            char disk[PATH_MAX];
-            if (source_disk(source, disk, sizeof(disk)) &&
-                strcmp(canonical, disk) == 0) {
-                (void)fclose(swaps);
-                return 1;
-            }
-        }
-    }
-    (void)fclose(swaps);
-    return 0;
+    return in_use ? 1 : 0;
 }
 
 int ldtm_device_safety_check(const char *device, int allow_non_removable,
                              char *detail, size_t detail_capacity) {
     char canonical[PATH_MAX];
-    const char *const argv[] = {
-        "lsblk", "-d", "-b", "-n", "-P", "-o", "SIZE,RM,RO,TRAN", "--", device, NULL
-    };
-    char *output = NULL;
-    char size_text[64] = "0";
-    char rm_text[16] = "0";
-    char ro_text[16] = "0";
-    char transport[64] = "";
-    uint64_t bytes = 0U;
-    uint64_t removable_value = 0U;
-    uint64_t readonly_value = 0U;
-    int removable;
-    int readonly;
+    LdBlockDeviceInfo info;
+    bool system_use = true;
+
     if (detail == NULL || detail_capacity == 0U) return -1;
     detail[0] = '\0';
-    if (ldtm_canonicalize_device(device, canonical, sizeof(canonical)) != 0) {
-        (void)snprintf(detail, detail_capacity, "Target does not exist: %s", device);
+    if (device == NULL ||
+        ldtm_canonicalize_device(device, canonical, sizeof(canonical)) != 0) {
+        (void)snprintf(detail, detail_capacity, "Target does not exist: %s",
+                       device != NULL ? device : "(null)");
         return -1;
     }
-    if (!ldtm_is_whole_block_device(canonical)) {
-        (void)snprintf(detail, detail_capacity, "Refusing non-whole-disk target: %s", canonical);
-        return -1;
-    }
-    if (ldtm_is_system_disk(canonical)) {
-        (void)snprintf(detail, detail_capacity, "Refusing disk backing active system storage: %s", canonical);
-        return -1;
-    }
-    if (capture_process(argv, &output) != 0) {
+    if (ld_block_device_info(canonical, &info) != 0) {
         (void)snprintf(detail, detail_capacity, "Unable to inspect %s", canonical);
         return -1;
     }
-    (void)extract_pair(output, "SIZE", size_text, sizeof(size_text));
-    (void)extract_pair(output, "RM", rm_text, sizeof(rm_text));
-    (void)extract_pair(output, "RO", ro_text, sizeof(ro_text));
-    (void)extract_pair(output, "TRAN", transport, sizeof(transport));
-    free(output);
-    if (!infiltratr_parse_u64(size_text, 10U, &bytes) ||
-        !infiltratr_parse_u64_range(rm_text, 10U, 0U, 1U, &removable_value) ||
-        !infiltratr_parse_u64_range(ro_text, 10U, 0U, 1U, &readonly_value)) {
+    if (!info.whole_disk) {
         (void)snprintf(detail, detail_capacity,
-                       "Unable to parse target properties for %s", canonical);
+                       "Refusing non-whole-disk target: %s", canonical);
         return -1;
     }
-    removable = (int)removable_value;
-    readonly = (int)readonly_value;
-    if (readonly != 0) {
-        (void)snprintf(detail, detail_capacity, "Refusing read-only target: %s", canonical);
+    if (ld_block_device_has_system_use(canonical, &system_use) != 0 ||
+        system_use) {
+        (void)snprintf(detail, detail_capacity,
+                       "Refusing disk backing active system storage: %s",
+                       canonical);
         return -1;
     }
-    if (bytes < ldtm_required_capacity_bytes()) {
+    if (info.read_only) {
+        (void)snprintf(detail, detail_capacity,
+                       "Refusing read-only target: %s", canonical);
+        return -1;
+    }
+    if (info.size_bytes < ldtm_required_capacity_bytes()) {
         (void)snprintf(detail, detail_capacity,
                        "Target is too small: %.1f GiB; need at least %.1f GiB",
-                       (double)bytes / (double)LDTM_GIB,
+                       (double)info.size_bytes / (double)LDTM_GIB,
                        (double)ldtm_required_capacity_bytes() / (double)LDTM_GIB);
         return -1;
     }
-    if (!allow_non_removable && !ldtm_transport_is_field_media(removable, transport)) {
+    if (!allow_non_removable &&
+        !ldtm_transport_is_field_media(info.removable ? 1 : 0,
+                                       info.transport)) {
         (void)snprintf(detail, detail_capacity,
                        "Refusing non-removable target by default (RM=%d, TRAN=%s)",
-                       removable, *transport != '\0' ? transport : "unknown");
+                       info.removable ? 1 : 0,
+                       info.transport[0] != '\0' ? info.transport : "unknown");
         return -1;
     }
-    (void)snprintf(detail, detail_capacity, "Safe field-media target: %s", canonical);
+    (void)snprintf(detail, detail_capacity,
+                   "Safe field-media target: %s", canonical);
     return 0;
 }
 

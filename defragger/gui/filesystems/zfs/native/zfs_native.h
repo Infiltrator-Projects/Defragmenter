@@ -76,6 +76,7 @@ typedef struct {
     bool exact_fragmentation;
     LdZfsRange *ranges;
     size_t range_count;
+    size_t range_capacity;
 } LdZfsAnalysis;
 
 int zfs_read_summary(const char *path, LdZfsSummary *summary,

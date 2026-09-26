@@ -33,11 +33,32 @@ typedef struct {
     ino_t inode;
 } LdDevice;
 
+typedef struct {
+    uint64_t size_bytes;
+    bool whole_disk;
+    bool removable;
+    bool read_only;
+    char model[128];
+    char serial[128];
+    char wwn[128];
+    char transport[32];
+} LdBlockDeviceInfo;
+
 /* True when this block node, an overlapping parent/child, or a storage mapping
  * that covers it is mounted in the current namespace.
  */
 bool ld_device_number_is_mounted(dev_t device_number);
 bool ld_path_is_mounted(const char *path);
+
+/*
+ * Native block-device metadata used by destructive target selection.  These
+ * functions read the opened device/sysfs/procfs directly; callers do not need
+ * to parse lsblk/findmnt output.  System-use detection excludes ordinary
+ * removable-media mount roots (/mnt, /media, /run/media) but includes active
+ * swap and every other mounted relation of the selected whole disk.
+ */
+int ld_block_device_info(const char *path, LdBlockDeviceInfo *info);
+int ld_block_device_has_system_use(const char *path, bool *in_use);
 
 /* Non-fatal opener. Returns 0 on success and -1 with errno on failure. */
 int ld_device_try_open(const char *path, bool writable, LdDevice *device);

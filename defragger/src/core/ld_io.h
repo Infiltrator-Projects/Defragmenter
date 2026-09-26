@@ -18,6 +18,20 @@
 ssize_t ld_pread_full(int fd, void *buffer, size_t length, uint64_t offset);
 ssize_t ld_pwrite_full(int fd, const void *buffer, size_t length, uint64_t offset);
 
+/*
+ * Packed boolean allocation maps.  Filesystem engines frequently need one
+ * yes/no state per allocation unit; storing one byte per unit wastes 8x the
+ * memory on large media.  These helpers keep that representation consistent
+ * without moving filesystem policy into the core.
+ */
+bool ld_bitmap_size(uint64_t bits, size_t *bytes);
+uint8_t *ld_bitmap_calloc(uint64_t bits);
+bool ld_bitmap_get(const uint8_t *bitmap, uint64_t bit);
+void ld_bitmap_set(uint8_t *bitmap, uint64_t bit, bool value);
+
+/* Retry fsync() across EINTR so transaction boundaries share one primitive. */
+int ld_sync_fd(int fd);
+
 /* Fatal variants for invariants whose violation cannot be recovered locally. */
 void ld_pread_exact(int fd, void *buffer, size_t length, uint64_t offset,
                     const char *what);

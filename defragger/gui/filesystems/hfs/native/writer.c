@@ -828,7 +828,7 @@ static int hfs_build_stage(const char *source_path, const char *stage_path,
     }
     if (rc == 0)
         rc = rewrite_bitmap(&source, stage_fd, final_used, error);
-    if (rc == 0 && fsync(stage_fd) != 0) {
+    if (rc == 0 && ld_sync_fd(stage_fd) != 0) {
         hfs_set_error(error, "cannot sync HFS working image: %s", strerror(errno));
         rc = -1;
     }
@@ -1331,7 +1331,7 @@ static int safe_commit_stage(const char *stage_path, const char *target_path,
     int rc = 0;
     for (uint64_t offset = 0U; offset < state->physical_bytes;) {
         if (ld_stop_requested()) {
-            if (fsync(target) != 0) {
+            if (ld_sync_fd(target) != 0) {
                 hfs_set_error(error, "cannot sync HFS target at Stop boundary: %s",
                               strerror(errno));
                 rc = -1;
@@ -1353,7 +1353,7 @@ static int safe_commit_stage(const char *stage_path, const char *target_path,
         offset += count;
         total += count;
     }
-    if (rc == 0 && fsync(target) != 0) {
+    if (rc == 0 && ld_sync_fd(target) != 0) {
         hfs_set_error(error, "cannot sync HFS target: %s", strerror(errno));
         rc = -1;
     }

@@ -748,24 +748,14 @@ static int relayout_reserve_object(MinixRelayoutCatalogue *catalogue,
                                    MinixRelayoutObject **object,
                                    char *error, size_t error_size)
 {
-    if (catalogue->object_count == catalogue->object_capacity) {
-        size_t next = catalogue->object_capacity == 0U ? 16U :
-                      catalogue->object_capacity * 2U;
-        if (next < catalogue->object_capacity ||
-            next > SIZE_MAX / sizeof(*catalogue->objects)) {
-            minix_error(error, error_size,
-                        "Minix inode catalogue exceeds addressable memory");
-            return -1;
-        }
-        MinixRelayoutObject *grown =
-            realloc(catalogue->objects, next * sizeof(*grown));
-        if (grown == NULL) {
-            minix_error(error, error_size,
-                        "out of memory growing Minix inode catalogue");
-            return -1;
-        }
-        catalogue->objects = grown;
-        catalogue->object_capacity = next;
+    if (catalogue->object_count == SIZE_MAX ||
+        !infiltratr_array_reserve((void **)&catalogue->objects,
+                                  &catalogue->object_capacity,
+                                  sizeof(*catalogue->objects),
+                                  catalogue->object_count + 1U, 16U)) {
+        minix_error(error, error_size,
+                    "out of memory growing Minix inode catalogue");
+        return -1;
     }
     *object = &catalogue->objects[catalogue->object_count++];
     memset(*object, 0, sizeof(**object));

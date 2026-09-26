@@ -518,7 +518,7 @@ static int safe_commit_stage(const char *stage_path, const char *target_path,
     uint64_t total = 0U;
     for (uint64_t offset = 0U; offset < state->filesystem_bytes;) {
         if (ld_stop_requested()) {
-            rc = fsync(target) == 0 ? APFS_TXN_STOPPED : -1;
+            rc = ld_sync_fd(target) == 0 ? APFS_TXN_STOPPED : -1;
             if (rc < 0)
                 txn_error(error, error_size,
                           "cannot sync APFS target at Stop boundary: %s",
@@ -538,7 +538,7 @@ static int safe_commit_stage(const char *stage_path, const char *target_path,
         }
         offset += count; total += count;
     }
-    if (rc == 0 && fsync(target) != 0) {
+    if (rc == 0 && ld_sync_fd(target) != 0) {
         txn_error(error, error_size,
                   "cannot sync APFS target: %s", strerror(errno));
         rc = -1;

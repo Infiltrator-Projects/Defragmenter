@@ -2,6 +2,7 @@
 #include "zfs_native.h"
 
 #include "ld_io.h"
+#include "infiltratr/arithmetic.h"
 #include "infiltratr/endian.h"
 
 #include <errno.h>
@@ -162,23 +163,11 @@ static int range_reserve(ZfsRangeSet *set, size_t needed)
 {
     if (needed <= set->capacity)
         return 0;
-    size_t capacity = set->capacity == 0U ? 16U : set->capacity;
-    while (capacity < needed) {
-        if (capacity > SIZE_MAX / 2U) {
-            errno = EOVERFLOW;
-            return -1;
-        }
-        capacity *= 2U;
-    }
-    if (capacity > SIZE_MAX / sizeof(*set->items)) {
-        errno = EOVERFLOW;
+    if (!infiltratr_array_reserve((void **)&set->items, &set->capacity,
+                                  sizeof(*set->items), needed, 16U)) {
+        errno = ENOMEM;
         return -1;
     }
-    ZfsByteRange *items = realloc(set->items, capacity * sizeof(*items));
-    if (items == NULL)
-        return -1;
-    set->items = items;
-    set->capacity = capacity;
     return 0;
 }
 
@@ -1419,23 +1408,11 @@ static void file_extent_destroy(ZfsFileExtentList *list)
 static int file_extent_append(ZfsFileExtentList *list, uint64_t block_id,
                               uint64_t start, uint64_t length)
 {
-    if (list->count == list->capacity) {
-        size_t capacity = list->capacity == 0U ? 8U : list->capacity;
-        if (capacity > SIZE_MAX / 2U) {
-            errno = EOVERFLOW;
-            return -1;
-        }
-        capacity *= 2U;
-        if (capacity > SIZE_MAX / sizeof(*list->items)) {
-            errno = EOVERFLOW;
-            return -1;
-        }
-        ZfsFileExtent *items =
-            realloc(list->items, capacity * sizeof(*items));
-        if (items == NULL)
-            return -1;
-        list->items = items;
-        list->capacity = capacity;
+    if (list->count == SIZE_MAX ||
+        !infiltratr_array_reserve((void **)&list->items, &list->capacity,
+                                  sizeof(*list->items), list->count + 1U, 8U)) {
+        errno = ENOMEM;
+        return -1;
     }
     list->items[list->count].block_id = block_id;
     list->items[list->count].start = start;
@@ -1873,20 +1850,18 @@ static int append_analysis_range(LdZfsAnalysis *analysis,
 {
     if (length == 0U)
         return 0;
-    if (analysis->range_count == SIZE_MAX / sizeof(*analysis->ranges)) {
-        errno = EOVERFLOW;
+    if (analysis->range_count == SIZE_MAX ||
+        !infiltratr_array_reserve((void **)&analysis->ranges,
+                                  &analysis->range_capacity,
+                                  sizeof(*analysis->ranges),
+                                  analysis->range_count + 1U, 64U)) {
+        errno = ENOMEM;
         return -1;
     }
-    const size_t next = analysis->range_count + 1U;
-    LdZfsRange *ranges =
-        realloc(analysis->ranges, next * sizeof(*ranges));
-    if (ranges == NULL)
-        return -1;
-    analysis->ranges = ranges;
     analysis->ranges[analysis->range_count].start = start;
     analysis->ranges[analysis->range_count].length = length;
     analysis->ranges[analysis->range_count].flags = flags;
-    analysis->range_count = next;
+    analysis->range_count++;
     return 0;
 }
 

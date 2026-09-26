@@ -297,7 +297,7 @@ static int volume_token(const char *path, uint64_t physical_bytes,
 static uint32_t allocated_run_blocks(const AffsVolume *stage, uint32_t start) {
     uint32_t count = 0U;
     while (start + count < stage->blocks && count < AMIGA_IO_BATCH_BLOCKS &&
-           !stage->free_map[start + count]) {
+           !ld_bitmap_get(stage->free_map, (uint64_t)start + count)) {
         ++count;
     }
     return count;
@@ -321,7 +321,7 @@ static int stage_sha256(const char *path, char output[65], char **error) {
     fflush(stdout);
     int rc = 0;
     for (uint32_t i = 0; i < stage.blocks;) {
-        if (stage.free_map[i]) {
+        if (ld_bitmap_get(stage.free_map, i)) {
             ++i;
             continue;
         }
@@ -397,7 +397,7 @@ static int check_unchanged_target(const char *device,
 }
 
 static int stop_commit(int target, char **error) {
-    if (fsync(target) != 0) {
+    if (ld_sync_fd(target) != 0) {
         affs_set_error(error, "cannot sync Amiga source at Stop boundary: %s", strerror(errno));
         return -1;
     }
@@ -437,7 +437,7 @@ static int safe_commit_stage(const char *stage_path, const char *target_path,
     uint64_t total_written = 0;
     int rc = 0;
     for (uint32_t i = 0; i < stage.blocks;) {
-        if (stage.free_map[i]) {
+        if (ld_bitmap_get(stage.free_map, i)) {
             ++i;
             continue;
         }
@@ -460,7 +460,7 @@ static int safe_commit_stage(const char *stage_path, const char *target_path,
         i += count;
     }
     if (rc == 0 && ld_stop_requested()) rc = stop_commit(target, error);
-    if (rc == 0 && fsync(target) != 0) {
+    if (rc == 0 && ld_sync_fd(target) != 0) {
         affs_set_error(error, "cannot sync Amiga source: %s", strerror(errno));
         rc = -1;
     }

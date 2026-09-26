@@ -284,7 +284,7 @@ static int commit_one_range(int stage_fd, int target_fd,
         *journal_bytes += chunk;
         state->commit_offset = offset;
         if (*journal_bytes >= JOURNAL_INTERVAL) {
-            if (fsync(target_fd) != 0 || journal_save(journal_path, state, error) != 0) return -1;
+            if (ld_sync_fd(target_fd) != 0 || journal_save(journal_path, state, error) != 0) return -1;
             *journal_bytes = 0U;
             if (total_bytes != 0U) {
                 printf("%.2f percent completed\n",
@@ -355,7 +355,7 @@ static int commit_stage(const char *device, const char *journal_path, ExfatJourn
     }
     if (dirty_length != state->boot_length ||
         ld_pwrite_full(target.fd, dirty_boot, dirty_length, 0) != (ssize_t)dirty_length ||
-        fsync(target.fd) != 0) {
+        ld_sync_fd(target.fd) != 0) {
         free(dirty_boot); exfat_catalogue_free(&stage_catalogue); exfat_close_volume(&stage_volume);
         exfat_close_volume(&target); exfat_set_error(error, "cannot publish dirty exFAT transaction boot region"); return -1;
     }
@@ -393,7 +393,7 @@ static int commit_stage(const char *device, const char *journal_path, ExfatJourn
                              &completed_bytes, &journal_bytes, &stop_announced, error) != 0) result = -1;
     }
 
-    if (result == 0 && fsync(target.fd) != 0) {
+    if (result == 0 && ld_sync_fd(target.fd) != 0) {
         exfat_set_error(error, "cannot sync completed exFAT allocated-range commit"); result = -1;
     }
     if (result == 0 && verify_commit_ranges(target.fd, stage_volume.fd,
@@ -403,7 +403,7 @@ static int commit_stage(const char *device, const char *journal_path, ExfatJourn
         uint8_t *clean_boot = ld_xmalloc((size_t)state->boot_length);
         if (ld_pread_full(stage_volume.fd, clean_boot, (size_t)state->boot_length, 0) != (ssize_t)state->boot_length ||
             ld_pwrite_full(target.fd, clean_boot, (size_t)state->boot_length, 0) != (ssize_t)state->boot_length ||
-            fsync(target.fd) != 0) {
+            ld_sync_fd(target.fd) != 0) {
             exfat_set_error(error, "cannot publish clean exFAT boot region"); result = -1;
         }
         free(clean_boot);

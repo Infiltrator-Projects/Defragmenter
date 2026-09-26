@@ -330,11 +330,11 @@ static int scan_extent_container(int fd, const Root *root, uint32_t block_no,
                                  SfsExtentVec *extents,
                                  uint32_t *first_key, bool *has_key,
                                  char *error, size_t error_size) {
-    if (depth > 64U || block_no >= root->total_blocks || visited[block_no] != 0U) {
+    if (depth > 64U || block_no >= root->total_blocks || ld_bitmap_get(visited, block_no)) {
         set_error(error, error_size, "SFS extent B-tree contains a cycle or invalid depth");
         return -1;
     }
-    visited[block_no] = 1U;
+    ld_bitmap_set(visited, block_no, true);
     uint8_t *buffer = malloc(root->block_size);
     if (buffer == NULL) {
         set_error(error, error_size, "out of memory reading SFS extent B-tree");
@@ -532,7 +532,7 @@ static int evaluate_file(const Root *root, const SfsExtentVec *extents,
         analysis->growth_10_satisfied = false;
     } else {
         for (uint64_t i = 0U; i < reserve; ++i) {
-            if (free_map[end + i] == 0U) {
+            if (!ld_bitmap_get(free_map, (uint64_t)end + i)) {
                 analysis->growth_10_satisfied = false;
                 break;
             }
@@ -580,12 +580,12 @@ static int scan_object_catalogue(int fd, const Root *root,
         uint32_t block_no = pending.items[queue];
         uint32_t expected_previous = 0U;
         while (block_no != 0U) {
-            if (block_no >= root->total_blocks || visited[block_no] != 0U) {
+            if (block_no >= root->total_blocks || ld_bitmap_get(visited, block_no)) {
                 set_error(error, error_size, "SFS object-container graph contains a cycle");
                 rc = -1;
                 break;
             }
-            visited[block_no] = 1U;
+            ld_bitmap_set(visited, block_no, true);
             uint8_t *buffer = malloc(root->block_size);
             if (buffer == NULL) {
                 set_error(error, error_size, "out of memory reading SFS object container");
@@ -718,7 +718,7 @@ static int scan_object_catalogue(int fd, const Root *root,
 static int scan_catalogue(int fd, const Root *root, const uint8_t *free_map,
                           SfsAnalysis *analysis, SfsMapCell *cells,
                           uint64_t cell_count, char *error, size_t error_size) {
-    uint8_t *tree_visited = calloc(root->total_blocks, 1U);
+    uint8_t *tree_visited = ld_bitmap_calloc(root->total_blocks);
     if (tree_visited == NULL) {
         set_error(error, error_size, "out of memory tracking SFS extent B-tree");
         return -1;
@@ -746,7 +746,7 @@ static int scan_catalogue(int fd, const Root *root, const uint8_t *free_map,
             }
         }
         for (uint32_t block = 0U; block < extent->blocks; ++block) {
-            if (free_map[extent->key + block] != 0U) {
+            if (ld_bitmap_get(free_map, (uint64_t)extent->key + block)) {
                 free(extents.items);
                 set_error(error, error_size, "SFS extent B-tree references bitmap-free data");
                 return -1;
@@ -809,7 +809,7 @@ static int scan_bitmap(int fd, const Root *root, SfsAnalysis *analysis,
             const uint64_t fs_block = first + bit;
             const uint8_t byte = buf[SFS_HEADER_BYTES + (size_t)(bit >> 3U)];
             const bool is_free = (byte & (uint8_t)(0x80U >> (bit & 7U))) != 0U;
-            if (free_map != NULL) free_map[fs_block] = is_free ? 1U : 0U;
+            if (free_map != NULL) ld_bitmap_set(free_map, fs_block, is_free);
             if (is_free) free_blocks++; else used_blocks++;
             if (cells != NULL && cell_count != 0U) {
                 while (cell_index + 1U < cell_count && fs_block > cells[cell_index].end) cell_index++;
@@ -858,7 +858,7 @@ int sfs_analyse(const char *path, SfsAnalysis *analysis, SfsMapCell *cells,
     analysis->object_node_root=root.object_node_root; analysis->structure_version=root.version;
     analysis->sequence_number=root.sequence; analysis->root_bits=root.bits; analysis->filesystem_bytes=fs_bytes;
     analysis->physical_bytes=physical; analysis->primary_root_valid=pv; analysis->backup_root_valid=bv;
-    uint8_t *free_map = calloc(root.total_blocks, 1U);
+    uint8_t *free_map = ld_bitmap_calloc(root.total_blocks);
     if (free_map == NULL) {
         close(fd);
         set_error(error, error_size, "out of memory tracking SFS allocation state");
@@ -911,7 +911,7 @@ static int model_open(const char *path, SfsModel *model,
         return -1;
     }
 
-    model->free_map = calloc(model->root.total_blocks, 1U);
+    model->free_map = ld_bitmap_calloc(model->root.total_blocks);
     if (model->free_map == NULL) {
         set_error(error, error_size, "out of memory tracking SFS allocation state");
         model_close(model);
@@ -925,7 +925,7 @@ static int model_open(const char *path, SfsModel *model,
         return -1;
     }
 
-    uint8_t *tree_visited = calloc(model->root.total_blocks, 1U);
+    uint8_t *tree_visited = ld_bitmap_calloc(model->root.total_blocks);
     if (tree_visited == NULL) {
         set_error(error, error_size, "out of memory tracking SFS extent B-tree");
         model_close(model);
@@ -953,7 +953,7 @@ static int model_open(const char *path, SfsModel *model,
             }
         }
         for (uint32_t block = 0U; block < extent->blocks; ++block) {
-            if (model->free_map[extent->key + block] != 0U) {
+            if (model->ld_bitmap_get(free_map, (uint64_t)extent->key + block)) {
                 set_error(error, error_size,
                           "SFS extent B-tree references bitmap-free data");
                 model_close(model);
@@ -1038,7 +1038,7 @@ static int choose_run(uint8_t *claimed, uint32_t total_blocks,
          (uint64_t)candidate + span <= total_blocks; ++candidate) {
         bool available = true;
         for (uint32_t index = 0U; index < need + reserve; ++index) {
-            if (claimed[candidate + index] != 0U) {
+            if (ld_bitmap_get(claimed, (uint64_t)candidate + index)) {
                 candidate += index;
                 available = false;
                 break;
@@ -1046,7 +1046,8 @@ static int choose_run(uint8_t *claimed, uint32_t total_blocks,
         }
         if (!available) continue;
         *start = candidate;
-        memset(claimed + candidate, 1, (size_t)need + reserve);
+        for (uint32_t index = 0U; index < need + reserve; ++index)
+            ld_bitmap_set(claimed, (uint64_t)candidate + index, true);
         return 0;
     }
     return -1;
@@ -1172,11 +1173,11 @@ static int refresh_btree_node(int fd, const Root *root, uint32_t block_no,
                               uint32_t *first_key, bool *has_key,
                               char *error, size_t error_size) {
     if (depth > 64U || block_no >= root->total_blocks ||
-        visited[block_no] != 0U) {
+        ld_bitmap_get(visited, block_no)) {
         set_error(error, error_size, "SFS extent B-tree topology changed during staging");
         return -1;
     }
-    visited[block_no] = 1U;
+    ld_bitmap_set(visited, block_no, true);
     uint8_t *block = malloc(root->block_size);
     if (block == NULL) {
         set_error(error, error_size, "out of memory refreshing SFS extent B-tree");
@@ -1319,7 +1320,7 @@ static int write_bitmap(int fd, const Root *root, const uint8_t *free_map,
         for (uint64_t bit = 0U; bit < count; ++bit) {
             const uint8_t mask = (uint8_t)(0x80U >> (bit & 7U));
             uint8_t *byte = block + SFS_HEADER_BYTES + (size_t)(bit >> 3U);
-            if (free_map[first + bit] != 0U) *byte |= mask;
+            if (ld_bitmap_get(free_map, first + bit)) *byte |= mask;
             else *byte &= (uint8_t)~mask;
         }
         fix_checksum(block, root->block_size, checksum_seed(root));
@@ -1375,8 +1376,15 @@ int sfs_build_stage(const char *source, const char *stage, bool growth,
         return -1;
     }
 
-    uint8_t *claimed = calloc(model.root.total_blocks, 1U);
-    uint8_t *stage_free = malloc(model.root.total_blocks);
+    size_t map_bytes = 0U;
+    if (!ld_bitmap_size(model.root.total_blocks, &map_bytes)) {
+        (void)close(stage_fd);
+        model_close(&model);
+        set_error(error, error_size, "SFS allocation map is too large");
+        return -1;
+    }
+    uint8_t *claimed = ld_bitmap_calloc(model.root.total_blocks);
+    uint8_t *stage_free = ld_bitmap_calloc(model.root.total_blocks);
     SfsExtent *records = calloc(model.extents.count == 0U ? 1U :
                                 model.extents.count, sizeof(*records));
     if (claimed == NULL || stage_free == NULL || records == NULL) {
@@ -1388,13 +1396,15 @@ int sfs_build_stage(const char *source, const char *stage, bool growth,
         set_error(error, error_size, "out of memory planning SFS relocation");
         return -1;
     }
-    memcpy(stage_free, model.free_map, model.root.total_blocks);
+    memcpy(stage_free, model.free_map, map_bytes);
     for (uint32_t block = 0U; block < model.root.total_blocks; ++block)
-        claimed[block] = model.free_map[block] == 0U ? 1U : 0U;
+        ld_bitmap_set(claimed, block, !ld_bitmap_get(model.free_map, block));
     for (size_t index = 0U; index < model.extents.count; ++index) {
         const SfsExtent *extent = &model.extents.items[index];
-        memset(claimed + extent->key, 0, extent->blocks);
-        memset(stage_free + extent->key, 1, extent->blocks);
+        for (uint32_t block = 0U; block < extent->blocks; ++block) {
+            ld_bitmap_set(claimed, (uint64_t)extent->key + block, false);
+            ld_bitmap_set(stage_free, (uint64_t)extent->key + block, true);
+        }
     }
 
     size_t record_count = 0U;
@@ -1436,8 +1446,10 @@ int sfs_build_stage(const char *source, const char *stage, bool growth,
             rc = -1;
             break;
         }
-        if (need != 0U) memset(stage_free + start, 0, need);
-        if (reserve != 0U) memset(stage_free + start + need, 1, reserve);
+        for (uint32_t block = 0U; block < need; ++block)
+            ld_bitmap_set(stage_free, (uint64_t)start + block, false);
+        for (uint32_t block = 0U; block < reserve; ++block)
+            ld_bitmap_set(stage_free, (uint64_t)start + need + block, true);
 
         uint32_t cursor = start;
         for (size_t chain = 0U; chain < file->chain.count; ++chain) {
