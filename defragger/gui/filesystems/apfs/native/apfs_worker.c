@@ -782,6 +782,7 @@ int main(int argc, char **argv)
 
     ld_stop_clear();
     ld_stop_install_handlers();
+    ld_stop_report_ready();
     char error[512] = {0};
     if (recover) {
         const int rc =
