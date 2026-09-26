@@ -615,7 +615,8 @@ static int move_file_data_batched(const AffsVolume *src, AffsVolume *dst,
             rc = -1;
             break;
         }
-        memset(dst->free_map + start + j, 0, count);
+        for (uint32_t block = 0U; block < count; ++block)
+            ld_bitmap_set(dst->free_map, (uint64_t)start + j + block, false);
         *changed += count;
         j += count;
     }
