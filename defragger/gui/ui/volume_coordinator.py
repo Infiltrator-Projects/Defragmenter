@@ -89,57 +89,59 @@ class VolumeCoordinator:
         )
 
     def select(self, index: int) -> VolumeSelection:
-        """Select a volume, revalidate its identity, and return a safe cache hit."""
+        """Select from the current snapshot without performing blocking I/O."""
 
         self.store.select(index)
+        return VolumeSelection(self.current, self.store.cached_map())
+
+    def revalidate_selected(
+        self,
+        path: str,
+        discovered: list[Volume],
+    ) -> VolumeSelection:
+        """Apply a background identity refresh for the currently selected path."""
+
         selected = self.current
-        if selected is not None and not selected.image:
-            try:
-                fresh = next(
-                    (
-                        volume
-                        for volume in self._discover(self.catalog)
-                        if volume.path == selected.path
-                    ),
-                    None,
+        if selected is None or selected.path != path or selected.image:
+            return VolumeSelection(self.current, self.store.cached_map())
+
+        fresh = next((volume for volume in discovered if volume.path == path), None)
+        if fresh is None:
+            self.store.invalidate(path)
+            selected.identity_verified = False
+            return VolumeSelection(selected, None)
+
+        if (
+            selected.identity_verified
+            and not fresh.identity_verified
+            and selected.size == fresh.size
+            and (
+                (
+                    selected.filesystem_uuid
+                    and fresh.filesystem_uuid
+                    and selected.filesystem_uuid.casefold()
+                    == fresh.filesystem_uuid.casefold()
                 )
-            except Exception:
-                # Discovery failure must never make an old map look current.
-                self.store.invalidate(selected.path)
-            else:
-                if fresh is None:
-                    self.store.invalidate(selected.path)
-                else:
-                    if (
-                        selected.identity_verified
-                        and not fresh.identity_verified
-                        and selected.size == fresh.size
-                        and (
-                            (
-                                selected.filesystem_uuid
-                                and fresh.filesystem_uuid
-                                and selected.filesystem_uuid.casefold()
-                                == fresh.filesystem_uuid.casefold()
-                            )
-                            or (
-                                selected.partition_uuid
-                                and fresh.partition_uuid
-                                and selected.partition_uuid.casefold()
-                                == fresh.partition_uuid.casefold()
-                            )
-                        )
-                        and (
-                            selected.normalized_fstype == fresh.normalized_fstype
-                            or {
-                                selected.fstype.casefold(),
-                                fresh.fstype.casefold(),
-                            } <= {"fat", "vfat", "msdos", "fat12", "fat16", "fat32"}
-                        )
-                    ):
-                        fresh.fstype = selected.fstype
-                        fresh.fs_version = selected.fs_version
-                        fresh.identity_verified = True
-                    self.store.replace(fresh)
+                or (
+                    selected.partition_uuid
+                    and fresh.partition_uuid
+                    and selected.partition_uuid.casefold()
+                    == fresh.partition_uuid.casefold()
+                )
+            )
+            and (
+                selected.normalized_fstype == fresh.normalized_fstype
+                or {
+                    selected.fstype.casefold(),
+                    fresh.fstype.casefold(),
+                } <= {"fat", "vfat", "msdos", "fat12", "fat16", "fat32"}
+            )
+        ):
+            fresh.fstype = selected.fstype
+            fresh.fs_version = selected.fs_version
+            fresh.identity_verified = True
+
+        self.store.replace(fresh)
         return VolumeSelection(self.current, self.store.cached_map())
 
     def accept_native_identity(self, filesystem: str) -> Volume:
