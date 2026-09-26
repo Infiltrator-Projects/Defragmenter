@@ -422,14 +422,12 @@ void fat32_load(
         free(other);
     }
     free(raw);
-    fs->visited_dirs =
-        ld_xcalloc((size_t)fs->max_cluster + 1, 1);
-    fs->claimed_clusters =
-        ld_xcalloc((size_t)fs->max_cluster + 1, 1);
-    fs->chain_seen = ld_xcalloc(
-        (size_t)fs->max_cluster + 1,
-        sizeof(*fs->chain_seen)
-    );
+    fs->visited_dirs = ld_bitmap_calloc((uint64_t)fs->max_cluster + 1U);
+    fs->claimed_clusters = ld_bitmap_calloc((uint64_t)fs->max_cluster + 1U);
+    fs->chain_seen = ld_bitmap_calloc((uint64_t)fs->max_cluster + 1U);
+    if (fs->visited_dirs == NULL || fs->claimed_clusters == NULL ||
+        fs->chain_seen == NULL)
+        ld_die("cannot allocate packed FAT traversal guards");
     fs->chain_generation = 0;
 }
 
@@ -619,26 +617,15 @@ U32Vec fat32_read_chain(Fat32 *fs, uint32_t first) {
     if (first < 2 || first > fs->max_cluster) {
         ld_die("file begins at invalid cluster");
     }
-    fs->chain_generation++;
-    if (fs->chain_generation == 0) {
-        memset(
-            fs->chain_seen,
-            0,
-            ((size_t)fs->max_cluster + 1)
-                * sizeof(*fs->chain_seen)
-        );
-        fs->chain_generation = 1;
-    }
-    uint32_t generation = fs->chain_generation;
     uint32_t current = first;
     for (;;) {
         if (current < 2 || current > fs->max_cluster) {
             ld_die("cluster chain points outside data region");
         }
-        if (fs->chain_seen[current] == generation) {
+        if (ld_bitmap_get(fs->chain_seen, current)) {
             ld_die("cluster-chain loop detected");
         }
-        fs->chain_seen[current] = generation;
+        ld_bitmap_set(fs->chain_seen, current, true);
         u32vec_push(&chain, current);
         uint32_t next = fat_value(fs, current);
         if (fat_is_eoc_for(fs, next)) {
@@ -659,5 +646,7 @@ U32Vec fat32_read_chain(Fat32 *fs, uint32_t first) {
             ld_die("cluster chain exceeds volume cluster count");
         }
     }
+    for (size_t index = 0U; index < chain.len; ++index)
+        ld_bitmap_set(fs->chain_seen, chain.v[index], false);
     return chain;
 }
