@@ -18,12 +18,11 @@
 #define SFS_TM_BITMAP_BASE 1U
 #define SFS_TM_FILE_ID 10U
 #define SFS_TM_FRAGMENTS 100U
-#define SFS_TM_CHUNK_BLOCKS 64U
-#define SFS_TM_CHUNK_KIB 256U
+#define SFS_TM_CHUNK_BLOCKS 512U
+#define SFS_TM_CHUNK_KIB 2048U
 #define SFS_TM_LOW_START 128U
-#define SFS_TM_LOW_STRIDE 96U
+#define SFS_TM_LOW_STRIDE 768U
 #define SFS_TM_DATA_BLOCKS (SFS_TM_FRAGMENTS * SFS_TM_CHUNK_BLOCKS)
-#define SFS_TM_FILE_BYTES ((uint64_t)SFS_TM_DATA_BLOCKS * SFS_TM_BLOCK_SIZE)
 
 typedef struct {
     uint32_t total_blocks;
@@ -97,8 +96,52 @@ static int geometry_for_path(const char *path, SfsTmGeometry *geometry)
 static uint32_t fragment_start(const SfsTmGeometry *geometry, uint32_t index)
 {
     if (index + 1U == SFS_TM_FRAGMENTS)
-        return geometry->total_blocks - 184U;
+        return geometry->total_blocks - (SFS_TM_CHUNK_BLOCKS + 1024U);
     return SFS_TM_LOW_START + index * SFS_TM_LOW_STRIDE;
+}
+
+static int profile_matches(const LdtmFragmentProfile *profile)
+{
+    if (profile == NULL ||
+        profile->files != LDTM_TARGET_FILE_COUNT ||
+        profile->chunks != 30U ||
+        profile->chunk_kib != SFS_TM_CHUNK_KIB ||
+        profile->directory_initial != 0U ||
+        profile->directory_second != 0U)
+        return 0;
+    static const uint32_t expected[LDTM_TARGET_FILE_COUNT] =
+        {2U, 3U, 5U, 8U, 13U, 17U, 22U, 30U};
+    for (size_t file = 0U; file < LDTM_TARGET_FILE_COUNT; ++file)
+        if (ldtm_profile_file_chunks(profile, file) != expected[file])
+            return 0;
+    return ldtm_profile_payload_bytes(profile) == UINT64_C(200) * LDTM_MIB;
+}
+
+static int fragment_owner(const LdtmFragmentProfile *profile,
+                          uint32_t fragment,
+                          uint32_t *file_index,
+                          uint32_t *within_file)
+{
+    uint32_t first = 0U;
+    for (uint32_t file = 0U; file < profile->files; ++file) {
+        const uint32_t count = ldtm_profile_file_chunks(profile, file);
+        if (fragment < first + count) {
+            if (file_index != NULL) *file_index = file;
+            if (within_file != NULL) *within_file = fragment - first;
+            return 0;
+        }
+        first += count;
+    }
+    return -1;
+}
+
+static uint32_t first_fragment_for_file(const LdtmFragmentProfile *profile,
+                                        uint32_t file_index)
+{
+    uint32_t first = 0U;
+    for (uint32_t file = 0U; file < file_index; ++file)
+        first += ldtm_profile_file_chunks(profile, file);
+    return first;
 }
 
 static int geometry_is_used(const SfsTmGeometry *geometry, uint32_t block)
@@ -167,7 +210,8 @@ static void make_bitmap(uint8_t *block, const SfsTmGeometry *geometry,
     stamp_checksum(block);
 }
 
-static void make_extent_tree(uint8_t *block, const SfsTmGeometry *geometry)
+static void make_extent_tree(uint8_t *block, const SfsTmGeometry *geometry,
+                             const LdtmFragmentProfile *profile)
 {
     memset(block, 0, SFS_TM_BLOCK_SIZE);
     set_header(block, "BNDC", geometry->extents);
@@ -175,43 +219,64 @@ static void make_extent_tree(uint8_t *block, const SfsTmGeometry *geometry)
     block[14U] = 1U;
     block[15U] = 14U;
     for (uint32_t index = 0U; index < SFS_TM_FRAGMENTS; ++index) {
+        uint32_t file = 0U;
+        uint32_t within = 0U;
+        if (fragment_owner(profile, index, &file, &within) != 0)
+            continue;
+        const uint32_t chunks = ldtm_profile_file_chunks(profile, file);
         uint8_t *node = block + 16U + (size_t)index * 14U;
         const uint32_t start = fragment_start(geometry, index);
         infiltratr_store_be32(node, start);
         infiltratr_store_be32(
             node + 4U,
-            index + 1U < SFS_TM_FRAGMENTS
+            within + 1U < chunks
                 ? fragment_start(geometry, index + 1U) : 0U);
         infiltratr_store_be32(
             node + 8U,
-            index > 0U ? fragment_start(geometry, index - 1U) : 0U);
+            within > 0U ? fragment_start(geometry, index - 1U) : 0U);
         infiltratr_store_be16(node + 12U, SFS_TM_CHUNK_BLOCKS);
     }
     stamp_checksum(block);
 }
 
 static void make_object_container(uint8_t *block,
-                                  const SfsTmGeometry *geometry)
+                                  const SfsTmGeometry *geometry,
+                                  const LdtmFragmentProfile *profile)
 {
-    uint8_t *object;
     memset(block, 0, SFS_TM_BLOCK_SIZE);
     set_header(block, "OBJC", geometry->objects);
-    object = block + 24U;
-    infiltratr_store_be32(object + 4U, SFS_TM_FILE_ID);
-    infiltratr_store_be32(object + 8U, 0x0fU);
-    infiltratr_store_be32(object + 12U, fragment_start(geometry, 0U));
-    infiltratr_store_be32(object + 16U, (uint32_t)SFS_TM_FILE_BYTES);
-    object[24U] = 0U;
-    memcpy(object + 25U, "fragmented-00.bin", 18U);
-    object[43U] = 0U;
+    size_t offset = 24U;
+    for (uint32_t file = 0U; file < profile->files; ++file) {
+        char name[32];
+        const uint64_t file_bytes = ldtm_profile_file_bytes(profile, file);
+        const uint32_t first = first_fragment_for_file(profile, file);
+        if (file_bytes == 0U || file_bytes > UINT32_MAX ||
+            offset + 44U > SFS_TM_BLOCK_SIZE)
+            return;
+        uint8_t *object = block + offset;
+        infiltratr_store_be32(object + 4U, SFS_TM_FILE_ID + file);
+        infiltratr_store_be32(object + 8U, 0x0fU);
+        infiltratr_store_be32(object + 12U, fragment_start(geometry, first));
+        infiltratr_store_be32(object + 16U, (uint32_t)file_bytes);
+        object[24U] = 0U;
+        (void)snprintf(name, sizeof(name), "fragmented-%02u.bin", file);
+        const size_t name_length = strlen(name);
+        memcpy(object + 25U, name, name_length);
+        object[25U + name_length] = 0U;
+        object[26U + name_length] = 0U;
+        offset += 27U + name_length;
+        if ((offset & 1U) != 0U) ++offset;
+    }
     stamp_checksum(block);
 }
 
-static void make_payload(uint8_t *block, uint32_t fragment, uint32_t within)
+static void make_payload(uint8_t *block, uint32_t file_index,
+                         uint32_t logical_block)
 {
     uint64_t state = UINT64_C(0x6a09e667f3bcc909) ^
-                     ((uint64_t)fragment << 32U) ^
-                     ((uint64_t)within * UINT64_C(0x9e3779b97f4a7c15));
+                     ((uint64_t)file_index << 40U) ^
+                     ((uint64_t)logical_block *
+                      UINT64_C(0x9e3779b97f4a7c15));
     for (size_t offset = 0U; offset < SFS_TM_BLOCK_SIZE; ++offset) {
         state ^= state >> 12U;
         state ^= state << 25U;
@@ -237,8 +302,11 @@ static int read_block(int fd, uint32_t block_number, uint8_t *block)
 
 int ldtm_format_sfs_volume(const char *path)
 {
+    const LdtmFilesystemSpec *spec = ldtm_find_spec("sfs");
+    const LdtmFragmentProfile profile = ldtm_fragment_profile(spec);
     SfsTmGeometry geometry;
-    if (geometry_for_path(path, &geometry) != 0)
+    if (spec == NULL || !profile_matches(&profile) ||
+        geometry_for_path(path, &geometry) != 0)
         return -1;
 
     int fd = open(path, O_RDWR | O_CLOEXEC);
@@ -267,17 +335,23 @@ int ldtm_format_sfs_volume(const char *path)
         write_block(fd, geometry.objects + 2U, block) != 0)
         goto cleanup;
 
-    make_extent_tree(block, &geometry);
+    make_extent_tree(block, &geometry, &profile);
     if (write_block(fd, geometry.extents, block) != 0)
         goto cleanup;
-    make_object_container(block, &geometry);
+    make_object_container(block, &geometry, &profile);
     if (write_block(fd, geometry.objects, block) != 0)
         goto cleanup;
 
     for (uint32_t fragment = 0U; fragment < SFS_TM_FRAGMENTS; ++fragment) {
+        uint32_t file = 0U;
+        uint32_t within_file = 0U;
+        if (fragment_owner(&profile, fragment, &file, &within_file) != 0)
+            goto cleanup;
         const uint32_t start = fragment_start(&geometry, fragment);
         for (uint32_t within = 0U; within < SFS_TM_CHUNK_BLOCKS; ++within) {
-            make_payload(block, fragment, within);
+            make_payload(
+                block, file,
+                within_file * SFS_TM_CHUNK_BLOCKS + within);
             if (write_block(fd, start + within, block) != 0)
                 goto cleanup;
         }
@@ -295,15 +369,6 @@ cleanup:
     return result;
 }
 
-static int profile_matches(const LdtmFragmentProfile *profile)
-{
-    return profile != NULL && profile->files == 1U &&
-           profile->chunks == SFS_TM_FRAGMENTS &&
-           profile->chunk_kib == SFS_TM_CHUNK_KIB &&
-           profile->directory_initial == 0U &&
-           profile->directory_second == 0U;
-}
-
 int ldtm_populate_sfs_volume(const char *path,
                              const LdtmFragmentProfile *profile)
 {
@@ -313,12 +378,14 @@ int ldtm_populate_sfs_volume(const char *path,
         return -1;
     return sfs_analyse(path, &analysis, NULL, 0U,
                        error, sizeof(error)) == 0 &&
-           analysis.regular_files == 1U &&
+           analysis.regular_files == LDTM_TARGET_FILE_COUNT &&
            analysis.data_blocks == SFS_TM_DATA_BLOCKS &&
-           analysis.fragmented_files == 1U ? 0 : -1;
+           analysis.fragmented_files == LDTM_TARGET_FILE_COUNT ? 0 : -1;
 }
 
-static int verify_current_payload(const char *path)
+static int verify_current_payload(const char *path,
+                                  const LdtmFragmentProfile *profile,
+                                  int expect_fragmented)
 {
     uint8_t *root = NULL;
     uint8_t *objects = NULL;
@@ -357,52 +424,77 @@ static int verify_current_payload(const char *path)
         extent_tree[14U] == 0U || extent_tree[15U] != 14U)
         goto cleanup;
 
-    const uint8_t *object = objects + 24U;
-    if (load_be32(object + 4U) != SFS_TM_FILE_ID ||
-        load_be32(object + 16U) != (uint32_t)SFS_TM_FILE_BYTES)
-        goto cleanup;
-    uint32_t key = load_be32(object + 12U);
     const uint16_t extent_count = infiltratr_load_be16(extent_tree + 12U);
-    if (key == 0U || extent_count != SFS_TM_FRAGMENTS)
-        goto cleanup;
+    size_t object_offset = 24U;
+    for (uint32_t file = 0U; file < profile->files; ++file) {
+        if (object_offset + 27U > SFS_TM_BLOCK_SIZE)
+            goto cleanup;
+        const uint8_t *object = objects + object_offset;
+        const uint64_t expected_bytes =
+            ldtm_profile_file_bytes(profile, file);
+        if (expected_bytes == 0U || expected_bytes > UINT32_MAX ||
+            load_be32(object + 4U) != SFS_TM_FILE_ID + file ||
+            load_be32(object + 16U) != (uint32_t)expected_bytes)
+            goto cleanup;
 
-    uint32_t logical = 0U;
-    uint32_t previous = 0U;
-    for (uint32_t chain = 0U; chain < SFS_TM_FRAGMENTS; ++chain) {
-        const uint8_t *record = NULL;
-        for (uint16_t index = 0U; index < extent_count; ++index) {
-            const uint8_t *candidate = extent_tree + 16U + (size_t)index * 14U;
-            if (load_be32(candidate) == key) {
-                record = candidate;
-                break;
+        uint32_t key = load_be32(object + 12U);
+        uint32_t previous = 0U;
+        uint64_t logical_blocks = 0U;
+        uint32_t chain_count = 0U;
+        while (key != 0U) {
+            if (++chain_count > SFS_TM_FRAGMENTS)
+                goto cleanup;
+            const uint8_t *record = NULL;
+            for (uint16_t index = 0U; index < extent_count; ++index) {
+                const uint8_t *candidate =
+                    extent_tree + 16U + (size_t)index * 14U;
+                if (load_be32(candidate) == key) {
+                    record = candidate;
+                    break;
+                }
             }
+            if (record == NULL || load_be32(record + 8U) != previous)
+                goto cleanup;
+            const uint32_t blocks = infiltratr_load_be16(record + 12U);
+            const uint32_t next = load_be32(record + 4U);
+            if (blocks == 0U || key >= total_blocks ||
+                blocks > total_blocks - key)
+                goto cleanup;
+
+            for (uint32_t within = 0U; within < blocks; ++within) {
+                if ((logical_blocks + 1U) * SFS_TM_BLOCK_SIZE >
+                        expected_bytes ||
+                    read_block(fd, key + within, actual) != 0)
+                    goto cleanup;
+                make_payload(expected, file, (uint32_t)logical_blocks);
+                if (memcmp(actual, expected, SFS_TM_BLOCK_SIZE) != 0)
+                    goto cleanup;
+                ++logical_blocks;
+            }
+            previous = key;
+            key = next;
         }
-        if (record == NULL || load_be32(record + 8U) != previous)
-            goto cleanup;
-        const uint32_t blocks = infiltratr_load_be16(record + 12U);
-        const uint32_t next = load_be32(record + 4U);
-        if (blocks == 0U || key >= total_blocks ||
-            blocks > total_blocks - key)
+        if (logical_blocks * SFS_TM_BLOCK_SIZE != expected_bytes ||
+            (expect_fragmented != 0 ? chain_count < 2U : chain_count != 1U))
             goto cleanup;
 
-        for (uint32_t within_extent = 0U; within_extent < blocks;
-             ++within_extent, ++logical) {
-            if (logical >= SFS_TM_DATA_BLOCKS ||
-                read_block(fd, key + within_extent, actual) != 0)
-                goto cleanup;
-            make_payload(expected,
-                         logical / SFS_TM_CHUNK_BLOCKS,
-                         logical % SFS_TM_CHUNK_BLOCKS);
-            if (memcmp(actual, expected, SFS_TM_BLOCK_SIZE) != 0)
-                goto cleanup;
-        }
-        previous = key;
-        key = next;
-        if (key == 0U && chain + 1U != SFS_TM_FRAGMENTS)
+        const size_t name_offset = object_offset + 25U;
+        const uint8_t *limit = objects + SFS_TM_BLOCK_SIZE;
+        const uint8_t *name_end =
+            memchr(objects + name_offset, 0,
+                   (size_t)(limit - (objects + name_offset)));
+        if (name_end == NULL)
             goto cleanup;
+        const uint8_t *comment = name_end + 1U;
+        const uint8_t *comment_end =
+            comment < limit
+                ? memchr(comment, 0, (size_t)(limit - comment))
+                : NULL;
+        if (comment_end == NULL)
+            goto cleanup;
+        object_offset = (size_t)(comment_end - objects) + 1U;
+        if ((object_offset & 1U) != 0U) ++object_offset;
     }
-    if (logical != SFS_TM_DATA_BLOCKS || key != 0U)
-        goto cleanup;
     result = 0;
 
 cleanup:
@@ -437,18 +529,19 @@ static int verify_sfs_payload_state(const char *path,
     if (analysis.block_size != SFS_TM_BLOCK_SIZE ||
         analysis.total_blocks != geometry.total_blocks ||
         analysis.data_blocks != SFS_TM_DATA_BLOCKS ||
-        analysis.regular_files != 1U ||
-        analysis.fragmented_files != (expect_fragmented != 0 ? 1U : 0U) ||
+        analysis.regular_files != LDTM_TARGET_FILE_COUNT ||
+        analysis.fragmented_files !=
+            (expect_fragmented != 0 ? LDTM_TARGET_FILE_COUNT : 0U) ||
         !analysis.primary_root_valid || !analysis.backup_root_valid ||
         analysis.transaction_pending ||
-        verify_current_payload(path) != 0)
+        verify_current_payload(path, profile, expect_fragmented) != 0)
         goto cleanup;
 
     if (detail != NULL && detail_capacity > 0U) {
         (void)snprintf(
             detail, detail_capacity,
             expect_fragmented != 0
-                ? "native SFS0 payload verified on %u MiB media: 1 x 25 MiB file, 100 fragments"
+                ? "native SFS0 payload verified on %u MiB media: 8 differently sized fragmented files, 200 MiB total"
                 : "native SFS0 post-defrag payload verified byte-for-byte; production analyser reports zero fragmented files",
             (unsigned)((uint64_t)geometry.total_blocks *
                        SFS_TM_BLOCK_SIZE / LDTM_MIB));
