@@ -902,26 +902,26 @@ static int create_amiga_and_populate(const LdtmFilesystemSpec *spec, const char 
     if (run_process(wipe_argv, NULL, 0) != 0) {
         emit_status(spec->key, "format-failed", "could not clear old filesystem signatures");
         (void)state_write_status(state, spec, "format-failed", "wipefs failed");
-        return 0;
+        return 1;
     }
     printf("+ built-in raw C Amiga DOS\\%u formatter/populator %s\n", dostype, partition);
     fflush(stdout);
     if (ldtm_format_amiga_volume(partition, dostype, spec->label) != 0) {
         emit_status(spec->key, "format-failed", "built-in C Amiga formatter failed");
         (void)state_write_status(state, spec, "format-failed", "built-in C formatter failed");
-        return 0;
+        return 1;
     }
     if (ldtm_populate_amiga_volume(partition, dostype, &profile) != 0) {
         emit_status(spec->key, "formatted-unpopulated", "raw C Amiga fragmentation payload generation failed");
         (void)state_write_status(state, spec, "formatted-unpopulated", "raw C payload generation failed");
-        return 0;
+        return 1;
     }
     detail[0] = '\0';
     if (ldtm_verify_amiga_payload(partition, dostype, &profile, detail, sizeof(detail)) != 0) {
         emit_status(spec->key, "formatted-unpopulated",
                     detail[0] != '\0' ? detail : "raw C Amiga payload self-check failed");
         (void)state_write_status(state, spec, "formatted-unpopulated", "raw C payload self-check failed");
-        return 0;
+        return 1;
     }
     {
         char analyser_detail[512];
@@ -933,7 +933,7 @@ static int create_amiga_and_populate(const LdtmFilesystemSpec *spec, const char 
             (void)state_write_status(
                 state, spec, "qualification-failed",
                 analyser_detail);
-            return 0;
+            return 1;
         }
     }
     if (state_write_status(
@@ -956,12 +956,12 @@ static int create_regular_and_populate(const LdtmFilesystemSpec *spec, const cha
     if (format_result == 2) {
         emit_status(spec->key, "skipped", "creator is not installed");
         (void)state_write_status(state, spec, "skipped", "creator is not installed");
-        return 0;
+        return 1;
     }
     if (format_result != 0) {
         emit_status(spec->key, "format-failed", "filesystem creator failed");
         (void)state_write_status(state, spec, "format-failed", "filesystem creator failed");
-        return 0;
+        return 1;
     }
     if (spec->payload_mib == 0U) {
         char detail[512];
@@ -978,7 +978,7 @@ static int create_regular_and_populate(const LdtmFilesystemSpec *spec, const cha
                 spec->creator == LDTM_CREATOR_SWAP
                     ? detail
                     : "no retained payload qualification contract");
-            return 0;
+            return 1;
         }
         emit_status(
             spec->key, "populated",
@@ -993,14 +993,14 @@ static int create_regular_and_populate(const LdtmFilesystemSpec *spec, const cha
     if (mount_regular(partition, mountpoint, 0) != 0) {
         emit_status(spec->key, "formatted-unpopulated", "formatted successfully but host could not mount it read/write");
         (void)state_write_status(state, spec, "formatted-unpopulated", "host mount failed");
-        return 0;
+        return 1;
     }
     if (generate_fragmented_data(spec, mountpoint, records, &record_count, &directory_entries) != 0) {
         const char *const umount_argv[] = {"umount", mountpoint, NULL};
         (void)run_process(umount_argv, NULL, 0);
         emit_status(spec->key, "formatted-unpopulated", "fragmentation payload generation failed");
         (void)state_write_status(state, spec, "formatted-unpopulated", "payload generation failed");
-        return 0;
+        return 1;
     }
     {
         const char *const umount_argv[] = {"umount", mountpoint, NULL};
@@ -1013,7 +1013,7 @@ static int create_regular_and_populate(const LdtmFilesystemSpec *spec, const cha
             emit_status(spec->key, "qualification-failed", detail);
             (void)state_write_status(
                 state, spec, "qualification-failed", detail);
-            return 0;
+            return 1;
         }
     }
     if (state_write_status(
@@ -1104,7 +1104,7 @@ static int create_ufs_and_populate(const LdtmFilesystemSpec *spec, const char *p
     if (!ldtm_program_available("makefs")) {
         emit_status(spec->key, "skipped", "makefs is not installed");
         (void)state_write_status(state, spec, "skipped", "makefs is not installed");
-        return 0;
+        return 1;
     }
     if (run_process(wipe_argv, NULL, 0) != 0 ||
         snprintf(source, sizeof(source), "%s/ufs-source", work) <= 0 ||
@@ -1112,12 +1112,12 @@ static int create_ufs_and_populate(const LdtmFilesystemSpec *spec, const char *p
         ensure_directory(source, 0755) != 0) {
         emit_status(spec->key, "format-failed", "could not prepare UFS image workspace");
         (void)state_write_status(state, spec, "format-failed", "UFS workspace preparation failed");
-        return 0;
+        return 1;
     }
     if (generate_fragmented_data(spec, source, records, &record_count, &directory_entries) != 0) {
         emit_status(spec->key, "format-failed", "could not build deterministic UFS source tree");
         (void)state_write_status(state, spec, "format-failed", "UFS source tree generation failed");
-        return 0;
+        return 1;
     }
     makefs_argv[0] = "makefs";
     makefs_argv[1] = "-t";
@@ -1137,14 +1137,14 @@ static int create_ufs_and_populate(const LdtmFilesystemSpec *spec, const char *p
     if (run_process(makefs_argv, NULL, 0) != 0 || !ufs2_summary_ok(image)) {
         emit_status(spec->key, "format-failed", "makefs did not produce a recognised UFS2 image");
         (void)state_write_status(state, spec, "format-failed", "makefs UFS2 validation failed");
-        return 0;
+        return 1;
     }
     printf("+ copy verified UFS2 image %s -> %s\n", image, partition);
     fflush(stdout);
     if (copy_image_to_partition(image, partition) != 0 || !ufs2_summary_ok(partition)) {
         emit_status(spec->key, "format-failed", "UFS2 image copy could not be independently validated");
         (void)state_write_status(state, spec, "format-failed", "UFS2 partition validation failed");
-        return 0;
+        return 1;
     }
     {
         char detail[512];
@@ -1153,7 +1153,7 @@ static int create_ufs_and_populate(const LdtmFilesystemSpec *spec, const char *p
             emit_status(spec->key, "qualification-failed", detail);
             (void)state_write_status(
                 state, spec, "qualification-failed", detail);
-            return 0;
+            return 1;
         }
     }
     if (state_write_status(
@@ -1180,7 +1180,7 @@ static int create_zfs_and_populate(const LdtmFilesystemSpec *spec, const char *p
     if (!ldtm_program_available("zpool")) {
         emit_status(spec->key, "skipped", "zpool is not installed");
         (void)state_write_status(state, spec, "skipped", "zpool is not installed");
-        return 0;
+        return 1;
     }
     short_device_hash(device, pool_hash);
     (void)snprintf(pool, sizeof(pool), "ldtest_%.16s", pool_hash);
@@ -1197,7 +1197,7 @@ static int create_zfs_and_populate(const LdtmFilesystemSpec *spec, const char *p
         if (run_process(argv, NULL, 0) != 0) {
             emit_status(spec->key, "format-failed", "zpool create failed");
             (void)state_write_status(state, spec, "format-failed", "zpool create failed");
-            return 0;
+            return 1;
         }
     }
     if (generate_fragmented_data(spec, mountpoint, records, &record_count, &directory_entries) != 0) {
@@ -1205,7 +1205,7 @@ static int create_zfs_and_populate(const LdtmFilesystemSpec *spec, const char *p
         (void)run_process(export_argv, NULL, 0);
         emit_status(spec->key, "formatted-unpopulated", "ZFS payload generation failed");
         (void)state_write_status(state, spec, "formatted-unpopulated", "ZFS payload generation failed");
-        return 0;
+        return 1;
     }
     {
         const char *const export_argv[] = {"zpool", "export", pool, NULL};
@@ -1217,7 +1217,7 @@ static int create_zfs_and_populate(const LdtmFilesystemSpec *spec, const char *p
         (void)state_write_status(
             state, spec, "format-failed",
             "native exact analyser rejected the exported ZFS v28 pool");
-        return 0;
+        return 1;
     }
     {
         char detail[512];
@@ -1226,7 +1226,7 @@ static int create_zfs_and_populate(const LdtmFilesystemSpec *spec, const char *p
             emit_status(spec->key, "qualification-failed", detail);
             (void)state_write_status(
                 state, spec, "qualification-failed", detail);
-            return 0;
+            return 1;
         }
     }
     if (state_write_status(
@@ -1257,7 +1257,7 @@ static int create_apfs_and_populate(const LdtmFilesystemSpec *spec,
                     "could not clear old filesystem signatures");
         (void)state_write_status(
             state, spec, "format-failed", "wipefs failed");
-        return 0;
+        return 1;
     }
     printf("+ built-in raw C APFS fixture creator %s\n", partition);
     fflush(stdout);
@@ -1267,7 +1267,7 @@ static int create_apfs_and_populate(const LdtmFilesystemSpec *spec,
         (void)state_write_status(
             state, spec, "format-failed",
             "built-in C APFS creator failed");
-        return 0;
+        return 1;
     }
     if (ldtm_verify_apfs_payload(
             partition, detail, sizeof(detail)) != 0) {
@@ -1278,7 +1278,7 @@ static int create_apfs_and_populate(const LdtmFilesystemSpec *spec,
         (void)state_write_status(
             state, spec, "formatted-unpopulated",
             "APFS fixture self-check failed");
-        return 0;
+        return 1;
     }
     {
         char analyser_detail[512];
@@ -1290,7 +1290,7 @@ static int create_apfs_and_populate(const LdtmFilesystemSpec *spec,
             (void)state_write_status(
                 state, spec, "qualification-failed",
                 analyser_detail);
-            return 0;
+            return 1;
         }
     }
     if (state_write_status(
@@ -1373,36 +1373,62 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device) {
     (void)chmod(state_path, 0644);
     if (fprintf(state, "schema\t1\ndevice\t%s\n", canonical) < 0 || fflush(state) != 0) goto cleanup;
 
-    for (index = 0U; index < ldtm_spec_count(); ++index) {
-        const LdtmFilesystemSpec *spec = &ldtm_specs()[index];
-        const char *partition = partition_for_label(&map, spec->label);
-        printf("\n=== %s: %s ===\n", spec->key, partition != NULL ? partition : "missing partition");
+    {
+        int failures = 0;
+        for (index = 0U; index < ldtm_spec_count(); ++index) {
+            const LdtmFilesystemSpec *spec = &ldtm_specs()[index];
+            const char *partition = partition_for_label(&map, spec->label);
+            int filesystem_result = 0;
+            printf("\n=== %s: %s ===\n", spec->key,
+                   partition != NULL ? partition : "missing partition");
+            fflush(stdout);
+            if (partition == NULL) {
+                emit_status(
+                    spec->key, "failed",
+                    "partition label was not found after repartitioning");
+                (void)state_write_status(
+                    state, spec, "failed", "partition label missing");
+                failures++;
+                continue;
+            }
+            if (spec->creator == LDTM_CREATOR_MANUAL) {
+                emit_status(spec->key, "qualification-failed", spec->note);
+                (void)state_write_status(
+                    state, spec, "qualification-failed", spec->note);
+                failures++;
+                continue;
+            }
+            if (spec->creator == LDTM_CREATOR_AFFS ||
+                spec->creator == LDTM_CREATOR_PFS3) {
+                filesystem_result =
+                    create_amiga_and_populate(spec, partition, state);
+            } else if (spec->creator == LDTM_CREATOR_APFS) {
+                filesystem_result =
+                    create_apfs_and_populate(spec, partition, state);
+            } else if (spec->creator == LDTM_CREATOR_UFS) {
+                filesystem_result =
+                    create_ufs_and_populate(
+                        spec, partition, work, state);
+            } else if (spec->creator == LDTM_CREATOR_ZFS) {
+                filesystem_result =
+                    create_zfs_and_populate(
+                        spec, partition, work, canonical, state);
+            } else {
+                filesystem_result =
+                    create_regular_and_populate(
+                        spec, partition, work, state);
+            }
+            if (filesystem_result < 0)
+                goto cleanup;
+            if (filesystem_result > 0)
+                failures++;
+        }
+        result = failures == 0 ? 0 : 1;
+        printf(
+            "\nTest disk preparation finished with %d qualification failure%s. State: %s\n",
+            failures, failures == 1 ? "" : "s", state_path);
         fflush(stdout);
-        if (partition == NULL) {
-            emit_status(spec->key, "failed", "partition label was not found after repartitioning");
-            (void)state_write_status(state, spec, "failed", "partition label missing");
-            continue;
-        }
-        if (spec->creator == LDTM_CREATOR_MANUAL) {
-            emit_status(spec->key, "reserved", spec->note);
-            (void)state_write_status(state, spec, "reserved", spec->note);
-            continue;
-        }
-        if ((spec->creator == LDTM_CREATOR_AFFS || spec->creator == LDTM_CREATOR_PFS3)) {
-            if (create_amiga_and_populate(spec, partition, state) != 0) goto cleanup;
-        } else if (spec->creator == LDTM_CREATOR_APFS) {
-            if (create_apfs_and_populate(spec, partition, state) != 0) goto cleanup;
-        } else if (spec->creator == LDTM_CREATOR_UFS) {
-            if (create_ufs_and_populate(spec, partition, work, state) != 0) goto cleanup;
-        } else if (spec->creator == LDTM_CREATOR_ZFS) {
-            if (create_zfs_and_populate(spec, partition, work, canonical, state) != 0) goto cleanup;
-        } else {
-            if (create_regular_and_populate(spec, partition, work, state) != 0) goto cleanup;
-        }
     }
-    result = 0;
-    printf("\nTest disk preparation finished. State: %s\n", state_path);
-    fflush(stdout);
 
 cleanup:
     if (state != NULL) (void)fclose(state);
