@@ -624,7 +624,7 @@ private:
                 {"active_id", Json::integer(active_id)},
                 {"delivered", Json(true)},
                 {"message", Json(
-                    "safe stop queued until engine initialisation")}});
+                    "safe stop queued until worker Stop readiness")}});
             return;
         }
         deliver_stop(pid, id, active_id);
