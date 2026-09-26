@@ -1489,7 +1489,7 @@ static int create_ufs_and_populate(const LdtmFilesystemSpec *spec, const char *p
     makefs_argv[6] = image_size;
     makefs_argv[7] = "-o";
     makefs_argv[8] =
-        "version=2,bsize=8192,fsize=1024,minfree=5,maxbpg=16,optimization=space";
+        "version=2,bsize=8192,fsize=1024,minfree=5,maxbpg=256,optimization=space";
     makefs_argv[9] = image;
     makefs_argv[10] = source;
     makefs_argv[11] = NULL;
