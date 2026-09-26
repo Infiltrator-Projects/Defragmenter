@@ -81,6 +81,8 @@ class MainWindow(Gtk.ApplicationWindow):
         self.set_position(Gtk.WindowPosition.CENTER)
         self.connect("realize", self._configure_native_window)
         self._discovery_generation = 0
+        self._selection_generation = 0
+        self._suppress_device_changed = False
         self._destroyed = False
 
         self.mapper = find_mapper()
@@ -258,22 +260,30 @@ class MainWindow(Gtk.ApplicationWindow):
             preserve_path=preserve_path,
             clear_cache=clear_cache,
         )
-        self.view.populate_volumes(
-            [volume.display_name for volume in self.volumes.volumes],
-            active,
-        )
+        self._populate_volume_selector(active)
         if not self.volumes.volumes:
             self.view.status_label.set_text(
                 "No supported filesystems detected. Open an image or attach a "
                 "supported volume."
             )
+        else:
+            self._apply_volume_selection(self.volumes.select(active))
         self.update_controls()
         if on_complete is not None:
             on_complete()
         return False
 
-    def on_device_changed(self, combo: Gtk.ComboBoxText) -> None:
-        selection = self.volumes.select(combo.get_active())
+    def _populate_volume_selector(self, active: int) -> None:
+        self._suppress_device_changed = True
+        try:
+            self.view.populate_volumes(
+                [volume.display_name for volume in self.volumes.volumes],
+                active,
+            )
+        finally:
+            self._suppress_device_changed = False
+
+    def _apply_volume_selection(self, selection: VolumeSelection) -> None:
         self.view.reset_summary()
         volume = selection.volume
         self.view.show_selected_volume(
@@ -296,6 +306,84 @@ class MainWindow(Gtk.ApplicationWindow):
             )
             GLib.idle_add(self._auto_analyse_selected, volume.path)
         self.update_controls()
+
+    def on_device_changed(self, combo: Gtk.ComboBoxText) -> None:
+        if self._suppress_device_changed:
+            return
+        selection = self.volumes.select(combo.get_active())
+        volume = selection.volume
+        if volume is None or volume.image:
+            self._apply_volume_selection(selection)
+            return
+
+        self._selection_generation += 1
+        generation = self._selection_generation
+        selected_path = volume.path
+        self.view.reset_summary()
+        self.view.show_selected_volume(volume.display_name)
+        self.coordinator.reset_map()
+        self.view.status_label.set_text(
+            volume.display_name + " · revalidating identity…"
+        )
+        self.update_controls()
+
+        def worker() -> None:
+            try:
+                discovered = self.volumes.discover()
+                error: Exception | None = None
+            except Exception as exc:
+                discovered = []
+                error = exc
+            GLib.idle_add(
+                self._finish_selection_revalidation,
+                generation,
+                selected_path,
+                discovered,
+                error,
+            )
+
+        threading.Thread(
+            target=worker,
+            name="defragmenter-selection-revalidation",
+            daemon=True,
+        ).start()
+
+    def _finish_selection_revalidation(
+        self,
+        generation: int,
+        selected_path: str,
+        discovered: list[Volume],
+        error: Exception | None,
+    ) -> bool:
+        current = self.current_volume
+        if (
+            self._destroyed
+            or generation != self._selection_generation
+            or current is None
+            or current.path != selected_path
+        ):
+            return False
+
+        if error is not None:
+            self.volumes.invalidate(selected_path)
+            current.identity_verified = False
+            self.coordinator.reset_map()
+            self.show_error("Unable to revalidate selected volume", str(error))
+            self.update_controls()
+            return False
+
+        selection = self.volumes.revalidate_selected(selected_path, discovered)
+        active = next(
+            (
+                index
+                for index, item in enumerate(self.volumes.volumes)
+                if item.path == selected_path
+            ),
+            -1,
+        )
+        self._populate_volume_selector(active)
+        self._apply_volume_selection(selection)
+        return False
 
     def _auto_analyse_selected(self, selected_path: str) -> bool:
         if (
@@ -463,4 +551,5 @@ class MainWindow(Gtk.ApplicationWindow):
     def _shutdown(self, *_args: object) -> None:
         self._destroyed = True
         self._discovery_generation += 1
+        self._selection_generation += 1
         self.runner.shutdown()
