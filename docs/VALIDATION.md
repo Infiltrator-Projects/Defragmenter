@@ -114,6 +114,8 @@ Every reproducible defect should gain the narrowest useful permanent regression.
 
 Tests are part of the product contract, not disposable scaffolding.
 
+Allocation-map validation is also fail-closed: every returned cell must account exactly for its physical span across free/used/unknown/outside/bad primary states, while fragmentation and directory overlays may not exceed used allocation. Both the native mapper boundary and GTK presentation layer enforce the same invariant.
+
 ## Limits
 
 The evidence is not a mathematical proof and does not establish correctness for untested feature combinations, compromised privileged environments, or hardware/firmware that falsely acknowledges persistence. Those limits are why unsupported states fail closed and destructive qualification uses verified backups or sacrificial media.

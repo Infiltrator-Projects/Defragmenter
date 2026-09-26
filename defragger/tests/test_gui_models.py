@@ -184,6 +184,33 @@ def test_sfs_style_exact_map_reports_file_fragmentation_not_fallback_text() -> N
     assert "1 fragmented files" in view.analysis_log
 
 
+
+def test_allocation_map_rejects_inconsistent_cell_accounting() -> None:
+    data = {
+        "backend": "read-only-domain",
+        "filesystem": "ext4",
+        "map_accuracy": "exact",
+        "unit_size": 4096,
+        "total_units": 4,
+        "cell_count": 1,
+        "total_bytes": 16384,
+        "filesystem_bytes": 16384,
+        "free_bytes": 8192,
+        "used_bytes": 8192,
+        "unknown_bytes": 0,
+        "regular_files": 1,
+        "directories": 1,
+        "fragmented_files": 0,
+        "fragmented_directories": 0,
+        "cells": [{"start": 0, "end": 3, "free": 1, "used": 2}],
+    }
+    try:
+        present_allocation_map(data, ("defrag",))
+    except AllocationMapError:
+        pass
+    else:
+        raise AssertionError("inconsistent allocation-cell accounting was accepted")
+
 def test_allocation_raster_preserves_physical_disk_order() -> None:
     starts = [0, 50]
     ends = [49, 99]
@@ -744,6 +771,7 @@ def test_main_window_remains_resizable_maximisable_and_workarea_bounded() -> Non
 def main() -> None:
     test_catalog_is_validated_immutable_and_instance_owned()
     test_map_presenter_validates_and_normalises_fat_map()
+    test_allocation_map_rejects_inconsistent_cell_accounting()
     test_allocation_raster_preserves_physical_disk_order()
     test_map_presenter_handles_domain_and_swap_maps()
     test_xfs_live_strokes_are_preview_then_authoritative()

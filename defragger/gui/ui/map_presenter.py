@@ -105,6 +105,26 @@ def _validated_cells(data: dict[str, Any]) -> tuple[list[dict[str, int]], int]:
                     f"allocation map cell {index} field {field!r} is outside its bounds"
                 )
             normalized[field] = value
+
+        primary = (
+            normalized["free"]
+            + normalized["used"]
+            + normalized["unknown"]
+            + normalized["outside"]
+            + normalized["bad"]
+        )
+        if primary != span:
+            raise AllocationMapError(
+                f"allocation map cell {index} primary states cover {primary} "
+                f"units but its span is {span}"
+            )
+        if (
+            normalized["fragmented"] > normalized["used"]
+            or normalized["directory"] > normalized["used"]
+        ):
+            raise AllocationMapError(
+                f"allocation map cell {index} overlays exceed used allocation"
+            )
         cells.append(normalized)
     cell_count = _required_int(data, "cell_count", minimum=1)
     if cell_count != len(cells):

@@ -499,6 +499,37 @@ void validate_native_map(const BackendInfo& backend, const Json& payload) {
         if (start != expected_start || end < start || end >= total_units)
             throw std::runtime_error(
                 "native filesystem mapper returned discontinuous allocation cells");
+
+        const std::uint64_t span = end - start + 1U;
+        const std::uint64_t free = required_u64(cell, "free");
+        const std::uint64_t used = required_u64(cell, "used");
+        const std::uint64_t unknown =
+            cell.find("unknown") != nullptr
+                ? cell.at("unknown").unsigned_or(0U) : 0U;
+        const std::uint64_t outside =
+            cell.find("outside") != nullptr
+                ? cell.at("outside").unsigned_or(0U) : 0U;
+        const std::uint64_t bad =
+            cell.find("bad") != nullptr
+                ? cell.at("bad").unsigned_or(0U) : 0U;
+        const std::uint64_t fragmented =
+            cell.find("fragmented") != nullptr
+                ? cell.at("fragmented").unsigned_or(0U) : 0U;
+        const std::uint64_t directory =
+            cell.find("directory") != nullptr
+                ? cell.at("directory").unsigned_or(0U) : 0U;
+
+        if (free > span || used > span || unknown > span ||
+            outside > span || bad > span ||
+            fragmented > used || directory > used ||
+            free > UINT64_MAX - used ||
+            free + used > UINT64_MAX - unknown ||
+            free + used + unknown > UINT64_MAX - outside ||
+            free + used + unknown + outside > UINT64_MAX - bad ||
+            free + used + unknown + outside + bad != span) {
+            throw std::runtime_error(
+                "native filesystem mapper returned inconsistent allocation counts");
+        }
         expected_start = end + 1U;
     }
     if (expected_start != total_units)

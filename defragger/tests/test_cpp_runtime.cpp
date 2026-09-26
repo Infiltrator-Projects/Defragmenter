@@ -220,7 +220,9 @@ int main() {
             "{\"schema\":1,\"backend\":\"read-only-domain\","
             "\"filesystem\":\"btrfs\",\"map_accuracy\":\"exact-single-device\","
             "\"unit_size\":4096,\"total_units\":1,\"cell_count\":1,"
-            "\"cells\":[{\"start\":0,\"end\":0}]}");
+            "\"cells\":[{\"start\":0,\"end\":0,\"free\":0,\"used\":1,"
+            "\"unknown\":0,\"outside\":0,\"bad\":0,"
+            "\"fragmented\":0,\"directory\":0}]}");
         (void)setenv("LINUX_DEFRAGGER_BTRFS_WORKER", valid_worker.c_str(), 1);
         try {
             const Json mapped = map_backend(*btrfs, "/dev/null", 1U);
@@ -235,7 +237,9 @@ int main() {
             "{\"schema\":1,\"backend\":\"read-only-domain\","
             "\"filesystem\":\"zfs\",\"map_accuracy\":\"exact-single-device\","
             "\"unit_size\":4096,\"total_units\":1,\"cell_count\":1,"
-            "\"cells\":[{\"start\":0,\"end\":0}]}");
+            "\"cells\":[{\"start\":0,\"end\":0,\"free\":0,\"used\":1,"
+            "\"unknown\":0,\"outside\":0,\"bad\":0,"
+            "\"fragmented\":0,\"directory\":0}]}");
         (void)setenv("LINUX_DEFRAGGER_BTRFS_WORKER", wrong_identity.c_str(), 1);
         bool rejected_identity = false;
         try {
@@ -250,7 +254,9 @@ int main() {
             "{\"schema\":1,\"backend\":\"read-only-domain\","
             "\"filesystem\":\"btrfs\",\"map_accuracy\":\"summary\","
             "\"unit_size\":4096,\"total_units\":1,\"cell_count\":1,"
-            "\"cells\":[{\"start\":0,\"end\":0}]}");
+            "\"cells\":[{\"start\":0,\"end\":0,\"free\":0,\"used\":1,"
+            "\"unknown\":0,\"outside\":0,\"bad\":0,"
+            "\"fragmented\":0,\"directory\":0}]}");
         (void)setenv("LINUX_DEFRAGGER_BTRFS_WORKER", wrong_accuracy.c_str(), 1);
         bool rejected_accuracy = false;
         try {
@@ -260,6 +266,23 @@ int main() {
         }
         ok = check(rejected_accuracy, "native map accuracy mismatch rejected") && ok;
         (void)unlink(wrong_accuracy.c_str());
+
+        const std::string inconsistent_counts = fake_map_worker(
+            "{\"schema\":1,\"backend\":\"read-only-domain\","
+            "\"filesystem\":\"btrfs\",\"map_accuracy\":\"exact-single-device\","
+            "\"unit_size\":4096,\"total_units\":4,\"cell_count\":1,"
+            "\"cells\":[{\"start\":0,\"end\":3,\"free\":1,\"used\":2,"
+            "\"unknown\":0,\"outside\":0,\"bad\":0,"
+            "\"fragmented\":0,\"directory\":0}]}");
+        (void)setenv("LINUX_DEFRAGGER_BTRFS_WORKER", inconsistent_counts.c_str(), 1);
+        bool rejected_counts = false;
+        try {
+            (void)map_backend(*btrfs, "/dev/null", 1U);
+        } catch (const std::runtime_error&) {
+            rejected_counts = true;
+        }
+        ok = check(rejected_counts, "native map inconsistent counts rejected") && ok;
+        (void)unlink(inconsistent_counts.c_str());
         (void)unsetenv("LINUX_DEFRAGGER_BTRFS_WORKER");
     }
 
