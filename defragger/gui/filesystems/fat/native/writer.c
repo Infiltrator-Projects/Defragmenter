@@ -2117,7 +2117,10 @@ int main(int argc, char **argv) {
     if (g_io.workers == 0) ld_die("--workers must be at least 1");
     size_t cpus = ld_online_cpu_count();
     if (g_io.workers > cpus * 4) ld_die("--workers is unreasonably larger than the available CPU count");
-    if (mutating) ld_stop_install_handlers();
+    if (mutating) {
+        ld_stop_install_handlers();
+        ld_stop_report_ready();
+    }
     Fat32 fs;
     fat32_load(&fs, dev, strcmp(command, "recover") == 0);
     if (g_io.ram_limit < fs.cluster_size) g_io.ram_limit = (size_t)fs.cluster_size;
