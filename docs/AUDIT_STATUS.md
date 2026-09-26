@@ -5,8 +5,8 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-09-26
 
-Applies to: release version 1.8.0-215
-Audited source commit: b6520bb9815a240c2ef16545a03ca910c37a5245
+Applies to: release version 1.8.0-216
+Audited source commit: edb7b62b0673340607a21acc67bbf22c001d7f81
 Audited release-governance commit: 36be157f932006672f4dfae1c41b83317a914f46
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
@@ -15,19 +15,15 @@ This document records the current release safety case. Historical audit-developm
 
 ## Qualification evidence
 
-The current audited production-source baseline is commit `b6520bb9815a240c2ef16545a03ca910c37a5245`. In Project quality gate run 36236413876, that exact candidate completed the warnings-as-errors C/C++ build and all 44 native/filesystem/GUI/release CTest tests successfully; the independent hosted ASan/UBSan lane also passed. Self-hosted Local Linux / heavy qualification run 36236413689 completed its dependency check, strict build and native/filesystem/GUI tests successfully. Both ordinary candidate gates stopped only at the deliberate stale completed-audit control, which this 1.8.0-215 audit advance resolves.
+The current audited production-source baseline is commit `edb7b62b0673340607a21acc67bbf22c001d7f81`. In Project quality gate run 36242132716, that exact candidate completed the warnings-as-errors C/C++ build and all 44 native/filesystem/GUI/release CTest tests successfully; the independent hosted ASan/UBSan lane also passed. Self-hosted Local Linux / heavy qualification run 36242132420 completed its dependency check, strict build and native/filesystem/GUI tests successfully. Both ordinary candidate gates stopped only at the deliberate stale completed-audit control, which this 1.8.0-216 audit advance resolves.
 
-The reviewed process/protocol delta bounds both dimensions of native child execution: captured output and elapsed execution time. Capture children run in isolated process groups and are killed/reaped on contract violation. JSON recursion is capped and privileged-helper request frames are bounded before parsing, preventing unbounded privileged-process memory or stack growth.
+The reviewed Test Media delta standardises the retained qualification corpus at 200 MiB for every file-oriented Test Media filesystem that can represent it. The common corpus is heterogeneous rather than uniform: eight deterministic fragmented files of 4, 6, 10, 16, 26, 34, 44 and 60 MiB total exactly 200 MiB, while mounted formats retain independent boundary-size and fragmented-directory stress data.
 
-The reviewed GUI lifecycle delta preserves selected-volume identity revalidation while moving that I/O away from the GTK event path. Selection itself is now in-memory; asynchronous generation-checked revalidation supplies fresh physical identity without reintroducing UI stalls.
+FAT12 remains a genuine FAT12 filesystem rather than being enlarged to a FAT16 geometry. Its 255 MiB image now carries the full 200 MiB retained corpus with reduced temporary allocator anchors, and the formatter explicitly requests 128 sectors per cluster so native geometry remains below the 4085-cluster FAT16 boundary.
 
-The reviewed parser delta adds explicit AFFS and exFAT directory-recursion bounds. Cycle detection remains authoritative, while excessive valid or malicious nesting now fails closed before C stack exhaustion.
+The reviewed first-party fixture delta expands SFS0, bounded PFS3 and bounded APFS from historical minimal payloads to the same 200 MiB heterogeneous semantic workload. SFS/PFS3 use many format-native extent/anode records over eight differently sized files. APFS remains inside the qualified flat-tree subset and gives each of its eight files two separated extents.
 
-The reviewed scalability delta completes packed allocation-state conversion in remaining high-impact paths: FAT traversal/claim/loop guards, classic HFS and HFS+ allocation/claim state, and Minix zone ownership. Representation changed without changing placement or filesystem semantics.
-
-The reviewed persistence delta makes GUI recovery-journal names collision-resistant and identity-bound, and makes Test Media preparation state fingerprint-addressed and durably published. The same prepared physical disk can therefore be verified across kernel path renaming without relying on volatile /dev basenames.
-
-The reviewed Stop-control delta removes output timing as a proxy for writer readiness. Write-capable workers now emit an explicit typed Stop-ready event only after the cooperative Stop/recovery boundary is established, and the privileged helper gates SIGINT delivery on that event.
+The reviewed verification delta defines fragmentation by physical discontinuity rather than extent-record count. This matches the production analysers and allows SFS/PFS3 writers to preserve multiple adjacent metadata records after Defragment while still proving byte-for-byte payload identity and zero physical fragmentation.
 
 The release-governance baseline remains `36be157f932006672f4dfae1c41b83317a914f46`; workflow semantics are unchanged. The malformed-media matrix, transaction/recovery tests, native integration fixtures, GUI contract tests, release/package tests and architecture ownership checks remain part of the permanent **Project quality gate**. Environment-dependent destructive media evidence is supplementary and is not represented as hosted-CI proof.
 
