@@ -491,9 +491,10 @@ static int verify_target_data(const AffsVolume *volume, const AffsFile *file,
     return remaining == 0U ? 0 : -1;
 }
 
-int ldtm_verify_amiga_payload(const char *path, uint8_t dostype,
-                              const LdtmFragmentProfile *profile,
-                              char *detail, size_t detail_capacity) {
+static int verify_amiga_payload_state(
+    const char *path, uint8_t dostype,
+    const LdtmFragmentProfile *profile, int expect_fragmented,
+    char *detail, size_t detail_capacity) {
     AffsVolume volume;
     char *error = NULL;
     uint8_t seen[AMIGA_MAX_TARGET_FILES] = {0};
@@ -519,10 +520,16 @@ int ldtm_verify_amiga_payload(const char *path, uint8_t dostype,
         get_bstr_name(header, name);
         if (sscanf(name, "fragmented-%02u.bin%n", &target_index, &consumed) == 1 &&
             consumed > 0 && name[consumed] == '\0' && target_index < profile->files) {
-            if (seen[target_index] != 0U || affs_fragments(&file->data) < profile->chunks ||
-                verify_target_data(&volume, file, dostype, target_index, file_size) != 0) goto cleanup_volume;
+            const size_t fragments = affs_fragments(&file->data);
+            if (seen[target_index] != 0U ||
+                (expect_fragmented != 0
+                    ? fragments < profile->chunks
+                    : fragments != 1U) ||
+                verify_target_data(&volume, file, dostype, target_index, file_size) != 0)
+                goto cleanup_volume;
             seen[target_index] = 1U;
-        } else if (infiltratr_string_starts_with(name, "entry-") && file->byte_size == 0U && file->data.n == 0U) {
+        } else if (infiltratr_string_starts_with(name, "entry-") &&
+                   file->byte_size == 0U && file->data.n == 0U) {
             ++directory_entries;
         }
     }
@@ -530,19 +537,44 @@ int ldtm_verify_amiga_payload(const char *path, uint8_t dostype,
         if (seen[file_index] == 0U) goto cleanup_volume;
     }
     if (directory_entries != expected_directory_entries ||
-        volume.files.n != (size_t)profile->files + (size_t)expected_directory_entries) goto cleanup_volume;
+        volume.files.n != (size_t)profile->files + (size_t)expected_directory_entries)
+        goto cleanup_volume;
     if (detail != NULL && detail_capacity > 0U) {
-        (void)snprintf(detail, detail_capacity,
-                       "raw C Amiga payload verified: %u targets, >=%u fragments each, %u retained directory entries",
-                       profile->files, profile->chunks, expected_directory_entries);
+        if (expect_fragmented != 0) {
+            (void)snprintf(
+                detail, detail_capacity,
+                "raw C Amiga payload verified: %u targets, >=%u fragments each, %u retained directory entries",
+                profile->files, profile->chunks, expected_directory_entries);
+        } else {
+            (void)snprintf(
+                detail, detail_capacity,
+                "raw C Amiga post-defrag payload verified byte-for-byte: %u targets are contiguous and %u retained directory entries match",
+                profile->files, expected_directory_entries);
+        }
     }
     result = 0;
 cleanup_volume:
     affs_close(&volume);
 cleanup_error:
     if (result != 0 && detail != NULL && detail_capacity > 0U && detail[0] == '\0') {
-        (void)snprintf(detail, detail_capacity, "%s", error != NULL ? error : "raw Amiga payload validation failed");
+        (void)snprintf(detail, detail_capacity, "%s",
+                       error != NULL ? error : "raw Amiga payload validation failed");
     }
     free(error);
     return result;
+}
+
+int ldtm_verify_amiga_payload(const char *path, uint8_t dostype,
+                              const LdtmFragmentProfile *profile,
+                              char *detail, size_t detail_capacity) {
+    return verify_amiga_payload_state(
+        path, dostype, profile, 1, detail, detail_capacity);
+}
+
+int ldtm_verify_amiga_payload_affs_after_defrag(
+    const char *path, uint8_t dostype,
+    const LdtmFragmentProfile *profile,
+    char *detail, size_t detail_capacity) {
+    return verify_amiga_payload_state(
+        path, dostype, profile, 0, detail, detail_capacity);
 }
