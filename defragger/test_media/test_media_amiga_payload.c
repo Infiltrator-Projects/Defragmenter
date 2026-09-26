@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "test_media.h"
 #include "affs_native.h"
+#include "ld_io.h"
 
 #include "infiltratr/arithmetic.h"
 #include "infiltratr/core.h"
@@ -139,8 +140,8 @@ static int allocate_one(AffsVolume *volume, uint32_t *cursor, uint32_t *block_nu
     start = *cursor < 2U || *cursor >= volume->blocks ? 2U : *cursor;
     candidate = start;
     do {
-        if (volume->free_map[candidate] != 0U) {
-            volume->free_map[candidate] = 0U;
+        if (ld_bitmap_get(volume->free_map, candidate)) {
+            ld_bitmap_set(volume->free_map, candidate, false);
             *block_number = candidate;
             *cursor = candidate + 1U < volume->blocks ? candidate + 1U : 2U;
             return 0;
@@ -154,7 +155,7 @@ static int run_is_free(const AffsVolume *volume, uint32_t start, uint32_t count)
     uint32_t index;
     if (count == 0U || start < 2U || start > volume->blocks || count > volume->blocks - start) return 0;
     for (index = 0U; index < count; ++index) {
-        if (volume->free_map[start + index] == 0U) return 0;
+        if (!ld_bitmap_get(volume->free_map, (uint64_t)start + index)) return 0;
     }
     return 1;
 }
@@ -168,7 +169,7 @@ static int allocate_run(AffsVolume *volume, uint32_t *cursor, uint32_t count, Am
     for (candidate = start; candidate <= volume->blocks - count; ++candidate) {
         if (!run_is_free(volume, candidate, count)) continue;
         for (index = 0U; index < count; ++index) {
-            volume->free_map[candidate + index] = 0U;
+            ld_bitmap_set(volume->free_map, (uint64_t)candidate + index, false);
             if (block_vec_push(output, candidate + index) != 0) return -1;
         }
         *cursor = candidate + count < volume->blocks ? candidate + count : 2U;
@@ -177,7 +178,7 @@ static int allocate_run(AffsVolume *volume, uint32_t *cursor, uint32_t count, Am
     for (candidate = 2U; candidate < start && candidate <= volume->blocks - count; ++candidate) {
         if (!run_is_free(volume, candidate, count)) continue;
         for (index = 0U; index < count; ++index) {
-            volume->free_map[candidate + index] = 0U;
+            ld_bitmap_set(volume->free_map, (uint64_t)candidate + index, false);
             if (block_vec_push(output, candidate + index) != 0) return -1;
         }
         *cursor = candidate + count < volume->blocks ? candidate + count : 2U;
@@ -212,7 +213,7 @@ static int rewrite_bitmap(AffsVolume *volume) {
             uint32_t word = 0U;
             uint32_t bit_index;
             for (bit_index = 0U; bit_index < 32U && bit < bit_count; ++bit_index, ++bit) {
-                if (volume->free_map[2U + bit] != 0U) word |= UINT32_C(1) << bit_index;
+                if (ld_bitmap_get(volume->free_map, 2U + bit)) word |= UINT32_C(1) << bit_index;
             }
             set_block_word(block, word_index, word);
         }
@@ -395,7 +396,7 @@ int ldtm_populate_amiga_volume(const char *path, uint8_t dostype,
         if (allocate_one(&volume, &metadata_cursor, &header) != 0) goto cleanup_volume;
         if ((index & 1U) == 0U) {
             unsigned char zero[AMIGA_BLOCK_SIZE] = {0};
-            volume.free_map[header] = 1U;
+            ld_bitmap_set(volume.free_map, header, true);
             if (write_block(volume.fd, header, zero) != 0) goto cleanup_volume;
         } else {
             unsigned char header_block[AMIGA_BLOCK_SIZE];
