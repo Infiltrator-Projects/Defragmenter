@@ -455,7 +455,8 @@ def test_infiltratr_common_integration() -> None:
     assert "ldtm_decode_hex_byte" in test_media_gui
     assert "infiltratr_array_reserve" in test_media_worker
     assert "infiltratr_path_basename" in test_media_worker
-    assert "infiltratr_string_starts_with" in test_media_worker
+    assert "ld_block_device_info" in test_media_worker
+    assert "ld_block_device_has_system_use" in test_media_worker
     assert "infiltratr_path_join" in test_media_worker
     assert "static int join_path(" not in test_media_worker
     test_media_cmake = (ROOT / "cmake" / "test_media.cmake").read_text()
