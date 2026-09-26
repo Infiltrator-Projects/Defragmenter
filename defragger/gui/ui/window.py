@@ -14,7 +14,9 @@ and live-map interpretation are implemented by dedicated modules.
 from __future__ import annotations
 
 import sys
+import threading
 from pathlib import Path
+from typing import Callable
 
 try:
     import gi
@@ -60,9 +62,6 @@ from .widgets import MAX_MAP_CELLS, MIN_MAP_CELLS
 from .window_view import APP_NAME
 
 
-MAP_RESIZE_DEBOUNCE_MS = 350
-
-
 class MainWindow(Gtk.ApplicationWindow):
     """Compose independent GUI, storage, runner, and protocol components."""
 
@@ -81,8 +80,8 @@ class MainWindow(Gtk.ApplicationWindow):
         self.set_default_size(1480, 900)
         self.set_position(Gtk.WindowPosition.CENTER)
         self.connect("realize", self._configure_native_window)
-        self._map_resize_source: int | None = None
-        self._map_resize_target = 0
+        self._discovery_generation = 0
+        self._destroyed = False
 
         self.mapper = find_mapper()
         self.operation_engine = find_operation_engine()
@@ -206,17 +205,59 @@ class MainWindow(Gtk.ApplicationWindow):
         self,
         preserve_path: str | None = None,
         clear_cache: bool = False,
+        on_complete: Callable[[], None] | None = None,
     ) -> None:
+        """Discover storage away from GTK, then apply only the newest snapshot."""
+
         if self.busy:
             return
-        try:
-            active = self.volumes.refresh(
-                preserve_path=preserve_path,
-                clear_cache=clear_cache,
+        self._discovery_generation += 1
+        generation = self._discovery_generation
+        self.view.status_label.set_text("Discovering storage devices…")
+
+        def worker() -> None:
+            try:
+                discovered = self.volumes.discover()
+                error: Exception | None = None
+            except Exception as exc:
+                discovered = []
+                error = exc
+            GLib.idle_add(
+                self._finish_device_refresh,
+                generation,
+                preserve_path,
+                clear_cache,
+                discovered,
+                error,
+                on_complete,
             )
-        except Exception as exc:
-            self.show_error("Unable to enumerate storage devices", str(exc))
-            return
+
+        threading.Thread(
+            target=worker,
+            name="defragmenter-device-discovery",
+            daemon=True,
+        ).start()
+
+    def _finish_device_refresh(
+        self,
+        generation: int,
+        preserve_path: str | None,
+        clear_cache: bool,
+        discovered: list[Volume],
+        error: Exception | None,
+        on_complete: Callable[[], None] | None,
+    ) -> bool:
+        if self._destroyed or generation != self._discovery_generation:
+            return False
+        if error is not None:
+            self.show_error("Unable to enumerate storage devices", str(error))
+            return False
+
+        active = self.volumes.apply_discovery(
+            discovered,
+            preserve_path=preserve_path,
+            clear_cache=clear_cache,
+        )
         self.view.populate_volumes(
             [volume.display_name for volume in self.volumes.volumes],
             active,
@@ -227,6 +268,9 @@ class MainWindow(Gtk.ApplicationWindow):
                 "supported volume."
             )
         self.update_controls()
+        if on_complete is not None:
+            on_complete()
+        return False
 
     def on_device_changed(self, combo: Gtk.ComboBoxText) -> None:
         selection = self.volumes.select(combo.get_active())
@@ -290,62 +334,15 @@ class MainWindow(Gtk.ApplicationWindow):
     def journal_path(self) -> str:
         return self.coordinator.journal_path
 
-    def _cancel_map_resize_refresh(self) -> None:
-        if self._map_resize_source is not None:
-            GLib.source_remove(self._map_resize_source)
-            self._map_resize_source = None
-
-    def _schedule_map_resize_refresh(self) -> None:
-        self._cancel_map_resize_refresh()
-        self._map_resize_source = GLib.timeout_add(
-            MAP_RESIZE_DEBOUNCE_MS,
-            self._refresh_map_after_resize,
-        )
-
-    def _refresh_map_after_resize(self) -> bool:
-        self._map_resize_source = None
-        target = self._map_resize_target
-        if target <= 0 or self.coordinator.map_data is None:
-            self._map_resize_target = 0
-            return False
-        if not self.coordinator.map_resolution_needs_refresh(target):
-            self._map_resize_target = 0
-            return False
-        if self.runner.busy:
-            # Keep the newest pixel target pending. update_controls() schedules
-            # it once the active analysis/mutation has actually completed.
-            return False
-        self._map_resize_target = 0
-        self.analyze(
-            clear_log=False,
-            target_cells=target,
-            quiet=True,
-        )
-        return False
-
     def on_map_size_allocate(
         self,
         _widget: Gtk.Widget,
         _allocation: Gdk.Rectangle,
     ) -> None:
-        if self.coordinator.map_data is None:
-            return
+        """Rerasterise the cached physical map without rereading the filesystem."""
 
-        # Drawing geometry follows the current GTK allocation immediately.
-        # The coordinator applies hysteresis before asking the native mapper
-        # for a denser/coarser physical sample, avoiding filesystem rescans for
-        # the small geometry changes emitted while a window is being resized.
-        self.view.disk_map.queue_draw()
-        target = self.coordinator.desired_map_cells(
-            _allocation.width,
-            _allocation.height,
-        )
-        if not self.coordinator.map_resolution_needs_refresh(target):
-            self._map_resize_target = 0
-            self._cancel_map_resize_refresh()
-            return
-        self._map_resize_target = target
-        self._schedule_map_resize_refresh()
+        if self.coordinator.map_data is not None:
+            self.view.disk_map.queue_draw()
 
     def analyze(
         self,
@@ -394,22 +391,24 @@ class MainWindow(Gtk.ApplicationWindow):
             selected_path = volume.path
 
             def continue_after_unmount(_output: str) -> None:
-                self.refresh_devices(selected_path)
-                refreshed = self.current_volume
-                if refreshed is None or refreshed.path != selected_path:
-                    self.show_error(
-                        "Volume changed",
-                        "The selected volume changed while unmounting. "
-                        "Choose it again before continuing.",
-                    )
-                    return
-                if refreshed.mounted:
-                    self.show_error(
-                        "Unable to continue",
-                        f"{selected_path} is still mounted.",
-                    )
-                    return
-                GLib.idle_add(self._start_mutation_after_unmount, operation)
+                def after_refresh() -> None:
+                    refreshed = self.current_volume
+                    if refreshed is None or refreshed.path != selected_path:
+                        self.show_error(
+                            "Volume changed",
+                            "The selected volume changed while unmounting. "
+                            "Choose it again before continuing.",
+                        )
+                        return
+                    if refreshed.mounted:
+                        self.show_error(
+                            "Unable to continue",
+                            f"{selected_path} is still mounted.",
+                        )
+                        return
+                    GLib.idle_add(self._start_mutation_after_unmount, operation)
+
+                self.refresh_devices(selected_path, on_complete=after_refresh)
 
             self.coordinator.run_command(
                 ["udisksctl", "unmount", "-b", volume.path],
@@ -461,16 +460,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.view.set_operation_tooltips(
             dict(operation_tooltips(volume, self.backend_catalog))
         )
-        if (
-            not self.runner.busy
-            and self._map_resize_target > 0
-            and self.coordinator.map_resolution_needs_refresh(
-                self._map_resize_target
-            )
-            and self._map_resize_source is None
-        ):
-            self._schedule_map_resize_refresh()
-
     def _shutdown(self, *_args: object) -> None:
-        self._cancel_map_resize_refresh()
+        self._destroyed = True
+        self._discovery_generation += 1
         self.runner.shutdown()
