@@ -41,7 +41,9 @@ bool parse_cell_count(std::string_view text, std::size_t& cells) {
     return true;
 }
 
-defragger::Json probe_result(const defragger::BackendInfo& backend) {
+defragger::Json probe_result(
+    const defragger::BackendInfo& backend,
+    std::string_view identified_filesystem) {
     using defragger::Json;
     Json manifest = Json::parse(defragger::registry_manifest_json(2U));
     const Json& backends = manifest.at("backends");
@@ -53,7 +55,8 @@ defragger::Json probe_result(const defragger::BackendInfo& backend) {
         }
     }
     Json::Object out;
-    out["filesystem"] = Json(backend.id);
+    out["filesystem"] = Json(std::string(identified_filesystem));
+    out["backend_id"] = Json(backend.id);
     out["capabilities"] = Json::unsigned_integer(backend.capabilities);
     out["map_accuracy"] = Json(backend.map_accuracy);
     out["operations"] = std::move(operations);
@@ -124,22 +127,35 @@ int main(int argc, char** argv) {
 
     try {
         const defragger::BackendInfo* backend = nullptr;
+        std::string identified_filesystem;
         if (filesystem == "vfat" || filesystem == "fat" || filesystem == "msdos") {
             // Linux's generic FAT type does not encode the allocation width.
             // Probe authoritative geometry rather than guessing FAT32.
             for (const auto* id : {"fat12", "fat16", "fat32"}) {
                 const auto* candidate = defragger::backend_by_fstype(id);
-                if (candidate != nullptr && defragger::backend_probe(*candidate, path)) {
+                if (candidate == nullptr) continue;
+                const std::string identified =
+                    defragger::backend_identified_filesystem(*candidate, path);
+                if (!identified.empty()) {
                     backend = candidate;
+                    identified_filesystem = identified;
                     break;
                 }
             }
         } else if (!filesystem.empty()) {
             backend = defragger::backend_by_fstype(filesystem);
+            if (probe && backend != nullptr) {
+                identified_filesystem =
+                    defragger::backend_identified_filesystem(*backend, path);
+                if (identified_filesystem.empty()) backend = nullptr;
+            }
         } else {
             for (const auto& candidate : defragger::backend_registry()) {
-                if (defragger::backend_probe(candidate, path)) {
+                const std::string identified =
+                    defragger::backend_identified_filesystem(candidate, path);
+                if (!identified.empty()) {
                     backend = &candidate;
+                    identified_filesystem = identified;
                     break;
                 }
             }
@@ -151,7 +167,18 @@ int main(int argc, char** argv) {
             return 2;
         }
         if (probe) {
-            std::puts(probe_result(*backend).dump().c_str());
+            if (identified_filesystem.empty()) {
+                identified_filesystem =
+                    defragger::backend_identified_filesystem(*backend, path);
+            }
+            if (identified_filesystem.empty()) {
+                std::fputs(
+                    "The selected backend did not recognise this volume.\n",
+                    stderr);
+                return 2;
+            }
+            std::puts(
+                probe_result(*backend, identified_filesystem).dump().c_str());
             return 0;
         }
         defragger::Json result =

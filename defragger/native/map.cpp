@@ -710,18 +710,25 @@ std::uint64_t overlay_ranges(
     return total;
 }
 
-bool backend_probe(const BackendInfo& backend, const std::string& path) {
+std::string backend_identified_filesystem(
+    const BackendInfo& backend,
+    const std::string& path) {
     try {
         const Json payload = parse_worker_json(
             worker(backend, "identify", path), "filesystem identifier");
         const Json* filesystem = payload.find("filesystem");
-        if (filesystem == nullptr || !filesystem->is_string()) return false;
-        const BackendInfo* resolved =
-            backend_by_fstype(filesystem->string());
-        return resolved != nullptr && resolved->id == backend.id;
+        if (filesystem == nullptr || !filesystem->is_string()) return {};
+        const std::string identified = filesystem->string();
+        const BackendInfo* resolved = backend_by_fstype(identified);
+        if (resolved == nullptr || resolved->id != backend.id) return {};
+        return identified;
     } catch (...) {
-        return false;
+        return {};
     }
+}
+
+bool backend_probe(const BackendInfo& backend, const std::string& path) {
+    return !backend_identified_filesystem(backend, path).empty();
 }
 
 Json map_backend(const BackendInfo& backend, const std::string& path,

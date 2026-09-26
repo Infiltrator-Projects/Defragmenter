@@ -1058,6 +1058,24 @@ def test_cpp_mapper_reuses_common_arithmetic_and_has_no_legacy_apfs_adapter() ->
     assert "MapAdapter::NativeMap" in apfs_entry
 
 
+
+def test_source_version_and_image_detection_have_single_authority() -> None:
+    source_version = (GUI / "version.py").read_text()
+    engine_client = (GUI / "ui" / "engine_client.py").read_text()
+    window = (GUI / "ui" / "window.py").read_text()
+    mapper = (ROOT / "native" / "mapper.cpp").read_text()
+    map_runtime = (ROOT / "native" / "map.cpp").read_text()
+
+    assert '(_ROOT / "VERSION").read_text' in source_version
+    assert 'BUILD_LABEL = "Source / development build"' in source_version
+    assert re.search(r'VERSION\s*=\s*"\d+\.\d+\.\d+-\d+"', source_version) is None
+
+    assert '"blkid"' not in engine_client
+    assert '[mapper, path, "--probe"]' in engine_client
+    assert "detect_image_fstype(" in window and "mapper=self.mapper" in window
+    assert "backend_identified_filesystem" in mapper
+    assert "backend_identified_filesystem" in map_runtime
+
 def main() -> None:
     test_top_level_cmake_owns_native_language_declaration()
     test_native_registry_is_the_single_capability_authority()
@@ -1073,6 +1091,7 @@ def main() -> None:
     test_ntfs_catalogue_analysis_is_batched_and_n_minus_one_parallel()
     test_sfs_and_pfs3_maps_expose_complete_fragmentation_summary()
     test_cpp_mapper_reuses_common_arithmetic_and_has_no_legacy_apfs_adapter()
+    test_source_version_and_image_detection_have_single_authority()
     test_user_facing_branding_is_defragmenter()
     test_version_and_native_registry_ownership()
     print("current C-first native-registry architecture tests passed")

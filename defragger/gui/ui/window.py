@@ -37,6 +37,7 @@ from .about import SuiteStandardWindowView
 from .command_runner import CommandRunner
 from .devices import Volume
 from .engine_client import (
+    detect_image_fstype,
     load_backend_catalog,
     query_engine_version,
 )
@@ -89,7 +90,12 @@ class MainWindow(Gtk.ApplicationWindow):
         self.backend_catalog = load_backend_catalog(self.mapper)
         self.engine_version = query_engine_version(self.operation_engine)
 
-        self.volumes = VolumeCoordinator(self.backend_catalog)
+        self.volumes = VolumeCoordinator(
+            self.backend_catalog,
+            detect_image=lambda path, catalog: detect_image_fstype(
+                path, catalog, mapper=self.mapper
+            ),
+        )
 
         self.view = SuiteStandardWindowView(
             self,

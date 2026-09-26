@@ -17,6 +17,7 @@ if str(GUI) not in sys.path:
     sys.path.insert(0, str(GUI))
 
 from ui.backend_catalog import BackendCatalog
+from ui.engine_client import detect_image_fstype
 from ui.operation_planner import build_analysis_arguments
 from ui.volume_coordinator import VolumeCoordinator
 
@@ -103,10 +104,25 @@ with tempfile.TemporaryDirectory(prefix="defragger-fat-map-") as temp_dir:
             check=True,
             stdout=subprocess.DEVNULL,
         )
+        catalog = BackendCatalog.from_manifest({"backends": manifest})
         volumes = VolumeCoordinator(
-            BackendCatalog.from_manifest({"backends": manifest})
+            catalog,
+            detect_image=lambda path, current_catalog: detect_image_fstype(
+                path, current_catalog, mapper=str(MAPPER)
+            ),
         )
         volume = volumes.open_image(str(fat_image))
+        assert volume.fstype == variant
+        probe = subprocess.run(
+            [str(MAPPER), str(fat_image), "--probe"],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+        probe_payload = json.loads(probe.stdout)
+        assert probe_payload["filesystem"] == variant
+        assert probe_payload["backend_id"] == variant
         gui_arguments = build_analysis_arguments(
             str(MAPPER),
             volume,

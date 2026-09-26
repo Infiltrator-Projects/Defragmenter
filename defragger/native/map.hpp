@@ -46,6 +46,9 @@ std::uint64_t overlay_ranges(
     std::vector<UnitRange> ranges,
     std::string_view field);
 
+std::string backend_identified_filesystem(
+    const BackendInfo& backend,
+    const std::string& path);
 bool backend_probe(const BackendInfo& backend, const std::string& path);
 Json map_backend(
     const BackendInfo& backend,
