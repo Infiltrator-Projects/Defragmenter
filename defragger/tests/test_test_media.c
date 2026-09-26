@@ -614,13 +614,14 @@ int main(void) {
 
     CHECK(ldtm_transport_is_field_media(0, "mmc") == 1);
     CHECK(ldtm_transport_is_field_media(0, "usb") == 1);
+    CHECK(ldtm_transport_is_field_media(0, "sd") == 1);
     CHECK(ldtm_transport_is_field_media(1, "unknown") == 1);
-    CHECK(ldtm_transport_is_field_media(0, "nvme") == 1);
-    CHECK(ldtm_transport_is_field_media(0, "sata") == 1);
-    CHECK(ldtm_transport_is_field_media(0, "sas") == 1);
-    CHECK(ldtm_transport_is_field_media(0, "virtio") == 1);
-    CHECK(ldtm_transport_is_field_media(0, "") == 1);
-    CHECK(ldtm_transport_is_field_media(0, NULL) == 1);
+    CHECK(ldtm_transport_is_field_media(0, "nvme") == 0);
+    CHECK(ldtm_transport_is_field_media(0, "sata") == 0);
+    CHECK(ldtm_transport_is_field_media(0, "sas") == 0);
+    CHECK(ldtm_transport_is_field_media(0, "virtio") == 0);
+    CHECK(ldtm_transport_is_field_media(0, "") == 0);
+    CHECK(ldtm_transport_is_field_media(0, NULL) == 0);
 
     CHECK(ldtm_build_sfdisk_script(script, sizeof(script)) == 0);
     CHECK(strstr(script, "label: gpt") != NULL);

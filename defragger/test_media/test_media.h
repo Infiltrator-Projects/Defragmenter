@@ -8,7 +8,7 @@
 #define LDTM_MIB UINT64_C(1048576)
 #define LDTM_GIB UINT64_C(1073741824)
 #define LDTM_SPEC_COUNT 21U
-#define LDTM_STATE_ROOT "/var/tmp/linux-defragger-test-media"
+#define LDTM_STATE_ROOT "/var/lib/linux-defragger-test-media"
 
 typedef enum {
     LDTM_CREATOR_FAT12,

@@ -364,31 +364,26 @@ int ldtm_is_whole_block_device(const char *device) {
     return result;
 }
 
-static int mount_source_disk(const char *mountpoint, char *disk, size_t capacity) {
-    const char *const findmnt_argv[] = {"findmnt", "-n", "-o", "SOURCE", "--target", mountpoint, NULL};
-    char *source = NULL;
+static int source_disk(const char *source, char *disk, size_t capacity) {
     char *ancestry = NULL;
     char *line;
     char *saveptr = NULL;
     int found = 0;
-    if (capture_process(findmnt_argv, &source) != 0) return 0;
-    infiltratr_trim(source);
-    if (!infiltratr_string_starts_with(source, "/dev/")) {
-        free(source);
+    if (source == NULL || !infiltratr_string_starts_with(source, "/dev/"))
         return 0;
-    }
     {
-        const char *const lsblk_argv[] = {"lsblk", "-s", "-n", "-p", "-o", "PATH,TYPE", "--", source, NULL};
-        if (capture_process(lsblk_argv, &ancestry) != 0) {
-            free(source);
+        const char *const lsblk_argv[] = {
+            "lsblk", "-s", "-n", "-p", "-o", "PATH,TYPE", "--", source, NULL
+        };
+        if (capture_process(lsblk_argv, &ancestry) != 0)
             return 0;
-        }
     }
     line = strtok_r(ancestry, "\n", &saveptr);
     while (line != NULL) {
         char path[PATH_MAX];
         char type[32];
-        if (sscanf(line, "%4095s %31s", path, type) == 2 && strcmp(type, "disk") == 0) {
+        if (sscanf(line, "%4095s %31s", path, type) == 2 &&
+            strcmp(type, "disk") == 0) {
             char canonical[PATH_MAX];
             if (ldtm_canonicalize_device(path, canonical, sizeof(canonical)) == 0 &&
                 strlen(canonical) + 1U <= capacity) {
@@ -400,20 +395,79 @@ static int mount_source_disk(const char *mountpoint, char *disk, size_t capacity
         line = strtok_r(NULL, "\n", &saveptr);
     }
     free(ancestry);
-    free(source);
     return found;
 }
 
+static int mount_target_is_user_media(const char *target) {
+    if (target == NULL) return 0;
+    return strcmp(target, "/mnt") == 0 ||
+           infiltratr_string_starts_with(target, "/mnt/") ||
+           infiltratr_string_starts_with(target, "/media/") ||
+           infiltratr_string_starts_with(target, "/run/media/");
+}
+
 int ldtm_is_system_disk(const char *device) {
-    static const char *const mountpoints[] = {"/", "/boot", "/boot/efi"};
-    size_t index;
     char canonical[PATH_MAX];
-    if (ldtm_canonicalize_device(device, canonical, sizeof(canonical)) != 0) return 1;
-    for (index = 0U; index < sizeof(mountpoints) / sizeof(mountpoints[0]); ++index) {
-        char disk[PATH_MAX];
-        if (mount_source_disk(mountpoints[index], disk, sizeof(disk)) &&
-            strcmp(canonical, disk) == 0) return 1;
+    char *mounts = NULL;
+    char *line;
+    char *saveptr = NULL;
+    FILE *swaps;
+    char swap_line[PATH_MAX + 256U];
+
+    if (ldtm_canonicalize_device(device, canonical, sizeof(canonical)) != 0)
+        return 1;
+
+    /*
+     * Protect every disk that backs a live system mount, not only /, /boot and
+     * /boot/efi.  User-removable mount roots are deliberately excluded so an
+     * ordinary USB disk mounted by udisks can still be selected and then
+     * cleanly unmounted by the worker.
+     */
+    {
+        const char *const argv[] = {
+            "findmnt", "-r", "-n", "-o", "SOURCE,TARGET", NULL
+        };
+        if (capture_process(argv, &mounts) != 0)
+            return 1;
     }
+    line = strtok_r(mounts, "\n", &saveptr);
+    while (line != NULL) {
+        char source[PATH_MAX];
+        char target[PATH_MAX];
+        if (sscanf(line, "%4095s %4095s", source, target) == 2 &&
+            infiltratr_string_starts_with(source, "/dev/") &&
+            !mount_target_is_user_media(target)) {
+            char *subvolume = strchr(source, '[');
+            char disk[PATH_MAX];
+            if (subvolume != NULL) *subvolume = '\0';
+            if (source_disk(source, disk, sizeof(disk)) &&
+                strcmp(canonical, disk) == 0) {
+                free(mounts);
+                return 1;
+            }
+        }
+        line = strtok_r(NULL, "\n", &saveptr);
+    }
+    free(mounts);
+
+    /* Active swap is system storage even though it is not a mounted tree. */
+    swaps = fopen("/proc/swaps", "r");
+    if (swaps == NULL)
+        return 1;
+    (void)fgets(swap_line, sizeof(swap_line), swaps); /* heading */
+    while (fgets(swap_line, sizeof(swap_line), swaps) != NULL) {
+        char source[PATH_MAX];
+        if (sscanf(swap_line, "%4095s", source) == 1 &&
+            infiltratr_string_starts_with(source, "/dev/")) {
+            char disk[PATH_MAX];
+            if (source_disk(source, disk, sizeof(disk)) &&
+                strcmp(canonical, disk) == 0) {
+                (void)fclose(swaps);
+                return 1;
+            }
+        }
+    }
+    (void)fclose(swaps);
     return 0;
 }
 
@@ -444,7 +498,7 @@ int ldtm_device_safety_check(const char *device, int allow_non_removable,
         return -1;
     }
     if (ldtm_is_system_disk(canonical)) {
-        (void)snprintf(detail, detail_capacity, "Refusing system/boot disk: %s", canonical);
+        (void)snprintf(detail, detail_capacity, "Refusing disk backing active system storage: %s", canonical);
         return -1;
     }
     if (capture_process(argv, &output) != 0) {
@@ -866,8 +920,69 @@ static void sanitize_tsv(char *text) {
 static int state_path_for_device(const char *device, char *path, size_t capacity) {
     const char *base = infiltratr_path_basename(device);
     int count;
+    if (base == NULL || *base == '\0' || strchr(base, '/') != NULL)
+        return -1;
     count = snprintf(path, capacity, "%s/%s.tsv", LDTM_STATE_ROOT, base);
     return count < 0 || (size_t)count >= capacity ? -1 : 0;
+}
+
+static int secure_state_root_fd(void) {
+    struct stat st;
+    int fd;
+    if (mkdir(LDTM_STATE_ROOT, 0700) != 0 && errno != EEXIST)
+        return -1;
+    if (lstat(LDTM_STATE_ROOT, &st) != 0 ||
+        !S_ISDIR(st.st_mode) || st.st_uid != 0U) {
+        errno = EPERM;
+        return -1;
+    }
+    if ((st.st_mode & 0777U) != 0700U && chmod(LDTM_STATE_ROOT, 0700) != 0)
+        return -1;
+    fd = open(LDTM_STATE_ROOT,
+              O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    if (fd < 0)
+        return -1;
+    if (fstat(fd, &st) != 0 || !S_ISDIR(st.st_mode) || st.st_uid != 0U) {
+        (void)close(fd);
+        errno = EPERM;
+        return -1;
+    }
+    return fd;
+}
+
+static FILE *open_state_stream(const char *state_path, int write_mode) {
+    const char *base = infiltratr_path_basename(state_path);
+    const int root_fd = secure_state_root_fd();
+    int fd;
+    int flags;
+    struct stat st;
+    FILE *stream;
+
+    if (root_fd < 0 || base == NULL || *base == '\0' || strchr(base, '/') != NULL) {
+        if (root_fd >= 0) (void)close(root_fd);
+        return NULL;
+    }
+    flags = write_mode != 0
+        ? O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW
+        : O_RDONLY | O_CLOEXEC | O_NOFOLLOW;
+    fd = openat(root_fd, base, flags, 0600);
+    (void)close(root_fd);
+    if (fd < 0)
+        return NULL;
+    if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) ||
+        st.st_uid != 0U || st.st_nlink != 1U) {
+        (void)close(fd);
+        errno = EPERM;
+        return NULL;
+    }
+    if (write_mode != 0 && fchmod(fd, 0600) != 0) {
+        (void)close(fd);
+        return NULL;
+    }
+    stream = fdopen(fd, write_mode != 0 ? "w" : "r");
+    if (stream == NULL)
+        (void)close(fd);
+    return stream;
 }
 
 static int state_write_status(FILE *state, const LdtmFilesystemSpec *spec,
@@ -1743,12 +1858,17 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device) {
     }
     work = mkdtemp(work_template);
     if (work == NULL) return 2;
-    if (ensure_directory(LDTM_STATE_ROOT, 0755) != 0 ||
-        state_path_for_device(canonical, state_path, sizeof(state_path)) != 0) goto cleanup;
-    state = fopen(state_path, "w");
-    if (state == NULL) goto cleanup;
-    (void)chmod(state_path, 0644);
-    if (fprintf(state, "schema\t1\ndevice\t%s\n", canonical) < 0 || fflush(state) != 0) goto cleanup;
+    if (state_path_for_device(canonical, state_path, sizeof(state_path)) != 0)
+        goto cleanup;
+    state = open_state_stream(state_path, 1);
+    if (state == NULL) {
+        fprintf(stderr, "Unable to create protected Test Media state: %s\n",
+                strerror(errno));
+        goto cleanup;
+    }
+    if (fprintf(state, "schema\t1\ndevice\t%s\n", canonical) < 0 ||
+        fflush(state) != 0)
+        goto cleanup;
 
     {
         int failures = 0;
@@ -1857,7 +1977,7 @@ static uint32_t directory_entry_count(const char *path) {
 }
 
 static int load_verify_state(const char *state_path, LdtmVerifyFilesystem state[LDTM_SPEC_COUNT]) {
-    FILE *stream = fopen(state_path, "r");
+    FILE *stream = open_state_stream(state_path, 0);
     char line[LDTM_LINE_MAX];
     if (stream == NULL) return -1;
     memset(state, 0, sizeof(LdtmVerifyFilesystem) * LDTM_SPEC_COUNT);
