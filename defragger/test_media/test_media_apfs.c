@@ -679,24 +679,44 @@ int ldtm_format_apfs_volume(const char *path)
             inode_values[file + 1U], 92U
         };
     }
-    for (size_t index = 0U; index < payload_plan.count; ++index) {
-        const ApfsTmPayloadExtent *extent =
-            &payload_plan.extents[index];
-        const uint64_t dstream =
-            APFS_TM_DSTREAM_BASE + extent->file_index;
-        infiltratr_store_le64(
-            extent_keys[index],
-            apfs_tm_key_header(dstream, 8U));
-        infiltratr_store_le64(
-            extent_keys[index] + 8U, extent->logical);
-        infiltratr_store_le64(
-            extent_values[index],
-            extent->blocks * APFS_TM_BLOCK);
-        infiltratr_store_le64(
-            extent_values[index] + 8U, extent->paddr);
-        catalog_records[catalog_count++] = (ApfsTmRecord){
-            extent_keys[index], 16U, extent_values[index], 24U
-        };
+    size_t extent_record = 0U;
+    for (uint32_t file = 0U; file < LDTM_TARGET_FILE_COUNT; ++file) {
+        for (unsigned slot = 0U; slot < APFS_TM_EXTENTS_PER_FILE; ++slot) {
+            const ApfsTmPayloadExtent *extent = NULL;
+            uint64_t best_logical = UINT64_MAX;
+            for (size_t index = 0U; index < payload_plan.count; ++index) {
+                const ApfsTmPayloadExtent *candidate =
+                    &payload_plan.extents[index];
+                if (candidate->file_index != file ||
+                    candidate->logical >= best_logical)
+                    continue;
+                if (slot == 0U && candidate->logical != 0U)
+                    continue;
+                if (slot == 1U && candidate->logical == 0U)
+                    continue;
+                extent = candidate;
+                best_logical = candidate->logical;
+            }
+            if (extent == NULL || extent_record >= APFS_TM_EXTENT_COUNT)
+                goto fail;
+            const uint64_t dstream =
+                APFS_TM_DSTREAM_BASE + extent->file_index;
+            infiltratr_store_le64(
+                extent_keys[extent_record],
+                apfs_tm_key_header(dstream, 8U));
+            infiltratr_store_le64(
+                extent_keys[extent_record] + 8U, extent->logical);
+            infiltratr_store_le64(
+                extent_values[extent_record],
+                extent->blocks * APFS_TM_BLOCK);
+            infiltratr_store_le64(
+                extent_values[extent_record] + 8U, extent->paddr);
+            catalog_records[catalog_count++] = (ApfsTmRecord){
+                extent_keys[extent_record], 16U,
+                extent_values[extent_record], 24U
+            };
+            ++extent_record;
+        }
     }
     if (catalog_count !=
             1U + LDTM_TARGET_FILE_COUNT + APFS_TM_EXTENT_COUNT ||
