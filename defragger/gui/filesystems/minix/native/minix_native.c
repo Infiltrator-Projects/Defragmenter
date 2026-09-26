@@ -809,6 +809,21 @@ static void store_pointer(uint8_t *block, uint64_t index,
     }
 }
 
+static uint8_t zone_kind_get(const uint8_t *map, uint32_t zone)
+{
+    const unsigned shift = (zone & 3U) * 2U;
+    return (uint8_t)((map[zone >> 2U] >> shift) & 3U);
+}
+
+static void zone_kind_set(uint8_t *map, uint32_t zone, uint8_t kind)
+{
+    const unsigned shift = (zone & 3U) * 2U;
+    const uint8_t mask = (uint8_t)(3U << shift);
+    map[zone >> 2U] =
+        (uint8_t)((map[zone >> 2U] & (uint8_t)~mask) |
+                  (uint8_t)((kind & 3U) << shift));
+}
+
 static int claim_relayout_zone(const MinixSummary *summary,
                                const uint8_t *zmap, size_t zmap_bytes,
                                uint8_t *zone_kind, uint32_t zone,
@@ -819,12 +834,12 @@ static int claim_relayout_zone(const MinixSummary *summary,
                     "Minix inode tree references an unallocated or invalid zone");
         return -1;
     }
-    if (zone_kind[zone] != 0U) {
+    if (zone_kind_get(zone_kind, zone) != 0U) {
         minix_error(error, error_size,
                     "Minix allocation tree references the same zone more than once");
         return -1;
     }
-    zone_kind[zone] = kind;
+    zone_kind_set(zone_kind, zone, kind);
     return 0;
 }
 
@@ -992,8 +1007,9 @@ static int relayout_catalogue_load(int fd, MinixRelayoutCatalogue *catalogue,
                      error, error_size) != 0)
         return -1;
 
-    catalogue->zone_kind =
-        calloc(catalogue->summary.zone_count, sizeof(*catalogue->zone_kind));
+    const size_t zone_kind_bytes =
+        ((size_t)catalogue->summary.zone_count + 3U) / 4U;
+    catalogue->zone_kind = calloc(zone_kind_bytes, 1U);
     if (catalogue->zone_kind == NULL) {
         minix_error(error, error_size,
                     "out of memory cataloguing Minix allocation ownership");
@@ -1072,7 +1088,7 @@ static int relayout_catalogue_load(int fd, MinixRelayoutCatalogue *catalogue,
          zone < catalogue->summary.zone_count; ++zone) {
         if (zone_allocated(&catalogue->summary, catalogue->zmap,
                            catalogue->zmap_bytes, zone) &&
-            catalogue->zone_kind[zone] == 0U) {
+            zone_kind_get(catalogue->zone_kind, zone) == 0U) {
             minix_error(error, error_size,
                         "Minix contains an allocated data-zone not owned by a validated inode tree");
             return -1;
@@ -1480,7 +1496,7 @@ int minix_verify_layout(const char *path, bool growth,
     if (result == 0) {
         for (uint32_t zone = catalogue.summary.first_data_zone;
              zone < catalogue.summary.zone_count; ++zone)
-            if (catalogue.zone_kind[zone] == 2U)
+            if (zone_kind_get(catalogue.zone_kind, zone) == 2U)
                 pointer_count++;
         if (pointer_count > catalogue.summary.zone_count - cursor) {
             minix_error(error, error_size,
@@ -1491,7 +1507,7 @@ int minix_verify_layout(const char *path, bool growth,
     if (result == 0) {
         for (uint64_t index = 0U; index < pointer_count; ++index) {
             const uint32_t zone = (uint32_t)(cursor + index);
-            if (catalogue.zone_kind[zone] != 2U) {
+            if (zone_kind_get(catalogue.zone_kind, zone) != 2U) {
                 minix_error(error, error_size,
                             "Minix indirect metadata is not canonically packed");
                 result = -1;
