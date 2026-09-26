@@ -54,16 +54,36 @@ class VolumeCoordinator:
     def volumes(self) -> tuple[Volume, ...]:
         return tuple(self.store.volumes)
 
+    def discover(self) -> list[Volume]:
+        """Return a fresh physical-volume snapshot without mutating GUI state."""
+
+        return self._discover(self.catalog)
+
+    def apply_discovery(
+        self,
+        discovered: list[Volume],
+        *,
+        preserve_path: str | None = None,
+        clear_cache: bool = False,
+    ) -> int:
+        """Apply a completed discovery snapshot on the owning GUI thread."""
+
+        return self.store.refresh(
+            discovered,
+            preserve_path=preserve_path,
+            clear_cache=clear_cache,
+        )
+
     def refresh(
         self,
         *,
         preserve_path: str | None = None,
         clear_cache: bool = False,
     ) -> int:
-        """Refresh physical devices while retaining opened image files."""
+        """Synchronously refresh physical devices for non-GTK callers/tests."""
 
-        return self.store.refresh(
-            self._discover(self.catalog),
+        return self.apply_discovery(
+            self.discover(),
             preserve_path=preserve_path,
             clear_cache=clear_cache,
         )
