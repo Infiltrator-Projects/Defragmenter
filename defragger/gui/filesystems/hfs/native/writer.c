@@ -592,8 +592,8 @@ static int choose_run(uint8_t *claimed, uint32_t total, uint32_t blocks,
             continue;
         }
         *destination = start;
-        for (uint32_t offset = 0U; offset < span; ++offset)
-            ld_bitmap_set(claimed, (uint64_t)start + offset, true);
+        for (uint32_t mark = 0U; mark < span; ++mark)
+            ld_bitmap_set(claimed, (uint64_t)start + mark, true);
         return 0;
     }
     return -1;
