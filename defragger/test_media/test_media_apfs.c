@@ -443,6 +443,16 @@ int ldtm_format_apfs_volume(const char *path)
     const uint32_t chunk_count = (uint32_t)(
         (total_blocks + APFS_TM_BLOCKS_PER_CHUNK - 1U) /
         APFS_TM_BLOCKS_PER_CHUNK);
+    ApfsTmPayloadPlan payload_plan;
+    if (APFS_TM_BITMAP_BASE + chunk_count >= APFS_TM_CONTAINER_OMAP ||
+        apfs_tm_payload_plan(total_blocks, &payload_plan) != 0) {
+        (void)close(fd);
+        return -1;
+    }
+    uint64_t used_count = 0U;
+    for (uint64_t block = 0U; block < total_blocks; ++block)
+        if (apfs_tm_used_block(&payload_plan, chunk_count, block))
+            ++used_count;
 
     /*
      * The fixture owns only its active checkpoint and referenced objects.
@@ -499,8 +509,7 @@ int ldtm_format_apfs_volume(const char *path)
     if (apfs_tm_write_block(fd, APFS_TM_CPM, raw) != 0)
         goto fail;
 
-    /* Spaceman: one direct CIB describes every chunk up to the 2 GiB cap. */
-    const uint64_t used_count = 15U;
+    /* Spaceman: one direct CIB with one explicit bitmap per chunk. */
     const uint64_t free_count = total_blocks - used_count;
     memset(raw, 0, sizeof(raw));
     apfs_tm_object_header(
@@ -520,24 +529,28 @@ int ldtm_format_apfs_volume(const char *path)
     if (apfs_tm_write_block(fd, APFS_TM_SPACEMAN, raw) != 0)
         goto fail;
 
-    memset(raw, 0, sizeof(raw));
-    const uint64_t used_blocks[] = {
-        0U, APFS_TM_CPM, APFS_TM_NX, APFS_TM_SPACEMAN,
-        APFS_TM_CIB, APFS_TM_BITMAP,
-        APFS_TM_CONTAINER_OMAP, APFS_TM_CONTAINER_OMAP_TREE,
-        APFS_TM_VOLUME, APFS_TM_VOLUME_OMAP,
-        APFS_TM_VOLUME_OMAP_TREE, APFS_TM_EXTREF,
-        APFS_TM_CATALOG, APFS_TM_DATA_A, APFS_TM_DATA_B
-    };
-    for (size_t index = 0U;
-         index < sizeof(used_blocks) / sizeof(used_blocks[0]);
-         ++index) {
-        const uint64_t block = used_blocks[index];
-        raw[block >> 3U] |=
-            (uint8_t)(1U << (unsigned int)(block & 7U));
+    /*
+     * Every main-device chunk receives a real bitmap. This keeps the fixture
+     * write-qualified beyond the old single-128-MiB-bitmap ceiling.
+     */
+    for (uint32_t chunk = 0U; chunk < chunk_count; ++chunk) {
+        const uint64_t address =
+            (uint64_t)chunk * APFS_TM_BLOCKS_PER_CHUNK;
+        const uint64_t remaining = total_blocks - address;
+        const uint32_t block_count =
+            remaining > APFS_TM_BLOCKS_PER_CHUNK
+                ? APFS_TM_BLOCKS_PER_CHUNK : (uint32_t)remaining;
+        memset(raw, 0, sizeof(raw));
+        for (uint32_t bit = 0U; bit < block_count; ++bit) {
+            if (apfs_tm_used_block(
+                    &payload_plan, chunk_count, address + bit))
+                raw[bit >> 3U] |=
+                    (uint8_t)(1U << (unsigned int)(bit & 7U));
+        }
+        if (apfs_tm_write_block(
+                fd, APFS_TM_BITMAP_BASE + chunk, raw) != 0)
+            goto fail;
     }
-    if (apfs_tm_write_block(fd, APFS_TM_BITMAP, raw) != 0)
-        goto fail;
 
     memset(raw, 0, sizeof(raw));
     apfs_tm_object_header(
@@ -553,15 +566,18 @@ int ldtm_format_apfs_volume(const char *path)
         const uint32_t block_count =
             remaining > APFS_TM_BLOCKS_PER_CHUNK
                 ? APFS_TM_BLOCKS_PER_CHUNK : (uint32_t)remaining;
-        const uint32_t chunk_used =
-            chunk == 0U ? (uint32_t)used_count : 0U;
+        uint32_t chunk_used = 0U;
+        for (uint32_t bit = 0U; bit < block_count; ++bit)
+            if (apfs_tm_used_block(
+                    &payload_plan, chunk_count, address + bit))
+                ++chunk_used;
         infiltratr_store_le64(record, APFS_TM_XID);
         infiltratr_store_le64(record + 8U, address);
         infiltratr_store_le32(record + 16U, block_count);
         infiltratr_store_le32(
             record + 20U, block_count - chunk_used);
         infiltratr_store_le64(
-            record + 24U, chunk == 0U ? APFS_TM_BITMAP : 0U);
+            record + 24U, APFS_TM_BITMAP_BASE + chunk);
     }
     apfs_tm_checksum(raw);
     if (apfs_tm_write_block(fd, APFS_TM_CIB, raw) != 0)
@@ -632,85 +648,112 @@ int ldtm_format_apfs_volume(const char *path)
             fd, APFS_TM_VOLUME_OMAP_TREE, raw) != 0)
         goto fail;
 
-    /* Catalog: root directory + one regular dstream with two fragments. */
-    uint8_t inode_root_key[8], inode_file_key[8];
-    uint8_t inode_root_value[92] = {0};
-    uint8_t inode_file_value[92] = {0};
-    uint8_t extent_key_a[16], extent_key_b[16];
-    uint8_t extent_value_a[24] = {0};
-    uint8_t extent_value_b[24] = {0};
+    /* Catalog: root directory plus eight varied regular files, two extents each. */
+    uint8_t inode_keys[LDTM_TARGET_FILE_COUNT + 1U][8] = {{0}};
+    uint8_t inode_values[LDTM_TARGET_FILE_COUNT + 1U][92] = {{0}};
+    uint8_t extent_keys[APFS_TM_EXTENT_COUNT][16] = {{0}};
+    uint8_t extent_values[APFS_TM_EXTENT_COUNT][24] = {{0}};
+    ApfsTmRecord catalog_records[
+        1U + LDTM_TARGET_FILE_COUNT + APFS_TM_EXTENT_COUNT];
+    size_t catalog_count = 0U;
+
     infiltratr_store_le64(
-        inode_root_key, apfs_tm_key_header(2U, 3U));
-    infiltratr_store_le64(
-        inode_file_key, apfs_tm_key_header(16U, 3U));
-    infiltratr_store_le64(inode_root_value + 8U, 2U);
-    infiltratr_store_le16(inode_root_value + 80U, 0040755U);
-    infiltratr_store_le64(
-        inode_file_value + 8U, APFS_TM_DSTREAM);
-    infiltratr_store_le16(inode_file_value + 80U, 0100644U);
-    infiltratr_store_le64(
-        extent_key_a,
-        apfs_tm_key_header(APFS_TM_DSTREAM, 8U));
-    infiltratr_store_le64(extent_key_a + 8U, 0U);
-    infiltratr_store_le64(
-        extent_key_b,
-        apfs_tm_key_header(APFS_TM_DSTREAM, 8U));
-    infiltratr_store_le64(extent_key_b + 8U, APFS_TM_BLOCK);
-    infiltratr_store_le64(extent_value_a, APFS_TM_BLOCK);
-    infiltratr_store_le64(extent_value_a + 8U, APFS_TM_DATA_A);
-    infiltratr_store_le64(extent_value_b, APFS_TM_BLOCK);
-    infiltratr_store_le64(extent_value_b + 8U, APFS_TM_DATA_B);
-    const ApfsTmRecord catalog_records[] = {
-        {inode_root_key, 8U, inode_root_value, 92U},
-        {inode_file_key, 8U, inode_file_value, 92U},
-        {extent_key_a, 16U, extent_value_a, 24U},
-        {extent_key_b, 16U, extent_value_b, 24U},
+        inode_keys[0], apfs_tm_key_header(2U, 3U));
+    infiltratr_store_le64(inode_values[0] + 8U, 2U);
+    infiltratr_store_le16(inode_values[0] + 80U, 0040755U);
+    catalog_records[catalog_count++] = (ApfsTmRecord){
+        inode_keys[0], 8U, inode_values[0], 92U
     };
-    if (apfs_tm_build_node(
+
+    for (uint32_t file = 0U; file < LDTM_TARGET_FILE_COUNT; ++file) {
+        const uint64_t dstream = APFS_TM_DSTREAM_BASE + file;
+        infiltratr_store_le64(
+            inode_keys[file + 1U],
+            apfs_tm_key_header(16U + file, 3U));
+        infiltratr_store_le64(
+            inode_values[file + 1U] + 8U, dstream);
+        infiltratr_store_le16(
+            inode_values[file + 1U] + 80U, 0100644U);
+        catalog_records[catalog_count++] = (ApfsTmRecord){
+            inode_keys[file + 1U], 8U,
+            inode_values[file + 1U], 92U
+        };
+    }
+    for (size_t index = 0U; index < payload_plan.count; ++index) {
+        const ApfsTmPayloadExtent *extent =
+            &payload_plan.extents[index];
+        const uint64_t dstream =
+            APFS_TM_DSTREAM_BASE + extent->file_index;
+        infiltratr_store_le64(
+            extent_keys[index],
+            apfs_tm_key_header(dstream, 8U));
+        infiltratr_store_le64(
+            extent_keys[index] + 8U, extent->logical);
+        infiltratr_store_le64(
+            extent_values[index],
+            extent->blocks * APFS_TM_BLOCK);
+        infiltratr_store_le64(
+            extent_values[index] + 8U, extent->paddr);
+        catalog_records[catalog_count++] = (ApfsTmRecord){
+            extent_keys[index], 16U, extent_values[index], 24U
+        };
+    }
+    if (catalog_count !=
+            1U + LDTM_TARGET_FILE_COUNT + APFS_TM_EXTENT_COUNT ||
+        apfs_tm_build_node(
             raw, APFS_TM_CATALOG_OID,
             APFS_TM_TYPE_BTREE, APFS_TM_TYPE_FSTREE,
-            catalog_records, 4U, 0) != 0 ||
+            catalog_records, (uint32_t)catalog_count, 0) != 0 ||
         apfs_tm_write_block(fd, APFS_TM_CATALOG, raw) != 0)
         goto fail;
 
-    /* Physical extent-reference root. */
-    uint8_t pext_key_a[8], pext_key_b[8];
-    uint8_t pext_value_a[20] = {0};
-    uint8_t pext_value_b[20] = {0};
-    infiltratr_store_le64(
-        pext_key_a,
-        apfs_tm_key_header(APFS_TM_DATA_A, 2U));
-    infiltratr_store_le64(
-        pext_key_b,
-        apfs_tm_key_header(APFS_TM_DATA_B, 2U));
-    infiltratr_store_le64(
-        pext_value_a,
-        (UINT64_C(1) << APFS_TM_PEXT_KIND_SHIFT) | 1U);
-    infiltratr_store_le64(pext_value_a + 8U, APFS_TM_DSTREAM);
-    infiltratr_store_le32(pext_value_a + 16U, 1U);
-    infiltratr_store_le64(
-        pext_value_b,
-        (UINT64_C(1) << APFS_TM_PEXT_KIND_SHIFT) | 1U);
-    infiltratr_store_le64(pext_value_b + 8U, APFS_TM_DSTREAM);
-    infiltratr_store_le32(pext_value_b + 16U, 1U);
-    const ApfsTmRecord pext_records[] = {
-        {pext_key_a, 8U, pext_value_a, 20U},
-        {pext_key_b, 8U, pext_value_b, 20U},
-    };
+    /* One unshared physical-extent reference per file extent. */
+    uint8_t pext_keys[APFS_TM_EXTENT_COUNT][8] = {{0}};
+    uint8_t pext_values[APFS_TM_EXTENT_COUNT][20] = {{0}};
+    ApfsTmRecord pext_records[APFS_TM_EXTENT_COUNT];
+    for (size_t index = 0U; index < payload_plan.count; ++index) {
+        const ApfsTmPayloadExtent *extent =
+            &payload_plan.extents[index];
+        const uint64_t dstream =
+            APFS_TM_DSTREAM_BASE + extent->file_index;
+        infiltratr_store_le64(
+            pext_keys[index],
+            apfs_tm_key_header(extent->paddr, 2U));
+        infiltratr_store_le64(
+            pext_values[index],
+            (UINT64_C(1) << APFS_TM_PEXT_KIND_SHIFT) |
+                extent->blocks);
+        infiltratr_store_le64(
+            pext_values[index] + 8U, dstream);
+        infiltratr_store_le32(
+            pext_values[index] + 16U, 1U);
+        pext_records[index] = (ApfsTmRecord){
+            pext_keys[index], 8U, pext_values[index], 20U
+        };
+    }
     if (apfs_tm_build_node(
             raw, APFS_TM_EXTREF,
             APFS_TM_OBJ_PHYSICAL | APFS_TM_TYPE_BTREE,
             APFS_TM_TYPE_BLOCKREFTREE,
-            pext_records, 2U, 0) != 0 ||
+            pext_records, APFS_TM_EXTENT_COUNT, 0) != 0 ||
         apfs_tm_write_block(fd, APFS_TM_EXTREF, raw) != 0)
         goto fail;
 
-    memset(raw, 'A', sizeof(raw));
-    if (apfs_tm_write_block(fd, APFS_TM_DATA_A, raw) != 0)
-        goto fail;
-    memset(raw, 'B', sizeof(raw));
-    if (apfs_tm_write_block(fd, APFS_TM_DATA_B, raw) != 0)
-        goto fail;
+    for (size_t index = 0U; index < payload_plan.count; ++index) {
+        const ApfsTmPayloadExtent *extent =
+            &payload_plan.extents[index];
+        const uint64_t logical_base =
+            extent->logical / APFS_TM_BLOCK;
+        for (uint64_t within = 0U;
+             within < extent->blocks; ++within) {
+            apfs_tm_make_payload(
+                raw, extent->file_index,
+                logical_base + within);
+            if (apfs_tm_write_block(
+                    fd, extent->paddr + within, raw) != 0)
+                goto fail;
+        }
+    }
 
     if (fsync(fd) != 0) goto fail;
     (void)close(fd);
