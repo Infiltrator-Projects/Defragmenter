@@ -812,7 +812,7 @@ static void store_pointer(uint8_t *block, uint64_t index,
 static uint8_t zone_kind_get(const uint8_t *map, uint32_t zone)
 {
     const unsigned shift = (zone & 3U) * 2U;
-    return (uint8_t)((map[zone >> 2U] >> shift) & 3U);
+    return (uint8_t)(((unsigned)map[zone >> 2U] >> shift) & 3U);
 }
 
 static void zone_kind_set(uint8_t *map, uint32_t zone, uint8_t kind)
