@@ -163,7 +163,7 @@ static int test_amiga_formatters_and_payload(void) {
     char detail[512];
     int fd = mkstemp(path);
     if (fd < 0) return 1;
-    if (ftruncate(fd, (off_t)(384U * LDTM_MIB)) != 0 || close(fd) != 0) {
+    if (ftruncate(fd, (off_t)(128U * LDTM_MIB)) != 0 || close(fd) != 0) {
         (void)unlink(path);
         return 1;
     }
@@ -327,7 +327,7 @@ static int test_pfs3_formatter_and_payload(void) {
     profile = ldtm_fragment_profile(pfs3);
     fd = mkstemp(path);
     if (fd < 0) return 1;
-    if (ftruncate(fd, (off_t)(128U * LDTM_MIB)) != 0 || close(fd) != 0) {
+    if (ftruncate(fd, (off_t)(384U * LDTM_MIB)) != 0 || close(fd) != 0) {
         (void)unlink(path);
         return 1;
     }
@@ -386,7 +386,7 @@ static int test_apfs_formatter_and_payload(void) {
     ApfsAnalysis analysis;
     int fd = mkstemp(path);
     if (fd < 0) return 1;
-    if (ftruncate(fd, (off_t)(128U * LDTM_MIB)) != 0 ||
+    if (ftruncate(fd, (off_t)(384U * LDTM_MIB)) != 0 ||
         close(fd) != 0) {
         (void)unlink(path);
         return 1;
