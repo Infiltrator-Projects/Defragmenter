@@ -3,6 +3,7 @@
 #include "ld_runtime.h"
 
 #include <signal.h>
+#include <stdio.h>
 #include <string.h>
 
 static volatile sig_atomic_t g_stop_requested = 0;
@@ -19,6 +20,11 @@ void ld_stop_install_handlers(void) {
     sigemptyset(&action.sa_mask);
     if (sigaction(SIGINT, &action, NULL) != 0) ld_die_errno("install SIGINT handler");
     if (sigaction(SIGTERM, &action, NULL) != 0) ld_die_errno("install SIGTERM handler");
+}
+
+void ld_stop_report_ready(void) {
+    (void)fputs(LD_STOP_READY_MARKER "\n", stdout);
+    (void)fflush(stdout);
 }
 
 bool ld_stop_requested(void) {
