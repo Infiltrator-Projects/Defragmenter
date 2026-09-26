@@ -764,6 +764,52 @@ fail:
     return -1;
 }
 
+typedef struct {
+    uint64_t logical;
+    uint64_t bytes;
+    uint64_t paddr;
+    bool present;
+} ApfsTmVerifyExtent;
+
+static int apfs_tm_catalog_record(const uint8_t node[APFS_TM_BLOCK],
+                                  uint32_t index,
+                                  const uint8_t **key,
+                                  uint16_t *key_len,
+                                  const uint8_t **value,
+                                  uint16_t *value_len)
+{
+    const uint32_t records = infiltratr_load_le32(node + 36U);
+    const uint16_t table_off = infiltratr_load_le16(node + 40U);
+    const uint16_t table_len = infiltratr_load_le16(node + 42U);
+    if (index >= records || table_len < (uint64_t)records * 8U ||
+        (uint64_t)56U + table_off + table_len >
+            APFS_TM_BLOCK - 40U)
+        return -1;
+    const uint8_t *entry =
+        node + 56U + table_off + (size_t)index * 8U;
+    const uint16_t key_relative = infiltratr_load_le16(entry);
+    const uint16_t klen = infiltratr_load_le16(entry + 2U);
+    const uint16_t value_backwards = infiltratr_load_le16(entry + 4U);
+    const uint16_t vlen = infiltratr_load_le16(entry + 6U);
+    const uint64_t key_base = 56U + table_off + table_len;
+    const uint64_t key_offset = key_base + key_relative;
+    const uint64_t value_base = APFS_TM_BLOCK - 40U;
+    if (value_backwards > value_base)
+        return -1;
+    const uint64_t value_offset = value_base - value_backwards;
+    if (klen == 0U || key_offset > APFS_TM_BLOCK ||
+        klen > APFS_TM_BLOCK - key_offset ||
+        value_offset > APFS_TM_BLOCK ||
+        vlen > APFS_TM_BLOCK - value_offset ||
+        key_offset + klen > value_offset)
+        return -1;
+    *key = node + key_offset;
+    *key_len = klen;
+    *value = node + value_offset;
+    *value_len = vlen;
+    return 0;
+}
+
 static int verify_apfs_payload_state(
     const char *path, int expect_fragmented,
     char *detail, size_t detail_capacity)
@@ -786,15 +832,15 @@ static int verify_apfs_payload_state(
     const int shape_ok =
         analysis.block_size == APFS_TM_BLOCK &&
         analysis.block_count == expected_blocks &&
-        analysis.regular_files == 1U &&
+        analysis.regular_files == LDTM_TARGET_FILE_COUNT &&
         analysis.fragmented_files ==
-            (expect_fragmented != 0 ? 1U : 0U);
+            (expect_fragmented != 0 ? LDTM_TARGET_FILE_COUNT : 0U);
     apfs_analysis_free(&analysis);
     if (!shape_ok) {
         if (detail != NULL && detail_capacity != 0U)
             (void)snprintf(
                 detail, detail_capacity,
-                "APFS fixture geometry/fragmentation does not match the qualification contract");
+                "APFS fixture geometry/fragmentation does not match the 8-file qualification contract");
         return -1;
     }
 
@@ -805,49 +851,142 @@ static int verify_apfs_payload_state(
     const int fd = open(path, flags);
     if (fd < 0)
         return -1;
-    uint8_t block[APFS_TM_BLOCK];
-    const uint64_t first =
-        expect_fragmented != 0 ? APFS_TM_DATA_A : UINT64_C(10);
-    const uint64_t second =
-        expect_fragmented != 0 ? APFS_TM_DATA_B : UINT64_C(11);
+
+    uint8_t catalog[APFS_TM_BLOCK];
     if (apfs_tm_pread_full(
-            fd, block, sizeof(block),
-            first * APFS_TM_BLOCK) != 0) {
+            fd, catalog, sizeof(catalog),
+            APFS_TM_CATALOG * APFS_TM_BLOCK) != 0 ||
+        infiltratr_load_le64(catalog) !=
+            apfs_tm_fletcher64(catalog, sizeof(catalog)) ||
+        infiltratr_load_le32(catalog + 36U) !=
+            1U + LDTM_TARGET_FILE_COUNT + APFS_TM_EXTENT_COUNT) {
         (void)close(fd);
         return -1;
     }
-    for (size_t index = 0U; index < sizeof(block); ++index) {
-        if (block[index] != (uint8_t)'A') {
+
+    ApfsTmVerifyExtent extents[LDTM_TARGET_FILE_COUNT][2] = {{{0}}};
+    const uint32_t records = infiltratr_load_le32(catalog + 36U);
+    for (uint32_t record_index = 0U;
+         record_index < records; ++record_index) {
+        const uint8_t *key = NULL;
+        const uint8_t *value = NULL;
+        uint16_t key_len = 0U;
+        uint16_t value_len = 0U;
+        if (apfs_tm_catalog_record(
+                catalog, record_index, &key, &key_len,
+                &value, &value_len) != 0) {
             (void)close(fd);
-            if (detail != NULL && detail_capacity != 0U)
-                (void)snprintf(
-                    detail, detail_capacity,
-                    "APFS fixture first payload block changed");
             return -1;
         }
+        const uint64_t header = infiltratr_load_le64(key);
+        const uint8_t type = (uint8_t)(header >> APFS_TM_KEY_TYPE_SHIFT);
+        const uint64_t id =
+            header & UINT64_C(0x0fffffffffffffff);
+        if (type != 8U || id < APFS_TM_DSTREAM_BASE ||
+            id >= APFS_TM_DSTREAM_BASE + LDTM_TARGET_FILE_COUNT)
+            continue;
+        if (key_len < 16U || value_len < 16U) {
+            (void)close(fd);
+            return -1;
+        }
+        const uint32_t file =
+            (uint32_t)(id - APFS_TM_DSTREAM_BASE);
+        const uint64_t logical = infiltratr_load_le64(key + 8U);
+        const uint64_t bytes = infiltratr_load_le64(value);
+        const uint64_t paddr = infiltratr_load_le64(value + 8U);
+        const uint64_t expected_bytes =
+            ldtm_profile_file_bytes(
+                &(LdtmFragmentProfile){
+                    .files = LDTM_TARGET_FILE_COUNT,
+                    .chunks = 30U,
+                    .chunk_kib = 2048U,
+                    .file_chunks = {2U, 3U, 5U, 8U, 13U, 17U, 22U, 30U},
+                },
+                file);
+        const uint64_t half = expected_bytes / 2U;
+        unsigned slot;
+        if (logical == 0U)
+            slot = 0U;
+        else if (logical == half)
+            slot = 1U;
+        else {
+            (void)close(fd);
+            return -1;
+        }
+        if (extents[file][slot].present ||
+            bytes != half || bytes % APFS_TM_BLOCK != 0U ||
+            paddr >= expected_blocks ||
+            bytes / APFS_TM_BLOCK > expected_blocks - paddr) {
+            (void)close(fd);
+            return -1;
+        }
+        extents[file][slot] = (ApfsTmVerifyExtent){
+            .logical = logical,
+            .bytes = bytes,
+            .paddr = paddr,
+            .present = true,
+        };
     }
-    if (apfs_tm_pread_full(
-            fd, block, sizeof(block),
-            second * APFS_TM_BLOCK) != 0) {
+
+    uint8_t actual[APFS_TM_BLOCK];
+    uint8_t expected[APFS_TM_BLOCK];
+    const LdtmFilesystemSpec *spec = ldtm_find_spec("apfs");
+    const LdtmFragmentProfile profile = ldtm_fragment_profile(spec);
+    if (spec == NULL ||
+        ldtm_profile_payload_bytes(&profile) !=
+            UINT64_C(200) * LDTM_MIB) {
         (void)close(fd);
         return -1;
+    }
+    for (uint32_t file = 0U; file < LDTM_TARGET_FILE_COUNT; ++file) {
+        const uint64_t file_bytes =
+            ldtm_profile_file_bytes(&profile, file);
+        const uint64_t half_blocks =
+            file_bytes / 2U / APFS_TM_BLOCK;
+        if (!extents[file][0].present || !extents[file][1].present ||
+            (expect_fragmented != 0
+                ? extents[file][1].paddr ==
+                    extents[file][0].paddr + half_blocks
+                : extents[file][1].paddr !=
+                    extents[file][0].paddr + half_blocks)) {
+            (void)close(fd);
+            return -1;
+        }
+        for (unsigned slot = 0U; slot < 2U; ++slot) {
+            const uint64_t logical_base =
+                extents[file][slot].logical / APFS_TM_BLOCK;
+            const uint64_t blocks =
+                extents[file][slot].bytes / APFS_TM_BLOCK;
+            for (uint64_t within = 0U; within < blocks; ++within) {
+                if (apfs_tm_pread_full(
+                        fd, actual, sizeof(actual),
+                        (extents[file][slot].paddr + within) *
+                            APFS_TM_BLOCK) != 0) {
+                    (void)close(fd);
+                    return -1;
+                }
+                apfs_tm_make_payload(
+                    expected, file, logical_base + within);
+                if (memcmp(actual, expected, sizeof(actual)) != 0) {
+                    (void)close(fd);
+                    if (detail != NULL && detail_capacity != 0U)
+                        (void)snprintf(
+                            detail, detail_capacity,
+                            "APFS payload mismatch in fragmented-%02u.bin at logical block %" PRIu64,
+                            file, logical_base + within);
+                    return -1;
+                }
+            }
+        }
     }
     (void)close(fd);
-    for (size_t index = 0U; index < sizeof(block); ++index) {
-        if (block[index] != (uint8_t)'B') {
-            if (detail != NULL && detail_capacity != 0U)
-                (void)snprintf(
-                    detail, detail_capacity,
-                    "APFS fixture second payload block changed");
-            return -1;
-        }
-    }
+
     if (detail != NULL && detail_capacity != 0U)
         (void)snprintf(
             detail, detail_capacity,
             expect_fragmented != 0
-                ? "bounded APFS fixture verified across capped media: one deliberately fragmented two-block regular file"
-                : "bounded APFS post-defrag fixture verified byte-for-byte; production analyser reports zero fragmented files");
+                ? "bounded APFS fixture verified: 8 differently sized fragmented files, 200 MiB total"
+                : "bounded APFS post-defrag fixture verified byte-for-byte: all 8 files contiguous, 200 MiB total");
     return 0;
 }
 
