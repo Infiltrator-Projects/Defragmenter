@@ -273,8 +273,8 @@ static int test_sfs_formatter_and_payload(void) {
         if (snprintf(stage, sizeof(stage), "%s.stage", path) <= 0 ||
             sfs_build_stage(path, stage, false, 10U, false,
                             &commit_bytes, error, sizeof(error)) != 0 ||
-            ldtm_verify_sfs_payload_after_defrag(
-                stage, &profile, detail, sizeof(detail)) != 0) {
+            ldtm_verify_amiga_payload_after_defrag(
+                stage, 1U, &profile, detail, sizeof(detail)) != 0) {
             (void)unlink(stage);
             (void)unlink(path);
             return 1;
@@ -336,8 +336,8 @@ static int test_pfs3_formatter_and_payload(void) {
         if (snprintf(stage, sizeof(stage), "%s.stage", path) <= 0 ||
             pfs3_build_stage(path, stage, false, 10U, false,
                              &commit_bytes, error, sizeof(error)) != 0 ||
-            ldtm_verify_pfs3_payload_after_defrag(
-                stage, &profile, detail, sizeof(detail)) != 0) {
+            ldtm_verify_amiga_payload_after_defrag(
+                stage, 1U, &profile, detail, sizeof(detail)) != 0) {
             (void)unlink(stage);
             (void)unlink(path);
             return 1;
