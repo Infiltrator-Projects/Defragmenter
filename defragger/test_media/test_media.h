@@ -75,9 +75,15 @@ int ldtm_populate_amiga_volume(const char *path, uint8_t dostype,
 int ldtm_verify_amiga_payload(const char *path, uint8_t dostype,
                               const LdtmFragmentProfile *profile,
                               char *detail, size_t detail_capacity);
+int ldtm_verify_amiga_payload_after_defrag(
+    const char *path, uint8_t dostype,
+    const LdtmFragmentProfile *profile,
+    char *detail, size_t detail_capacity);
 int ldtm_format_apfs_volume(const char *path);
 int ldtm_verify_apfs_payload(const char *path,
                              char *detail, size_t detail_capacity);
+int ldtm_verify_apfs_payload_after_defrag(
+    const char *path, char *detail, size_t detail_capacity);
 int ldtm_canonicalize_device(const char *input, char *output, size_t output_capacity);
 int ldtm_is_whole_block_device(const char *device);
 int ldtm_is_system_disk(const char *device);
