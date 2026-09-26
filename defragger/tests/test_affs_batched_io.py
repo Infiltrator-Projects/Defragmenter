@@ -53,7 +53,8 @@ def main() -> None:
     assert "stop_commit(target, error)" in commit
     assert "ld_pread_full(stage.fd, buffer, bytes, offset)" in commit
     assert "ld_pwrite_full(target, buffer, bytes, offset)" in commit
-    assert "fsync(target)" in commit
+    assert "ld_sync_fd(target)" in commit
+    assert "fsync(target)" not in commit
 
     # These messages are intentionally user-visible: they make long OFS/FFS
     # operations visibly active instead of appearing stalled between milestones.
