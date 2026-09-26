@@ -29,6 +29,12 @@
 #define LDTM_HASH_HEX 65U
 #define LDTM_LINE_MAX 4096U
 
+static const uint32_t ldtm_edge_case_sizes[] = {
+    0U, 1U, 511U, 512U, 513U, 4095U, 4096U, 4097U
+};
+#define LDTM_EDGE_CASE_COUNT \
+    (sizeof(ldtm_edge_case_sizes) / sizeof(ldtm_edge_case_sizes[0]))
+
 typedef struct {
     char relative_path[192];
     uint64_t size;
@@ -757,6 +763,29 @@ static int write_pattern_file(const char *path, uint64_t size, uint64_t seed) {
     return close(fd);
 }
 
+static uint64_t edge_case_seed(size_t index, uint32_t size) {
+    return UINT64_C(0x4544474500000000) ^
+           ((uint64_t)index << 32U) ^ (uint64_t)size;
+}
+
+static int generate_edge_case_data(const char *root) {
+    char directory[PATH_MAX];
+    size_t index;
+    if (!infiltratr_path_join(directory, sizeof(directory), root, "edge-cases") ||
+        ensure_directory(directory, 0755) != 0)
+        return -1;
+    for (index = 0U; index < LDTM_EDGE_CASE_COUNT; ++index) {
+        char path[PATH_MAX];
+        char name[64];
+        const uint32_t size = ldtm_edge_case_sizes[index];
+        (void)snprintf(name, sizeof(name), "edge-%02zu-%u.bin", index, size);
+        if (!infiltratr_path_join(path, sizeof(path), directory, name) ||
+            write_pattern_file(path, size, edge_case_seed(index, size)) != 0)
+            return -1;
+    }
+    return 0;
+}
+
 static void digest_to_hex(const unsigned char *digest, unsigned int length, char output[LDTM_HASH_HEX]) {
     unsigned int index;
     static const char hex[] = "0123456789abcdef";
@@ -905,6 +934,13 @@ static int generate_fragmented_data(const LdtmFilesystemSpec *spec, const char *
     *directory_entries = profile.directory_initial / 2U + profile.directory_second;
     if (sync_path_filesystem(root) != 0) goto cleanup;
     if (remove_flat_directory(anchors) != 0) goto cleanup;
+
+    /*
+     * The large round-robin payload stresses fragmentation. These small files
+     * deliberately stress allocation and tail-length boundaries that a uniform
+     * 256 KiB chunk workload cannot exercise.
+     */
+    if (generate_edge_case_data(root) != 0) goto cleanup;
     if (sync_path_filesystem(root) != 0) goto cleanup;
     result = 0;
 
@@ -2162,6 +2198,70 @@ static uint32_t directory_entry_count(const char *path) {
     return count;
 }
 
+static int verify_edge_pattern_file(const char *path, uint32_t size,
+                                    uint64_t seed) {
+    unsigned char actual[8192];
+    unsigned char expected[8192];
+    struct stat st;
+    int fd;
+    size_t done = 0U;
+    int result = -1;
+
+    if ((size_t)size > sizeof(actual))
+        return -1;
+    fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0)
+        return -1;
+    if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) ||
+        st.st_size < 0 || (uint64_t)st.st_size != (uint64_t)size)
+        goto cleanup;
+    while (done < (size_t)size) {
+        ssize_t got = read(fd, actual + done, (size_t)size - done);
+        if (got < 0) {
+            if (errno == EINTR) continue;
+            goto cleanup;
+        }
+        if (got == 0) goto cleanup;
+        done += (size_t)got;
+    }
+    if (size > 0U) {
+        deterministic_fill(expected, (size_t)size, seed);
+        if (memcmp(actual, expected, (size_t)size) != 0)
+            goto cleanup;
+    }
+    {
+        unsigned char extra;
+        ssize_t got;
+        do {
+            got = read(fd, &extra, 1U);
+        } while (got < 0 && errno == EINTR);
+        if (got != 0)
+            goto cleanup;
+    }
+    result = 0;
+cleanup:
+    (void)close(fd);
+    return result;
+}
+
+static int verify_edge_case_data(const char *root) {
+    char directory[PATH_MAX];
+    size_t index;
+    if (!infiltratr_path_join(directory, sizeof(directory), root, "edge-cases") ||
+        directory_entry_count(directory) != (uint32_t)LDTM_EDGE_CASE_COUNT)
+        return -1;
+    for (index = 0U; index < LDTM_EDGE_CASE_COUNT; ++index) {
+        char path[PATH_MAX];
+        char name[64];
+        const uint32_t size = ldtm_edge_case_sizes[index];
+        (void)snprintf(name, sizeof(name), "edge-%02zu-%u.bin", index, size);
+        if (!infiltratr_path_join(path, sizeof(path), directory, name) ||
+            verify_edge_pattern_file(path, size, edge_case_seed(index, size)) != 0)
+            return -1;
+    }
+    return 0;
+}
+
 static int load_verify_state(const char *state_path, const char *device,
                              LdtmVerifyFilesystem state[LDTM_SPEC_COUNT]) {
     FILE *stream = open_state_stream(state_path, 0);
@@ -2278,8 +2378,13 @@ static int verify_mounted_payload(const LdtmFilesystemSpec *spec, const char *mo
                     "retained directory payload content changed");
         return -1;
     }
+    if (verify_edge_case_data(root) != 0) {
+        emit_status(spec->key, "verify-failed",
+                    "boundary-sized payload files changed");
+        return -1;
+    }
     emit_status(spec->key, "verified",
-                "all retained file hashes, sizes, names and directory payload bytes match");
+                "all retained hashes, directory data and boundary-sized payload bytes match");
     return 0;
 }
 
