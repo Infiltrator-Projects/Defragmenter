@@ -29,7 +29,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#define LDTM_MAX_TARGET_FILES 8U
+#define LDTM_MAX_TARGET_FILES LDTM_TARGET_FILE_COUNT
 #define LDTM_HASH_HEX 65U
 #define LDTM_LINE_MAX 4096U
 #define LDTM_CAPTURE_MAX (8U * 1024U * 1024U)
@@ -902,11 +902,15 @@ static int generate_fragmented_data(const LdtmFilesystemSpec *spec, const char *
         contexts[file_index] = EVP_MD_CTX_new();
         if (contexts[file_index] == NULL || EVP_DigestInit_ex(contexts[file_index], EVP_sha256(), NULL) != 1) goto cleanup;
     }
-    printf("Writing %u target files round-robin in %u x %u KiB chunks...\n",
-           profile.files, profile.chunks, profile.chunk_kib);
+    printf("Writing %u heterogeneous target files round-robin (up to %u x %u KiB chunks; %llu MiB total)...\n",
+           profile.files, profile.chunks, profile.chunk_kib,
+           (unsigned long long)(ldtm_profile_payload_bytes(&profile) / LDTM_MIB));
     fflush(stdout);
     for (index = 0U; index < profile.chunks; ++index) {
         for (file_index = 0U; file_index < profile.files && file_index < LDTM_MAX_TARGET_FILES; ++file_index) {
+            const uint32_t target_chunks =
+                ldtm_profile_file_chunks(&profile, file_index);
+            if (index >= target_chunks) continue;
             const size_t chunk_bytes = (size_t)profile.chunk_kib * 1024U;
             const uint64_t seed = ((uint64_t)file_index << 48) ^ ((uint64_t)index << 16) ^ UINT64_C(0x4c44544d);
             deterministic_fill(chunk_buffer, chunk_bytes, seed);
@@ -934,7 +938,8 @@ static int generate_fragmented_data(const LdtmFilesystemSpec *spec, const char *
         (void)snprintf(records[file_index].relative_path,
                        sizeof(records[file_index].relative_path),
                        "fragmented-files/fragmented-%02zu.bin", file_index);
-        records[file_index].size = (uint64_t)profile.chunks * (uint64_t)profile.chunk_kib * UINT64_C(1024);
+        records[file_index].size =
+            ldtm_profile_file_bytes(&profile, file_index);
         digest_to_hex(digest, digest_length, records[file_index].sha256);
     }
     *record_count = profile.files < LDTM_MAX_TARGET_FILES ? profile.files : LDTM_MAX_TARGET_FILES;
