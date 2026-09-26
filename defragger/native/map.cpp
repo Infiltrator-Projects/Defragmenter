@@ -718,7 +718,11 @@ std::string backend_identified_filesystem(
             worker(backend, "identify", path), "filesystem identifier");
         const Json* filesystem = payload.find("filesystem");
         if (filesystem == nullptr || !filesystem->is_string()) return {};
-        const std::string identified(filesystem->string());
+        std::string identified(filesystem->string());
+        for (char& byte : identified) {
+            if (byte >= 'A' && byte <= 'Z')
+                byte = static_cast<char>(byte - 'A' + 'a');
+        }
         const BackendInfo* resolved = backend_by_fstype(identified);
         if (resolved == nullptr || resolved->id != backend.id) return {};
         return identified;
