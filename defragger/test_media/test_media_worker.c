@@ -3,6 +3,7 @@
 #include "ufs_native.h"
 #include "zfs_native.h"
 #include "ld_device.h"
+#include "ld_io.h"
 
 #include "infiltratr/arithmetic.h"
 #include "infiltratr/core.h"
@@ -1101,11 +1102,12 @@ static void sanitize_tsv(char *text) {
 }
 
 static int state_path_for_device(const char *device, char *path, size_t capacity) {
-    const char *base = infiltratr_path_basename(device);
+    char fingerprint[LDTM_HASH_HEX];
     int count;
-    if (base == NULL || *base == '\0' || strchr(base, '/') != NULL)
+    if (ldtm_device_fingerprint(device, fingerprint) != 0)
         return -1;
-    count = snprintf(path, capacity, "%s/%s.tsv", LDTM_STATE_ROOT, base);
+    count = snprintf(
+        path, capacity, "%s/disk-%s.tsv", LDTM_STATE_ROOT, fingerprint);
     return count < 0 || (size_t)count >= capacity ? -1 : 0;
 }
 
@@ -1149,6 +1151,13 @@ static FILE *open_state_stream(const char *state_path, int write_mode) {
         ? O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW
         : O_RDONLY | O_CLOEXEC | O_NOFOLLOW;
     fd = openat(root_fd, base, flags, 0600);
+    if (fd >= 0 && write_mode != 0 && ld_sync_fd(root_fd) != 0) {
+        const int failure = errno;
+        (void)close(fd);
+        (void)close(root_fd);
+        errno = failure;
+        return NULL;
+    }
     (void)close(root_fd);
     if (fd < 0)
         return NULL;
@@ -1168,6 +1177,13 @@ static FILE *open_state_stream(const char *state_path, int write_mode) {
     return stream;
 }
 
+static int state_flush(FILE *state) {
+    if (state == NULL || fflush(state) != 0)
+        return -1;
+    const int fd = fileno(state);
+    return fd >= 0 && ld_sync_fd(fd) == 0 ? 0 : -1;
+}
+
 static int state_write_status(FILE *state, const LdtmFilesystemSpec *spec,
                               const char *status, const char *detail) {
     char safe[512];
@@ -1175,7 +1191,7 @@ static int state_write_status(FILE *state, const LdtmFilesystemSpec *spec,
     (void)snprintf(safe, sizeof(safe), "%s", detail != NULL ? detail : "");
     sanitize_tsv(safe);
     if (fprintf(state, "fs\t%s\t%s\t%s\n", spec->key, status, safe) < 0) return -1;
-    return fflush(state);
+    return state_flush(state);
 }
 
 static int state_write_targets(FILE *state, const LdtmFilesystemSpec *spec,
@@ -1189,7 +1205,7 @@ static int state_write_targets(FILE *state, const LdtmFilesystemSpec *spec,
                     (unsigned long long)records[index].size,
                     records[index].sha256) < 0) return -1;
     }
-    return fflush(state);
+    return state_flush(state);
 }
 
 static int create_amiga_and_populate(const LdtmFilesystemSpec *spec, const char *partition,
@@ -1908,7 +1924,7 @@ static int create_zfs_and_populate(const LdtmFilesystemSpec *spec, const char *p
             state, spec, "populated",
             "deterministic ZFS v28 payload created; exact production analyser proved real fragmentation") != 0 ||
         fprintf(state, "pool\t%s\t%s\n", spec->key, pool) < 0 ||
-        fflush(state) != 0 ||
+        state_flush(state) != 0 ||
         state_write_targets(state, spec, records, record_count,
                             directory_entries) != 0)
         return -1;
@@ -2067,7 +2083,7 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device,
     }
     if (fprintf(state, "schema\t2\ndevice\t%s\nfingerprint\t%s\n",
                 canonical, confirmed_fingerprint) < 0 ||
-        fflush(state) != 0)
+        state_flush(state) != 0)
         goto cleanup;
 
     {
