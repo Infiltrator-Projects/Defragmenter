@@ -267,13 +267,37 @@ static int test_sfs_formatter_and_payload(void) {
         (void)unlink(path);
         return 1;
     }
-    if (ldtm_format_amiga_volume(path, 1U, "LD_SFS") != 0 ||
-        ldtm_populate_amiga_volume(path, 1U, &profile) != 0 ||
-        ldtm_verify_amiga_payload(path, 1U, &profile, detail, sizeof(detail)) != 0 ||
-        sfs_analyse(path, &analysis, NULL, 0U, error, sizeof(error)) != 0 ||
-        analysis.regular_files != LDTM_TARGET_FILE_COUNT ||
+    if (ldtm_format_amiga_volume(path, 1U, "LD_SFS") != 0) {
+        (void)fprintf(stderr, "SFS Test Media format failed\n");
+        (void)unlink(path);
+        return 1;
+    }
+    if (ldtm_populate_amiga_volume(path, 1U, &profile) != 0) {
+        (void)fprintf(stderr, "SFS Test Media production analysis/populate check failed\n");
+        (void)unlink(path);
+        return 1;
+    }
+    if (ldtm_verify_amiga_payload(
+            path, 1U, &profile, detail, sizeof(detail)) != 0) {
+        (void)fprintf(stderr, "SFS Test Media payload verify failed: %s\n", detail);
+        (void)unlink(path);
+        return 1;
+    }
+    if (sfs_analyse(path, &analysis, NULL, 0U, error, sizeof(error)) != 0) {
+        (void)fprintf(stderr, "SFS Test Media analysis failed: %s\n", error);
+        (void)unlink(path);
+        return 1;
+    }
+    if (analysis.regular_files != LDTM_TARGET_FILE_COUNT ||
         analysis.fragmented_files != LDTM_TARGET_FILE_COUNT ||
         analysis.data_blocks != 51200U || analysis.growth_10_satisfied) {
+        (void)fprintf(
+            stderr,
+            "SFS Test Media analysis mismatch: files=%llu fragmented=%llu blocks=%llu growth=%d\n",
+            (unsigned long long)analysis.regular_files,
+            (unsigned long long)analysis.fragmented_files,
+            (unsigned long long)analysis.data_blocks,
+            analysis.growth_10_satisfied ? 1 : 0);
         (void)unlink(path);
         return 1;
     }
