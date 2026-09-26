@@ -32,20 +32,23 @@
 #define APFS_TM_NX UINT64_C(2)
 #define APFS_TM_SPACEMAN UINT64_C(9)
 #define APFS_TM_CIB UINT64_C(32)
-#define APFS_TM_BITMAP UINT64_C(33)
-#define APFS_TM_CONTAINER_OMAP UINT64_C(40)
-#define APFS_TM_CONTAINER_OMAP_TREE UINT64_C(41)
-#define APFS_TM_VOLUME UINT64_C(42)
-#define APFS_TM_VOLUME_OMAP UINT64_C(43)
-#define APFS_TM_VOLUME_OMAP_TREE UINT64_C(44)
-#define APFS_TM_EXTREF UINT64_C(45)
-#define APFS_TM_CATALOG UINT64_C(46)
-#define APFS_TM_DATA_A UINT64_C(512)
-#define APFS_TM_DATA_B UINT64_C(520)
+#define APFS_TM_BITMAP_BASE UINT64_C(64)
+#define APFS_TM_CONTAINER_OMAP UINT64_C(100)
+#define APFS_TM_CONTAINER_OMAP_TREE UINT64_C(101)
+#define APFS_TM_VOLUME UINT64_C(102)
+#define APFS_TM_VOLUME_OMAP UINT64_C(103)
+#define APFS_TM_VOLUME_OMAP_TREE UINT64_C(104)
+#define APFS_TM_EXTREF UINT64_C(105)
+#define APFS_TM_CATALOG UINT64_C(106)
+#define APFS_TM_DATA_START UINT64_C(512)
+#define APFS_TM_DATA_GAP UINT64_C(8)
 #define APFS_TM_FS_OID UINT64_C(200)
 #define APFS_TM_CATALOG_OID UINT64_C(300)
-#define APFS_TM_DSTREAM UINT64_C(500)
+#define APFS_TM_DSTREAM_BASE UINT64_C(500)
 #define APFS_TM_SPACEMAN_OID UINT64_C(100)
+#define APFS_TM_EXTENTS_PER_FILE 2U
+#define APFS_TM_EXTENT_COUNT (LDTM_TARGET_FILE_COUNT * APFS_TM_EXTENTS_PER_FILE)
+#define APFS_TM_MIN_BLOCKS (UINT64_C(256) * LDTM_MIB / APFS_TM_BLOCK)
 
 #define APFS_TM_OBJ_PHYSICAL UINT32_C(0x40000000)
 #define APFS_TM_OBJ_EPHEMERAL UINT32_C(0x80000000)
@@ -69,6 +72,119 @@ typedef struct {
     const uint8_t *value;
     uint16_t value_len;
 } ApfsTmRecord;
+
+typedef struct {
+    uint64_t paddr;
+    uint64_t blocks;
+    uint64_t logical;
+    uint32_t file_index;
+} ApfsTmPayloadExtent;
+
+typedef struct {
+    ApfsTmPayloadExtent extents[APFS_TM_EXTENT_COUNT];
+    size_t count;
+} ApfsTmPayloadPlan;
+
+static int apfs_tm_payload_plan(uint64_t total_blocks,
+                                ApfsTmPayloadPlan *plan)
+{
+    const LdtmFilesystemSpec *spec = ldtm_find_spec("apfs");
+    const LdtmFragmentProfile profile = ldtm_fragment_profile(spec);
+    if (spec == NULL || plan == NULL ||
+        profile.files != LDTM_TARGET_FILE_COUNT ||
+        ldtm_profile_payload_bytes(&profile) !=
+            UINT64_C(200) * LDTM_MIB)
+        return -1;
+    memset(plan, 0, sizeof(*plan));
+
+    uint64_t cursor = APFS_TM_DATA_START;
+    uint64_t first_blocks[LDTM_TARGET_FILE_COUNT] = {0};
+    for (uint32_t file = 0U; file < profile.files; ++file) {
+        const uint64_t bytes = ldtm_profile_file_bytes(&profile, file);
+        if (bytes == 0U || bytes % APFS_TM_BLOCK != 0U)
+            return -1;
+        const uint64_t blocks = bytes / APFS_TM_BLOCK;
+        first_blocks[file] = blocks / 2U;
+        if (first_blocks[file] == 0U ||
+            first_blocks[file] >= blocks ||
+            cursor > total_blocks ||
+            first_blocks[file] > total_blocks - cursor)
+            return -1;
+        plan->extents[plan->count++] = (ApfsTmPayloadExtent){
+            .paddr = cursor,
+            .blocks = first_blocks[file],
+            .logical = 0U,
+            .file_index = file,
+        };
+        cursor += first_blocks[file] + APFS_TM_DATA_GAP;
+    }
+    /* Put every second half after every first half so each file is genuinely
+       fragmented while the complete corpus remains deterministic. */
+    for (uint32_t file = 0U; file < profile.files; ++file) {
+        const uint64_t blocks =
+            ldtm_profile_file_bytes(&profile, file) / APFS_TM_BLOCK;
+        const uint64_t second = blocks - first_blocks[file];
+        if (cursor > total_blocks || second > total_blocks - cursor)
+            return -1;
+        plan->extents[plan->count++] = (ApfsTmPayloadExtent){
+            .paddr = cursor,
+            .blocks = second,
+            .logical = first_blocks[file] * APFS_TM_BLOCK,
+            .file_index = file,
+        };
+        cursor += second + APFS_TM_DATA_GAP;
+    }
+    return plan->count == APFS_TM_EXTENT_COUNT ? 0 : -1;
+}
+
+static bool apfs_tm_payload_contains(const ApfsTmPayloadPlan *plan,
+                                     uint64_t block)
+{
+    for (size_t index = 0U; index < plan->count; ++index) {
+        const ApfsTmPayloadExtent *extent = &plan->extents[index];
+        if (block >= extent->paddr &&
+            block - extent->paddr < extent->blocks)
+            return true;
+    }
+    return false;
+}
+
+static bool apfs_tm_metadata_block(uint64_t block, uint32_t chunk_count)
+{
+    if (block == 0U || block == APFS_TM_CPM || block == APFS_TM_NX ||
+        block == APFS_TM_SPACEMAN || block == APFS_TM_CIB ||
+        block == APFS_TM_CONTAINER_OMAP ||
+        block == APFS_TM_CONTAINER_OMAP_TREE ||
+        block == APFS_TM_VOLUME || block == APFS_TM_VOLUME_OMAP ||
+        block == APFS_TM_VOLUME_OMAP_TREE ||
+        block == APFS_TM_EXTREF || block == APFS_TM_CATALOG)
+        return true;
+    return block >= APFS_TM_BITMAP_BASE &&
+           block - APFS_TM_BITMAP_BASE < chunk_count;
+}
+
+static bool apfs_tm_used_block(const ApfsTmPayloadPlan *plan,
+                               uint32_t chunk_count, uint64_t block)
+{
+    return apfs_tm_metadata_block(block, chunk_count) ||
+           apfs_tm_payload_contains(plan, block);
+}
+
+static void apfs_tm_make_payload(uint8_t block[APFS_TM_BLOCK],
+                                 uint32_t file_index,
+                                 uint64_t logical_block)
+{
+    uint64_t state = UINT64_C(0x243f6a8885a308d3) ^
+                     ((uint64_t)file_index << 40U) ^
+                     (logical_block * UINT64_C(0x9e3779b97f4a7c15));
+    for (size_t offset = 0U; offset < APFS_TM_BLOCK; ++offset) {
+        state ^= state >> 12U;
+        state ^= state << 25U;
+        state ^= state >> 27U;
+        state *= UINT64_C(0x2545f4914f6cdd1d);
+        block[offset] = (uint8_t)(state >> 56U);
+    }
+}
 
 static const uint8_t APFS_TM_FSID[16] = {
     0x00,0x11,0x22,0x33,0x44,0x55,0x66,0x77,
@@ -280,7 +396,7 @@ static int apfs_tm_geometry(int fd, uint64_t *block_count)
     if (bytes % APFS_TM_BLOCK != 0U)
         return -1;
     const uint64_t blocks = bytes / APFS_TM_BLOCK;
-    if (blocks <= APFS_TM_DATA_B || blocks > APFS_TM_MAX_BLOCKS)
+    if (blocks < APFS_TM_MIN_BLOCKS || blocks > APFS_TM_MAX_BLOCKS)
         return -1;
     const uint64_t chunks =
         (blocks + APFS_TM_BLOCKS_PER_CHUNK - 1U) /
