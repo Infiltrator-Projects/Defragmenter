@@ -515,7 +515,10 @@ int ldtm_is_system_disk(const char *device) {
     swaps = fopen("/proc/swaps", "r");
     if (swaps == NULL)
         return 1;
-    (void)fgets(swap_line, sizeof(swap_line), swaps); /* heading */
+    if (fgets(swap_line, sizeof(swap_line), swaps) == NULL) {
+        (void)fclose(swaps);
+        return 1;
+    }
     while (fgets(swap_line, sizeof(swap_line), swaps) != NULL) {
         char source[PATH_MAX];
         if (sscanf(swap_line, "%4095s", source) == 1 &&
