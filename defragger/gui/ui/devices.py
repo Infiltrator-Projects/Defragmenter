@@ -174,24 +174,27 @@ def _resolved_discovery_fstype(
         return raw
 
     path = str(node.get("path") or "")
+    partlabel = str(node.get("partlabel") or "").strip().lower()
+    hinted = _TEST_MEDIA_RAW_PARTLABELS.get(partlabel, "")
+
+    # APFS Test Media has its own positive first-party identity probe. Skip the
+    # unrelated AFFS subprocess entirely for this known slot; doing both probes
+    # only adds process/timeout latency and cannot improve the APFS decision.
+    # A stale label still proves nothing: only apfs-native identify can accept it.
+    if hinted == "apfs" and catalog.supports(hinted):
+        verified = str(probe_test_media(path, hinted) or "").strip().lower()
+        return verified if verified == hinted else ""
+
     probed = str(probe_unknown(path) or "").strip().lower()
     if probed and catalog.supports(probed):
         return probed
 
-    partlabel = str(node.get("partlabel") or "").strip().lower()
-    hinted = _TEST_MEDIA_RAW_PARTLABELS.get(partlabel, "")
     if not hinted or not catalog.supports(hinted):
         return ""
 
-    # OFS/FFS/SFS/PFS3 deliberately need their deterministic Test Media slot
-    # label as a last-resort discovery hint on hosts whose blkid stack does not
-    # understand them. APFS is different: a stale LD_APFS GPT label previously
-    # caused Defragmenter to route arbitrary bytes to the APFS worker. Require
-    # a positive native APFS identity before presenting that slot as APFS.
-    if hinted == "apfs":
-        verified = str(probe_test_media(path, hinted) or "").strip().lower()
-        return verified if verified == hinted else ""
-
+    # OFS/FFS/SFS/PFS3 deliberately retain native AFFS probing ahead of their
+    # deterministic Test Media slot hints, so stale labels can never override a
+    # real Amiga filesystem identity.
     return hinted
 
 

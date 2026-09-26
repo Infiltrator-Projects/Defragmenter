@@ -173,11 +173,16 @@ def test_amiga_discovery_does_not_depend_on_lsblk_fstype() -> None:
     def fake_run(args, **_kwargs):
         return CompletedProcess(args, 0, stdout=json.dumps(payload), stderr="")
 
+    unknown_probe_paths: list[str] = []
+    apfs_probe_paths: list[str] = []
+
     def fake_probe(path: str) -> str:
+        unknown_probe_paths.append(path)
         return "ffs" if path.endswith("p20") else ""
 
     def fake_test_media_probe(path: str, expected: str) -> str:
         assert expected == "apfs"
+        apfs_probe_paths.append(path)
         return "apfs" if path.endswith("p16") else ""
 
     volumes = discover_volumes(
@@ -207,6 +212,13 @@ def test_amiga_discovery_does_not_depend_on_lsblk_fstype() -> None:
     assert by_path["/dev/mmcblk0p16"].display_fstype == "apfs"
     assert "/dev/mmcblk0p17" not in by_path
     assert by_path["/dev/mmcblk0p20"].display_fstype == "ffs"
+
+    # APFS-labelled unknown slots go directly to the APFS identity probe. The
+    # generic AFFS probe remains authoritative for unlabeled/Amiga candidates.
+    assert "/dev/mmcblk0p16" not in unknown_probe_paths
+    assert "/dev/mmcblk0p17" not in unknown_probe_paths
+    assert "/dev/mmcblk0p20" in unknown_probe_paths
+    assert apfs_probe_paths == ["/dev/mmcblk0p16", "/dev/mmcblk0p17"]
 
 
 def test_block_devices_sort_by_numeric_partition_number() -> None:
