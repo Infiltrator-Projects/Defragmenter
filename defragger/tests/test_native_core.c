@@ -175,6 +175,15 @@ int main(void) {
     if (ld_path_ensure_trusted_directory_tree(redirected_child) == 0)
         return fail("secure tree followed parent symlink");
     unlink(redirect);
+    char untrusted_parent[PATH_MAX];
+    char untrusted_child[PATH_MAX];
+    if (snprintf(untrusted_parent, sizeof(untrusted_parent), "%s/shared", tree_root) < 0 ||
+        snprintf(untrusted_child, sizeof(untrusted_child), "%s/shared/child", tree_root) < 0 ||
+        mkdir(untrusted_parent, 0777) != 0 || chmod(untrusted_parent, 0777) != 0)
+        return fail("untrusted tree setup");
+    if (ld_path_ensure_trusted_directory_tree(untrusted_child) == 0 || errno != EPERM)
+        return fail("world-writable parent accepted without sticky protection");
+    rmdir(untrusted_parent);
     rmdir(safe_child);
     rmdir(safe_parent);
     rmdir(tree_root);

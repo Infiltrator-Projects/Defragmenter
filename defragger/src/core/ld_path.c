@@ -89,8 +89,12 @@ static bool trusted_directory(const struct stat *status, uid_t effective_uid)
 {
     if (!S_ISDIR(status->st_mode)) return false;
     const mode_t shared_write = status->st_mode & (S_IWGRP | S_IWOTH);
+    /* In a root-owned sticky directory, other users cannot replace the
+     * root-owned child opened and checked at the next step. This permits
+     * /tmp without trusting an ordinary world-writable parent. */
     if (effective_uid == 0)
-        return status->st_uid == 0 && shared_write == 0;
+        return status->st_uid == 0 &&
+               (shared_write == 0 || (status->st_mode & S_ISVTX) != 0);
     if (status->st_uid == effective_uid)
         return shared_write == 0;
     if (status->st_uid == 0) {
@@ -161,5 +165,4 @@ int ld_path_ensure_trusted_directory_tree(const char *path)
     if (result != 0) errno = failure;
     return result;
 }
-
 
