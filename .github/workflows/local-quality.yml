@@ -21,11 +21,25 @@ jobs:
       run:
         working-directory: defragger
     steps:
+      # BigBedroom runner services may not expose git on PATH.  checkout
+      # transparently falls back to the GitHub REST archive in that case, so
+      # fetch the application and its pinned Common source as two independent
+      # checkouts instead of asking the fallback path to recurse submodules.
       - name: Check out exact main candidate
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
-          submodules: recursive
+          submodules: false
+
+      - name: Check out pinned Infiltratr Common
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: Infiltrator-Projects/Infiltrator-Libraries
+          ref: 7cc5de3de0e94ed2cfcff0840bbb5346eb5c9c9f
+          path: defragger/shared/infiltratr-common
+          fetch-depth: 1
+          submodules: false
 
       - name: Verify local qualification dependencies
         shell: bash
