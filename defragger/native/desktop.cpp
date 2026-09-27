@@ -38,6 +38,53 @@ std::string bytes(std::uint64_t value) {
     g_snprintf(text, sizeof(text), "%.1f %s", amount, units[index]);
     return text;
 }
+GtkWidget* section(const char* title, GtkWidget* child) {
+    auto* frame = gtk_frame_new(title);
+    gtk_frame_set_shadow_type(GTK_FRAME(frame), GTK_SHADOW_NONE);
+    gtk_container_set_border_width(GTK_CONTAINER(child), 12);
+    gtk_container_add(GTK_CONTAINER(frame), child);
+    return frame;
+}
+void css_class(GtkWidget* widget, const char* name) {
+    gtk_style_context_add_class(gtk_widget_get_style_context(widget), name);
+}
+fs::path artwork(const char* name) {
+    const fs::path installed = fs::path("/usr/lib/linux-defragger/ui/art") / name;
+    if (fs::is_regular_file(installed)) return installed;
+    const auto local = fs::path("defragger/gui/ui/art") / name;
+    if (fs::is_regular_file(local)) return local;
+    return {};
+}
+void install_style() {
+    auto* provider = gtk_css_provider_new();
+    constexpr const char* css = R"CSS(
+window, .app-shell { background: #050608; color: #E8ECEF; font-family: 'MB Corpo S Title WEB'; }
+headerbar { background: #202125; color: #EEF1F3; border-bottom: 1px solid #353A40; min-height: 44px; }
+headerbar button { background: transparent; border: 0; color: #EEF1F3; box-shadow: none; }
+headerbar button:hover { background: #353A40; }
+.brand-title { font-family: 'MB Corpo A Title Cond WEB'; font-size: 20px; font-weight: 600; }
+.brand-subtitle { font-size: 10px; letter-spacing: 2px; color: #AEB6BD; }
+.sidebar { background: #101318; border-right: 1px solid #353A40; }
+.sidebar button { background: transparent; color: #AEB6BD; border: 0; text-align: left; }
+.sidebar button:hover { background: #22272D; color: #EEF1F3; }
+.card, .panel { background: #171B20; border: 1px solid #353A40; border-radius: 12px; }
+.hero { border: 1px solid #353A40; border-radius: 18px; }
+.hero-title { font-family: 'MB Corpo A Title Cond WEB'; font-size: 30px; font-weight: 600; color: #FFFFFF; }
+.hint { color: #AEB6BD; }
+.kicker { color: #00ADEF; font-size: 11px; letter-spacing: 2px; }
+.summary-value { color: #E8ECEF; font-size: 19px; }
+button { border-radius: 10px; padding: 7px 12px; }
+.primary-action { background: #00ADEF; color: #031018; font-weight: bold; }
+.stop-action { background: #52282C; color: #FFD9DC; }
+textview, textview text { background: #0D1014; color: #D7DDE2; }
+progressbar trough { background: #20252B; border-radius: 8px; min-height: 8px; }
+progressbar progress { background: #00ADEF; border-radius: 8px; }
+)CSS";
+    gtk_css_provider_load_from_data(provider, css, -1, nullptr);
+    gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),
+        GTK_STYLE_PROVIDER(provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    g_object_unref(provider);
+}
 
 class Desktop {
 public:
@@ -48,58 +95,167 @@ public:
         window_ = gtk_window_new(GTK_WINDOW_TOPLEVEL);
         g_object_set_data(G_OBJECT(window_), "desktop", this);
         gtk_window_set_title(GTK_WINDOW(window_), "Defragmenter");
-        gtk_window_set_default_size(GTK_WINDOW(window_), 1180, 800);
+        gtk_window_set_default_size(GTK_WINDOW(window_), 1380, 840);
         gtk_window_set_icon_name(GTK_WINDOW(window_), "io.github.linuxdefragger");
         g_signal_connect(window_, "delete-event", G_CALLBACK(close_requested), this);
         g_signal_connect(window_, "destroy", G_CALLBACK(+[](GtkWidget*, gpointer) {
             gtk_main_quit();
         }), nullptr);
-        auto* base = gtk_box_new(GTK_ORIENTATION_VERTICAL, 14);
-        gtk_container_set_border_width(GTK_CONTAINER(base), 20);
-        gtk_container_add(GTK_CONTAINER(window_), base);
+        install_style();
+        auto* header = gtk_header_bar_new();
+        gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(header), FALSE);
+        gtk_header_bar_set_custom_title(GTK_HEADER_BAR(header), gtk_label_new(""));
+        auto* brand = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+        auto* icon = gtk_image_new_from_icon_name("io.github.linuxdefragger", GTK_ICON_SIZE_LARGE_TOOLBAR);
+        gtk_box_pack_start(GTK_BOX(brand), icon, FALSE, FALSE, 0);
+        auto* brand_text = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+        auto* brand_name = gtk_label_new("Defragmenter");
+        css_class(brand_name, "brand-title");
+        gtk_label_set_xalign(GTK_LABEL(brand_name), 0);
+        auto* suite = gtk_label_new("INFILTRATOR OS");
+        css_class(suite, "brand-subtitle");
+        gtk_label_set_xalign(GTK_LABEL(suite), 0);
+        gtk_box_pack_start(GTK_BOX(brand_text), brand_name, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(brand_text), suite, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(brand), brand_text, FALSE, FALSE, 0);
+        gtk_header_bar_pack_start(GTK_HEADER_BAR(header), brand);
+        for (const auto* name : {"minimize", "maximize", "close"}) {
+            auto* button = gtk_button_new_from_icon_name((std::string("window-") + name + "-symbolic").c_str(), GTK_ICON_SIZE_BUTTON);
+            g_object_set_data_full(G_OBJECT(button), "action", g_strdup(name), g_free);
+            g_signal_connect(button, "clicked", G_CALLBACK(clicked), nullptr);
+            gtk_header_bar_pack_end(GTK_HEADER_BAR(header), button);
+        }
+        gtk_window_set_titlebar(GTK_WINDOW(window_), header);
 
-        auto* title = gtk_label_new(nullptr);
-        gtk_label_set_markup(GTK_LABEL(title), "<span size='xx-large' weight='bold'>Defragmenter</span>");
-        gtk_widget_set_halign(title, GTK_ALIGN_START);
-        gtk_box_pack_start(GTK_BOX(base), title, FALSE, FALSE, 0);
+        auto* paned = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
+        gtk_container_add(GTK_CONTAINER(window_), paned);
+        auto* sidebar = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
+        css_class(sidebar, "sidebar");
+        gtk_container_set_border_width(GTK_CONTAINER(sidebar), 14);
+        gtk_widget_set_size_request(sidebar, 220, -1);
+        gtk_paned_pack1(GTK_PANED(paned), sidebar, FALSE, FALSE);
+        auto* navigation = gtk_label_new("WORKSPACE");
+        css_class(navigation, "kicker");
+        gtk_widget_set_halign(navigation, GTK_ALIGN_START);
+        gtk_box_pack_start(GTK_BOX(sidebar), navigation, FALSE, FALSE, 12);
+        auto* overview = gtk_label_new("Overview  ·  Allocation map");
+        gtk_label_set_xalign(GTK_LABEL(overview), 0);
+        gtk_box_pack_start(GTK_BOX(sidebar), overview, FALSE, FALSE, 0);
+        add_button(sidebar, "Test Media", "test-media");
+        add_button(sidebar, "About", "about");
+        auto* sidebar_art = gtk_image_new_from_file(artwork("sidebar-workbench.jpg").string().c_str());
+        gtk_box_pack_end(GTK_BOX(sidebar), sidebar_art, FALSE, FALSE, 0);
+
+        auto* outer_scroll = gtk_scrolled_window_new(nullptr, nullptr);
+        gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(outer_scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+        gtk_paned_pack2(GTK_PANED(paned), outer_scroll, TRUE, FALSE);
+        auto* base = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
+        css_class(base, "app-shell");
+        gtk_container_set_border_width(GTK_CONTAINER(base), 16);
+        gtk_container_add(GTK_CONTAINER(outer_scroll), base);
+
+        auto* hero = gtk_overlay_new();
+        css_class(hero, "hero");
+        auto* hero_image = gtk_image_new_from_file(artwork("hero-landscape.jpg").string().c_str());
+        gtk_widget_set_size_request(hero_image, -1, 150);
+        gtk_container_add(GTK_CONTAINER(hero), hero_image);
+        auto* hero_text = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
+        gtk_container_set_border_width(GTK_CONTAINER(hero_text), 18);
+        gtk_widget_set_halign(hero_text, GTK_ALIGN_START);
+        gtk_widget_set_valign(hero_text, GTK_ALIGN_CENTER);
+        auto* hero_kicker = gtk_label_new("SELECTED VOLUME");
+        gtk_label_set_xalign(GTK_LABEL(hero_kicker), 0);
+        css_class(hero_kicker, "kicker");
+        gtk_box_pack_start(GTK_BOX(hero_text), hero_kicker, FALSE, FALSE, 0);
+        volume_title_ = gtk_label_new("Choose a disk");
+        gtk_label_set_xalign(GTK_LABEL(volume_title_), 0);
+        css_class(volume_title_, "hero-title");
+        gtk_box_pack_start(GTK_BOX(hero_text), volume_title_, FALSE, FALSE, 0);
+        detail_ = gtk_label_new("Choose a volume or open a filesystem image.");
+        gtk_label_set_xalign(GTK_LABEL(detail_), 0);
+        css_class(detail_, "hint");
+        gtk_box_pack_start(GTK_BOX(hero_text), detail_, FALSE, FALSE, 0);
+        gtk_overlay_add_overlay(GTK_OVERLAY(hero), hero_text);
+        gtk_box_pack_start(GTK_BOX(base), hero, FALSE, FALSE, 0);
+
+        auto* selector_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+        auto* selector_title = gtk_label_new("VOLUME");
+        css_class(selector_title, "kicker");
+        gtk_label_set_xalign(GTK_LABEL(selector_title), 0);
+        gtk_box_pack_start(GTK_BOX(selector_box), selector_title, FALSE, FALSE, 0);
         auto* selector = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-        gtk_box_pack_start(GTK_BOX(base), selector, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(selector_box), selector, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(base), section(nullptr, selector_box), FALSE, FALSE, 0);
         volumes_widget_ = gtk_combo_box_text_new();
         gtk_widget_set_hexpand(volumes_widget_, TRUE);
         gtk_box_pack_start(GTK_BOX(selector), volumes_widget_, TRUE, TRUE, 0);
         g_signal_connect(volumes_widget_, "changed", G_CALLBACK(selected), this);
         refresh_ = add_button(selector, "Refresh", "refresh");
         image_ = add_button(selector, "Open image", "image");
-        add_button(selector, "Test Media", "test-media");
-        add_button(selector, "About", "about");
+        unmount_ = add_button(selector, "Unmount", "unmount");
+        auto* cards = gtk_grid_new();
+        gtk_grid_set_column_spacing(GTK_GRID(cards), 10);
+        gtk_grid_set_column_homogeneous(GTK_GRID(cards), TRUE);
+        const char* captions[] = {"FRAGMENTATION", "FREE SPACE", "ALLOCATED", "FILES"};
+        for (int i = 0; i < 4; ++i) {
+            auto* card = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+            css_class(card, "card");
+            gtk_container_set_border_width(GTK_CONTAINER(card), 12);
+            auto* caption = gtk_label_new(captions[i]);
+            gtk_label_set_xalign(GTK_LABEL(caption), 0);
+            css_class(caption, "kicker");
+            gtk_box_pack_start(GTK_BOX(card), caption, FALSE, FALSE, 0);
+            cards_[i] = gtk_label_new("—");
+            css_class(cards_[i], "summary-value");
+            gtk_label_set_xalign(GTK_LABEL(cards_[i]), 0);
+            gtk_box_pack_start(GTK_BOX(card), cards_[i], FALSE, FALSE, 0);
+            gtk_grid_attach(GTK_GRID(cards), card, i, 0, 1, 1);
+        }
+        gtk_box_pack_start(GTK_BOX(base), cards, FALSE, FALSE, 0);
 
-        detail_ = gtk_label_new("Choose a volume or open a filesystem image.");
-        gtk_label_set_xalign(GTK_LABEL(detail_), 0);
-        gtk_box_pack_start(GTK_BOX(base), detail_, FALSE, FALSE, 0);
+        auto* map_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+        auto* map_hint = gtk_label_new("DISK MAP   ·   Physical position, left to right then top to bottom");
+        css_class(map_hint, "kicker");
+        gtk_label_set_xalign(GTK_LABEL(map_hint), 0);
+        gtk_box_pack_start(GTK_BOX(map_box), map_hint, FALSE, FALSE, 0);
+        map_ = gtk_drawing_area_new();
+        gtk_widget_set_size_request(map_, -1, 200);
+        gtk_box_pack_start(GTK_BOX(map_box), map_, TRUE, TRUE, 0);
+        g_signal_connect(map_, "draw", G_CALLBACK(draw_map), this);
+        auto* legend = gtk_label_new(nullptr);
+        gtk_label_set_markup(GTK_LABEL(legend),
+            "<span foreground='#1267BD'>■</span> Used   "
+            "<span foreground='#FF253C'>■</span> Fragmented   "
+            "<span foreground='#9E2BFA'>■</span> Directory   "
+            "<span foreground='#05214A'>■</span> Free   "
+            "<span foreground='#FF9F0A'>■</span> Metadata / reserved");
+        gtk_label_set_xalign(GTK_LABEL(legend), 0);
+        gtk_box_pack_start(GTK_BOX(map_box), legend, FALSE, FALSE, 0);
+        summary_ = gtk_label_new("Run Analyse to inspect the allocation map.");
+        gtk_label_set_xalign(GTK_LABEL(summary_), 0);
+        gtk_box_pack_start(GTK_BOX(map_box), summary_, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(base), section(nullptr, map_box), TRUE, TRUE, 0);
+
         auto* actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
         gtk_box_pack_start(GTK_BOX(base), actions, FALSE, FALSE, 0);
         analyse_ = add_button(actions, "Analyse", "analyse");
-        unmount_ = add_button(actions, "Unmount", "unmount");
+        css_class(analyse_, "primary-action");
         defrag_ = add_button(actions, "Defragment", "defrag");
         growth_ = add_button(actions, "Growth Defrag", "growth-defrag");
         recover_ = add_button(actions, "Recover", "recover");
-        stop_ = add_button(actions, "Stop safely", "stop");
 
         progress_ = gtk_progress_bar_new();
         gtk_box_pack_start(GTK_BOX(base), progress_, FALSE, FALSE, 0);
+        stop_ = add_button(actions, "Stop safely", "stop");
+        css_class(stop_, "stop-action");
         status_ = gtk_label_new("Ready");
         gtk_label_set_xalign(GTK_LABEL(status_), 0);
         gtk_box_pack_start(GTK_BOX(base), status_, FALSE, FALSE, 0);
-        map_ = gtk_drawing_area_new();
-        gtk_widget_set_size_request(map_, 640, 235);
-        gtk_box_pack_start(GTK_BOX(base), map_, TRUE, TRUE, 0);
-        g_signal_connect(map_, "draw", G_CALLBACK(draw_map), this);
-        summary_ = gtk_label_new("Run Analyse to inspect the allocation map.");
-        gtk_label_set_xalign(GTK_LABEL(summary_), 0);
-        gtk_box_pack_start(GTK_BOX(base), summary_, FALSE, FALSE, 0);
+        auto* log_expander = gtk_expander_new("Technical activity log");
+        gtk_box_pack_start(GTK_BOX(base), log_expander, FALSE, FALSE, 0);
         auto* scroll = gtk_scrolled_window_new(nullptr, nullptr);
-        gtk_widget_set_size_request(scroll, -1, 160);
-        gtk_box_pack_start(GTK_BOX(base), scroll, FALSE, TRUE, 0);
+        gtk_widget_set_size_request(scroll, -1, 110);
+        gtk_container_add(GTK_CONTAINER(log_expander), scroll);
         log_ = gtk_text_view_new();
         gtk_text_view_set_editable(GTK_TEXT_VIEW(log_), FALSE);
         gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(log_), GTK_WRAP_WORD_CHAR);
@@ -131,10 +287,11 @@ public:
     }
 
 private:
-    GtkWidget *window_{}, *volumes_widget_{}, *detail_{}, *progress_{}, *status_{};
+    GtkWidget *window_{}, *volumes_widget_{}, *detail_{}, *volume_title_{}, *progress_{}, *status_{};
     GtkWidget *map_{}, *summary_{}, *log_{}, *analyse_{}, *unmount_{};
     GtkWidget *defrag_{}, *growth_{}, *recover_{}, *stop_{};
     GtkWidget *refresh_{}, *image_{};
+    GtkWidget* cards_[4]{};
     std::vector<DesktopVolume> volumes_;
     std::vector<Json> cells_;
     std::string mapper_, engine_, helper_path_, pending_program_, purpose_, output_, result_status_;
@@ -214,10 +371,13 @@ private:
     void update() {
         auto* v = current();
         if (v) {
+            gtk_label_set_text(GTK_LABEL(volume_title_), v->label.empty() ? v->path.c_str() : v->label.c_str());
             std::string details = v->path + " · " + v->filesystem + " · " + bytes(v->size)
                 + (v->mounted ? " · mounted" : " · unmounted")
                 + (v->verified ? " · identity verified" : " · native identity pending");
             gtk_label_set_text(GTK_LABEL(detail_), details.c_str());
+        } else {
+            gtk_label_set_text(GTK_LABEL(volume_title_), "Choose a disk");
         }
         bool journal = v && fs::exists(defragger::desktop_journal(*v, getuid()));
         auto state = defragger::desktop_controls(v, busy_, stopping_, journal);
@@ -285,6 +445,13 @@ private:
         gtk_widget_destroy(chooser);
     }
     void action(const std::string& action_name) {
+        if (action_name == "minimize") { gtk_window_iconify(GTK_WINDOW(window_)); return; }
+        if (action_name == "maximize") {
+            if (gtk_window_is_maximized(GTK_WINDOW(window_))) gtk_window_unmaximize(GTK_WINDOW(window_));
+            else gtk_window_maximize(GTK_WINDOW(window_));
+            return;
+        }
+        if (action_name == "close") { gtk_window_close(GTK_WINDOW(window_)); return; }
         if (busy_ && action_name != "stop" && action_name != "about" &&
             action_name != "test-media") return;
         if (action_name == "refresh") { refresh(); return; }
@@ -536,6 +703,12 @@ private:
         gtk_widget_queue_draw(map_);
         std::string summary = "Capacity " + bytes(number(map, "total_bytes")) + "    Free "
             + bytes(number(map, "free_bytes")) + "    Used " + bytes(number(map, "used_bytes"));
+        gtk_label_set_text(GTK_LABEL(cards_[0]), map.find("fragmented_files") ?
+            (std::to_string(number(map, "fragmented_files")) + " files").c_str() : "Not calculated");
+        gtk_label_set_text(GTK_LABEL(cards_[1]), bytes(number(map, "free_bytes")).c_str());
+        gtk_label_set_text(GTK_LABEL(cards_[2]), bytes(number(map, "used_bytes")).c_str());
+        gtk_label_set_text(GTK_LABEL(cards_[3]), map.find("regular_files") ?
+            (std::to_string(number(map, "regular_files")) + " files").c_str() : "Unknown");
         gtk_label_set_text(GTK_LABEL(summary_), summary.c_str());
         note(summary);
     }
@@ -578,15 +751,25 @@ private:
         if (self->cells_.empty()) return FALSE;
         int columns = std::max(1, allocation.width / 8);
         int rows = std::max(1, allocation.height / 8);
+        const std::uint64_t first = number(self->cells_.front(), "start");
+        const std::uint64_t last = number(self->cells_.back(), "end");
+        if (last < first) return FALSE;
         for (int row = 0; row < rows; ++row) for (int column = 0; column < columns; ++column) {
-            size_t index = std::min(self->cells_.size() - 1,
-                static_cast<size_t>((static_cast<std::uint64_t>(row * columns + column) * self->cells_.size()) / (rows * columns)));
-            const auto& cell = self->cells_[index];
-            if (number(cell, "bad")) cairo_set_source_rgb(cr, 0.86, 0.22, 0.22);
-            else if (number(cell, "fragmented")) cairo_set_source_rgb(cr, 0.95, 0.61, 0.23);
-            else if (number(cell, "used")) cairo_set_source_rgb(cr, 0.34, 0.58, 0.82);
-            else if (number(cell, "free")) cairo_set_source_rgb(cr, 0.26, 0.72, 0.52);
-            else cairo_set_source_rgb(cr, 0.47, 0.49, 0.52);
+            const auto index = static_cast<std::uint64_t>(row) * columns + column;
+            const auto unit = first + static_cast<std::uint64_t>(
+                static_cast<long double>(index) * (static_cast<long double>(last) - first + 1.0L) /
+                (static_cast<long double>(rows) * columns));
+            const auto found = std::lower_bound(self->cells_.begin(), self->cells_.end(), unit,
+                [](const Json& cell, std::uint64_t needle) { return number(cell, "end") < needle; });
+            if (found == self->cells_.end() || number(*found, "start") > unit) continue;
+            const auto& cell = *found;
+            if (number(cell, "bad")) cairo_set_source_rgb(cr, 1.0, 0.625, 0.040);
+            else if (number(cell, "fragmented")) cairo_set_source_rgb(cr, 1.0, 0.145, 0.235);
+            else if (number(cell, "directory")) cairo_set_source_rgb(cr, 0.62, 0.17, 0.98);
+            else if (number(cell, "used")) cairo_set_source_rgb(cr, 0.020, 0.520, 1.0);
+            else if (number(cell, "free")) cairo_set_source_rgb(cr, 0.018, 0.050, 0.105);
+            else if (number(cell, "outside")) cairo_set_source_rgb(cr, 0.006, 0.014, 0.030);
+            else cairo_set_source_rgb(cr, 0.285, 0.330, 0.410);
             cairo_rectangle(cr, column * 8, row * 8, 7, 7);
             cairo_fill(cr);
         }
