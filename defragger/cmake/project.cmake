@@ -195,6 +195,7 @@ target_link_libraries(linux-defragger-core PUBLIC InfiltratrCommon::Common)
 # scoped state and RAII improve the implementation. Filesystem parsing and
 # mutation remain in the existing native C engines.
 add_library(linux-defragger-runtime-cpp STATIC
+    native/desktop_policy.cpp
     native/helper_policy.cpp
     native/json.cpp
     native/map.cpp
@@ -208,7 +209,7 @@ target_compile_options(linux-defragger-runtime-cpp PRIVATE ${LD_WARNING_FLAGS})
 target_compile_definitions(linux-defragger-runtime-cpp PRIVATE
     _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(linux-defragger-runtime-cpp PUBLIC
-    linux-defragger-core InfiltratrCommon::Common Threads::Threads)
+    linux-defragger-core InfiltratrCommon::Common Threads::Threads OpenSSL::Crypto)
 
 add_executable(linux-defragger-operation-engine-cpp
     native/operation_engine.cpp)
@@ -586,6 +587,14 @@ install(FILES LICENSE
         DESTINATION share/doc/linux-defragger RENAME COPYING.GPL-3.0)
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(linux-defragger-desktop-policy-test
+        tests/test_desktop_policy.cpp)
+    target_link_libraries(linux-defragger-desktop-policy-test PRIVATE
+        linux-defragger-runtime-cpp)
+    target_compile_options(linux-defragger-desktop-policy-test PRIVATE
+        ${LD_WARNING_FLAGS})
+    add_test(NAME linux-defragger-desktop-policy
+        COMMAND linux-defragger-desktop-policy-test)
     add_executable(linux-defragger-cpp-runtime-test
         tests/test_cpp_runtime.cpp)
     target_include_directories(linux-defragger-cpp-runtime-test PRIVATE
