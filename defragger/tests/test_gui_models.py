@@ -721,6 +721,36 @@ def test_mb_typography_has_no_system_font_escape_hatches() -> None:
     assert "fc-scan" not in theme_source
     assert "fc-scan" not in test_media_theme
 
+def test_suite_standard_branded_titlebars() -> None:
+    view_source = (GUI / "ui" / "window_view.py").read_text()
+    theme_source = (GUI / "ui" / "theme.py").read_text()
+    test_media_gui = (ROOT / "test_media" / "test_media_gui.c").read_text()
+    test_media_theme = (ROOT / "test_media" / "test_media_theme.c").read_text()
+
+    # Main Defragmenter uses the same real GtkHeaderBar grammar as the current
+    # System Monitor/System Settings shell rather than faking chrome in content.
+    assert "self.window.set_titlebar(self._build_suite_titlebar())" in view_source
+    assert 'header.set_name("defrag-shell-header")' in view_source
+    assert 'subtitle = Gtk.Label(label="Infiltrator OS")' in view_source
+    for control in (
+        "window-minimize-symbolic",
+        "window-maximize-symbolic",
+        "window-close-symbolic",
+    ):
+        assert control in view_source
+    assert "linear-gradient(to right, #06131f, #08263a)" in theme_source
+    assert ".defrag-window-control-close:hover" in theme_source
+
+    # The destructive companion must not regress to the older centred/default
+    # header immediately after launching from the suite-standard main window.
+    assert "ldtm_suite_header(&app, &refresh_button)" in test_media_gui
+    assert 'gtk_widget_set_name(header, "ldtm-shell-header")' in test_media_gui
+    assert 'GtkWidget *subtitle = gtk_label_new("Infiltrator OS")' in test_media_gui
+    assert "gtk_window_set_titlebar(GTK_WINDOW(app.window), header)" in test_media_gui
+    assert "linear-gradient(to right, #06131f, #08263a)" in test_media_theme
+    assert ".ldtm-window-control-close:hover" in test_media_theme
+
+
 def test_main_window_remains_resizable_maximisable_and_workarea_bounded() -> None:
     window_source = (GUI / "ui" / "window.py").read_text()
     view_source = (GUI / "ui" / "window_view.py").read_text()
