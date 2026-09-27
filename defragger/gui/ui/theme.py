@@ -114,6 +114,50 @@ def _base_css() -> str:
     panel_radius = METRICS["panel_radius"]
     return f"""
     * {{ font-family: "{body}"; font-weight: {regular}; }}
+    #defrag-shell-header {{
+        min-height: 58px;
+        padding: 6px 10px;
+        background-image: linear-gradient(to right, #06131f, #08263a);
+        background-color: #06131f;
+        border-bottom: 1px solid #263746;
+    }}
+    #defrag-header-brand {{ padding: 2px 4px; }}
+    #defrag-header-brand-icon {{
+        background-color: #111820;
+        border: 1px solid #263746;
+        border-radius: 12px;
+        padding: 7px;
+        box-shadow: 0 0 18px alpha(#00adef, 0.18);
+    }}
+    #defrag-header-brand-icon image {{ color: #00adef; }}
+    #defrag-header-brand-title {{
+        color: #f4f7fa;
+        font-family: "{brand}";
+        font-size: 20px;
+        font-weight: {bold};
+    }}
+    #defrag-header-brand-subtitle {{ color: #9fb2c4; font-size: 11px; }}
+    #defrag-header-end {{ margin-left: 10px; }}
+    .defrag-window-control {{
+        min-width: 30px;
+        min-height: 30px;
+        padding: 4px;
+        color: #d9e4ec;
+        background-image: none;
+        background-color: transparent;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        box-shadow: none;
+    }}
+    .defrag-window-control:hover {{
+        background-color: #163047;
+        border-color: #365169;
+    }}
+    .defrag-window-control-close:hover {{
+        background-color: #c84343;
+        border-color: #c84343;
+        color: #ffffff;
+    }}
     .app-title, .about-title {{
         font-family: "{brand}";
         font-weight: {brand_weight};
