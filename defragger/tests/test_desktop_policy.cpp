@@ -20,12 +20,15 @@ int main() {
     } catch (const std::runtime_error&) {}
     assert(!v.verified);
     desktop_verify_identity(v, "ext4");
-    assert(v.verified && desktop_controls(&v, false, false, false).defrag);
+    assert(v.verified);
+    assert(!desktop_controls(&v, false, false, false).defrag);
+    v.exact_analysis = true;
+    assert(desktop_controls(&v, false, false, false).defrag);
     DesktopVolume fat = v;
     fat.filesystem = "vfat";
     fat.verified = false;
     desktop_verify_identity(fat, "fat16");
-    assert(fat.verified && fat.filesystem == "fat16");
+    assert(fat.verified && fat.filesystem == "fat16" && !fat.exact_analysis);
     const auto journal = desktop_journal(v, 1000);
     const auto args = desktop_mutation(v, "defrag", "/tmp/engine", journal, 512, false);
     assert(args.at(0) == "/tmp/engine" && args.at(1) == "defrag");

@@ -698,6 +698,10 @@ private:
         auto* v = current();
         if (!v) return;
         defragger::desktop_verify_identity(*v, field(map, "filesystem"));
+        const std::string accuracy = field(map, "map_accuracy");
+        v->exact_analysis =
+            !accuracy.empty() && accuracy != "summary" &&
+            number(map, "unknown_bytes") == 0U;
         map_data_ = map;
         cells_ = raw->array();
         gtk_widget_queue_draw(map_);

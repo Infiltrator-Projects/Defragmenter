@@ -14,6 +14,7 @@ struct DesktopVolume {
     std::string path, filesystem, label, filesystem_uuid, partition_uuid;
     std::uint64_t size = 0;
     bool mounted = false, readonly = false, image = false, verified = false;
+    bool exact_analysis = false;
 };
 
 struct DesktopControls {

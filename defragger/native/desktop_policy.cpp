@@ -73,8 +73,12 @@ DesktopControls desktop_controls(const DesktopVolume* v, bool busy,
     out.unmount = v->mounted && !v->image;
     const auto* backend = backend_by_fstype(v->filesystem);
     if (!backend || !v->verified || v->readonly || v->mounted) return out;
-    out.defrag = !journal_exists && operation_for(*backend, "defrag");
-    out.growth_defrag = !journal_exists && operation_for(*backend, "growth-defrag");
+    out.defrag = v->exact_analysis && !journal_exists &&
+                 operation_for(*backend, "defrag");
+    out.growth_defrag = v->exact_analysis && !journal_exists &&
+                        operation_for(*backend, "growth-defrag");
+    // Recovery must remain available after restart even before a fresh map is
+    // produced; the journal and worker rebind the exact target identity.
     out.recover = journal_exists && operation_for(*backend, "recover");
     return out;
 }
@@ -117,8 +121,12 @@ std::vector<std::string> desktop_mutation(const DesktopVolume& v,
                                           unsigned cells,
                                           bool journal_exists) {
     const auto* backend = backend_by_fstype(v.filesystem);
-    if (!backend || !operation_for(*backend, operation) || !v.verified || v.mounted || v.readonly)
+    if (!backend || !operation_for(*backend, operation) || !v.verified ||
+        v.mounted || v.readonly)
         throw std::runtime_error("Volume is not verified, unmounted, writable or supported");
+    if (operation != "recover" && !v.exact_analysis)
+        throw std::runtime_error(
+            "An exact allocation analysis is required before filesystem mutation");
     if ((operation == "recover") != journal_exists)
         throw std::runtime_error("An unfinished journal must be recovered before further writes");
     if (journal.empty()) throw std::runtime_error("A persistent journal path is required");

@@ -657,7 +657,6 @@ uint64_t ufs_recorded_used_bytes(const LdUfsSummary *summary)
 #define UFS_WRITER_STOPPED 130
 #define UFS_WRITER_IO_BYTES (1024U * 1024U)
 #define UFS_WRITER_MAX_BLOCK_REFS UINT64_C(16777216)
-#define UFS_MAX_CONTIGSUM 16U
 
 typedef struct {
     uint64_t logical_block;
@@ -1273,9 +1272,10 @@ static int writer_supported(const UfsInventory *inventory,
         return -1;
     }
     if (summary->contiguous_summary_size < 0 ||
-        summary->contiguous_summary_size > (int32_t)UFS_MAX_CONTIGSUM) {
+        (uint64_t)summary->contiguous_summary_size + 1U >
+            (uint64_t)summary->cylinder_group_size / sizeof(uint32_t)) {
         ufs_error(error, error_size,
-                  "UFS contiguous-cluster summary geometry is unsupported");
+                  "UFS contiguous-cluster summary does not fit the cylinder group");
         return -1;
     }
     uint8_t *owned = calloc(
@@ -1467,7 +1467,12 @@ static int update_cluster_summaries(uint8_t *cg, const LdUfsSummary *summary,
                 (uint8_t)(1U << (unsigned int)(block & 7U));
     }
     uint32_t run = 0U;
-    uint32_t sums[UFS_MAX_CONTIGSUM + 1U] = {0U};
+    uint32_t *sums = calloc((size_t)limit + 1U, sizeof(*sums));
+    if (sums == NULL) {
+        ufs_error(error, error_size,
+                  "out of memory rebuilding UFS free-cluster summaries");
+        return -1;
+    }
     for (uint32_t block = 0U; block < cluster_blocks; ++block) {
         const bool free_block =
             (cg[clusteroff + (block >> 3U)] &
@@ -1480,6 +1485,7 @@ static int update_cluster_summaries(uint8_t *cg, const LdUfsSummary *summary,
     if (run != 0U) sums[run > limit ? limit : run]++;
     for (uint32_t index = 0U; index <= limit; ++index)
         write_u32(cg + sumoff + (size_t)index * 4U, sums[index], little);
+    free(sums);
     return 0;
 }
 
