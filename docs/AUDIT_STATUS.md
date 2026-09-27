@@ -5,8 +5,8 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-09-26
 
-Applies to: release version 1.8.0-217
-Audited source commit: 5c34a2bf2f3af2a3e98a8e8c2af322946b738576
+Applies to: release version 1.8.0-218
+Audited source commit: fe3644e8dee1b9636d18975800f1de5506149413
 Audited release-governance commit: 36be157f932006672f4dfae1c41b83317a914f46
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
@@ -15,13 +15,11 @@ This document records the current release safety case. Historical audit-developm
 
 ## Qualification evidence
 
-The current audited production-source baseline is commit `5c34a2bf2f3af2a3e98a8e8c2af322946b738576`. In Project quality gate run 36281808058, that exact candidate completed the warnings-as-errors C/C++ build and all 44 native/filesystem/GUI/release CTest tests successfully; the independent hosted ASan/UBSan lane also passed. Self-hosted Local Linux / heavy qualification run 36281807875 completed its dependency check, strict build and native/filesystem/GUI test subsets successfully. Both ordinary candidate gates stopped only at the deliberate stale completed-audit control, which this 1.8.0-217 audit advance resolves.
+The current audited production-source baseline is commit `fe3644e8dee1b9636d18975800f1de5506149413`. In Project quality gate run 36285862240, that exact candidate completed the warnings-as-errors C/C++ build and all 44 native/filesystem/GUI/release CTest tests successfully; the independent hosted ASan/UBSan lane also passed. The self-hosted Local Linux run 36285861965 did not reach project source: actions/checkout reported that Git was absent from PATH and its REST fallback cannot materialise submodules. That runner-infrastructure fault is not treated as application qualification evidence either for or against this source.
 
-The reviewed Test Media identity delta removes an unintended privilege requirement from pre-confirmation disk binding. Linux sysfs capacity metadata is now preferred over opening the raw whole-disk node, allowing an ordinary desktop session to calculate the same physical-medium fingerprint that the privileged worker later recomputes.
+The reviewed presentation delta installs the same branded real GtkHeaderBar grammar currently used by the suite shell: a dark blue gradient, application icon block, product title, Infiltrator OS subtitle and explicit minimise/maximise/close controls. Defragmenter retains normal CSD drag/double-click/window-manager behaviour because this is the actual window title bar rather than an in-content imitation.
 
-The destructive safety invariant remains unchanged: confirmation binds canonical device path plus stable medium identity and capacity; the privileged worker independently recomputes that fingerprint before unmounting and again immediately before repartitioning. A changed or anonymous medium still fails closed.
-
-The reviewed metadata delta treats sysfs serial/WWN as authoritative when available and uses udev properties only to fill missing values, preventing root/non-root metadata visibility differences from changing an established identity. MMC/SD media additionally accepts the kernel-exported card CID as a namespaced stable hardware-identity fallback when ordinary serial/WWN fields are absent.
+The reviewed companion delta applies the same title-bar identity to Defragmenter Test Media while keeping its refresh action immediately available ahead of the standard window controls. Existing destructive safety, filesystem qualification and operation semantics are unchanged.
 
 The release-governance baseline remains `36be157f932006672f4dfae1c41b83317a914f46`; workflow semantics are unchanged. The malformed-media matrix, transaction/recovery tests, native integration fixtures, GUI contract tests, release/package tests and architecture ownership checks remain part of the permanent **Project quality gate**. Environment-dependent destructive media evidence is supplementary and is not represented as hosted-CI proof.
 
