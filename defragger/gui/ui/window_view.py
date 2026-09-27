@@ -90,6 +90,7 @@ class WindowView:
         self.gui_version = gui_version
         self.engine_version = engine_version
         self.build_label = build_label
+        self.window.set_titlebar(self._build_suite_titlebar())
         self._build()
         self._load_css()
 
@@ -106,6 +107,92 @@ class WindowView:
         image = Gtk.Image.new_from_icon_name(name, Gtk.IconSize.DIALOG)
         image.set_pixel_size(size)
         return image
+
+    def _window_control(
+        self,
+        icon_name: str,
+        tooltip: str,
+        callback: Any,
+        *,
+        close: bool = False,
+    ) -> Gtk.Button:
+        button = Gtk.Button.new_from_icon_name(icon_name, Gtk.IconSize.BUTTON)
+        button.set_relief(Gtk.ReliefStyle.NONE)
+        button.set_tooltip_text(tooltip)
+        button.get_style_context().add_class("defrag-window-control")
+        if close:
+            button.get_style_context().add_class("defrag-window-control-close")
+        button.connect("clicked", callback)
+        return button
+
+    def _toggle_maximise(self, _button: Gtk.Button) -> None:
+        if self.window.is_maximized():
+            self.window.unmaximize()
+        else:
+            self.window.maximize()
+
+    def _build_suite_titlebar(self) -> Gtk.HeaderBar:
+        """Build the suite-standard branded client-side window chrome."""
+
+        header = Gtk.HeaderBar()
+        header.set_name("defrag-shell-header")
+        header.set_show_close_button(False)
+        header.set_custom_title(Gtk.Label(label=""))
+
+        brand = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        brand.set_name("defrag-header-brand")
+        icon_wrap = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        icon_wrap.set_name("defrag-header-brand-icon")
+        icon_wrap.pack_start(self._icon(APP_ICON_NAME, 28), False, False, 0)
+        brand.pack_start(icon_wrap, False, False, 0)
+
+        copy = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        title = Gtk.Label(label=APP_NAME)
+        title.set_xalign(0)
+        title.set_name("defrag-header-brand-title")
+        subtitle = Gtk.Label(label="Infiltrator OS")
+        subtitle.set_xalign(0)
+        subtitle.set_name("defrag-header-brand-subtitle")
+        copy.pack_start(title, False, False, 0)
+        copy.pack_start(subtitle, False, False, 0)
+        brand.pack_start(copy, False, False, 0)
+        header.pack_start(brand)
+
+        controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        controls.set_name("defrag-header-end")
+        controls.pack_start(
+            self._window_control(
+                "window-minimize-symbolic",
+                "Minimize",
+                lambda _button: self.window.iconify(),
+            ),
+            False,
+            False,
+            0,
+        )
+        controls.pack_start(
+            self._window_control(
+                "window-maximize-symbolic",
+                "Maximize / Restore",
+                self._toggle_maximise,
+            ),
+            False,
+            False,
+            0,
+        )
+        controls.pack_start(
+            self._window_control(
+                "window-close-symbolic",
+                "Close",
+                lambda _button: self.window.close(),
+                close=True,
+            ),
+            False,
+            False,
+            0,
+        )
+        header.pack_end(controls)
+        return header
 
 
     def _nav_button(
