@@ -50,7 +50,7 @@ if [ -e "$COMMON_DIR/.git" ]; then
     }
 fi
 
-for command_name in tar gzip sha256sum sed python3; do
+for command_name in tar gzip sha256sum sed; do
     command -v "$command_name" >/dev/null 2>&1 || {
         printf 'Required command is missing: %s\n' "$command_name" >&2
         exit 1

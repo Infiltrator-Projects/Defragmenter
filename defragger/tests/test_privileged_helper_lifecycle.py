@@ -22,6 +22,15 @@ def wait_for(predicate):
         time.sleep(0.01)
 
 
+def process_start_time(pid):
+    """Identify the original child even if the kernel reuses its PID."""
+    try:
+        fields = Path(f"/proc/{pid}/stat").read_text().rsplit(") ", 1)[1].split()
+    except FileNotFoundError:
+        return None
+    return fields[19]
+
+
 def run_case(mode, program):
     with tempfile.TemporaryDirectory(prefix="defragger-supervisor-") as temporary:
         marker = Path(temporary) / "child"
@@ -103,9 +112,10 @@ def run_case(mode, program):
                 # A follow-on operation is allowed as soon as finished arrives.
                 send({"action": "run", "id": 3, "program": program, "argv": arguments})
                 second = event_of("started", 3)
+                second_start = process_start_time(second["pid"])
                 send({"action": "stop", "id": 4})
                 assert event_of("finished", 3)["returncode"] == 130
-                assert not Path(f"/proc/{second['pid']}").exists(), "child was not reaped"
+                assert process_start_time(second["pid"]) != second_start or second_start is None, "child was not reaped"
                 send({"action": "quit"})
             elif mode == "output-closed":
                 # Even with the control pipe still open, output loss stops/reaps

@@ -18,7 +18,8 @@ def test_linux_defragger_uses_system_update_manager_only() -> None:
     assert "CheckUpdates" not in desktop
     assert "--check-updates" not in desktop
 
-    assert "/usr/lib/linux-defragger/linux_defragger_gui.py" in wrapper
+    assert "exec /usr/bin/linux-defragger-desktop" in wrapper
+    assert "python3" not in wrapper
     assert "update_launcher.py" not in wrapper
     assert "pkexec" not in wrapper
 

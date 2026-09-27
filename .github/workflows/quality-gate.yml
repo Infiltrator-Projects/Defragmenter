@@ -57,6 +57,7 @@ jobs:
             -DLD_ENABLE_WERROR=ON \
             -DBUILD_TESTING=ON
           cmake --build build -j2
+          cmake --build build --target linux-defragger-desktop -j2
 
       - name: Run complete native, filesystem, GUI and release test suite
         env:

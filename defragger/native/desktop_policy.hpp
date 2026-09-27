@@ -22,6 +22,9 @@ struct DesktopControls {
 };
 
 std::vector<DesktopVolume> desktop_discover(const Json& lsblk);
+// Candidates whose host filesystem metadata is missing or unsupported. They
+// require a read-only first-party probe before they enter the volume selector.
+std::vector<DesktopVolume> desktop_probe_candidates(const Json& lsblk);
 DesktopControls desktop_controls(const DesktopVolume* volume, bool busy,
                                  bool stopping, bool journal_exists);
 std::string desktop_journal(const DesktopVolume& volume, unsigned uid);

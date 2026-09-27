@@ -55,12 +55,46 @@ void visit(const Json& node, std::vector<DesktopVolume>& result) {
     if (const auto* children = node.find("children"); children && children->is_array())
         for (const auto& child : children->array()) visit(child, result);
 }
+void candidates(const Json& node, std::vector<DesktopVolume>& result) {
+    if (!node.is_object()) return;
+    const std::string path = value(node, "path");
+    const std::string fstype = value(node, "fstype");
+    const std::string label = value(node, "partlabel");
+    const bool hinted = label == "LD_OFS" || label == "LD_FFS" || label == "LD_SFS" ||
+        label == "LD_PFS3" || label == "LD_APFS";
+    if (!path.empty() && ((hinted && fstype.empty()) || (!backend_by_fstype(fstype) &&
+        fstype != "fat" && fstype != "vfat" && fstype != "msdos"))) {
+        DesktopVolume candidate;
+        candidate.path = path;
+        candidate.label = value(node, "label");
+        candidate.size = node.find("size") ? node.at("size").unsigned_or() : 0;
+        candidate.filesystem_uuid = value(node, "uuid");
+        candidate.partition_uuid = value(node, "partuuid");
+        candidate.readonly = flag(node, "ro");
+        if (const auto* mounts = node.find("mountpoints"); mounts && mounts->is_array())
+            for (const auto& mount : mounts->array()) candidate.mounted |= !mount.string_or().empty();
+        if (hinted) {
+            candidate.filesystem = label == "LD_OFS" ? "ofs" : label == "LD_FFS" ? "ffs" :
+                label == "LD_SFS" ? "sfs" : label == "LD_PFS3" ? "pfs3" : "apfs";
+        }
+        result.push_back(std::move(candidate));
+    }
+    if (const auto* children = node.find("children"); children && children->is_array())
+        for (const auto& child : children->array()) candidates(child, result);
+}
 } // namespace
 
 std::vector<DesktopVolume> desktop_discover(const Json& lsblk) {
     std::vector<DesktopVolume> volumes;
     if (const auto* nodes = lsblk.find("blockdevices"); nodes && nodes->is_array())
         for (const auto& node : nodes->array()) visit(node, volumes);
+    return volumes;
+}
+
+std::vector<DesktopVolume> desktop_probe_candidates(const Json& lsblk) {
+    std::vector<DesktopVolume> volumes;
+    if (const auto* nodes = lsblk.find("blockdevices"); nodes && nodes->is_array())
+        for (const auto& node : nodes->array()) candidates(node, volumes);
     return volumes;
 }
 
@@ -72,7 +106,7 @@ DesktopControls desktop_controls(const DesktopVolume* v, bool busy,
     out.analyse = true;
     out.unmount = v->mounted && !v->image;
     const auto* backend = backend_by_fstype(v->filesystem);
-    if (!backend || !v->verified || v->readonly) return out;
+    if (!backend || !v->verified || v->readonly || v->mounted) return out;
     out.defrag = !journal_exists && operation_for(*backend, "defrag");
     out.growth_defrag = !journal_exists && operation_for(*backend, "growth-defrag");
     out.recover = journal_exists && operation_for(*backend, "recover");

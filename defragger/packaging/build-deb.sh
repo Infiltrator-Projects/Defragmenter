@@ -67,7 +67,7 @@ fi
 "$ROOT/packaging/vendor-mb-fonts.sh" "$FONT_ARCHIVE" >/dev/null
 FONT_WORK="$STAGE/fonts"
 mkdir -p "$FONT_WORK" "$STAGE/root/usr/share/fonts/truetype/linux-defragger"
-tar -xJf "$FONT_ARCHIVE" -C "$FONT_WORK"
+tar --no-same-owner -xJf "$FONT_ARCHIVE" -C "$FONT_WORK"
 install -m 0644 "$FONT_WORK/mb_corpo_a_cond_regular.ttf" "$STAGE/root/usr/share/fonts/truetype/linux-defragger/"
 install -m 0644 "$FONT_WORK/mb_corpo_s_bold.ttf" "$STAGE/root/usr/share/fonts/truetype/linux-defragger/"
 install -m 0644 "$FONT_WORK/mb_corpo_s_regular.ttf" "$STAGE/root/usr/share/fonts/truetype/linux-defragger/"
@@ -85,7 +85,7 @@ INSTALLED_SIZE=$(du -sk "$STAGE/root/usr" | awk '{print $1}')
     printf 'Replaces: linux-defragger (<< 1.8.0-172)\n'
     printf 'Maintainer: Shannon Smith\n'
     printf 'X-Linux-Defragger-Build: %s\n' "$BUILD_FLAVOR"
-    printf 'Depends: python3, python3-gi, python3-cairo, gir1.2-gtk-3.0, libgtk-3-0t64, fontconfig, policykit-1, ca-certificates, desktop-file-utils, udisks2, util-linux, makefs, libsqlite3-0, libssl3t64, libstdc++6\n'
+    printf 'Depends: libgtk-3-0t64, fontconfig, policykit-1, ca-certificates, desktop-file-utils, udisks2, util-linux, makefs, libsqlite3-0, libssl3t64, libstdc++6\n'
     printf 'Installed-Size: %s\n' "$INSTALLED_SIZE"
     printf 'Description: Safe direct filesystem analysis and canonical layout rewriting\n'
     printf ' Defragmenter analyses filesystem allocation and safely rewrites\n'

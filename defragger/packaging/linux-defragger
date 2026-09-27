@@ -4,6 +4,4 @@
 # Author: Shannon Smith
 # Purpose: Launch the installed GTK application. Updates are managed by APT.
 
-export PYTHONDONTWRITEBYTECODE=1
-
-exec /usr/bin/python3 /usr/lib/linux-defragger/linux_defragger_gui.py "$@"
+exec /usr/bin/linux-defragger-desktop "$@"

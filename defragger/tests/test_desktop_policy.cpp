@@ -10,6 +10,11 @@ int main() {
     assert(volumes.size() == 1);
     auto& v = volumes.front();
     assert(v.path == "/dev/sdb1" && !v.verified && !v.mounted);
+    auto unknown = desktop_probe_candidates(Json::parse(R"({"blockdevices":[
+      {"path":"/dev/sdc","children":[{"path":"/dev/sdc1","partlabel":"LD_OFS","size":2097152}]},
+      {"path":"/dev/sdd1","fstype":"ext4"}]})"));
+    assert(unknown.size() == 2);
+    assert(unknown[1].path == "/dev/sdc1" && unknown[1].filesystem == "ofs");
     assert(desktop_controls(&v, false, false, false).analyse);
     assert(!desktop_controls(&v, false, false, false).defrag);
     assert(desktop_journal(v, 1000) ==
@@ -36,6 +41,7 @@ int main() {
     } catch (const std::runtime_error&) {}
     v.mounted = true;
     assert(desktop_controls(&v, false, false, false).unmount);
+    assert(!desktop_controls(&v, false, false, false).defrag);
     try {
         (void)desktop_mutation(v, "defrag", "/tmp/engine", journal, 512, false);
         assert(false);
