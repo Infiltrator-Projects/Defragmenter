@@ -73,6 +73,7 @@ tar --sort=name --mtime='@1704067200' --owner=0 --group=0 --numeric-owner \
     --exclude-vcs \
     --exclude='__pycache__' \
     --exclude='*.pyc' \
+    --exclude='*.py' \
     --exclude="$BASENAME/build*" \
     --exclude="$BASENAME/native-verify" \
     --exclude="$BASENAME/release" \
