@@ -230,6 +230,19 @@ static bool ld_sysfs_text(const char *sysfs, const char *suffix,
     return infiltratr_read_text_file(path, output, output_size);
 }
 
+static bool ld_sysfs_size_bytes(const char *sysfs, uint64_t *size_bytes) {
+    char path[PATH_MAX];
+    uint64_t sectors = 0U;
+    if (sysfs == NULL || size_bytes == NULL) return false;
+    const int length = snprintf(path, sizeof(path), "%s/size", sysfs);
+    if (length < 0 || (size_t)length >= sizeof(path) ||
+        !infiltratr_read_u64_file(path, &sectors) ||
+        sectors > UINT64_MAX / UINT64_C(512))
+        return false;
+    *size_bytes = sectors * UINT64_C(512);
+    return true;
+}
+
 static void ld_read_udev_properties(dev_t device, LdBlockDeviceInfo *info) {
     char path[PATH_MAX];
     const int length = snprintf(path, sizeof(path), "/run/udev/data/b%u:%u",
@@ -255,12 +268,15 @@ static void ld_read_udev_properties(dev_t device, LdBlockDeviceInfo *info) {
         else
             continue;
 
-        if (infiltratr_string_starts_with(line, "E:ID_WWN="))
-            infiltratr_copy_string(info->wwn, sizeof(info->wwn), value);
-        else if (infiltratr_string_starts_with(line, "E:ID_BUS="))
-            infiltratr_copy_string(info->transport, sizeof(info->transport), value);
-        else
+        if (infiltratr_string_starts_with(line, "E:ID_WWN=")) {
+            if (info->wwn[0] == '\0')
+                infiltratr_copy_string(info->wwn, sizeof(info->wwn), value);
+        } else if (infiltratr_string_starts_with(line, "E:ID_BUS=")) {
+            if (info->transport[0] == '\0')
+                infiltratr_copy_string(info->transport, sizeof(info->transport), value);
+        } else if (info->serial[0] == '\0') {
             infiltratr_copy_string(info->serial, sizeof(info->serial), value);
+        }
     }
     free(line);
     (void)fclose(file);
@@ -302,14 +318,23 @@ int ld_block_device_info(const char *path, LdBlockDeviceInfo *info) {
         return -1;
     }
 
-    int fd = open(path, O_RDONLY | O_CLOEXEC | O_NONBLOCK);
-    if (fd < 0) return -1;
-    const int size_result = ld_fd_size_bytes(fd, &info->size_bytes);
-    const int size_error = errno;
-    (void)close(fd);
-    if (size_result != 0) {
-        errno = size_error;
-        return -1;
+    /*
+     * Linux exposes block-device capacity in /sys as a count of 512-byte
+     * sectors. Prefer that metadata path so callers that only need identity
+     * information do not require permission to open the raw device node.
+     * The privileged writer still reopens/revalidates the target before any
+     * destructive operation. Fall back to BLKGETSIZE64 for unusual kernels.
+     */
+    if (!ld_sysfs_size_bytes(sysfs, &info->size_bytes)) {
+        int fd = open(path, O_RDONLY | O_CLOEXEC | O_NONBLOCK);
+        if (fd < 0) return -1;
+        const int size_result = ld_fd_size_bytes(fd, &info->size_bytes);
+        const int size_error = errno;
+        (void)close(fd);
+        if (size_result != 0) {
+            errno = size_error;
+            return -1;
+        }
     }
 
     char numeric_path[PATH_MAX];
@@ -331,10 +356,27 @@ int ld_block_device_info(const char *path, LdBlockDeviceInfo *info) {
     }
     info->read_only = value != 0U;
 
-    (void)ld_sysfs_text(sysfs, "device/model", info->model, sizeof(info->model));
+    if (!ld_sysfs_text(sysfs, "device/model", info->model, sizeof(info->model)))
+        (void)ld_sysfs_text(sysfs, "device/name", info->model, sizeof(info->model));
     (void)ld_sysfs_text(sysfs, "device/serial", info->serial, sizeof(info->serial));
     if (!ld_sysfs_text(sysfs, "device/wwid", info->wwn, sizeof(info->wwn)))
         (void)ld_sysfs_text(sysfs, "wwid", info->wwn, sizeof(info->wwn));
+
+    /*
+     * MMC/SD exposes the card CID directly in sysfs. Some controllers do not
+     * synthesise ID_SERIAL/WWN udev properties even though the medium has a
+     * stable hardware identity. Preserve that identity as a namespaced WWN
+     * fallback rather than treating the card as anonymous.
+     */
+    if (info->serial[0] == '\0' && info->wwn[0] == '\0') {
+        char cid[96] = "";
+        const char *base = infiltratr_path_basename(path);
+        if (base != NULL && infiltratr_string_starts_with(base, "mmcblk") &&
+            ld_sysfs_text(sysfs, "device/cid", cid, sizeof(cid)) &&
+            cid[0] != '\0') {
+            (void)snprintf(info->wwn, sizeof(info->wwn), "mmc-cid:%s", cid);
+        }
+    }
 
     ld_read_udev_properties(st.st_rdev, info);
 
