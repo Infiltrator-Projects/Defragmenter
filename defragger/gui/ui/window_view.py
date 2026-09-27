@@ -116,7 +116,9 @@ class WindowView:
         *,
         close: bool = False,
     ) -> Gtk.Button:
-        button = Gtk.Button.new_from_icon_name(icon_name, Gtk.IconSize.BUTTON)
+        button = Gtk.Button()
+        image = Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.BUTTON)
+        button.add(image)
         button.set_relief(Gtk.ReliefStyle.NONE)
         button.set_tooltip_text(tooltip)
         button.get_style_context().add_class("defrag-window-control")
