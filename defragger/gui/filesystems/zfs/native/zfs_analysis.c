@@ -8,6 +8,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <openssl/evp.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -48,8 +49,10 @@
 #define ZFS_DSL_DATASET_NUM_CHILDREN_OFFSET 40U
 #define ZFS_CHECKSUM_OFF 2U
 #define ZFS_CHECKSUM_FLETCHER4 7U
+#define ZFS_CHECKSUM_SHA256 8U
 #define ZFS_COMPRESS_OFF 2U
 #define ZFS_COMPRESS_LZJB 3U
+#define ZFS_COMPRESS_ZLE 14U
 #define ZFS_COMPRESS_LZ4 15U
 #define ZFS_POOL_VERSION_LAST_LEGACY 28U
 #define ZFS_POOL_VERSION_FEATURES 5000U
@@ -360,6 +363,64 @@ static bool checksum_fletcher4(const uint8_t *data, size_t length,
            c == expected[2] && d == expected[3];
 }
 
+static bool checksum_sha256(const uint8_t *data, size_t length,
+                            const uint64_t expected[4])
+{
+    unsigned char digest[32];
+    unsigned int digest_length = 0U;
+    EVP_MD_CTX *context = EVP_MD_CTX_new();
+    if (context == NULL)
+        return false;
+
+    const bool complete =
+        EVP_DigestInit_ex(context, EVP_sha256(), NULL) == 1 &&
+        EVP_DigestUpdate(context, data, length) == 1 &&
+        EVP_DigestFinal_ex(context, digest, &digest_length) == 1;
+    EVP_MD_CTX_free(context);
+    if (!complete || digest_length != sizeof(digest))
+        return false;
+
+    /*
+     * ZFS deliberately stores SHA-256 checksum words in big-endian digest
+     * order for historical on-disk compatibility. The enclosing block
+     * pointer's byte order has already been normalised by decode_block_pointer.
+     */
+    for (size_t index = 0U; index < 4U; ++index) {
+        if (infiltratr_load_be64(digest + index * 8U) != expected[index])
+            return false;
+    }
+    return true;
+}
+
+static int decompress_zle(const uint8_t *source, size_t source_length,
+                          uint8_t *destination, size_t destination_length)
+{
+    const size_t literal_limit = 64U;
+    size_t source_offset = 0U;
+    size_t destination_offset = 0U;
+
+    while (source_offset < source_length &&
+           destination_offset < destination_length) {
+        const size_t encoded = (size_t)source[source_offset++] + 1U;
+        if (encoded <= literal_limit) {
+            if (encoded > source_length - source_offset ||
+                encoded > destination_length - destination_offset)
+                return -1;
+            memcpy(destination + destination_offset,
+                   source + source_offset, encoded);
+            source_offset += encoded;
+            destination_offset += encoded;
+        } else {
+            const size_t zero_count = encoded - literal_limit;
+            if (zero_count > destination_length - destination_offset)
+                return -1;
+            memset(destination + destination_offset, 0, zero_count);
+            destination_offset += zero_count;
+        }
+    }
+    return destination_offset == destination_length ? 0 : -1;
+}
+
 static int decompress_lzjb(const uint8_t *source, size_t source_length,
                            uint8_t *destination, size_t destination_length)
 {
@@ -523,7 +584,8 @@ static int read_block_pointer_data(ZfsContext *context,
         return -1;
     }
     if (bp->checksum != ZFS_CHECKSUM_OFF &&
-        bp->checksum != ZFS_CHECKSUM_FLETCHER4) {
+        bp->checksum != ZFS_CHECKSUM_FLETCHER4 &&
+        bp->checksum != ZFS_CHECKSUM_SHA256) {
         errno = ENOTSUP;
         set_error(error, error_size,
                   "unsupported ZFS metadata checksum in bounded exact reader");
@@ -531,6 +593,7 @@ static int read_block_pointer_data(ZfsContext *context,
     }
     if (bp->compression != ZFS_COMPRESS_OFF &&
         bp->compression != ZFS_COMPRESS_LZJB &&
+        bp->compression != ZFS_COMPRESS_ZLE &&
         bp->compression != ZFS_COMPRESS_LZ4) {
         errno = ENOTSUP;
         set_error(error, error_size,
@@ -577,9 +640,15 @@ static int read_block_pointer_data(ZfsContext *context,
             free(physical_data);
             continue;
         }
-        if (bp->checksum == ZFS_CHECKSUM_FLETCHER4 &&
-            !checksum_fletcher4(physical_data, (size_t)bp->psize,
-                                bp->data_order, bp->checksum_words)) {
+        bool checksum_ok = true;
+        if (bp->checksum == ZFS_CHECKSUM_FLETCHER4)
+            checksum_ok = checksum_fletcher4(
+                physical_data, (size_t)bp->psize,
+                bp->data_order, bp->checksum_words);
+        else if (bp->checksum == ZFS_CHECKSUM_SHA256)
+            checksum_ok = checksum_sha256(
+                physical_data, (size_t)bp->psize, bp->checksum_words);
+        if (!checksum_ok) {
             last_errno = EIO;
             free(physical_data);
             continue;
@@ -600,6 +669,10 @@ static int read_block_pointer_data(ZfsContext *context,
             decompression =
                 decompress_lzjb(physical_data, (size_t)bp->psize,
                                 logical_data, (size_t)bp->lsize);
+        } else if (bp->compression == ZFS_COMPRESS_ZLE) {
+            decompression =
+                decompress_zle(physical_data, (size_t)bp->psize,
+                               logical_data, (size_t)bp->lsize);
         } else {
             decompression =
                 decompress_lz4(physical_data, (size_t)bp->psize,
