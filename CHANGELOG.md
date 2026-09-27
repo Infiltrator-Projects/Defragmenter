@@ -2,6 +2,15 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-219
+
+- Harden the native release boundary: Debian packages no longer carry GTK Python-introspection or `makefs` as hard runtime dependencies; `makefs` is now an optional test-media fixture generator.
+- Strip all Python source from the native local `.run` installer payload while retaining development/CI regression sources in the repository until their C/C++ replacements preserve equivalent coverage.
+- Add release-artifact regressions that reject Python files in the native installer and reject reintroduction of legacy Python/test-only runtime dependencies.
+- Expand UFS1/UFS2 relocation planning so valid files whose current blocks span cylinder groups are no longer rejected, and search all cylinder groups for a safe contiguous destination rather than only the file's original group.
+- Extend the bounded native ZFS reader with SHA-256 block-checksum verification and ZLE decompression while preserving fail-closed behaviour for encrypted, gang and otherwise unsupported block forms.
+- Retain the existing process timeout/process-group cleanup, safe About fallback and expanded UFS contiguous-summary support already landed after 1.8.0-218.
+
 ## 1.8.0-218
 
 - Replace Defragmenter's generic server-side window decoration with the current suite-standard branded client-side title bar used by System Monitor/System Settings: dark blue shell gradient, application icon block, product title, Infiltrator OS subtitle and explicit minimise/maximise/close controls.
