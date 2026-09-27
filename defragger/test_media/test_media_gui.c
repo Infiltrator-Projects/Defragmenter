@@ -702,6 +702,96 @@ static GtkWidget *make_section_label(const char *text) {
     return label;
 }
 
+static void ldtm_minimize_window(GtkButton *button, gpointer user_data) {
+    (void)button;
+    gtk_window_iconify(GTK_WINDOW(user_data));
+}
+
+static void ldtm_toggle_maximize_window(GtkButton *button, gpointer user_data) {
+    GtkWindow *window = GTK_WINDOW(user_data);
+    (void)button;
+    if (gtk_window_is_maximized(window))
+        gtk_window_unmaximize(window);
+    else
+        gtk_window_maximize(window);
+}
+
+static void ldtm_close_window(GtkButton *button, gpointer user_data) {
+    (void)button;
+    gtk_window_close(GTK_WINDOW(user_data));
+}
+
+static GtkWidget *ldtm_window_control(const char *icon_name,
+                                      const char *tooltip,
+                                      const char *css_class) {
+    GtkWidget *button =
+        gtk_button_new_from_icon_name(icon_name, GTK_ICON_SIZE_BUTTON);
+    GtkStyleContext *context = gtk_widget_get_style_context(button);
+    gtk_style_context_add_class(context, "ldtm-window-control");
+    if (css_class != NULL)
+        gtk_style_context_add_class(context, css_class);
+    gtk_widget_set_tooltip_text(button, tooltip);
+    return button;
+}
+
+static GtkWidget *ldtm_suite_header(LdtmApp *app, GtkWidget **refresh_out) {
+    GtkWidget *header = gtk_header_bar_new();
+    GtkWidget *brand = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    GtkWidget *icon_wrap = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    GtkWidget *icon = gtk_image_new_from_icon_name(
+        "io.github.linuxdefragger", GTK_ICON_SIZE_BUTTON);
+    GtkWidget *copy = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    GtkWidget *title = gtk_label_new("Defragmenter Test Media");
+    GtkWidget *subtitle = gtk_label_new("Infiltrator OS");
+    GtkWidget *header_end = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    GtkWidget *refresh = gtk_button_new_from_icon_name(
+        "view-refresh-symbolic", GTK_ICON_SIZE_BUTTON);
+    GtkWidget *minimize = ldtm_window_control(
+        "window-minimize-symbolic", "Minimize", NULL);
+    GtkWidget *maximize = ldtm_window_control(
+        "window-maximize-symbolic", "Maximize / Restore", NULL);
+    GtkWidget *close = ldtm_window_control(
+        "window-close-symbolic", "Close", "ldtm-window-control-close");
+    GtkWidget *empty_title = gtk_label_new("");
+
+    gtk_widget_set_name(header, "ldtm-shell-header");
+    gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(header), FALSE);
+    gtk_header_bar_set_custom_title(GTK_HEADER_BAR(header), empty_title);
+
+    gtk_widget_set_name(brand, "ldtm-header-brand");
+    gtk_widget_set_name(icon_wrap, "ldtm-header-brand-icon");
+    gtk_image_set_pixel_size(GTK_IMAGE(icon), 28);
+    gtk_box_pack_start(GTK_BOX(icon_wrap), icon, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(brand), icon_wrap, FALSE, FALSE, 0);
+
+    gtk_widget_set_name(title, "ldtm-header-brand-title");
+    gtk_widget_set_halign(title, GTK_ALIGN_START);
+    gtk_widget_set_name(subtitle, "ldtm-header-brand-subtitle");
+    gtk_widget_set_halign(subtitle, GTK_ALIGN_START);
+    gtk_box_pack_start(GTK_BOX(copy), title, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(copy), subtitle, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(brand), copy, FALSE, FALSE, 0);
+    gtk_header_bar_pack_start(GTK_HEADER_BAR(header), brand);
+
+    gtk_widget_set_name(header_end, "ldtm-header-end");
+    gtk_style_context_add_class(
+        gtk_widget_get_style_context(refresh), "ldtm-window-control");
+    gtk_widget_set_tooltip_text(refresh, "Refresh physical disk list");
+    g_signal_connect(refresh, "clicked", G_CALLBACK(refresh_clicked), app);
+    g_signal_connect(minimize, "clicked", G_CALLBACK(ldtm_minimize_window), app->window);
+    g_signal_connect(maximize, "clicked", G_CALLBACK(ldtm_toggle_maximize_window), app->window);
+    g_signal_connect(close, "clicked", G_CALLBACK(ldtm_close_window), app->window);
+    gtk_box_pack_start(GTK_BOX(header_end), refresh, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(header_end), minimize, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(header_end), maximize, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(header_end), close, FALSE, FALSE, 0);
+    gtk_header_bar_pack_end(GTK_HEADER_BAR(header), header_end);
+
+    if (refresh_out != NULL)
+        *refresh_out = refresh;
+    return header;
+}
+
 int ldtm_gui_main(int argc, char **argv) {
     LdtmApp app;
     GtkWidget *header;
@@ -746,16 +836,8 @@ int ldtm_gui_main(int argc, char **argv) {
                                   GDK_HINT_MIN_SIZE);
     g_signal_connect(app.window, "destroy", G_CALLBACK(window_destroyed), &app);
 
-    header = gtk_header_bar_new();
-    gtk_header_bar_set_title(GTK_HEADER_BAR(header), "Defragmenter Test Media");
-    gtk_header_bar_set_subtitle(GTK_HEADER_BAR(header),
-                                "Dedicated destructive filesystem test-media builder");
-    gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(header), TRUE);
-    refresh_button = gtk_button_new_from_icon_name("view-refresh-symbolic", GTK_ICON_SIZE_BUTTON);
-    gtk_widget_set_tooltip_text(refresh_button, "Refresh physical disk list");
-    gtk_header_bar_pack_end(GTK_HEADER_BAR(header), refresh_button);
+    header = ldtm_suite_header(&app, &refresh_button);
     gtk_window_set_titlebar(GTK_WINDOW(app.window), header);
-    g_signal_connect(refresh_button, "clicked", G_CALLBACK(refresh_clicked), &app);
 
     outer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
     gtk_container_set_border_width(GTK_CONTAINER(outer), 12U);
