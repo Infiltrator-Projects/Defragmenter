@@ -474,6 +474,7 @@ private:
         auto* v = current();
         if (!v || busy_) return;
         if (action_name == "analyse") {
+            v->exact_analysis = false;
             start({mapper_, v->path, "--fstype", v->filesystem, "--cells", "4096"}, "mapper", "analysis");
         } else if (action_name == "unmount") {
             if (confirm("Unmount " + v->path + "?", "The selected volume must be unmounted for raw filesystem operations."))

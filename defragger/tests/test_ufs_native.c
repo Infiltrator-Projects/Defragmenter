@@ -12,6 +12,7 @@
 #define IMAGE_BYTES 300000
 #define UFS_DISK_STRUCT_BYTES 1376U
 #define UFS_DISK_MAGIC_OFFSET 1372U
+#define UFS_DISK_CONTIGSUMSIZE_OFFSET 1316U
 
 #define CHECK(expr)                                                           \
     do {                                                                      \
@@ -249,6 +250,49 @@ static void build_fragmented_writer_fixture(int fd, bool ufs1)
     write_all(fd, block, sizeof(block), 120 * 1024);
 }
 
+static void enable_large_contigsum_fixture(int fd)
+{
+    uint8_t value[4];
+    put_le32(value, 32U);
+    write_all(fd, value, sizeof(value),
+              (off_t)(8192U + UFS_DISK_CONTIGSUMSIZE_OFFSET));
+
+    uint8_t cg[1024];
+    CHECK(pread(fd, cg, sizeof(cg), (off_t)(16U * 1024U)) ==
+          (ssize_t)sizeof(cg));
+
+    // Move the free-fragment bitmap away from the cluster-summary region and
+    // describe a valid 32-entry cluster-summary table.  This specifically
+    // exercises contigsum sizes above the retired fixed limit of 16.
+    memmove(cg + 400U, cg + 176U, 32U);
+    memset(cg + 176U, 0, 32U);
+    put_le32(cg + 96U, 400U);
+    put_le32(cg + 104U, 220U);
+    put_le32(cg + 108U, 352U);
+    put_le32(cg + 112U, 32U);
+    write_all(fd, cg, sizeof(cg), (off_t)(16U * 1024U));
+}
+
+static void test_large_contigsum_writer(int fd, const char *path)
+{
+    build_fragmented_writer_fixture(fd, false);
+    enable_large_contigsum_fixture(fd);
+
+    LdUfsSummary summary;
+    char error[256] = {0};
+    CHECK(ufs_read_summary(path, &summary, error, sizeof(error)) == 0);
+    CHECK(summary.contiguous_summary_size == 32);
+
+    char stage[512];
+    CHECK(snprintf(stage, sizeof(stage), "%s.ufs2-contigsum-stage", path) > 0);
+    (void)unlink(stage);
+    uint64_t commit_bytes = 0U;
+    CHECK(ufs_build_stage(path, stage, false, 10U, false, &commit_bytes,
+                          error, sizeof(error)) == 0);
+    CHECK(ufs_verify_layout(stage, false, 10U, error, sizeof(error)) == 0);
+    CHECK(unlink(stage) == 0);
+}
+
 static void test_fragmented_writer_variant(int fd, const char *path, bool ufs1)
 {
     build_fragmented_writer_fixture(fd, ufs1);
@@ -355,6 +399,7 @@ int main(void)
     test_ufs2_exact_allocation(fd, path);
     test_fragmented_writer_variant(fd, path, true);
     test_fragmented_writer_variant(fd, path, false);
+    test_large_contigsum_writer(fd, path);
 
     clear_image(fd);
     static const uint8_t junk[4] = {0xdeU, 0xadU, 0xbeU, 0xefU};

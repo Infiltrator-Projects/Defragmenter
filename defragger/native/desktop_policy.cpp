@@ -111,6 +111,9 @@ void desktop_verify_identity(DesktopVolume& v, std::string_view detected) {
     if (!actual || (!generic_fat && candidate != actual) || (generic_fat && !fat_variant))
         throw std::runtime_error("Native filesystem identity conflicts with discovery metadata");
     v.filesystem = std::string(detected);
+    // Identity verification alone never authorises a raw write.  A fresh
+    // exact allocation analysis must establish that separately.
+    v.exact_analysis = false;
     v.verified = true;
 }
 
