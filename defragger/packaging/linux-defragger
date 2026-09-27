@@ -2,8 +2,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Defragmenter
 # Author: Shannon Smith
-# Purpose: Launch the installed GTK application. Updates are managed by APT.
+# Purpose: Launch the installed native GTK application. Updates are managed by APT.
 
-export PYTHONDONTWRITEBYTECODE=1
-
-exec /usr/bin/python3 /usr/lib/linux-defragger/linux_defragger_gui.py "$@"
+exec /usr/bin/linux-defragger-desktop "$@"

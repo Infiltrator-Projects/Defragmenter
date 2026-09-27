@@ -3,7 +3,7 @@
 
 pkg_check_modules(GTK3 REQUIRED IMPORTED_TARGET gtk+-3.0)
 
-add_executable(linux-defragger-desktop EXCLUDE_FROM_ALL native/desktop.cpp)
+add_executable(linux-defragger-desktop native/desktop.cpp)
 target_include_directories(linux-defragger-desktop PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/native")
 target_compile_options(linux-defragger-desktop PRIVATE ${LD_WARNING_FLAGS})
@@ -11,6 +11,7 @@ target_compile_definitions(linux-defragger-desktop PRIVATE
     _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(linux-defragger-desktop PRIVATE
     linux-defragger-runtime-cpp PkgConfig::GTK3)
+install(TARGETS linux-defragger-desktop RUNTIME DESTINATION bin)
 
 set_source_files_properties(test_media/test_media_amiga.c PROPERTIES
     COMPILE_DEFINITIONS "ldtm_format_amiga_volume=ldtm_format_amiga_volume_affs")

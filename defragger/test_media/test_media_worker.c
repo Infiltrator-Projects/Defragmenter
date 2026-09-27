@@ -19,20 +19,25 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <openssl/evp.h>
+#include <poll.h>
 #include <signal.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #define LDTM_MAX_TARGET_FILES LDTM_TARGET_FILE_COUNT
 #define LDTM_HASH_HEX 65U
 #define LDTM_LINE_MAX 4096U
 #define LDTM_CAPTURE_MAX (8U * 1024U * 1024U)
+#define LDTM_PROCESS_TIMEOUT_MS UINT64_C(600000)
+#define LDTM_PROCESS_POLL_MS 100
 
 static const uint32_t ldtm_edge_case_sizes[] = {
     0U, 1U, 511U, 512U, 513U, 4095U, 4096U, 4097U
@@ -75,14 +80,86 @@ static void emit_status(const char *filesystem, const char *status, const char *
     fflush(stdout);
 }
 
-static int run_process(const char *const argv[], const char *stdin_text, int quiet) {
+static int monotonic_millis(uint64_t *value)
+{
+    struct timespec now;
+    if (value == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0)
+        return -1;
+    if (now.tv_sec < 0 ||
+        (uint64_t)now.tv_sec > UINT64_MAX / UINT64_C(1000)) {
+        errno = EOVERFLOW;
+        return -1;
+    }
+    *value = (uint64_t)now.tv_sec * UINT64_C(1000) +
+             (uint64_t)now.tv_nsec / UINT64_C(1000000);
+    return 0;
+}
+
+static void terminate_child_process_group(pid_t child)
+{
+    if (child <= 0)
+        return;
+    if (kill(-child, SIGKILL) != 0 && errno == ESRCH)
+        (void)kill(child, SIGKILL);
+}
+
+static void reap_child(pid_t child, int *status)
+{
+    int local_status = 0;
+    if (status == NULL)
+        status = &local_status;
+    while (waitpid(child, status, 0) < 0 && errno == EINTR) {}
+}
+
+static int wait_child_until(pid_t child, int *status, uint64_t started_ms)
+{
+    const struct timespec delay = {
+        .tv_sec = 0,
+        .tv_nsec = 50L * 1000L * 1000L
+    };
+    for (;;) {
+        const pid_t waited = waitpid(child, status, WNOHANG);
+        if (waited == child)
+            return 0;
+        if (waited < 0 && errno != EINTR)
+            return -1;
+
+        uint64_t now_ms = 0U;
+        if (monotonic_millis(&now_ms) != 0) {
+            const int failure = errno;
+            terminate_child_process_group(child);
+            reap_child(child, status);
+            errno = failure;
+            return -1;
+        }
+        if (now_ms - started_ms >= LDTM_PROCESS_TIMEOUT_MS) {
+            terminate_child_process_group(child);
+            reap_child(child, status);
+            errno = ETIMEDOUT;
+            return -1;
+        }
+        (void)nanosleep(&delay, NULL);
+    }
+}
+
+static int run_process(const char *const argv[], const char *stdin_text, int quiet)
+{
     int input_pipe[2] = {-1, -1};
     pid_t child;
     int status = 0;
     char program[PATH_MAX];
+    uint64_t started_ms = 0U;
+
     if (argv == NULL || argv[0] == NULL ||
         ldtm_resolve_program(argv[0], program, sizeof(program)) != 0)
         return -1;
+    if (monotonic_millis(&started_ms) != 0)
+        return -1;
+
     if (!quiet) {
         size_t index = 0U;
         fputs("+", stdout);
@@ -93,42 +170,64 @@ static int run_process(const char *const argv[], const char *stdin_text, int qui
         fputc('\n', stdout);
         fflush(stdout);
     }
-    if (stdin_text != NULL && pipe(input_pipe) != 0) return -1;
+
+    if (stdin_text != NULL && pipe(input_pipe) != 0)
+        return -1;
     child = fork();
     if (child < 0) {
         if (input_pipe[0] >= 0) {
-            close(input_pipe[0]);
-            close(input_pipe[1]);
+            (void)close(input_pipe[0]);
+            (void)close(input_pipe[1]);
         }
         return -1;
     }
     if (child == 0) {
+        if (setpgid(0, 0) != 0)
+            _exit(126);
         if (stdin_text != NULL) {
             (void)close(input_pipe[1]);
-            if (dup2(input_pipe[0], STDIN_FILENO) < 0) _exit(126);
+            if (dup2(input_pipe[0], STDIN_FILENO) < 0)
+                _exit(126);
             (void)close(input_pipe[0]);
         }
         execv(program, (char *const *)argv);
-        _exit(127);
+        _exit(errno == ENOENT ? 127 : 126);
     }
+
+    (void)setpgid(child, child);
     if (stdin_text != NULL) {
         const size_t length = strlen(stdin_text);
         (void)close(input_pipe[0]);
         if (infiltratr_write_full(input_pipe[1], stdin_text, length) != 0) {
+            const int failure = errno;
             (void)close(input_pipe[1]);
-            (void)waitpid(child, &status, 0);
+            terminate_child_process_group(child);
+            reap_child(child, &status);
+            errno = failure;
             return -1;
         }
         (void)close(input_pipe[1]);
     }
-    while (waitpid(child, &status, 0) < 0) {
-        if (errno != EINTR) return -1;
+
+    if (wait_child_until(child, &status, started_ms) != 0) {
+        if (errno == ETIMEDOUT)
+            (void)fprintf(stderr,
+                          "test-media: command timed out after 600 seconds: %s\n",
+                          argv[0]);
+        return -1;
     }
-    if (!WIFEXITED(status)) return -1;
+    if (!WIFEXITED(status)) {
+        errno = ECHILD;
+        return -1;
+    }
+    if (WEXITSTATUS(status) != 0 && !quiet)
+        (void)fprintf(stderr, "test-media: command failed (%d): %s\n",
+                      WEXITSTATUS(status), argv[0]);
     return WEXITSTATUS(status);
 }
 
-static int capture_process(const char *const argv[], char **output) {
+static int capture_process(const char *const argv[], char **output)
+{
     int output_pipe[2];
     pid_t child;
     int status = 0;
@@ -136,12 +235,16 @@ static int capture_process(const char *const argv[], char **output) {
     size_t used = 0U;
     char *buffer = NULL;
     char program[PATH_MAX];
+    uint64_t started_ms = 0U;
 
     if (output == NULL || argv == NULL || argv[0] == NULL ||
         ldtm_resolve_program(argv[0], program, sizeof(program)) != 0)
         return -1;
     *output = NULL;
-    if (pipe(output_pipe) != 0) return -1;
+    if (monotonic_millis(&started_ms) != 0)
+        return -1;
+    if (pipe(output_pipe) != 0)
+        return -1;
 
     child = fork();
     if (child < 0) {
@@ -150,80 +253,161 @@ static int capture_process(const char *const argv[], char **output) {
         return -1;
     }
     if (child == 0) {
+        if (setpgid(0, 0) != 0)
+            _exit(126);
         (void)close(output_pipe[0]);
-        if (dup2(output_pipe[1], STDOUT_FILENO) < 0) _exit(126);
+        if (dup2(output_pipe[1], STDOUT_FILENO) < 0)
+            _exit(126);
         (void)close(output_pipe[1]);
         execv(program, (char *const *)argv);
-        _exit(127);
+        _exit(errno == ENOENT ? 127 : 126);
     }
 
+    (void)setpgid(child, child);
     (void)close(output_pipe[1]);
-    if (!infiltratr_array_reserve((void **)&buffer, &capacity, 1U,
-                                  4096U, 4096U)) {
+
+    const int current_flags = fcntl(output_pipe[0], F_GETFL);
+    if (current_flags < 0 ||
+        fcntl(output_pipe[0], F_SETFL, current_flags | O_NONBLOCK) != 0) {
+        const int failure = errno;
         (void)close(output_pipe[0]);
-        (void)kill(child, SIGKILL);
-        while (waitpid(child, &status, 0) < 0 && errno == EINTR) {}
+        terminate_child_process_group(child);
+        reap_child(child, &status);
+        errno = failure;
         return -1;
     }
 
-    for (;;) {
+    if (!infiltratr_array_reserve((void **)&buffer, &capacity, 1U,
+                                  4096U, 4096U)) {
+        (void)close(output_pipe[0]);
+        terminate_child_process_group(child);
+        reap_child(child, &status);
+        return -1;
+    }
+
+    bool eof = false;
+    while (!eof) {
         if (used == LDTM_CAPTURE_MAX) {
             unsigned char extra = 0U;
-            ssize_t probe;
-            do {
-                probe = read(output_pipe[0], &extra, 1U);
-            } while (probe < 0 && errno == EINTR);
-            if (probe == 0) break;
-            free(buffer);
-            (void)close(output_pipe[0]);
-            (void)kill(child, SIGKILL);
-            while (waitpid(child, &status, 0) < 0 && errno == EINTR) {}
-            errno = probe < 0 ? errno : EOVERFLOW;
-            return -1;
-        }
-
-        const size_t remaining_limit = LDTM_CAPTURE_MAX - used;
-        if (capacity - used < 2048U) {
-            size_t required = 0U;
-            size_t wanted = remaining_limit < 2048U
-                ? remaining_limit + 1U : 2049U;
-            if (!infiltratr_size_add_checked(used, wanted, &required) ||
-                required > LDTM_CAPTURE_MAX + 1U ||
-                !infiltratr_array_reserve((void **)&buffer, &capacity, 1U,
-                                          required, 4096U)) {
+            const ssize_t probe = read(output_pipe[0], &extra, 1U);
+            if (probe == 0) {
+                eof = true;
+                break;
+            }
+            if (probe < 0 &&
+                (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
+                /* No extra byte is currently buffered; poll drives progress. */
+            } else {
+                const int failure = probe < 0 ? errno : EOVERFLOW;
                 free(buffer);
                 (void)close(output_pipe[0]);
-                (void)kill(child, SIGKILL);
-                while (waitpid(child, &status, 0) < 0 && errno == EINTR) {}
+                terminate_child_process_group(child);
+                reap_child(child, &status);
+                errno = failure;
+                return -1;
+            }
+        } else {
+            const size_t remaining_limit = LDTM_CAPTURE_MAX - used;
+            if (capacity - used < 2048U) {
+                size_t required = 0U;
+                const size_t wanted = remaining_limit < 2048U
+                    ? remaining_limit + 1U : 2049U;
+                if (!infiltratr_size_add_checked(used, wanted, &required) ||
+                    required > LDTM_CAPTURE_MAX + 1U ||
+                    !infiltratr_array_reserve((void **)&buffer, &capacity, 1U,
+                                              required, 4096U)) {
+                    free(buffer);
+                    (void)close(output_pipe[0]);
+                    terminate_child_process_group(child);
+                    reap_child(child, &status);
+                    return -1;
+                }
+            }
+
+            size_t readable = capacity - used - 1U;
+            if (readable > remaining_limit)
+                readable = remaining_limit;
+            const ssize_t got = read(output_pipe[0], buffer + used, readable);
+            if (got > 0) {
+                used += (size_t)got;
+                continue;
+            }
+            if (got == 0) {
+                eof = true;
+                break;
+            }
+            if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+                const int failure = errno;
+                free(buffer);
+                (void)close(output_pipe[0]);
+                terminate_child_process_group(child);
+                reap_child(child, &status);
+                errno = failure;
                 return -1;
             }
         }
 
-        size_t readable = capacity - used - 1U;
-        if (readable > remaining_limit) readable = remaining_limit;
-        ssize_t got = read(output_pipe[0], buffer + used, readable);
-        if (got < 0) {
-            if (errno == EINTR) continue;
+        uint64_t now_ms = 0U;
+        if (monotonic_millis(&now_ms) != 0) {
+            const int failure = errno;
             free(buffer);
             (void)close(output_pipe[0]);
-            (void)kill(child, SIGKILL);
-            while (waitpid(child, &status, 0) < 0 && errno == EINTR) {}
+            terminate_child_process_group(child);
+            reap_child(child, &status);
+            errno = failure;
             return -1;
         }
-        if (got == 0) break;
-        used += (size_t)got;
+        if (now_ms - started_ms >= LDTM_PROCESS_TIMEOUT_MS) {
+            free(buffer);
+            (void)close(output_pipe[0]);
+            terminate_child_process_group(child);
+            reap_child(child, &status);
+            errno = ETIMEDOUT;
+            (void)fprintf(stderr,
+                          "test-media: command timed out after 600 seconds: %s\n",
+                          argv[0]);
+            return -1;
+        }
+
+        struct pollfd descriptor = {
+            .fd = output_pipe[0],
+            .events = POLLIN | POLLHUP,
+            .revents = 0
+        };
+        int poll_result;
+        do {
+            poll_result = poll(&descriptor, (nfds_t)1, LDTM_PROCESS_POLL_MS);
+        } while (poll_result < 0 && errno == EINTR);
+        if (poll_result < 0) {
+            const int failure = errno;
+            free(buffer);
+            (void)close(output_pipe[0]);
+            terminate_child_process_group(child);
+            reap_child(child, &status);
+            errno = failure;
+            return -1;
+        }
     }
 
     (void)close(output_pipe[0]);
-    while (waitpid(child, &status, 0) < 0) {
-        if (errno != EINTR) {
-            free(buffer);
-            return -1;
-        }
+    if (wait_child_until(child, &status, started_ms) != 0) {
+        const int failure = errno;
+        free(buffer);
+        if (failure == ETIMEDOUT)
+            (void)fprintf(stderr,
+                          "test-media: command timed out after 600 seconds: %s\n",
+                          argv[0]);
+        errno = failure;
+        return -1;
     }
+
     buffer[used] = '\0';
     if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+        if (WIFEXITED(status))
+            (void)fprintf(stderr, "test-media: command failed (%d): %s\n",
+                          WEXITSTATUS(status), argv[0]);
         free(buffer);
+        errno = EIO;
         return -1;
     }
     *output = buffer;

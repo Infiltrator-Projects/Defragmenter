@@ -118,7 +118,6 @@ endif()
 set(LD_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${LD_GENERATED_DIR}")
 configure_file(src/core/version.h.in "${LD_GENERATED_DIR}/version.h" @ONLY)
-configure_file(packaging/generated/version.py.in "${LD_GENERATED_DIR}/version.py" @ONLY)
 
 set(LD_WARNING_FLAGS -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Wformat=2)
 if(LD_ENABLE_WERROR)
@@ -555,15 +554,8 @@ install(TARGETS
         linux-defragger-privileged-helper-cpp
         RUNTIME DESTINATION lib/linux-defragger)
 
-install(PROGRAMS
-    gui/linux_defragger_gui.py
-    DESTINATION lib/linux-defragger)
-install(FILES "${LD_GENERATED_DIR}/version.py" DESTINATION lib/linux-defragger)
-
-install(DIRECTORY gui/core gui/ui
-        DESTINATION lib/linux-defragger
-        FILES_MATCHING PATTERN "*.py"
-        PATTERN "__pycache__" EXCLUDE)
+# The installed product is native C/C++. The retired Python presentation
+# tree remains source/test material only and is never installed at runtime.
 install(PROGRAMS packaging/linux-defragger DESTINATION bin)
 install(FILES packaging/io.github.linuxdefragger.desktop
         DESTINATION share/applications)

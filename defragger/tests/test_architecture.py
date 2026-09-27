@@ -794,8 +794,7 @@ def test_version_and_native_registry_ownership() -> None:
     assert not (GUI / "engine").exists()
     for obsolete in ("allocation_mapper.py", "operation_engine.py", "privileged_helper.py"):
         assert not (GUI / obsolete).exists()
-    launcher_lines = (GUI / "linux_defragger_gui.py").read_text().splitlines()
-    assert len(launcher_lines) < 20
+    assert (ROOT / "native" / "desktop.cpp").is_file()
     for runtime_module in (
         GUI / "ui" / "window.py",
         GUI / "ui" / "operation_planner.py",
@@ -835,28 +834,23 @@ def test_user_facing_branding_is_defragmenter() -> None:
     assert "StartupWMClass=io.github.linuxdefragger" in desktop
 
     project_cmake = (ROOT / "cmake" / "project.cmake").read_text()
-    install_programs = project_cmake.split("install(PROGRAMS", 1)[1].split(
-        "DESTINATION lib/linux-defragger", 1
-    )[0]
-    assert "install(DIRECTORY gui/core gui/ui" in project_cmake
-    assert "gui/engine" not in project_cmake.split(
-        "install(DIRECTORY gui/core gui/ui", 1
-    )[1].split("DESTINATION lib/linux-defragger", 1)[0]
-    assert "gui/filesystems" not in project_cmake.split(
-        "install(DIRECTORY gui/core gui/ui", 1
-    )[1].split("DESTINATION lib/linux-defragger", 1)[0]
-    assert "gui/backends/" not in project_cmake.split(
-        "install(DIRECTORY gui/core gui/ui", 1
-    )[1].split("install(PROGRAMS packaging/linux-defragger", 1)[0]
+    assert "install(DIRECTORY gui/core gui/ui" not in project_cmake
+    assert "gui/linux_defragger_gui.py" not in project_cmake
+    assert "packaging/generated/version.py.in" not in project_cmake
+    test_media_cmake = (ROOT / "cmake" / "test_media.cmake").read_text()
+    assert "add_executable(linux-defragger-desktop EXCLUDE_FROM_ALL" not in test_media_cmake
+    assert "install(TARGETS linux-defragger-desktop RUNTIME DESTINATION bin)" in test_media_cmake
+    launcher = (ROOT / "packaging" / "linux-defragger").read_text()
+    assert "/usr/bin/linux-defragger-desktop" in launcher
+    assert "python" not in launcher.lower()
     for legacy_dispatcher in (
         "gui/allocation_mapper.py",
         "gui/privileged_helper.py",
         "gui/operation_engine.py",
     ):
-        assert legacy_dispatcher not in install_programs, (
+        assert legacy_dispatcher not in project_cmake, (
             f"legacy Python control-plane dispatcher is still installed: {legacy_dispatcher}"
         )
-    assert "gui/linux_defragger_gui.py" in install_programs
     assert "packaging/io.github.linuxdefragger.png" in project_cmake
     assert "share/icons/hicolor/96x96/apps" in project_cmake
     assert "share/icons/hicolor/128x128/apps" not in project_cmake

@@ -42,7 +42,7 @@ if [ -n "$INSTALLED_VERSION" ] && \
 fi
 
 MISSING=''
-for package in build-essential cmake dpkg-dev python3 python3-gi python3-cairo \
+for package in build-essential cmake dpkg-dev \
                gir1.2-gtk-3.0 libgtk-3-dev policykit-1 ca-certificates \
                desktop-file-utils udisks2 util-linux makefs \
                libsqlite3-dev libssl-dev; do
