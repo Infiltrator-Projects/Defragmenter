@@ -2,6 +2,15 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-218
+
+- Replace Defragmenter's generic server-side window decoration with the current suite-standard branded client-side title bar used by System Monitor/System Settings: dark blue shell gradient, application icon block, product title, Infiltrator OS subtitle and explicit minimise/maximise/close controls.
+- Install the branded GtkHeaderBar as the real main-window title bar so dragging and title-bar double-click maximise/restore remain normal window-manager operations rather than a fake in-content header.
+- Apply the same chrome grammar to Defragmenter Test Media so launching the destructive companion no longer falls back to its older centred header. Its refresh action remains available immediately before the standard window controls.
+- Preserve the existing File/View/About menu bar below the title bar and leave filesystem/operation behaviour unchanged.
+- Add GUI regressions that require both main Defragmenter and Test Media to retain the suite-standard real GtkHeaderBar, branded identity and explicit window controls.
+- Qualify source commit `fe3644e8dee1b9636d18975800f1de5506149413`: all 44 hosted CTest tests pass and hosted ASan/UBSan passes. The self-hosted lane was unavailable for this candidate because its runner checkout lost Git from PATH before any project source was built or tested; the failure was runner infrastructure rather than Defragmenter code.
+
 ## 1.8.0-217
 
 - Fix Test Media physical-disk binding for normal desktop users whose raw whole-disk device node is root-only, including the reported /dev/mmcblk0 case. Native block identity now reads Linux sysfs capacity first instead of requiring an unprivileged BLKGETSIZE64 open merely to calculate the confirmation fingerprint.
