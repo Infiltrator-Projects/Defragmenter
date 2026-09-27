@@ -11,7 +11,8 @@ target_include_directories(linux-defragger-zfs-native PUBLIC
 target_compile_options(linux-defragger-zfs-native PRIVATE ${LD_WARNING_FLAGS})
 target_compile_definitions(linux-defragger-zfs-native PRIVATE
     _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-target_link_libraries(linux-defragger-zfs-native PUBLIC linux-defragger-core)
+target_link_libraries(linux-defragger-zfs-native PUBLIC
+    linux-defragger-core OpenSSL::Crypto)
 
 add_executable(linux-defragger-zfs-worker
     gui/filesystems/zfs/native/zfs_worker.c)
