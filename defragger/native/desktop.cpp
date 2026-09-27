@@ -706,14 +706,23 @@ private:
         map_data_ = map;
         cells_ = raw->array();
         gtk_widget_queue_draw(map_);
+        const bool complete_allocation = number(map, "unknown_bytes") == 0U;
+        const bool complete_fragmentation =
+            v->exact_analysis && map.find("fragmented_files") != nullptr;
+        const bool complete_file_count =
+            v->exact_analysis && map.find("regular_files") != nullptr;
         std::string summary = "Capacity " + bytes(number(map, "total_bytes")) + "    Free "
-            + bytes(number(map, "free_bytes")) + "    Used " + bytes(number(map, "used_bytes"));
-        gtk_label_set_text(GTK_LABEL(cards_[0]), map.find("fragmented_files") ?
+            + (complete_allocation ? bytes(number(map, "free_bytes")) : std::string("Not calculated"))
+            + "    Used "
+            + (complete_allocation ? bytes(number(map, "used_bytes")) : std::string("Not calculated"));
+        gtk_label_set_text(GTK_LABEL(cards_[0]), complete_fragmentation ?
             (std::to_string(number(map, "fragmented_files")) + " files").c_str() : "Not calculated");
-        gtk_label_set_text(GTK_LABEL(cards_[1]), bytes(number(map, "free_bytes")).c_str());
-        gtk_label_set_text(GTK_LABEL(cards_[2]), bytes(number(map, "used_bytes")).c_str());
-        gtk_label_set_text(GTK_LABEL(cards_[3]), map.find("regular_files") ?
-            (std::to_string(number(map, "regular_files")) + " files").c_str() : "Unknown");
+        gtk_label_set_text(GTK_LABEL(cards_[1]), complete_allocation ?
+            bytes(number(map, "free_bytes")).c_str() : "Not calculated");
+        gtk_label_set_text(GTK_LABEL(cards_[2]), complete_allocation ?
+            bytes(number(map, "used_bytes")).c_str() : "Not calculated");
+        gtk_label_set_text(GTK_LABEL(cards_[3]), complete_file_count ?
+            (std::to_string(number(map, "regular_files")) + " files").c_str() : "Not calculated");
         gtk_label_set_text(GTK_LABEL(summary_), summary.c_str());
         note(summary);
     }
