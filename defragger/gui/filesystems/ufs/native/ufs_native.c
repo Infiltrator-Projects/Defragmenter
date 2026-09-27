@@ -1295,7 +1295,6 @@ static int writer_supported(const UfsInventory *inventory,
                       "UFS writer requires non-sparse regular files with whole filesystem-block allocation");
             result = -1; break;
         }
-        uint32_t cylinder = UINT32_MAX;
         for (uint32_t block = 0U; block < file->block_count && result == 0; ++block) {
             const UfsBlockRef *reference =
                 &inventory->blocks[file->first_block + block];
@@ -1303,14 +1302,6 @@ static int writer_supported(const UfsInventory *inventory,
                 reference->physical_fragment % summary->fragments_per_block != 0U) {
                 ufs_error(error, error_size,
                           "UFS writer requires full-block aligned regular-file data");
-                result = -1; break;
-            }
-            const uint32_t this_cylinder = (uint32_t)(
-                reference->physical_fragment / summary->fragments_per_group);
-            if (cylinder == UINT32_MAX) cylinder = this_cylinder;
-            else if (cylinder != this_cylinder) {
-                ufs_error(error, error_size,
-                          "UFS writer currently requires each regular file to reside within one cylinder group");
                 result = -1; break;
             }
             for (uint32_t fragment = 0U;
@@ -1338,7 +1329,7 @@ static bool run_is_clear(const uint8_t *blocked, uint64_t start, uint64_t count)
 }
 
 static int choose_run(const LdUfsSummary *summary, uint8_t *blocked,
-                      uint32_t group, uint64_t data_fragments,
+                      uint32_t preferred_group, uint64_t data_fragments,
                       uint64_t reserve_fragments, uint64_t *start_out,
                       char *error, size_t error_size)
 {
@@ -1347,22 +1338,48 @@ static int choose_run(const LdUfsSummary *summary, uint8_t *blocked,
         ufs_error(error, error_size, "UFS placement span overflows");
         return -1;
     }
-    const uint64_t base = ufs_group_base(summary, group);
-    const uint64_t remaining = summary->filesystem_fragments - base;
-    const uint64_t group_fragments = remaining < summary->fragments_per_group
-        ? remaining : summary->fragments_per_group;
-    const uint64_t end = base + group_fragments;
-    for (uint64_t start = base; start < end;
-         start += summary->fragments_per_block) {
-        if (span > end - start || !run_is_clear(blocked, start, span))
+    if (preferred_group >= summary->cylinder_groups) {
+        ufs_error(error, error_size, "UFS preferred cylinder group is out of range");
+        return -1;
+    }
+
+    /*
+     * Preserve locality when possible by trying the file's original cylinder
+     * group first, then search every other group. UFS block pointers are
+     * filesystem-global fragment addresses; there is no validity requirement
+     * that a regular file remain in the cylinder group where it happened to
+     * live before defragmentation.
+     */
+    for (uint32_t pass = 0U; pass < summary->cylinder_groups; ++pass) {
+        uint32_t group = preferred_group;
+        if (pass != 0U) {
+            group = pass - 1U;
+            if (group >= preferred_group)
+                group++;
+        }
+        if (group >= summary->cylinder_groups)
             continue;
-        for (uint64_t fragment = 0U; fragment < span; ++fragment)
-            bit_set(blocked, start + fragment, true);
-        *start_out = start;
-        return 0;
+
+        const uint64_t base = ufs_group_base(summary, group);
+        if (base >= summary->filesystem_fragments)
+            continue;
+        const uint64_t remaining = summary->filesystem_fragments - base;
+        const uint64_t group_fragments =
+            remaining < summary->fragments_per_group
+                ? remaining : summary->fragments_per_group;
+        const uint64_t end = base + group_fragments;
+        for (uint64_t start = base; start < end;
+             start += summary->fragments_per_block) {
+            if (span > end - start || !run_is_clear(blocked, start, span))
+                continue;
+            for (uint64_t fragment = 0U; fragment < span; ++fragment)
+                bit_set(blocked, start + fragment, true);
+            *start_out = start;
+            return 0;
+        }
     }
     ufs_error(error, error_size,
-              "UFS writer cannot place a file contiguously with the requested reserve inside its cylinder group");
+              "UFS writer cannot place a file contiguously with the requested reserve in any cylinder group");
     return -1;
 }
 
