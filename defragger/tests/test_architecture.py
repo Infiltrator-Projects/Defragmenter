@@ -1199,6 +1199,8 @@ def test_forensic_scalability_protocol_and_safety_contracts() -> None:
     assert '"/proc/self/mountinfo"' in device_source
     assert '"/proc/swaps"' in device_source
     assert '"/run/udev/data/b%u:%u"' in device_source
+    assert "ld_sysfs_size_bytes" in device_source
+    assert '"device/cid"' in device_source
     assert '"findmnt"' not in test_media
     assert '"SIZE,MODEL,SERIAL,WWN,TRAN"' not in test_media
     assert '"SIZE,RM,RO,TRAN"' not in test_media
