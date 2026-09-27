@@ -46,7 +46,7 @@ def main() -> None:
     assert "runs-on: ubuntu-24.04" in gate, (
         "primary release quality gate must run on GitHub-hosted Linux"
     )
-    assert "runs-on: [self-hosted, Linux, X64, linux-native]" not in gate, (
+    assert "runs-on: [self-hosted, Linux, X64, linux-native, bigbedroom]" not in gate, (
         "primary release quality gate must not depend on the optional home runner"
     )
     for required in (
@@ -61,7 +61,7 @@ def main() -> None:
     ):
         assert required in gate, f"qualified release handoff lost required contract: {required}"
     for required in (
-        "runs-on: [self-hosted, Linux, X64, linux-native]",
+        "runs-on: [self-hosted, Linux, X64, linux-native, bigbedroom]",
         "Verify local qualification dependencies",
         "Self-hosted runner is missing commands",
         "Self-hosted runner is missing pkg-config packages",
