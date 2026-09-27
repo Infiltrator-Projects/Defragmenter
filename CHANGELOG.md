@@ -2,6 +2,15 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-217
+
+- Fix Test Media physical-disk binding for normal desktop users whose raw whole-disk device node is root-only, including the reported /dev/mmcblk0 case. Native block identity now reads Linux sysfs capacity first instead of requiring an unprivileged BLKGETSIZE64 open merely to calculate the confirmation fingerprint.
+- Preserve the fail-closed destructive contract: the GUI still binds the exact physical medium before confirmation, and the root worker recomputes and compares the same fingerprint before unmounting and again immediately before repartitioning.
+- Make sysfs identity authoritative when available and use udev metadata only as a fallback, preventing privilege-context differences from overwriting an already established serial/WWN and changing the fingerprint between the GUI and root worker.
+- Improve MMC/SD identity handling with sysfs device/name model fallback and a namespaced card-CID fallback when a controller exposes neither serial nor WWN through the usual fields.
+- Add architecture regression coverage for the sysfs-capacity and MMC-CID identity paths.
+- Qualify source commit `5c34a2bf2f3af2a3e98a8e8c2af322946b738576`: all 44 hosted CTest tests pass, hosted ASan/UBSan passes, and self-hosted Linux native/filesystem/GUI qualification passes; ordinary gates stop only at the deliberate stale-audit control advanced by this release.
+
 ## 1.8.0-216
 
 - Standardise destructive Test Media on a 200 MiB retained fragmented payload wherever the filesystem can represent it. FAT12, SFS, PFS3 and APFS now join the existing 200 MiB profiles; Linux swap remains payload-less by design.
