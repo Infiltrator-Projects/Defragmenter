@@ -36,6 +36,7 @@ int main() {
     } catch (const std::runtime_error&) {}
     v.mounted = true;
     assert(desktop_controls(&v, false, false, false).unmount);
+    assert(!desktop_controls(&v, false, false, false).defrag);
     try {
         (void)desktop_mutation(v, "defrag", "/tmp/engine", journal, 512, false);
         assert(false);

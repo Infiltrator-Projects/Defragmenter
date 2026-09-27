@@ -195,6 +195,7 @@ target_link_libraries(linux-defragger-core PUBLIC InfiltratrCommon::Common)
 # scoped state and RAII improve the implementation. Filesystem parsing and
 # mutation remain in the existing native C engines.
 add_library(linux-defragger-runtime-cpp STATIC
+    native/desktop_live_map.cpp
     native/desktop_policy.cpp
     native/helper_policy.cpp
     native/json.cpp
@@ -587,6 +588,14 @@ install(FILES LICENSE
         DESTINATION share/doc/linux-defragger RENAME COPYING.GPL-3.0)
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(linux-defragger-desktop-live-map-test
+        tests/test_desktop_live_map.cpp)
+    target_link_libraries(linux-defragger-desktop-live-map-test PRIVATE
+        linux-defragger-runtime-cpp)
+    target_compile_options(linux-defragger-desktop-live-map-test PRIVATE
+        ${LD_WARNING_FLAGS})
+    add_test(NAME linux-defragger-desktop-live-map
+        COMMAND linux-defragger-desktop-live-map-test)
     add_executable(linux-defragger-desktop-policy-test
         tests/test_desktop_policy.cpp)
     target_link_libraries(linux-defragger-desktop-policy-test PRIVATE

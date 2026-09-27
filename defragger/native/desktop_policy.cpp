@@ -72,7 +72,7 @@ DesktopControls desktop_controls(const DesktopVolume* v, bool busy,
     out.analyse = true;
     out.unmount = v->mounted && !v->image;
     const auto* backend = backend_by_fstype(v->filesystem);
-    if (!backend || !v->verified || v->readonly) return out;
+    if (!backend || !v->verified || v->readonly || v->mounted) return out;
     out.defrag = !journal_exists && operation_for(*backend, "defrag");
     out.growth_defrag = !journal_exists && operation_for(*backend, "growth-defrag");
     out.recover = journal_exists && operation_for(*backend, "recover");

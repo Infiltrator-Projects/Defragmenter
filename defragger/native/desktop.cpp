@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Native GTK desktop client. Filesystem parsing and writes stay in the native engines.
 #include "desktop_policy.hpp"
+#include "desktop_live_map.hpp"
 #include "process.hpp"
 
 #include <gtk/gtk.h>
@@ -50,6 +51,9 @@ public:
         gtk_window_set_default_size(GTK_WINDOW(window_), 1180, 800);
         gtk_window_set_icon_name(GTK_WINDOW(window_), "io.github.linuxdefragger");
         g_signal_connect(window_, "delete-event", G_CALLBACK(close_requested), this);
+        g_signal_connect(window_, "destroy", G_CALLBACK(+[](GtkWidget*, gpointer) {
+            gtk_main_quit();
+        }), nullptr);
         auto* base = gtk_box_new(GTK_ORIENTATION_VERTICAL, 14);
         gtk_container_set_border_width(GTK_CONTAINER(base), 20);
         gtk_container_add(GTK_CONTAINER(window_), base);
@@ -64,8 +68,8 @@ public:
         gtk_widget_set_hexpand(volumes_widget_, TRUE);
         gtk_box_pack_start(GTK_BOX(selector), volumes_widget_, TRUE, TRUE, 0);
         g_signal_connect(volumes_widget_, "changed", G_CALLBACK(selected), this);
-        add_button(selector, "Refresh", "refresh");
-        add_button(selector, "Open image", "image");
+        refresh_ = add_button(selector, "Refresh", "refresh");
+        image_ = add_button(selector, "Open image", "image");
         add_button(selector, "Test Media", "test-media");
         add_button(selector, "About", "about");
 
@@ -130,6 +134,7 @@ private:
     GtkWidget *window_{}, *volumes_widget_{}, *detail_{}, *progress_{}, *status_{};
     GtkWidget *map_{}, *summary_{}, *log_{}, *analyse_{}, *unmount_{};
     GtkWidget *defrag_{}, *growth_{}, *recover_{}, *stop_{};
+    GtkWidget *refresh_{}, *image_{};
     std::vector<DesktopVolume> volumes_;
     std::vector<Json> cells_;
     std::string mapper_, engine_, helper_path_, pending_program_, purpose_, output_, result_status_;
@@ -222,6 +227,8 @@ private:
         gtk_widget_set_sensitive(growth_, state.growth_defrag);
         gtk_widget_set_sensitive(recover_, state.recover);
         gtk_widget_set_sensitive(stop_, state.stop);
+        gtk_widget_set_sensitive(refresh_, !busy_);
+        gtk_widget_set_sensitive(image_, !busy_);
         gtk_widget_set_sensitive(volumes_widget_, !busy_);
     }
     void refresh() {
@@ -278,6 +285,8 @@ private:
         gtk_widget_destroy(chooser);
     }
     void action(const std::string& action_name) {
+        if (busy_ && action_name != "stop" && action_name != "about" &&
+            action_name != "test-media") return;
         if (action_name == "refresh") { refresh(); return; }
         if (action_name == "image") { open_image(); return; }
         if (action_name == "stop") { request_stop(); return; }
@@ -375,6 +384,11 @@ private:
     }
     void submit() {
         if (!busy_ || !helper_ready_ || active_id_ || local_) return;
+        if (stopping_) {
+            result_status_ = "stopped";
+            completed(0, "Cancelled before the operation started");
+            return;
+        }
         Json::Array args;
         // The helper enforces the executable allowlist; it receives arguments only.
         for (size_t i = 1; i < pending_args_.size(); ++i) args.emplace_back(pending_args_[i]);
@@ -446,7 +460,10 @@ private:
         if (type == "output") {
             std::string line = field(message, "line");
             if (purpose_ == "analysis") output_ += line + "\n";
-            else if (line.rfind("@@", 0) == 0) apply_live(line);
+            else if (line.rfind("@@", 0) == 0) {
+                try { apply_live(line); }
+                catch (const std::exception& ex) { note(std::string("Invalid live event: ") + ex.what()); }
+            }
             else note(line);
         } else if (type == "progress") {
             gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(progress_),
@@ -464,12 +481,18 @@ private:
             note("Stopping read-only analysis…");
             return;
         }
+        if (!active_id_) {
+            note("Cancelling before the operation starts…");
+            if (helper_ready_) submit();
+            return;
+        }
         try { write_helper(Json::Object{{"action", Json("stop")}, {"id", Json::integer(++request_id_)}}); }
         catch (const std::exception& ex) { stopping_ = false; error("Unable to stop", ex.what()); update(); }
     }
     void completed(int code, const std::string& detail) {
         std::string purpose = purpose_;
         std::string reason = detail;
+        bool actually_started = active_id_ != 0 || local_ != nullptr;
         active_id_ = 0;
         busy_ = false; stopping_ = false;
         if (code == 0 && purpose == "analysis") {
@@ -482,7 +505,8 @@ private:
             (result_status_ == "not-needed" ? "No changes needed" : "Completed") :
             (result_status_ == "stopped" ? "Stopped safely" : "Operation failed"));
         if (code != 0 && result_status_ != "stopped") error("Operation failed", reason.empty() ? "Exit status " + std::to_string(code) : reason);
-        if ((success || result_status_ == "stopped") && (purpose == "defrag" || purpose == "growth-defrag" || purpose == "recover")) {
+        if (!closing_ && actually_started && (success || result_status_ == "stopped") &&
+            (purpose == "defrag" || purpose == "growth-defrag" || purpose == "recover")) {
             update();
             action("analyse");
         }
@@ -492,6 +516,7 @@ private:
     void present_map(const Json& map) {
         const auto* raw = map.find("cells");
         if (!raw || !raw->is_array() || raw->array().empty() ||
+            raw->array().size() > 1048576 ||
             number(map, "cell_count") != raw->array().size() || number(map, "total_units") == 0)
             throw std::runtime_error("Missing or inconsistent allocation cells");
         std::uint64_t end = 0;
@@ -527,66 +552,21 @@ private:
             result_status_ = field(payload, "status");
             note(std::string("Result: ") + result_status_ + " " + field(payload, "message"));
         } else if (kind == "@@LIVE_MAP") {
-            const auto* changes = payload.find("cells");
-            if (!changes || !changes->is_array()) return;
-            for (const auto& change : changes->array()) {
-                size_t index = static_cast<size_t>(number(change, "i"));
-                if (index < cells_.size() && change.is_object()) cells_[index] = change;
+            if (!cells_.empty()) {
+                defragger::desktop_live_cells(map_data_, cells_, payload);
+                gtk_widget_queue_draw(map_);
             }
-            gtk_widget_queue_draw(map_);
         } else if (kind == "@@LIVE_RANGE" || kind == "@@LIVE_RANGES") {
-            if (cells_.empty()) return;
-            const auto unit = number(map_data_, "unit_size") ? number(map_data_, "unit_size") : number(map_data_, "cluster_size");
-            if (!unit) return;
-            auto move = [&](std::uint64_t source, std::uint64_t destination, std::uint64_t length) {
-                const bool allocate_only = std::string(field(payload, "mode")) == "allocate-only";
-                auto update_range = [&](std::uint64_t start, bool make_used) {
-                    const auto first = start / unit;
-                    const auto last = (start + length + unit - 1) / unit;
-                    for (auto& cell : cells_) {
-                        const auto begin = number(cell, "start");
-                        const auto end = number(cell, "end") + 1;
-                        if (begin >= last) break;
-                        if (std::min(end, last) <= std::max(begin, first)) continue;
-                        const auto overlap = std::min(end, last) - std::max(begin, first);
-                        auto& obj = cell.object();
-                        const auto available = number(cell, make_used ? "free" : "used");
-                        const auto moved = std::min(overlap, available);
-                        obj[make_used ? "free" : "used"] = Json::unsigned_integer(available - moved);
-                        const char* other = make_used ? "used" : "free";
-                        obj[other] = Json::unsigned_integer(number(cell, other) + moved);
-                        if (!make_used) {
-                            obj["fragmented"] = Json::unsigned_integer(std::min(number(cell, "fragmented"), number(cell, "used")));
-                            obj["directory"] = Json::unsigned_integer(std::min(number(cell, "directory"), number(cell, "used")));
-                        }
-                    }
-                };
-                if (!allocate_only) update_range(source, false);
-                update_range(destination, true);
-            };
-            if (kind == "@@LIVE_RANGE") move(number(payload, "source_start_byte"),
-                number(payload, "destination_start_byte"), number(payload, "length_bytes"));
-            else if (const auto* ranges = payload.find("ranges"); ranges && ranges->is_array())
-                for (const auto& range : ranges->array()) if (range.is_array() && range.array().size() == 3)
-                    move(range.array()[0].unsigned_or(), range.array()[1].unsigned_or(), range.array()[2].unsigned_or());
-            gtk_widget_queue_draw(map_);
-        } else if (kind == "@@LIVE_RESET") {
-            const auto units = number(payload, "filesystem_units") ? number(payload, "filesystem_units") : number(payload, "total_blocks");
-            if (!units) return;
-            for (auto& cell : cells_) {
-                const auto begin = number(cell, "start");
-                const auto end = number(cell, "end") + 1;
-                const auto inside = begin >= units ? 0 : std::min(end, units) - begin;
-                auto& obj = cell.object();
-                obj["free"] = Json::unsigned_integer(inside);
-                obj["used"] = Json::unsigned_integer(0);
-                obj["outside"] = Json::unsigned_integer(end - begin - inside);
-                obj["unknown"] = Json::unsigned_integer(0);
-                obj["fragmented"] = Json::unsigned_integer(0);
-                obj["directory"] = Json::unsigned_integer(0);
-                obj["bad"] = Json::unsigned_integer(0);
+            if (!cells_.empty()) {
+                defragger::desktop_live_ranges(map_data_, cells_, payload,
+                    kind == "@@LIVE_RANGES");
+                gtk_widget_queue_draw(map_);
             }
-            gtk_widget_queue_draw(map_);
+        } else if (kind == "@@LIVE_RESET") {
+            if (!cells_.empty()) {
+                defragger::desktop_live_reset(map_data_, cells_, payload);
+                gtk_widget_queue_draw(map_);
+            }
         }
     }
     static gboolean draw_map(GtkWidget* widget, cairo_t* cr, gpointer data) {
