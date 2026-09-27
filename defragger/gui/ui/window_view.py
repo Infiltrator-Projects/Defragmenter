@@ -1186,10 +1186,31 @@ class WindowView:
         return filename
 
     def show_about(self) -> None:
-        """Display the product About surface through the selected presenter."""
-        raise NotImplementedError(
-            "WindowView requires a concrete About presentation implementation"
+        """Display a safe built-in About surface.
+
+        The suite-standard subclass may add richer shared presentation, but the
+        base view is deliberately functional rather than containing a latent
+        runtime exception.
+        """
+        comments = ABOUT_COMMENTS
+        if self.build_label:
+            comments += f"\n\nBuild: {self.build_label}"
+        dialog = Gtk.AboutDialog(
+            transient_for=self.window,
+            modal=True,
+            program_name=APP_NAME,
+            version=self.gui_version,
+            comments=comments,
+            website=PROJECT_URL,
+            website_label="Website",
+            copyright=COPYRIGHT,
         )
+        dialog.set_title(f"About {APP_NAME}")
+        dialog.set_license(ABOUT_LICENSE)
+        dialog.set_wrap_license(True)
+        dialog.set_logo_icon_name(APP_ICON_NAME)
+        dialog.run()
+        dialog.destroy()
 
     def reset_summary(self) -> None:
         for detail_map in self._detail_maps:
