@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   local-quality:
-    runs-on: [self-hosted, Linux, X64, linux-native]
+    runs-on: [self-hosted, Linux, X64, linux-native, bigbedroom]
     timeout-minutes: 45
     defaults:
       run:
