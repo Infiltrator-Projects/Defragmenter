@@ -85,7 +85,8 @@ INSTALLED_SIZE=$(du -sk "$STAGE/root/usr" | awk '{print $1}')
     printf 'Replaces: linux-defragger (<< 1.8.0-172)\n'
     printf 'Maintainer: Shannon Smith\n'
     printf 'X-Linux-Defragger-Build: %s\n' "$BUILD_FLAVOR"
-    printf 'Depends: gir1.2-gtk-3.0, libgtk-3-0t64, fontconfig, policykit-1, ca-certificates, desktop-file-utils, udisks2, util-linux, makefs, libsqlite3-0, libssl3t64, libstdc++6\n'
+    printf 'Depends: libgtk-3-0t64, fontconfig, policykit-1, ca-certificates, desktop-file-utils, udisks2, util-linux, libsqlite3-0, libssl3t64, libstdc++6\n'
+    printf 'Suggests: makefs\n'
     printf 'Installed-Size: %s\n' "$INSTALLED_SIZE"
     printf 'Description: Safe direct filesystem analysis and canonical layout rewriting\n'
     printf ' Defragmenter analyses filesystem allocation and safely rewrites\n'
