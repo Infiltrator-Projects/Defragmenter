@@ -553,20 +553,19 @@ static int rewrite_ptrs(AffsVolume *v, AffsFile *f, const AffsU32Vec *dest, char
 }
 
 static int choose_run(AffsVolume *v, uint32_t need, uint32_t reserve, uint32_t *start) {
-    for (uint32_t s = 2; s + need + reserve <= v->blocks; ++s) {
+    const uint64_t span = (uint64_t)need + reserve;
+    for (uint32_t s = 2; (uint64_t)s + span <= v->blocks; ++s) {
         bool ok = true;
-        for (uint32_t k = 0; k < need + reserve; ++k) {
+        for (uint64_t k = 0; k < span; ++k) {
             if (ld_bitmap_get(v->fixed_map, (uint64_t)s + k)) {
                 ok = false;
-                s += k;
+                s += (uint32_t)k;
                 break;
             }
         }
         if (ok) {
             *start = s;
-            for (uint32_t k = 0; k < need; ++k)
-                ld_bitmap_set(v->fixed_map, (uint64_t)s + k, true);
-            for (uint32_t k = need; k < need + reserve; ++k)
+            for (uint64_t k = 0; k < span; ++k)
                 ld_bitmap_set(v->fixed_map, (uint64_t)s + k, true);
             return 0;
         }
@@ -671,8 +670,19 @@ int affs_build_stage(const char *source, const char *stage, bool growth, unsigne
     for (size_t fi = 0; fi < src.files.n; ++fi) {
         AffsFile *sf = &src.files.v[fi];
         AffsFile *df = &dst.files.v[fi];
+        if (sf->data.n > UINT32_MAX) {
+            affs_set_error(e, "Amiga file allocation exceeds the 32-bit filesystem range");
+            goto fail;
+        }
         uint32_t need = (uint32_t)sf->data.n;
-        uint32_t reserve = growth && need ? ((need * gp + 99U) / 100U) : 0;
+        const uint64_t reserve64 = growth && need
+            ? ((uint64_t)need * gp + 99U) / 100U
+            : 0U;
+        if (reserve64 > UINT32_MAX) {
+            affs_set_error(e, "Amiga growth reserve exceeds the 32-bit filesystem range");
+            goto fail;
+        }
+        uint32_t reserve = (uint32_t)reserve64;
         uint32_t start = 0;
         if (need && choose_run(&dst, need, reserve, &start)) {
             affs_set_error(e, "Amiga layout cannot place file header %u contiguously with required reserve",
@@ -735,10 +745,12 @@ int affs_verify_layout(const char *path, bool growth, unsigned gp, char **e) {
             return -1;
         }
         if (growth && f->data.n) {
-            uint32_t reserve = ((uint32_t)f->data.n * gp + 99U) / 100U;
-            uint32_t end = f->data.v[f->data.n - 1] + 1U;
-            for (uint32_t k = 0; k < reserve; ++k) {
-                if (end + k >= v.blocks || !ld_bitmap_get(v.free_map, (uint64_t)end + k)) {
+            const uint64_t reserve =
+                ((uint64_t)f->data.n * gp + 99U) / 100U;
+            const uint64_t end =
+                (uint64_t)f->data.v[f->data.n - 1] + 1U;
+            for (uint64_t k = 0; k < reserve; ++k) {
+                if (end + k >= v.blocks || !ld_bitmap_get(v.free_map, end + k)) {
                     affs_set_error(e, "Amiga file header %u does not have its required growth reserve",
                                    f->header);
                     affs_close(&v);

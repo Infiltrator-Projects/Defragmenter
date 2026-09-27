@@ -10,9 +10,12 @@
 #include <stdexcept>
 #include <thread>
 #include <csignal>
+#include <spawn.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+extern char **environ;
 
 namespace defragger {
 namespace {
@@ -45,6 +48,11 @@ private:
 std::runtime_error system_error(const char* action) {
     return std::runtime_error(
         std::string(action) + ": " + std::strerror(errno));
+}
+
+std::runtime_error system_error_code(const char* action, int code) {
+    return std::runtime_error(
+        std::string(action) + ": " + std::strerror(code));
 }
 
 void read_stream(int fd, std::string& output, std::size_t limit,
@@ -92,30 +100,79 @@ CommandResult run_capture(const std::vector<std::string>& command,
     Fd stderr_read(stderr_pipe[0]);
     Fd stderr_write(stderr_pipe[1]);
 
-    const pid_t child = fork();
-    if (child < 0) throw system_error("fork");
-    if (child == 0) {
-        if (setpgid(0, 0) != 0)
-            _exit(126);
-        if (dup2(stdout_write.get(), STDOUT_FILENO) < 0 ||
-            dup2(stderr_write.get(), STDERR_FILENO) < 0) {
-            _exit(126);
-        }
-        stdout_read.reset();
-        stdout_write.reset();
-        stderr_read.reset();
-        stderr_write.reset();
-        (void)setenv("LC_ALL", "C", 1);
-        (void)setenv("LANG", "C", 1);
+    std::vector<char*> arguments;
+    arguments.reserve(command.size() + 1U);
+    for (const auto& item : command)
+        arguments.push_back(const_cast<char*>(item.c_str()));
+    arguments.push_back(nullptr);
 
-        std::vector<char*> arguments;
-        arguments.reserve(command.size() + 1U);
-        for (const auto& item : command)
-            arguments.push_back(const_cast<char*>(item.c_str()));
-        arguments.push_back(nullptr);
-        execv(arguments.front(), arguments.data());
-        _exit(errno == ENOENT ? 127 : 126);
+    std::vector<std::string> environment_storage;
+    for (char** item = environ; item != nullptr && *item != nullptr; ++item) {
+        std::string value(*item);
+        if (value.rfind("LC_ALL=", 0U) == 0U ||
+            value.rfind("LANG=", 0U) == 0U) {
+            continue;
+        }
+        environment_storage.push_back(std::move(value));
     }
+    environment_storage.emplace_back("LC_ALL=C");
+    environment_storage.emplace_back("LANG=C");
+    std::vector<char*> environment;
+    environment.reserve(environment_storage.size() + 1U);
+    for (auto& item : environment_storage)
+        environment.push_back(item.data());
+    environment.push_back(nullptr);
+
+    posix_spawn_file_actions_t actions;
+    int spawn_error = posix_spawn_file_actions_init(&actions);
+    if (spawn_error != 0)
+        throw system_error_code("posix_spawn_file_actions_init", spawn_error);
+
+    auto action = [&](int code, const char* name) {
+        if (code != 0) {
+            (void)posix_spawn_file_actions_destroy(&actions);
+            throw system_error_code(name, code);
+        }
+    };
+    action(posix_spawn_file_actions_adddup2(
+               &actions, stdout_write.get(), STDOUT_FILENO),
+           "posix_spawn stdout dup");
+    action(posix_spawn_file_actions_adddup2(
+               &actions, stderr_write.get(), STDERR_FILENO),
+           "posix_spawn stderr dup");
+    action(posix_spawn_file_actions_addclose(&actions, stdout_read.get()),
+           "posix_spawn stdout read close");
+    action(posix_spawn_file_actions_addclose(&actions, stderr_read.get()),
+           "posix_spawn stderr read close");
+    action(posix_spawn_file_actions_addclose(&actions, stdout_write.get()),
+           "posix_spawn stdout write close");
+    action(posix_spawn_file_actions_addclose(&actions, stderr_write.get()),
+           "posix_spawn stderr write close");
+
+    posix_spawnattr_t attributes;
+    spawn_error = posix_spawnattr_init(&attributes);
+    if (spawn_error != 0) {
+        (void)posix_spawn_file_actions_destroy(&actions);
+        throw system_error_code("posix_spawnattr_init", spawn_error);
+    }
+    const short flags = POSIX_SPAWN_SETPGROUP;
+    spawn_error = posix_spawnattr_setflags(&attributes, flags);
+    if (spawn_error == 0)
+        spawn_error = posix_spawnattr_setpgroup(&attributes, 0);
+    if (spawn_error != 0) {
+        (void)posix_spawnattr_destroy(&attributes);
+        (void)posix_spawn_file_actions_destroy(&actions);
+        throw system_error_code("posix_spawn process group", spawn_error);
+    }
+
+    pid_t child = -1;
+    spawn_error = posix_spawnp(
+        &child, command.front().c_str(), &actions, &attributes,
+        arguments.data(), environment.data());
+    (void)posix_spawnattr_destroy(&attributes);
+    (void)posix_spawn_file_actions_destroy(&actions);
+    if (spawn_error != 0)
+        throw system_error_code("posix_spawnp", spawn_error);
 
     stdout_write.reset();
     stderr_write.reset();

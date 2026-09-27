@@ -4,12 +4,17 @@
 #include "desktop_live_map.hpp"
 #include "process.hpp"
 
+extern "C" {
+#include "version.h"
+}
+
 #include <gtk/gtk.h>
 #include <gio/gio.h>
 #include <signal.h>
 #include <unistd.h>
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <memory>
 #include <stdexcept>
@@ -397,8 +402,10 @@ private:
         std::vector<DesktopVolume> images;
         for (const auto& v : volumes_) if (v.image) images.push_back(v);
         try {
-            auto result = defragger::run_capture({"lsblk", "--json", "--bytes", "--output",
-                "NAME,PATH,TYPE,FSTYPE,FSVER,LABEL,PARTLABEL,UUID,PARTUUID,SIZE,MOUNTPOINTS,RM,RO,MODEL,TRAN"});
+            auto result = defragger::run_capture(
+                {"lsblk", "--json", "--bytes", "--output",
+                 "NAME,PATH,TYPE,FSTYPE,FSVER,LABEL,PARTLABEL,UUID,PARTUUID,SIZE,MOUNTPOINTS,RM,RO,MODEL,TRAN"},
+                4U * 1024U * 1024U, std::chrono::seconds(5));
             if (result.return_code != 0) throw std::runtime_error(result.standard_error);
             volumes_ = defragger::desktop_discover(Json::parse(result.standard_output));
             volumes_.insert(volumes_.end(), images.begin(), images.end());
@@ -423,7 +430,9 @@ private:
             try {
                 fs::path path = fs::canonical(name);
                 if (!fs::is_regular_file(path)) throw std::runtime_error("Select a regular filesystem image.");
-                auto result = defragger::run_capture({mapper_, path.string(), "--probe"});
+                auto result = defragger::run_capture(
+                    {mapper_, path.string(), "--probe"},
+                    4U * 1024U * 1024U, std::chrono::seconds(5));
                 if (result.return_code != 0) throw std::runtime_error("Native filesystem probe failed: " + result.standard_error);
                 Json probe = Json::parse(result.standard_output);
                 DesktopVolume v;
@@ -452,23 +461,49 @@ private:
             return;
         }
         if (action_name == "close") { gtk_window_close(GTK_WINDOW(window_)); return; }
-        if (busy_ && action_name != "stop" && action_name != "about" &&
-            action_name != "test-media") return;
+        if (busy_ && action_name != "stop" && action_name != "about") return;
         if (action_name == "refresh") { refresh(); return; }
         if (action_name == "image") { open_image(); return; }
         if (action_name == "stop") { request_stop(); return; }
         if (action_name == "about") {
-            gtk_show_about_dialog(GTK_WINDOW(window_), "program-name", "Defragmenter",
+            const gchar* authors[] = {
+                "Shannon Smith — Author and project maintainer", nullptr
+            };
+            gtk_show_about_dialog(
+                GTK_WINDOW(window_),
+                "program-name", "Defragmenter",
+                "version", LD_VERSION,
                 "comments", "Native filesystem analysis and safe layout operations",
-                "website", "https://github.com/Infiltrator-Projects/Defragmenter", nullptr);
+                "copyright", "Copyright © 2000–2026 Shannon Smith",
+                "website", "https://github.com/Infiltrator-Projects/Defragmenter",
+                "website-label", "Website",
+                "authors", authors,
+                "license-type", GTK_LICENSE_GPL_3_0,
+                "wrap-license", TRUE,
+                "logo-icon-name", "io.github.linuxdefragger",
+                nullptr);
             return;
         }
         if (action_name == "test-media") {
             GError* failure = nullptr;
-            const char* argv[] = {"linux-defragger-test-media", nullptr};
-            auto* process = g_subprocess_newv(argv, G_SUBPROCESS_FLAGS_NONE, &failure);
-            if (process) g_object_unref(process);
-            else { error("Unable to launch Test Media", failure->message); g_error_free(failure); }
+            try {
+                const std::string executable =
+                    defragger::resolve_program("test-media");
+                const char* argv[] = {executable.c_str(), nullptr};
+                auto* process =
+                    g_subprocess_newv(argv, G_SUBPROCESS_FLAGS_NONE, &failure);
+                if (process) {
+                    g_object_unref(process);
+                } else {
+                    const std::string detail =
+                        failure ? failure->message : "unable to start Test Media";
+                    if (failure) g_error_free(failure);
+                    error("Unable to launch Test Media", detail);
+                }
+            } catch (const std::exception& ex) {
+                if (failure) g_error_free(failure);
+                error("Unable to launch Test Media", ex.what());
+            }
             return;
         }
         auto* v = current();

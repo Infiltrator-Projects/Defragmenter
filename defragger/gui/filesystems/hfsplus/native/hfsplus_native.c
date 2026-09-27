@@ -932,15 +932,19 @@ static int mutation_preflight(const HfsPlusVolume *volume, bool growth,
 static int choose_run(uint8_t *claimed, uint32_t total, uint32_t need, uint32_t reserve,
                       uint32_t *start) {
     if (!need) { *start = 0; return 0; }
-    uint64_t span = (uint64_t)need + reserve;
+    const uint64_t span = (uint64_t)need + reserve;
     for (uint32_t s = 0; (uint64_t)s + span <= total; ++s) {
         bool ok = true;
-        for (uint32_t k = 0; k < need + reserve; ++k) {
-            if (ld_bitmap_get(claimed, (uint64_t)s + k)) { s += k; ok = false; break; }
+        for (uint64_t k = 0; k < span; ++k) {
+            if (ld_bitmap_get(claimed, (uint64_t)s + k)) {
+                s += (uint32_t)k;
+                ok = false;
+                break;
+            }
         }
         if (ok) {
             *start = s;
-            for (uint32_t k = 0; k < need + reserve; ++k)
+            for (uint64_t k = 0; k < span; ++k)
                 ld_bitmap_set(claimed, (uint64_t)s + k, true);
             return 0;
         }
@@ -1144,7 +1148,15 @@ int hfsplus_build_stage(const char *source_path, const char *stage_path, bool gr
                 hfsplus_set_error(error, "HFS+ file %u fork is not safely rewritable", before->file_id);
                 goto fail;
             }
-            uint32_t reserve = growth ? (bf[k]->total_blocks * gp + 99U) / 100U : 0U;
+            const uint64_t reserve64 = growth
+                ? ((uint64_t)bf[k]->total_blocks * gp + 99U) / 100U
+                : 0U;
+            if (reserve64 > UINT32_MAX) {
+                hfsplus_set_error(error,
+                    "HFS+ growth reserve exceeds the on-disk allocation-block range");
+                goto fail;
+            }
+            uint32_t reserve = (uint32_t)reserve64;
             uint32_t destination = 0;
             if (choose_run(claimed, source.total_blocks, bf[k]->total_blocks, reserve, &destination)) {
                 hfsplus_set_error(error, "HFS+ layout cannot place file %u fork contiguously with required reserve", before->file_id);
@@ -1183,7 +1195,14 @@ fail:
 static int reserve_is_free(const HfsPlusVolume *volume, const HfsPlusFork *fork,
                            unsigned gp, char **error, uint32_t file_id) {
     if (!fork->total_blocks) return 0;
-    uint32_t reserve = (fork->total_blocks * gp + 99U) / 100U;
+    const uint64_t reserve64 =
+        ((uint64_t)fork->total_blocks * gp + 99U) / 100U;
+    if (reserve64 > UINT32_MAX) {
+        hfsplus_set_error(error,
+            "HFS+ growth reserve exceeds the on-disk allocation-block range");
+        return -1;
+    }
+    uint32_t reserve = (uint32_t)reserve64;
     if (!reserve) return 0;
     HfsPlusExtent tail = fork->extents[fork->extent_count - 1U];
     uint32_t end = tail.start + tail.count;

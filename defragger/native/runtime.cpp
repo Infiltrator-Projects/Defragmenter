@@ -75,7 +75,7 @@ struct ProgramSpec {
     const char* build_name;
 };
 
-constexpr std::array<ProgramSpec, 20> kPrograms{{
+constexpr std::array<ProgramSpec, 21> kPrograms{{
     {"hfsplus-native", "LINUX_DEFRAGGER_HFSPLUS_WORKER",
      "/usr/lib/linux-defragger/filesystems/hfsplus/linux-defragger-hfsplus-worker",
      "linux-defragger-hfsplus-worker"},
@@ -134,6 +134,9 @@ constexpr std::array<ProgramSpec, 20> kPrograms{{
     {"helper", "LINUX_DEFRAGGER_HELPER",
      "/usr/lib/linux-defragger/linux-defragger-privileged-helper",
      "linux-defragger-privileged-helper"},
+    {"test-media", "LINUX_DEFRAGGER_TEST_MEDIA",
+     "/usr/bin/linux-defragger-test-media",
+     "linux-defragger-test-media"},
 }};
 
 const ProgramSpec* program_spec(std::string_view id) {
@@ -335,9 +338,14 @@ std::string resolve_program(std::string_view program_id) {
             "unknown Defragmenter program: " + std::string(program_id));
 
     std::vector<fs::path> candidates;
-    if (const char* override_path = std::getenv(spec->environment);
-        override_path != nullptr && *override_path != '\0') {
-        candidates.emplace_back(override_path);
+    // Never allow process environment to select the executable that will be
+    // elevated through pkexec. Development overrides remain available for
+    // unprivileged workers and tools only.
+    if (program_id != "helper") {
+        if (const char* override_path = std::getenv(spec->environment);
+            override_path != nullptr && *override_path != '\0') {
+            candidates.emplace_back(override_path);
+        }
     }
     const fs::path directory = executable_directory();
     if (!directory.empty()) candidates.push_back(directory / spec->build_name);
