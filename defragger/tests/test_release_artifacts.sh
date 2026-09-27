@@ -16,6 +16,14 @@ sh -n "$ROOT/packaging/build-deb.sh"
 sh -n "$ROOT/packaging/build-local-run.sh"
 grep -Fq 'OUTPUT=${OUTPUT_PATH:-"$ROOT/Defragmenter-${PACKAGE_VERSION}-${ARCH}.deb"}' "$ROOT/packaging/build-deb.sh"
 grep -Fq 'libstdc++6' "$ROOT/packaging/build-deb.sh"
+if grep -Fq 'gir1.2-gtk-3.0' "$ROOT/packaging/build-deb.sh"; then
+    printf '%s\n' 'Native production package must not depend on Python GTK introspection.' >&2
+    exit 1
+fi
+if grep -Eq "printf 'Depends:.*makefs" "$ROOT/packaging/build-deb.sh"; then
+    printf '%s\n' 'makefs is a test-media fixture generator, not a hard runtime dependency.' >&2
+    exit 1
+fi
 if grep -Fq 'libext2fs2' "$ROOT/packaging/build-deb.sh"; then
     printf '%s\n' 'Production Debian package must not depend on libext2fs.' >&2
     exit 1
@@ -49,7 +57,51 @@ grep -qx "linux-defragger-${VERSION}/LICENSE" "$WORK/files.txt"
 grep -qx "linux-defragger-${VERSION}/shared/infiltratr-common/VERSION" "$WORK/files.txt"
 grep -qx "linux-defragger-${VERSION}/shared/infiltratr-common/src/core.c" "$WORK/files.txt"
 grep -qx "linux-defragger-${VERSION}/shared/infiltratr-common/src/posix.c" "$WORK/files.txt"
-if grep -Eq '/(build[^/]*)/|__pycache__|\.pyc$|\.deb$|\.run$|\.zip$' "$WORK/files.txt"; then
+if grep -Eq '/(build[^/]*)/|__pycache__|\.py$|\.pyc$|\.deb$|\.run$|\.zip    printf '%s\n' 'Generated local installer contains a forbidden generated file.' >&2
+    exit 1
+fi
+
+dpkg --compare-versions "${VERSION}+native1" gt "$VERSION"
+NEXT_REVISION=${VERSION%-*}-$(( ${VERSION##*-} + 1 ))
+dpkg --compare-versions "$NEXT_REVISION" gt "${VERSION}+native1"
+
+CMAKE_SOURCE="$WORK/cmake-source.txt"
+cat "$ROOT/CMakeLists.txt" "$ROOT"/cmake/*.cmake >"$CMAKE_SOURCE"
+grep -q -- '-march=x86-64' "$CMAKE_SOURCE"
+grep -q -- '-mtune=generic' "$CMAKE_SOURCE"
+grep -q -- '-march=native' "$CMAKE_SOURCE"
+grep -q -- '-mtune=native' "$CMAKE_SOURCE"
+grep -q -- '-fstack-protector-strong' "$CMAKE_SOURCE"
+grep -q -- '-fPIE' "$CMAKE_SOURCE"
+grep -q -- '-Wl,-z,relro' "$CMAKE_SOURCE"
+grep -q -- '-Wl,-z,now' "$CMAKE_SOURCE"
+grep -Fq 'online - 1' "$ROOT/packaging/build-deb.sh"
+grep -Fq 'JOBS=$((JOBS - 1))' "$ROOT/packaging/local-run-header.sh.in"
+grep -Fq "printf 'Version: %s\\n' \"\$PACKAGE_VERSION\"" \
+    "$ROOT/packaging/build-deb.sh"
+if grep -Fq "printf 'Version: %s\\n' \"\$VERSION\"" \
+    "$ROOT/packaging/build-deb.sh"; then
+    printf '%s\n' 'Debian control metadata ignores DEB_PACKAGE_VERSION.' >&2
+    exit 1
+fi
+"$ROOT/tests/test_deb_package_versions.sh"
+
+if command -v makefs >/dev/null 2>&1; then
+    UFS_BUILD="$WORK/ufs-build"
+    cmake -S "$ROOT" -B "$UFS_BUILD" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DLD_ENABLE_WERROR=ON \
+        -DBUILD_TESTING=OFF >/dev/null
+    cmake --build "$UFS_BUILD" --target linux-defragger-ufs-worker -j2 >/dev/null
+    /bin/sh "$ROOT/tests/test_ufs_makefs.sh" "$UFS_BUILD/linux-defragger-ufs-worker"
+else
+    printf '%s\n' 'makefs unavailable; UFS2 release integration test skipped.'
+fi
+
+"$ROOT/tests/test_local_installer_end_to_end.sh" "$RUN"
+
+printf '%s\n' 'Installable release packaging tests passed.'
+ "$WORK/files.txt"; then
     printf '%s\n' 'Generated local installer contains a forbidden generated file.' >&2
     exit 1
 fi
