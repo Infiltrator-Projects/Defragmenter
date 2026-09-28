@@ -963,6 +963,18 @@ int main(int argc, char **argv)
     }
     free(parent);
 
+    uint64_t staging_available = 0U, staging_required = 0U;
+    if (ld_path_require_staging_capacity(
+            state.stage, state.filesystem_bytes,
+            &staging_available, &staging_required) != 0) {
+        txn_error(error, sizeof(error),
+                  "UFS safe staging has %llu MiB available; approximately %llu MiB is required: %s",
+                  (unsigned long long)(staging_available / (1024U * 1024U)),
+                  (unsigned long long)(staging_required / (1024U * 1024U)),
+                  strerror(errno));
+        goto fail;
+    }
+
     (void)printf("Starting native C UFS %s on %s.\n",
                  growth ? "Growth Defrag" : "Defrag", device);
     uint64_t planned = 0U;
