@@ -216,14 +216,13 @@ static void best_file_name(const uint8_t *fixed, const NtfsAttributeVec *attrs,
 static bool desired_attribute(bool directory, const NtfsAttribute *attribute) {
     if (!attribute->nonresident) return false;
     if (directory) return attribute->type == NTFS_ATTR_INDEX_ALLOCATION;
-    return attribute->type == NTFS_ATTR_DATA && attribute->name[0] == '\0';
-}
-
-static size_t desired_count(bool directory, const NtfsAttributeVec *attributes) {
-    size_t count = 0;
-    for (size_t index = 0; index < attributes->count; ++index)
-        if (desired_attribute(directory, &attributes->items[index])) count++;
-    return count;
+    /*
+     * Ordinary nonresident named $DATA streams are independent NTFS payload
+     * streams just like the unnamed stream. Attribute-list/split, compressed,
+     * encrypted and sparse cases remain excluded by the surrounding writer
+     * qualification.
+     */
+    return attribute->type == NTFS_ATTR_DATA;
 }
 
 static bool has_attribute_list(const NtfsAttributeVec *attributes) {
@@ -336,7 +335,6 @@ static void parse_one_record(ParseWorker *worker, size_t index, uint8_t *fixed) 
     best_file_name(fixed, &attributes, result->number, result->file_name);
 
     const bool attribute_list = has_attribute_list(&attributes);
-    const size_t wanted = desired_count(result->directory, &attributes);
 
     for (size_t attr_index = 0; attr_index < attributes.count; ++attr_index) {
         NtfsAttribute *attribute = &attributes.items[attr_index];
@@ -370,7 +368,6 @@ static void parse_one_record(ParseWorker *worker, size_t index, uint8_t *fixed) 
             result->number >= NTFS_FIRST_USER_RECORD &&
             result->base == 0U &&
             !attribute_list &&
-            wanted == 1U &&
             desired_attribute(result->directory, attribute) &&
             attribute->lowest_vcn == 0U &&
             (attribute->flags &
@@ -544,6 +541,37 @@ static int merge_parsed_record(NtfsVolume *volume,
     return 0;
 }
 
+static uint64_t catalogue_stream_owner(const NtfsStream *stream) {
+    return stream->base_record != 0U
+        ? stream->base_record : stream->record_number;
+}
+
+static size_t catalogue_logical_stream_parts(const NtfsCatalogue *catalogue,
+                                             const NtfsStream *stream) {
+    size_t count = 0U;
+    const uint64_t owner = catalogue_stream_owner(stream);
+    for (size_t index = 0U; index < catalogue->count; ++index) {
+        const NtfsStream *candidate = &catalogue->items[index];
+        if (catalogue_stream_owner(candidate) != owner ||
+            candidate->attribute_type != stream->attribute_type ||
+            strcmp(candidate->attribute_name, stream->attribute_name) != 0)
+            continue;
+        count++;
+    }
+    return count;
+}
+
+static void qualify_movable_streams(NtfsCatalogue *catalogue) {
+    for (size_t index = 0U; index < catalogue->count; ++index) {
+        NtfsStream *stream = &catalogue->items[index];
+        if (!stream->movable)
+            continue;
+        if (stream->lowest_vcn != 0U ||
+            catalogue_logical_stream_parts(catalogue, stream) != 1U)
+            stream->movable = false;
+    }
+}
+
 static void aggregate_object_state(NtfsLayout *layout,
                                    NtfsCatalogue *catalogue,
                                    ObjectVec *objects) {
@@ -664,7 +692,8 @@ int ntfs_scan_catalogue(NtfsVolume *volume, NtfsLayout *layout,
     }
 
     if (result == 0) {
-        aggregate_object_state(layout, catalogue, &objects);
+        qualify_movable_streams(catalogue);
+    aggregate_object_state(layout, catalogue, &objects);
         if (catalogue->regular_files == 0U ||
             catalogue->fragmented_directories != 0U)
             catalogue->growth_10_satisfied = false;
