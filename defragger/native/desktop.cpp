@@ -852,6 +852,10 @@ private:
         if (!v || busy_) return;
         if (action_name == "analyse") {
             v->exact_analysis = false;
+            v->defrag_qualified = false;
+            v->growth_qualified = false;
+            v->defrag_reason.clear();
+            v->growth_reason.clear();
             start({mapper_, v->path, "--fstype", v->filesystem, "--cells", "4096"}, "mapper", "analysis");
         } else if (action_name == "unmount") {
             if (confirm("Unmount " + v->path + "?", "The selected volume must be unmounted for raw filesystem operations."))
@@ -1080,6 +1084,25 @@ private:
         v->exact_analysis =
             !accuracy.empty() && accuracy != "summary" &&
             number(map, "unknown_bytes") == 0U;
+        const Json* defrag_qualified = map.find("defrag_qualified");
+        const Json* growth_qualified = map.find("growth_qualified");
+        v->defrag_qualified =
+            v->exact_analysis && defrag_qualified != nullptr &&
+            defrag_qualified->bool_or(false);
+        v->growth_qualified =
+            v->exact_analysis && growth_qualified != nullptr &&
+            growth_qualified->bool_or(false);
+        v->defrag_reason = field(map, "defrag_reason");
+        v->growth_reason = field(map, "growth_reason");
+        if (v->exact_analysis && !v->defrag_qualified &&
+            !v->defrag_reason.empty())
+            note("Defragment unavailable for this exact layout: " +
+                 v->defrag_reason);
+        if (v->exact_analysis && !v->growth_qualified &&
+            !v->growth_reason.empty() &&
+            v->growth_reason != v->defrag_reason)
+            note("Growth Defrag unavailable for this exact layout: " +
+                 v->growth_reason);
         map_data_ = map;
         cells_ = raw->array();
         gtk_widget_queue_draw(map_);
