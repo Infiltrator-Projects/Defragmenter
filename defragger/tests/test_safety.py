@@ -113,6 +113,8 @@ def test_native_privileged_helper_contract() -> None:
     assert "stop_active_and_wait()" in source
 
     assert "ld_path_is_mounted(device.c_str())" in engine
+    assert "ld_block_device_has_system_use(device.c_str(), &system_use)" in engine
+    assert "including swap" in engine
     assert "execv(raw[0], raw.data())" in engine
     assert '"/var/lib/linux-defragger/state"' in policy
     assert "journal.lexically_normal().parent_path() != expected_parent" in policy

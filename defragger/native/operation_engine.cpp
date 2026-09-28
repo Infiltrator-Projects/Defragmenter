@@ -106,6 +106,24 @@ int main(int argc, char** argv) {
                      device.c_str());
         return 2;
     }
+    if (S_ISBLK(status.st_mode)) {
+        bool system_use = true;
+        if (ld_block_device_has_system_use(device.c_str(), &system_use) != 0) {
+            std::fprintf(stderr,
+                         "linux-defragger-operation-engine: cannot prove %s "
+                         "is free of active system use: %s\n",
+                         device.c_str(), std::strerror(errno));
+            return 2;
+        }
+        if (system_use) {
+            std::fprintf(stderr,
+                         "linux-defragger-operation-engine: %s or related "
+                         "storage is in active system use (including swap); "
+                         "disable that use before mutation\n",
+                         device.c_str());
+            return 2;
+        }
+    }
 
     std::string worker;
     try {
