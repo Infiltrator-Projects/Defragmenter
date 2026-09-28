@@ -47,6 +47,7 @@ typedef struct {
     size_t extent_count;
     uint64_t catalog_extent_offset;
     uint8_t fork_type;
+    bool uses_overflow;
 } hfs_writable_fork;
 
 typedef struct {
@@ -203,6 +204,16 @@ static int parse_inline_fork(const hfs_writer_volume *writer,
 
     const uint32_t required =
         physical_bytes / writer->volume.allocation_block_size;
+    uint32_t inline_described = 0U;
+    for (size_t index = 0U; index < 3U; ++index) {
+        const uint16_t count =
+            infiltratr_load_be16(raw + index * 4U + 2U);
+        if (count > required - inline_described)
+            break;
+        inline_described += count;
+    }
+    fork->uses_overflow = inline_described < required;
+
     uint32_t described = 0U;
     for (size_t index = 0U; index < count; ++index) {
         const hfs_extent extent = collected[index];
@@ -608,10 +619,24 @@ static int rewrite_file_fork(const hfs_writer_volume *writer, int stage_fd,
     }
 
     /*
-     * Keep the existing catalog/overflow B-tree record topology and extent
-     * lengths. Only physical starts change. This avoids unsafe B-tree record
-     * deletion while still making the complete fork physically contiguous.
+     * If the fork was completely described by the catalog record, canonicalise
+     * it to one contiguous extent. Besides reducing metadata fragmentation,
+     * this preserves the long-standing HFS Defrag contract and avoids leaving
+     * redundant adjacent descriptors after payload relocation.
+     *
+     * Overflow-backed forks retain their existing B-tree record topology:
+     * deleting keys safely requires full B-tree rebalance support. Their
+     * physical extents are still rewritten into one contiguous run.
      */
+    if (!fork->uses_overflow) {
+        uint8_t canonical[12] = {0};
+        infiltratr_store_be16(canonical, (uint16_t)destination);
+        infiltratr_store_be16(canonical + 2U, (uint16_t)fork->blocks);
+        return write_catalog_bytes(
+            writer, stage_fd, fork->catalog_extent_offset,
+            canonical, sizeof(canonical), error);
+    }
+
     uint8_t inline_raw[12] = {0};
     size_t extent_index = 0U;
     uint32_t logical = 0U;
