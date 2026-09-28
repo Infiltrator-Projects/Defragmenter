@@ -77,31 +77,59 @@ static bool earliest_fit(const XfsRangeVec *ranges, uint64_t length, uint64_t *t
 
 static size_t target_extent_count(const XfsObject *object, const XfsGeometry *g,
                                   uint64_t target_start) {
-    size_t count = 0;
+    size_t count = 0U;
     uint64_t target = target_start;
     bool have = false;
-    uint64_t previous_target = 0;
-    uint64_t previous_logical = 0;
+    uint64_t previous_target_end = 0U;
+    uint64_t previous_logical_end = 0U;
+    uint64_t previous_length = 0U;
     bool previous_unwritten = false;
-    uint64_t previous_length = 0;
-    for (size_t extent_index = 0; extent_index < object->extents.count; ++extent_index) {
+
+    for (size_t extent_index = 0U;
+         extent_index < object->extents.count; ++extent_index) {
         const XfsExtent *extent = &object->extents.items[extent_index];
-        for (uint64_t offset = 0; offset < extent->length; ++offset, ++target) {
-            uint64_t logical = extent->logical + offset;
-            bool same_ag = have && previous_target / g->agblocks == target / g->agblocks;
-            bool contiguous = have && previous_logical + previous_length == logical &&
-                              previous_target + previous_length == target;
-            if (!have || !same_ag || !contiguous || previous_unwritten != extent->unwritten ||
-                previous_length >= XFS_NATIVE_MAX_BMBT_EXTLEN) {
+        uint64_t logical = extent->logical;
+        uint64_t remaining = extent->length;
+
+        while (remaining != 0U) {
+            const uint64_t ag_end =
+                ((target / g->agblocks) + 1U) * (uint64_t)g->agblocks;
+            const bool can_extend =
+                have &&
+                previous_target_end == target &&
+                previous_logical_end == logical &&
+                previous_unwritten == extent->unwritten &&
+                previous_length < XFS_NATIVE_MAX_BMBT_EXTLEN &&
+                (target - 1U) / g->agblocks == target / g->agblocks;
+
+            if (!can_extend) {
                 count++;
-                previous_target = target;
-                previous_logical = logical;
+                previous_length = 0U;
                 previous_unwritten = extent->unwritten;
-                previous_length = 1;
                 have = true;
-            } else {
-                previous_length++;
             }
+
+            uint64_t chunk = remaining;
+            const uint64_t ag_room = ag_end - target;
+            if (chunk > ag_room) chunk = ag_room;
+            const uint64_t extent_room =
+                XFS_NATIVE_MAX_BMBT_EXTLEN - previous_length;
+            if (chunk > extent_room) chunk = extent_room;
+            if (chunk == 0U) {
+                /* Force the next iteration to start a new encoded extent. */
+                have = false;
+                continue;
+            }
+
+            previous_length += chunk;
+            target += chunk;
+            logical += chunk;
+            remaining -= chunk;
+            previous_target_end = target;
+            previous_logical_end = logical;
+
+            if (previous_length == XFS_NATIVE_MAX_BMBT_EXTLEN)
+                have = false;
         }
     }
     return count;
@@ -231,11 +259,15 @@ bool xfs_plan_already_applied(const XfsCatalogue *catalogue, const XfsPlan *plan
     for (size_t index = 0; index < plan->count; ++index) {
         const XfsPlacement *placement = &plan->items[index];
         uint64_t expected = placement->target_start;
-        for (size_t extent_index = 0; extent_index < placement->item->extents.count; ++extent_index) {
-            const XfsExtent *extent = &placement->item->extents.items[extent_index];
-            for (uint64_t offset = 0; offset < extent->length; ++offset) {
-                if (extent->physical + offset != expected++) return false;
-            }
+        for (size_t extent_index = 0;
+             extent_index < placement->item->extents.count; ++extent_index) {
+            const XfsExtent *extent =
+                &placement->item->extents.items[extent_index];
+            if (extent->physical != expected)
+                return false;
+            if (UINT64_MAX - expected < extent->length)
+                return false;
+            expected += extent->length;
         }
         uint64_t blocks = xfs_object_block_count(placement->item);
         if (placement->reserve != 0 &&
@@ -834,13 +866,21 @@ int xfs_verify_stage(const char *stage, sqlite3 *db, const XfsCatalogue *source,
         if (item == NULL) { xfs_set_error(error, "arranged XFS inode %" PRIu64 " disappeared", inode); result = -1; break; }
         uint64_t expected = target_start;
         uint64_t seen = 0;
-        for (size_t extent_index = 0; extent_index < item->extents.count; ++extent_index) {
+        for (size_t extent_index = 0;
+             extent_index < item->extents.count; ++extent_index) {
             XfsExtent extent = item->extents.items[extent_index];
-            for (uint64_t offset = 0; offset < extent.length; ++offset) {
-                if (extent.physical + offset != expected++) { xfs_set_error(error, "XFS inode %" PRIu64 " did not retain its canonical run", inode); result = -1; break; }
-                seen++;
+            if (extent.physical != expected ||
+                UINT64_MAX - expected < extent.length ||
+                UINT64_MAX - seen < extent.length) {
+                xfs_set_error(error,
+                              "XFS inode %" PRIu64
+                              " did not retain its canonical run",
+                              inode);
+                result = -1;
+                break;
             }
-            if (result != 0) break;
+            expected += extent.length;
+            seen += extent.length;
         }
         if (result != 0) break;
         if (seen != target_blocks) { xfs_set_error(error, "XFS inode %" PRIu64 " changed allocated length", inode); result = -1; break; }
