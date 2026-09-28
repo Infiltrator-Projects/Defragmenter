@@ -146,9 +146,11 @@ static int check_unchanged_target(const char *device, const NtfsJournal *state, 
         return -1;
     }
     int result = 0;
-    if (strcmp(canonical, state->device) != 0 ||
-        strcmp(identity, state->target_identity) != 0 || size != state->physical_bytes) {
-        ntfs_set_error(error, "NTFS target path, identity or capacity changed before source commit"); result = -1;
+    if (strcmp(identity, state->target_identity) != 0 ||
+        size != state->physical_bytes) {
+        ntfs_set_error(error,
+                       "NTFS target identity or capacity changed before source commit");
+        result = -1;
     }
     free(canonical); free(identity); if (result != 0) return result;
     NtfsVolume volume;
@@ -710,8 +712,11 @@ static int recover_transaction(const char *device, const char *journal_path, cha
         ntfs_set_error(error, "cannot bind NTFS recovery target: %s", strerror(errno));
         goto done;
     }
-    if (strcmp(real, state.device) != 0 || strcmp(identity, state.target_identity) != 0 || size != state.physical_bytes) {
-        ntfs_set_error(error, "recovery journal belongs to a different NTFS target"); goto done;
+    if (strcmp(identity, state.target_identity) != 0 ||
+        size != state.physical_bytes) {
+        ntfs_set_error(error,
+                       "recovery journal belongs to a different NTFS target");
+        goto done;
     }
 
     if (strcmp(state.phase, "direct-metadata") == 0 ||
