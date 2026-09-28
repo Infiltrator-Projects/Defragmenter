@@ -13,6 +13,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(Threads REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 set(INFILTRATR_COMMON_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/shared/infiltratr-common")
@@ -302,7 +303,6 @@ target_compile_definitions(linux-defragger-apfs-worker PRIVATE
 target_link_libraries(linux-defragger-apfs-worker PRIVATE
     linux-defragger-apfs-native linux-defragger-core OpenSSL::Crypto)
 
-find_package(OpenSSL REQUIRED)
 
 # Minix exact analysis, offline staging, mutation and recovery are native C.
 add_library(linux-defragger-minix-native STATIC
@@ -383,7 +383,7 @@ target_include_directories(linux-defragger-ext-native PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/ext4/native"
     "${LD_GENERATED_DIR}")
 target_compile_options(linux-defragger-ext-native PRIVATE
-    ${LD_WARNING_FLAGS} -Wno-deprecated-declarations)
+    ${LD_WARNING_FLAGS})
 target_compile_definitions(linux-defragger-ext-native PRIVATE
     _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(linux-defragger-ext-native PUBLIC
@@ -396,7 +396,7 @@ target_include_directories(linux-defragger-ext-worker PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/ext4/native"
     "${LD_GENERATED_DIR}")
 target_compile_options(linux-defragger-ext-worker PRIVATE
-    ${LD_WARNING_FLAGS} -Wno-deprecated-declarations)
+    ${LD_WARNING_FLAGS})
 target_compile_definitions(linux-defragger-ext-worker PRIVATE
     _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(linux-defragger-ext-worker PRIVATE
