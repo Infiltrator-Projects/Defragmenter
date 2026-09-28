@@ -694,7 +694,7 @@ int main(int argc, char **argv)
                          &commit_bytes, error, sizeof(error)) != 0 ||
         pfs3_verify_layout(stage, true, 10U,
                            error, sizeof(error)) != 0 ||
-        verify_rollover_payload(stage, FIRST_DATA + 5U) != 0) {
+        verify_rollover_payload(stage, FIRST_DATA + 4U) != 0) {
         (void)fprintf(stderr, "PFS3 rollover Growth Defrag failed: %s\n", error);
         (void)unlink(source);
         (void)unlink(linked);
