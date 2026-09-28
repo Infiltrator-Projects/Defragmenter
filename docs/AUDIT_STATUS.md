@@ -6,7 +6,7 @@ Completed: 2026-09-22
 Extended: 2026-09-28
 
 Applies to: release version 1.8.0-220
-Audited source commit: e09599f6c84b31e7f29ec5da9e5f9db23807b9d9
+Audited source commit: b317f5bb8577aaac116adcb8a1f36faa40d0301b
 Audited release-governance commit: e09599f6c84b31e7f29ec5da9e5f9db23807b9d9
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
@@ -15,7 +15,7 @@ This document records the current release safety case. Historical audit-developm
 
 ## Qualification evidence
 
-The current audited production-source baseline is commit `e09599f6c84b31e7f29ec5da9e5f9db23807b9d9` for release version 1.8.0-220. Local Linux / heavy qualification run 402 completed successfully on this exact source, including the complete native/filesystem/GUI CTest suite. The immediately preceding ZFS checksum candidates also completed heavy qualification successfully: Fletcher2 at `7ad685b9220ddda816ab1639e3cf043f9018f364` and SHA-512/256 at `3771bd3e321b4575661511deeb5060424f12affc`. Hosted qualification on the previous audit-only head completed all 46 CTest tests and ASan/UBSan successfully; its sole release-gate failure was the audit contract wording/baseline deliberately corrected here.
+The current audited production-source baseline is commit `b317f5bb8577aaac116adcb8a1f36faa40d0301b` for release version 1.8.0-220. Local Linux / heavy qualification run 405 completed successfully on this exact source, including the complete native/filesystem/GUI CTest suite. The immediately preceding fully hosted-qualified head `995a26d51522ab16b39e97bcf4717623cf47c669` passed both the Project quality gate and Local Linux / heavy qualification. The only production delta after that head aligns NTFS/PFS3 capability descriptions with already-qualified writer behaviour; it does not change parsing, placement, mutation or recovery semantics.
 
 The 1.8.0-220 capability baseline includes writer-qualification gating, run-oriented NTFS planning and alternate-data-stream relocation, range-oriented EXT/XFS work, Common 1.19.35 native theming, asynchronous discovery/probing, bounded Analyse Stop, complete local CTest execution, Xvfb native GTK smoke, end-to-end Test Media production qualification, sparse-UFS relocation, HFS Extents Overflow relocation, checksummed Btrfs data relocation, APFS checkpoint-history retention, recursive PFS3 directories plus validated hard-link preservation, soft-link relocation and rollover-file relocation, stable recovery identities, and expanded exact ZFS checksum coverage. Each write capability remains behind its filesystem-specific preflight, durable transaction/recovery contract and final verification.
 
