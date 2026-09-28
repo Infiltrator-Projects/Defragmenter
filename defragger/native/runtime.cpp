@@ -245,7 +245,7 @@ const std::vector<BackendInfo>& backend_registry() {
             write, "exact-allocation", "pfs3-native", MapAdapter::NativeMap,
             standard_write_ops(
                 "pfs3-native",
-                "Amiga PFS3 writing uses Defragmenter's offline first-party native C raw engine, recursively validates nested user directories, and fails closed on links/special entries or unsupported large-index modes.",
+                "Amiga PFS3 writing uses Defragmenter's offline first-party native C raw engine, recursively validates nested user directories, preserves validated hard links, relocates soft-link payloads and rollover files, and fails closed on unsupported SUPERINDEX/LARGEFILE or remaining special-entry modes.",
                 "PFS3 Growth Defrag leaves an exact 10% free-block reserve after every supported regular file.")});
         result.push_back({
             "sfs", "Amiga SFS", {"sfs", "sfs0", "sfs2", "smartfilesystem"},

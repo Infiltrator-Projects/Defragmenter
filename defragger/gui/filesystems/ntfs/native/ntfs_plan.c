@@ -111,9 +111,13 @@ int ntfs_plan_layout(NtfsLayout *layout,NtfsCatalogue *catalogue,uint64_t total_
         if(s->movable&&s->clusters){movable++;continue;}
         if(s->record_number<NTFS_FIRST_USER_RECORD||s->clusters==0||
            (s->attribute_type!=NTFS_ATTR_DATA&&s->attribute_type!=NTFS_ATTR_INDEX_ALLOCATION))continue;
-        /* Named ADS and other non-primary user streams are deliberately left
-           byte-for-byte in place. They are not part of the canonical primary
-           file/directory layout and must not veto the whole volume. */
+        /*
+         * Ordinary non-primary DATA streams are movable and reach this branch
+         * only when catalogue qualification deliberately preserved a stream
+         * form whose complete relocation semantics are not yet implemented.
+         * Preserve that stream byte-for-byte without vetoing an otherwise
+         * qualified primary file/directory layout.
+         */
         if(!primary_object_stream(s)){placements->fixed_streams++;continue;}
         if(!preserved_primary_is_contiguous(catalogue,s)){
             ntfs_set_error(error,
