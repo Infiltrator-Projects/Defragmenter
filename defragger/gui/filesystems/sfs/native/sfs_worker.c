@@ -955,6 +955,27 @@ int main(int argc, char **argv)
         goto fail;
     }
 
+    char *staging_parent = ld_path_parent_directory(state.stage);
+    if (staging_parent == NULL ||
+        ld_path_ensure_trusted_directory_tree(staging_parent) != 0) {
+        worker_error(error, sizeof(error),
+                     "cannot create SFS recovery directory: %s", strerror(errno));
+        free(staging_parent);
+        goto fail;
+    }
+    free(staging_parent);
+    uint64_t staging_available = 0U, staging_required = 0U;
+    if (ld_path_require_staging_capacity(
+            state.stage, state.filesystem_bytes,
+            &staging_available, &staging_required) != 0) {
+        worker_error(error, sizeof(error),
+                     "SFS safe staging has %llu MiB available; approximately %llu MiB is required: %s",
+                     (unsigned long long)(staging_available / (1024U * 1024U)),
+                     (unsigned long long)(staging_required / (1024U * 1024U)),
+                     strerror(errno));
+        goto fail;
+    }
+
     (void)printf("Starting native C SFS0 %s on %s.\n",
                  growth ? "Growth Defrag" : "Defrag", device);
     uint64_t planned = 0U;
