@@ -121,6 +121,12 @@ int ext_fs_iterate_payload(ExtFs *fs, ExtInode *inode, bool writable,
                            ExtPayloadVisitor visitor, void *context,
                            char **error);
 
+typedef int (*ExtBlockRunVisitor)(uint64_t start, uint64_t length,
+                                  bool allocated, void *context,
+                                  char **error);
+
+int ext_fs_foreach_block_run(ExtFs *fs, ExtBlockRunVisitor visitor,
+                             void *context, char **error);
 int ext_fs_block_allocated(ExtFs *fs, uint64_t block, bool *allocated,
                            char **error);
 int ext_fs_set_block_allocated(ExtFs *fs, uint64_t block, bool allocated,
