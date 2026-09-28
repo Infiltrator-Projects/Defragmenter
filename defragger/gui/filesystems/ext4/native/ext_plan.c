@@ -56,59 +56,106 @@ static int insert_space(sqlite3_stmt *insert, uint64_t start, uint64_t length,
     return 0;
 }
 
+typedef struct {
+    sqlite3 *db;
+    sqlite3_stmt *old_stmt;
+    sqlite3_stmt *insert;
+    int old_state;
+    uint64_t next_old;
+} SpaceRunContext;
+
+static int advance_old(SpaceRunContext *context, char **error) {
+    context->old_state = sqlite3_step(context->old_stmt);
+    if (context->old_state == SQLITE_ROW) {
+        const sqlite3_int64 raw = sqlite3_column_int64(context->old_stmt, 0);
+        if (raw < 0) {
+            ext_set_error(error, "EXT movable-block catalogue contains a negative block");
+            return -1;
+        }
+        context->next_old = (uint64_t)raw;
+    } else if (context->old_state == SQLITE_DONE) {
+        context->next_old = UINT64_MAX;
+    } else {
+        ext_set_error(error, "reading EXT movable-block catalogue: %s",
+                      sqlite3_errmsg(context->db));
+        return -1;
+    }
+    return 0;
+}
+
+static int catalog_space_run(uint64_t start, uint64_t length, bool allocated,
+                             void *private_data, char **error) {
+    SpaceRunContext *context = private_data;
+    if (length == 0U) return 0;
+    const uint64_t end = start + length;
+
+    while (context->next_old < start) {
+        if (advance_old(context, error) != 0) return -1;
+    }
+
+    if (!allocated) {
+        if (insert_space(context->insert, start, length, error) != 0)
+            return -1;
+        while (context->next_old < end) {
+            if (advance_old(context, error) != 0) return -1;
+        }
+        return 0;
+    }
+
+    while (context->next_old < end) {
+        uint64_t movable_start = context->next_old;
+        uint64_t movable_end = movable_start + 1U;
+        if (advance_old(context, error) != 0) return -1;
+        while (context->next_old == movable_end &&
+               context->next_old < end) {
+            movable_end++;
+            if (advance_old(context, error) != 0) return -1;
+        }
+        if (insert_space(context->insert, movable_start,
+                         movable_end - movable_start, error) != 0)
+            return -1;
+    }
+    return 0;
+}
+
 static int catalog_spaces(ExtFs *fs, sqlite3 *db,
                           const ExtGeometry *geometry, char **error) {
+    (void)geometry;
     sqlite3_stmt *old_stmt = NULL, *insert = NULL;
-    if (sqlite3_prepare_v2(db, "SELECT old FROM blocks ORDER BY old", -1, &old_stmt, NULL) != SQLITE_OK ||
-        sqlite3_prepare_v2(db, "INSERT INTO spaces VALUES (?,?)", -1, &insert, NULL) != SQLITE_OK) {
-        ext_set_error(error, "preparing EXT free-space catalogue: %s", sqlite3_errmsg(db));
+    if (sqlite3_prepare_v2(db, "SELECT old FROM blocks ORDER BY old", -1,
+                           &old_stmt, NULL) != SQLITE_OK ||
+        sqlite3_prepare_v2(db, "INSERT INTO spaces VALUES (?,?)", -1,
+                           &insert, NULL) != SQLITE_OK) {
+        ext_set_error(error, "preparing EXT free-space catalogue: %s",
+                      sqlite3_errmsg(db));
         goto fail;
     }
-    int old_state = sqlite3_step(old_stmt);
-    uint64_t next_old = old_state == SQLITE_ROW ? (uint64_t)sqlite3_column_int64(old_stmt, 0) : UINT64_MAX;
-    bool have_run = false;
-    uint64_t run_start = 0, previous = 0;
-    if (sql_exec(db, "DELETE FROM spaces; BEGIN IMMEDIATE", error) != 0) goto fail;
-    for (uint64_t block = geometry->first_data_block; block < geometry->total_blocks; ++block) {
-        while (next_old < block) {
-            old_state = sqlite3_step(old_stmt);
-            next_old = old_state == SQLITE_ROW ? (uint64_t)sqlite3_column_int64(old_stmt, 0) : UINT64_MAX;
-        }
-        bool movable = next_old == block;
-        bool allocated = false;
-        if (ext_fs_block_allocated(fs, block, &allocated, error) != 0)
-            goto rollback;
-        bool legal = movable || !allocated;
-        if (legal) {
-            if (!have_run) {
-                run_start = block;
-                previous = block;
-                have_run = true;
-            } else if (block == previous + 1U) {
-                previous = block;
-            } else {
-                if (insert_space(insert, run_start, previous - run_start + 1U, error) != 0) goto rollback;
-                run_start = previous = block;
-            }
-        } else if (have_run) {
-            if (insert_space(insert, run_start, previous - run_start + 1U, error) != 0) goto rollback;
-            have_run = false;
-        }
-        if (movable) {
-            old_state = sqlite3_step(old_stmt);
-            next_old = old_state == SQLITE_ROW ? (uint64_t)sqlite3_column_int64(old_stmt, 0) : UINT64_MAX;
-        }
-    }
-    if (have_run && insert_space(insert, run_start, previous - run_start + 1U, error) != 0)
+    if (sql_exec(db, "DELETE FROM spaces; BEGIN IMMEDIATE", error) != 0)
+        goto fail;
+
+    SpaceRunContext context = {
+        .db = db,
+        .old_stmt = old_stmt,
+        .insert = insert,
+        .old_state = SQLITE_DONE,
+        .next_old = UINT64_MAX,
+    };
+    if (advance_old(&context, error) != 0)
         goto rollback;
-    if (old_state != SQLITE_DONE && old_state != SQLITE_ROW) {
-        ext_set_error(error, "reading EXT movable-block catalogue: %s", sqlite3_errmsg(db));
+    if (ext_fs_foreach_block_run(
+            fs, catalog_space_run, &context, error) != 0)
+        goto rollback;
+    if (context.old_state != SQLITE_DONE) {
+        ext_set_error(error,
+                      "EXT movable-block catalogue extends beyond filesystem allocation geometry");
         goto rollback;
     }
-    if (sql_exec(db, "COMMIT", error) != 0) goto fail;
+    if (sql_exec(db, "COMMIT", error) != 0)
+        goto fail;
     sqlite3_finalize(old_stmt);
     sqlite3_finalize(insert);
     return 0;
+
 rollback:
     (void)sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL);
 fail:
