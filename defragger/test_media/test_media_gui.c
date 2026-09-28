@@ -222,7 +222,11 @@ static void set_worker_controls(LdtmApp *app, gboolean running) {
     if (running) {
         app->completed_rows = 0U;
         gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(app->progress), 0.0);
-        char progress_text[64];\n        (void)snprintf(progress_text, sizeof(progress_text), "0 / %zu — starting…", ldtm_spec_count());\n        gtk_progress_bar_set_text(GTK_PROGRESS_BAR(app->progress), progress_text);
+        char progress_text[64];
+        (void)snprintf(progress_text, sizeof(progress_text),
+                       "0 / %zu — starting…", ldtm_spec_count());
+        gtk_progress_bar_set_text(GTK_PROGRESS_BAR(app->progress),
+                                  progress_text);
         gtk_label_set_text(GTK_LABEL(app->operation_summary), "Privileged worker starting…");
     } else {
         gtk_label_set_text(GTK_LABEL(app->operation_summary), "Idle");
