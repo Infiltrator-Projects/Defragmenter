@@ -668,8 +668,11 @@ static int recover_transaction(const char *device, const char *journal_path, cha
     char *real = canonical_path(device, error), *identity = NULL;
     uint64_t size = 0;
     if (real == NULL || target_identity(device, &identity, &size, error) != 0) goto done;
-    if (strcmp(real, state.device) != 0 || strcmp(identity, state.target_identity) != 0 || size != state.physical_bytes) {
-        xfs_set_error(error, "recovery journal belongs to a different XFS target"); goto done;
+    if (strcmp(identity, state.target_identity) != 0 ||
+        size != state.physical_bytes) {
+        xfs_set_error(error,
+                      "recovery journal belongs to a different XFS target");
+        goto done;
     }
     if (strcmp(state.phase, "commit") != 0 && strcmp(state.phase, "verifying-source") != 0) {
         transaction_cleanup(journal_path, &state);
