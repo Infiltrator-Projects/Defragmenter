@@ -10,8 +10,9 @@ static void usage(const char *program) {
     fprintf(stderr,
             "Usage: %s [--version]\n"
             "       %s --worker prepare DEVICE --confirmed DEVICE --fingerprint SHA256\n"
-            "       %s --worker verify DEVICE\n",
-            program, program, program);
+            "       %s --worker verify DEVICE\n"
+            "       %s --worker qualify DEVICE\n",
+            program, program, program, program);
 }
 
 int main(int argc, char **argv) {
@@ -34,6 +35,9 @@ int main(int argc, char **argv) {
         }
         if (argc == 4 && strcmp(argv[2], "verify") == 0) {
             return ldtm_worker_verify(argv[3]);
+        }
+        if (argc == 4 && strcmp(argv[2], "qualify") == 0) {
+            return ldtm_worker_qualify(argv[3]);
         }
         usage(argv[0]);
         return 2;
