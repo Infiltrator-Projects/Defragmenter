@@ -62,12 +62,16 @@ def main() -> None:
         assert required in gate, f"qualified release handoff lost required contract: {required}"
     for required in (
         "runs-on: [self-hosted, Linux, X64, linux-native, bigbedroom]",
-        "Verify local qualification dependencies",
-        "Self-hosted runner is missing commands",
-        "Self-hosted runner is missing pkg-config packages",
+        "Probe local qualification dependencies",
+        "Record unprovisioned BigBedroom runner",
+        "BigBedroom qualification skipped because this runner is not provisioned.",
+        "hosted mandatory qualification still runs for this commit.",
         "workflow_dispatch:",
     ):
         assert required in local_quality, f"local qualification lost required check: {required}"
+    assert "if: steps.local-deps.outputs.available == 'true'" in local_quality, (
+        "optional BigBedroom build/test steps must remain dependency-gated"
+    )
     assert "run: ctest --test-dir build --output-on-failure" in gate, (
         "primary quality gate must run the complete aggregate project suite"
     )
