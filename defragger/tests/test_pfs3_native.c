@@ -477,6 +477,27 @@ int main(int argc, char **argv)
         return 10;
     }
     (void)unlink(stage);
+
+    make_nested_image(image);
+    if (write_image_path(nested, image) != 0 ||
+        make_stage_path(stage) != 0 ||
+        pfs3_build_stage(nested, stage, true, 10U, false,
+                         &commit_bytes, error, sizeof(error)) != 0 ||
+        pfs3_verify_layout(stage, true, 10U, error, sizeof(error)) != 0 ||
+        pfs3_analyse(stage, &staged, NULL, 0U,
+                     error, sizeof(error)) != 0 ||
+        staged.regular_files != 2U || staged.directories != 2U ||
+        staged.fragmented_files != 0U ||
+        !staged.growth_10_satisfied ||
+        verify_payload(stage) != 0) {
+        (void)fprintf(stderr, "nested PFS3 Growth Defrag failed: %s\n", error);
+        (void)unlink(source);
+        (void)unlink(nested);
+        (void)unlink(stage);
+        free(image);
+        return 11;
+    }
+    (void)unlink(stage);
     (void)unlink(nested);
 
     make_image(image, 1);
