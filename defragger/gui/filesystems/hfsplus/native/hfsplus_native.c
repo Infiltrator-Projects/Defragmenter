@@ -1087,6 +1087,17 @@ static int move_fork(const HfsPlusVolume *source, HfsPlusVolume *stage,
     return rewrite_inline_fork(stage, stage_fork, destination, error);
 }
 
+int hfsplus_writer_preflight(const char *path, bool growth,
+                             unsigned growth_percent, char **error) {
+    HfsPlusVolume volume;
+    if (hfsplus_scan(path, false, &volume, error) != 0)
+        return -1;
+    const int result =
+        mutation_preflight(&volume, growth, growth_percent, error);
+    hfsplus_close(&volume);
+    return result;
+}
+
 int hfsplus_build_stage(const char *source_path, const char *stage_path, bool growth,
                         unsigned gp, bool live, uint64_t *commit_bytes, char **error) {
     HfsPlusVolume source;
