@@ -1707,29 +1707,41 @@ static int writer_validate_csum_tree(const WriterModel *model,
 {
     if (!model->have_csum_leaf)
         return 0;
+    uint8_t *sector = malloc(model->sector_size);
+    if (sector == NULL) {
+        set_error(error, error_size,
+                  "out of memory validating Btrfs data checksums");
+        return -1;
+    }
+
     uint64_t previous_end = 0U;
     uint64_t previous_objectid = 0U;
     bool have_previous = false;
-    for (size_t index = 0U; index < model->csum_leaf.items.count; ++index) {
+    int result = 0;
+    for (size_t index = 0U;
+         index < model->csum_leaf.items.count && result == 0; ++index) {
         const TreeItem *item = &model->csum_leaf.items.items[index];
         if (item->key.type != BTRFS_EXTENT_CSUM_KEY)
             continue;
         if (item->size == 0U || item->size % 4U != 0U) {
             set_error(error, error_size,
                       "Btrfs CRC32 checksum item has an invalid size");
-            return -1;
+            result = -1;
+            break;
         }
         const uint64_t sectors = item->size / 4U;
         if (sectors > UINT64_MAX / model->sector_size) {
             set_error(error, error_size,
                       "checksum range overflows in Btrfs metadata");
-            return -1;
+            result = -1;
+            break;
         }
         const uint64_t length = sectors * model->sector_size;
         if (item->key.offset > UINT64_MAX - length) {
             set_error(error, error_size,
                       "checksum range overflows in Btrfs metadata");
-            return -1;
+            result = -1;
+            break;
         }
         const uint64_t end = item->key.offset + length;
         if (have_previous &&
@@ -1737,13 +1749,42 @@ static int writer_validate_csum_tree(const WriterModel *model,
             item->key.offset < previous_end) {
             set_error(error, error_size,
                       "Btrfs checksum-tree ranges overlap");
-            return -1;
+            result = -1;
+            break;
+        }
+
+        for (uint64_t sector_index = 0U;
+             sector_index < sectors; ++sector_index) {
+            const uint64_t delta =
+                sector_index * (uint64_t)model->sector_size;
+            const uint64_t logical = item->key.offset + delta;
+            uint64_t physical = 0U;
+            if (mapper_read_physical(
+                    &model->chunks, model->devid, logical,
+                    model->sector_size, &physical,
+                    error, error_size) != 0 ||
+                read_exact(&model->reader, physical, sector,
+                           model->sector_size, error, error_size) != 0) {
+                result = -1;
+                break;
+            }
+            const uint32_t expected =
+                infiltratr_load_le32(
+                    item->data + (size_t)sector_index * 4U);
+            if (writer_crc32c(sector, model->sector_size) != expected) {
+                set_error(error, error_size,
+                          "Btrfs data checksum mismatch at logical byte %" PRIu64,
+                          logical);
+                result = -1;
+                break;
+            }
         }
         previous_objectid = item->key.objectid;
         previous_end = end;
         have_previous = true;
     }
-    return 0;
+    free(sector);
+    return result;
 }
 
 typedef struct {
