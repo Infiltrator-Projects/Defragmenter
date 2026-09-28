@@ -158,22 +158,30 @@ def run_uncooperative_case():
                  "LD_HELPER_TEST_IGNORE_SIGINT": "1"},
         )
 
+        events = queue.Queue()
+
+        def read_events():
+            for line in process.stdout:
+                events.put(json.loads(line))
+
+        reader = threading.Thread(target=read_events, daemon=True)
+        reader.start()
+
         def send(message):
             process.stdin.write(json.dumps(message) + "\n")
             process.stdin.flush()
 
         def read_event(kind, request_id=None):
             deadline = time.monotonic() + 5
-            while time.monotonic() < deadline:
-                line = process.stdout.readline()
-                assert line, process.stderr.read()
-                event = json.loads(line)
+            while True:
+                remaining = deadline - time.monotonic()
+                assert remaining > 0, f"timed out waiting for {kind}"
+                event = events.get(timeout=remaining)
                 if event["type"] == kind and (
                     request_id is None or event.get("id") == request_id
                 ):
                     return event
                 assert event["type"] != "error", event
-            raise AssertionError(f"timed out waiting for {kind}")
 
         pid = None
         try:
@@ -214,6 +222,7 @@ def run_uncooperative_case():
                         pass
                 process.kill()
                 process.wait()
+            reader.join(timeout=1)
 
 
 for mode in ("stop", "queued-stop", "immediate-stop", "control-eof", "output-closed"):
