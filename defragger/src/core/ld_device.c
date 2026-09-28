@@ -10,6 +10,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <limits.h>
 #include <linux/fs.h>
 #include <stdio.h>
@@ -793,6 +794,50 @@ int ld_fd_size_bytes(int fd, uint64_t *size_bytes) {
     return ioctl(fd, BLKGETSIZE64, size_bytes);
 }
 
+static bool ld_stable_block_hardware_identity(
+    dev_t device_number, char *buffer, size_t buffer_size)
+{
+    if (buffer == NULL || buffer_size == 0U) return false;
+    buffer[0] = '\0';
+
+    char sysfs[PATH_MAX];
+    if (!ld_resolve_sysfs_device(device_number, sysfs, sizeof(sysfs)))
+        return false;
+
+    LdBlockDeviceInfo info;
+    memset(&info, 0, sizeof(info));
+    (void)ld_sysfs_text(sysfs, "device/serial",
+                        info.serial, sizeof(info.serial));
+    if (!ld_sysfs_text(sysfs, "device/wwid",
+                       info.wwn, sizeof(info.wwn)))
+        (void)ld_sysfs_text(sysfs, "wwid",
+                            info.wwn, sizeof(info.wwn));
+    ld_read_udev_properties(device_number, &info);
+    if (info.serial[0] == '\0' && info.wwn[0] == '\0')
+        return false;
+
+    uint64_t start_sectors = 0U;
+    char numeric_path[PATH_MAX];
+    const int start_length = snprintf(
+        numeric_path, sizeof(numeric_path), "%s/start", sysfs);
+    if (start_length >= 0 && (size_t)start_length < sizeof(numeric_path))
+        (void)infiltratr_read_u64_file(numeric_path, &start_sectors);
+
+    uint64_t size_bytes = 0U;
+    if (!ld_sysfs_size_bytes(sysfs, &size_bytes))
+        return false;
+
+    const int written = snprintf(
+        buffer, buffer_size, "block-hw:%s|%s|%" PRIu64 "|%" PRIu64,
+        info.wwn, info.serial, start_sectors, size_bytes);
+    if (written < 0 || (size_t)written >= buffer_size) {
+        if (written >= 0) errno = ENAMETOOLONG;
+        buffer[0] = '\0';
+        return false;
+    }
+    return true;
+}
+
 static bool ld_stable_block_alias(dev_t device_number,
                                   char *buffer, size_t buffer_size)
 {
@@ -865,8 +910,11 @@ int ld_device_format_identity(const LdDevice *device,
     int written = 0;
     if (device->is_block) {
         char stable[PATH_MAX];
-        if (ld_stable_block_alias(device->device_number,
-                                  stable, sizeof(stable))) {
+        if (ld_stable_block_hardware_identity(
+                device->device_number, stable, sizeof(stable))) {
+            written = snprintf(buffer, buffer_size, "%s", stable);
+        } else if (ld_stable_block_alias(device->device_number,
+                                         stable, sizeof(stable))) {
             written = snprintf(buffer, buffer_size, "block-id:%s", stable);
         } else {
             written = snprintf(buffer, buffer_size, "block:%u:%u",
