@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <unistd.h>
 
 char *ld_path_append_suffix(const char *base, const char *suffix)
@@ -160,6 +161,52 @@ int ld_path_ensure_trusted_directory_tree(const char *path)
     (void)close(directory);
     if (result != 0) errno = failure;
     return result;
+}
+
+
+int ld_path_require_staging_capacity(const char *path, uint64_t payload_bytes,
+                                     uint64_t *available_bytes,
+                                     uint64_t *required_bytes)
+{
+    if (path == NULL || payload_bytes == 0U ||
+        available_bytes == NULL || required_bytes == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    char *parent = ld_path_parent_directory(path);
+    struct statvfs info;
+    if (statvfs(parent, &info) != 0) {
+        const int failure = errno;
+        free(parent);
+        errno = failure;
+        return -1;
+    }
+    free(parent);
+
+    const uint64_t unit = info.f_frsize != 0U
+        ? (uint64_t)info.f_frsize : (uint64_t)info.f_bsize;
+    uint64_t available = 0U;
+    if (!infiltratr_u64_multiply_checked(
+            (uint64_t)info.f_bavail, unit, &available)) {
+        errno = EOVERFLOW;
+        return -1;
+    }
+
+    const uint64_t reserve = payload_bytes / 20U;
+    uint64_t required = 0U;
+    if (!infiltratr_u64_add_checked(payload_bytes, reserve, &required)) {
+        errno = EOVERFLOW;
+        return -1;
+    }
+
+    *available_bytes = available;
+    *required_bytes = required;
+    if (available < required) {
+        errno = ENOSPC;
+        return -1;
+    }
+    return 0;
 }
 
 

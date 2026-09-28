@@ -165,6 +165,23 @@ int main(void) {
     if (stat(safe_child, &tree_status) != 0 || !S_ISDIR(tree_status.st_mode))
         return fail("secure tree result");
 
+    char stage_probe[PATH_MAX];
+    if (snprintf(stage_probe, sizeof(stage_probe), "%s/stage.img", safe_child) < 0)
+        return fail("staging capacity path");
+    uint64_t staging_available = 0U, staging_required = 0U;
+    if (ld_path_require_staging_capacity(
+            stage_probe, UINT64_C(4096),
+            &staging_available, &staging_required) != 0 ||
+        staging_required < UINT64_C(4096) ||
+        staging_available < staging_required)
+        return fail("staging capacity success");
+    errno = 0;
+    if (ld_path_require_staging_capacity(
+            stage_probe, UINT64_MAX,
+            &staging_available, &staging_required) == 0 ||
+        (errno != EOVERFLOW && errno != ENOSPC))
+        return fail("staging capacity overflow refusal");
+
     char redirect[PATH_MAX];
     char redirected_child[PATH_MAX];
     if (snprintf(redirect, sizeof(redirect), "%s/link", tree_root) < 0 ||
