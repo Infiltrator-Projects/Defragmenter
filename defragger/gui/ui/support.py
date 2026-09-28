@@ -16,9 +16,13 @@ PROGRAM_ANCHOR = Path(__file__).resolve().parents[1] / "core"
 def safe_journal_name(path: str, identity: str = "") -> str:
     """Return a readable, collision-resistant journal stem."""
 
-    cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "_", path.strip("/"))
-    prefix = (cleaned or "volume")[-80:]
-    material = f"{path}\0{identity}".encode("utf-8", "surrogatepass")
+    if identity:
+        prefix = "volume"
+        material = identity.encode("utf-8", "surrogatepass")
+    else:
+        cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "_", path.strip("/"))
+        prefix = (cleaned or "volume")[-80:]
+        material = path.encode("utf-8", "surrogatepass")
     digest = hashlib.sha256(material).hexdigest()[:16]
     return f"{prefix}-{digest}"
 

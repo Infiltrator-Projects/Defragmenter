@@ -235,7 +235,7 @@ static int target_identity(const char *path, char **identity, uint64_t *size, ch
         xfs_set_error(error, "refusing raw XFS writing while the target or a related block device is mounted");
         return -1;
     }
-    char buffer[160];
+    char buffer[PATH_MAX + 32U];
     if (ld_device_format_identity(&device, buffer, sizeof(buffer)) != 0) {
         const int failure = errno;
         ld_device_close(&device);

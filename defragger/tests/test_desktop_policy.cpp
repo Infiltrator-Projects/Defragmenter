@@ -13,7 +13,7 @@ int main() {
     assert(desktop_controls(&v, false, false, false).analyse);
     assert(!desktop_controls(&v, false, false, false).defrag);
     assert(desktop_journal(v, 1000) ==
-        "/var/lib/linux-defragger/state/1000/dev_sdb1-35f2914ce8df5666.journal");
+        "/var/lib/linux-defragger/state/1000/volume-fc1f33e16c4a68d6.journal");
     try {
         desktop_verify_identity(v, "ntfs");
         assert(false);

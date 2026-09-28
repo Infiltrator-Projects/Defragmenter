@@ -793,6 +793,67 @@ int ld_fd_size_bytes(int fd, uint64_t *size_bytes) {
     return ioctl(fd, BLKGETSIZE64, size_bytes);
 }
 
+static bool ld_stable_block_alias(dev_t device_number,
+                                  char *buffer, size_t buffer_size)
+{
+    if (buffer == NULL || buffer_size == 0U) return false;
+    buffer[0] = '\0';
+    const char *roots[] = {
+        "/dev/disk/by-id",
+        "/dev/disk/by-partuuid",
+        "/dev/disk/by-uuid",
+        "/dev/mapper",
+    };
+    char best[PATH_MAX] = "";
+    for (size_t root_index = 0U;
+         root_index < sizeof(roots) / sizeof(roots[0]);
+         ++root_index) {
+        DIR *directory = opendir(roots[root_index]);
+        if (directory == NULL) continue;
+        struct dirent *entry = NULL;
+        while ((entry = readdir(directory)) != NULL) {
+            if (entry->d_name[0] == '.') continue;
+            if (strcmp(roots[root_index], "/dev/mapper") == 0 &&
+                strcmp(entry->d_name, "control") == 0)
+                continue;
+            char candidate[PATH_MAX];
+            const int length = snprintf(candidate, sizeof(candidate), "%s/%s",
+                                        roots[root_index], entry->d_name);
+            if (length < 0 || (size_t)length >= sizeof(candidate))
+                continue;
+            struct stat status;
+            if (stat(candidate, &status) != 0 ||
+                !S_ISBLK(status.st_mode) ||
+                status.st_rdev != device_number)
+                continue;
+            if (best[0] == '\0' || strcmp(candidate, best) < 0)
+                infiltratr_copy_string(best, sizeof(best), candidate);
+        }
+        closedir(directory);
+        if (best[0] != '\0') break;
+    }
+    if (best[0] == '\0') return false;
+    if (strlen(best) + 1U > buffer_size) {
+        errno = ENAMETOOLONG;
+        return false;
+    }
+    infiltratr_copy_string(buffer, buffer_size, best);
+    return true;
+}
+
+static bool ld_legacy_block_identity_matches(dev_t device_number,
+                                             const char *expected)
+{
+    if (expected == NULL ||
+        !infiltratr_string_starts_with(expected, "block:"))
+        return false;
+    char legacy[64];
+    const int length = snprintf(legacy, sizeof(legacy), "block:%u:%u",
+                                major(device_number), minor(device_number));
+    return length > 0 && (size_t)length < sizeof(legacy) &&
+           strcmp(legacy, expected) == 0;
+}
+
 int ld_device_format_identity(const LdDevice *device,
                               char *buffer, size_t buffer_size) {
     if (device == NULL || device->fd < 0 || buffer == NULL ||
@@ -803,9 +864,15 @@ int ld_device_format_identity(const LdDevice *device,
 
     int written = 0;
     if (device->is_block) {
-        written = snprintf(buffer, buffer_size, "block:%u:%u",
-                           major(device->device_number),
-                           minor(device->device_number));
+        char stable[PATH_MAX];
+        if (ld_stable_block_alias(device->device_number,
+                                  stable, sizeof(stable))) {
+            written = snprintf(buffer, buffer_size, "block-id:%s", stable);
+        } else {
+            written = snprintf(buffer, buffer_size, "block:%u:%u",
+                               major(device->device_number),
+                               minor(device->device_number));
+        }
     } else {
         written = snprintf(buffer, buffer_size, "file:%llu:%llu",
                            (unsigned long long)device->host_device,
@@ -856,7 +923,11 @@ bool ld_device_matches_identity(const LdDevice *device,
         return false;
     if (expected_size != 0U && device->size_bytes != expected_size)
         return false;
-    char identity[160];
+    if (device->is_block &&
+        ld_legacy_block_identity_matches(device->device_number,
+                                         expected_identity))
+        return true;
+    char identity[PATH_MAX + 32U];
     return ld_device_format_identity(device, identity, sizeof(identity)) == 0 &&
            strcmp(identity, expected_identity) == 0;
 }
@@ -867,8 +938,13 @@ bool ld_fd_matches_identity(int fd, const char *expected_identity,
     uint64_t size = 0U;
     if (ld_fd_size_bytes(fd, &size) != 0) return false;
     if (expected_size != 0U && size != expected_size) return false;
+    struct stat status;
+    if (fstat(fd, &status) != 0) return false;
 
-    char identity[160];
+    if (S_ISBLK(status.st_mode) &&
+        ld_legacy_block_identity_matches(status.st_rdev, expected_identity))
+        return true;
+    char identity[PATH_MAX + 32U];
     return ld_fd_format_identity(fd, identity, sizeof(identity)) == 0 &&
            strcmp(identity, expected_identity) == 0;
 }
@@ -911,7 +987,7 @@ int ld_device_capture_binding(const char *path, char **canonical_path,
         return -1;
     }
 
-    char text[160];
+    char text[PATH_MAX + 32U];
     if (ld_device_format_identity(&device, text, sizeof(text)) != 0) {
         const int failure = errno;
         ld_device_close(&device);
@@ -926,8 +1002,22 @@ int ld_device_capture_binding(const char *path, char **canonical_path,
         return -1;
     }
 
-    *canonical_path = device.path;
-    device.path = NULL;
+    char stable_path[PATH_MAX];
+    if (device.is_block &&
+        ld_stable_block_alias(device.device_number,
+                              stable_path, sizeof(stable_path))) {
+        *canonical_path = strdup(stable_path);
+        if (*canonical_path == NULL) {
+            const int failure = errno;
+            free(copied_identity);
+            ld_device_close(&device);
+            errno = failure;
+            return -1;
+        }
+    } else {
+        *canonical_path = device.path;
+        device.path = NULL;
+    }
     *identity = copied_identity;
     *size_bytes = device.size_bytes;
     ld_device_close(&device);

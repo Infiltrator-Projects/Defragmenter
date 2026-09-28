@@ -89,10 +89,12 @@ std::string desktop_journal(const DesktopVolume& v, unsigned uid) {
         if (!identity.empty()) identity += '|';
         identity += v.partition_uuid;
     }
-    std::string material = v.path + '\0' + identity;
+    const bool have_stable_identity = !identity.empty();
+    const std::string material =
+        have_stable_identity ? identity : v.path;
     unsigned char digest[SHA256_DIGEST_LENGTH];
     SHA256(reinterpret_cast<const unsigned char*>(material.data()), material.size(), digest);
-    std::string stem = v.path;
+    std::string stem = have_stable_identity ? "volume" : v.path;
     while (!stem.empty() && stem.front() == '/') stem.erase(stem.begin());
     for (auto& ch : stem)
         if (!std::isalnum(static_cast<unsigned char>(ch)) && ch != '_' && ch != '.' && ch != '-') ch = '_';

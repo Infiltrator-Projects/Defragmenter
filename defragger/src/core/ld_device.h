@@ -17,10 +17,12 @@
  * path component is not followed, and the opened descriptor must still name
  * the object inspected before open.
  *
- * Identity strings bind block devices by major:minor and regular images by host
- * device:inode. expected_size, when non-zero, adds a capacity check. These
- * checks defend against pathname replacement; filesystem-specific UUID/serial/
- * geometry validation remains the writer's responsibility.
+ * Identity strings bind block devices to the strongest stable Linux device
+ * alias available (/dev/disk/by-id, by-partuuid, by-uuid, or /dev/mapper),
+ * falling back to major:minor only when no persistent alias exists. Regular
+ * images bind by host device:inode. expected_size, when non-zero, adds a
+ * capacity check. Filesystem-specific UUID/serial/geometry validation remains
+ * an additional writer responsibility.
  */
 typedef struct {
     int fd;
