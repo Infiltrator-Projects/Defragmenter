@@ -46,7 +46,7 @@ jobs:
         shell: bash
         run: |
           set -u
-          commands=(cmake cc c++ make dpkg-deb pkg-config zip unzip python3 makefs udisksctl pkexec xvfb-run)
+          commands=(cmake cc c++ make dpkg-deb pkg-config zip unzip python3 makefs udisksctl pkexec)
           missing=()
           for command_name in "${commands[@]}"; do
             command -v "$command_name" >/dev/null 2>&1 || missing+=("$command_name")
@@ -83,6 +83,10 @@ jobs:
       - name: Smoke-test the shipped native GTK desktop under Xvfb
         if: steps.local-deps.outputs.available == 'true'
         run: |
+          if ! command -v xvfb-run >/dev/null 2>&1; then
+            printf '%s\n' 'Xvfb is not installed on this runner; the mandatory full native/filesystem suite will still run.'
+            exit 0
+          fi
           set +e
           xvfb-run -a timeout --signal=TERM 5s ./build-local/linux-defragger-desktop             >native-desktop-smoke.log 2>&1
           status=$?
