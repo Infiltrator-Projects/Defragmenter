@@ -6,6 +6,7 @@
 
 extern "C" {
 #include "version.h"
+#include <infiltratr/design.h>
 }
 
 #include <gtk/gtk.h>
@@ -60,36 +61,181 @@ fs::path artwork(const char* name) {
     if (fs::is_regular_file(local)) return local;
     return {};
 }
-void install_style() {
-    auto* provider = gtk_css_provider_new();
-    constexpr const char* css = R"CSS(
-window, .app-shell { background: #050608; color: #E8ECEF; font-family: 'MB Corpo S Title WEB'; }
-headerbar { background: #202125; color: #EEF1F3; border-bottom: 1px solid #353A40; min-height: 44px; }
-headerbar button { background: transparent; border: 0; color: #EEF1F3; box-shadow: none; }
-headerbar button:hover { background: #353A40; }
-.brand-title { font-family: 'MB Corpo A Title Cond WEB'; font-size: 20px; font-weight: 600; }
-.brand-subtitle { font-size: 10px; letter-spacing: 2px; color: #AEB6BD; }
-.sidebar { background: #101318; border-right: 1px solid #353A40; }
-.sidebar button { background: transparent; color: #AEB6BD; border: 0; text-align: left; }
-.sidebar button:hover { background: #22272D; color: #EEF1F3; }
-.card, .panel { background: #171B20; border: 1px solid #353A40; border-radius: 12px; }
-.hero { border: 1px solid #353A40; border-radius: 18px; }
-.hero-title { font-family: 'MB Corpo A Title Cond WEB'; font-size: 30px; font-weight: 600; color: #FFFFFF; }
-.hint { color: #AEB6BD; }
-.kicker { color: #00ADEF; font-size: 11px; letter-spacing: 2px; }
-.summary-value { color: #E8ECEF; font-size: 19px; }
-button { border-radius: 10px; padding: 7px 12px; }
-.primary-action { background: #00ADEF; color: #031018; font-weight: bold; }
-.stop-action { background: #52282C; color: #FFD9DC; }
-textview, textview text { background: #0D1014; color: #D7DDE2; }
-progressbar trough { background: #20252B; border-radius: 8px; min-height: 8px; }
-progressbar progress { background: #00ADEF; border-radius: 8px; }
-)CSS";
-    gtk_css_provider_load_from_data(provider, css, -1, nullptr);
-    gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),
-        GTK_STYLE_PROVIDER(provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-    g_object_unref(provider);
+
+GtkCssProvider* style_provider = nullptr;
+
+std::string rgb_hex(std::uint32_t rgb) {
+    char text[8];
+    std::snprintf(text, sizeof(text), "#%06X", rgb & 0xFFFFFFU);
+    return text;
 }
+
+bool system_prefers_dark() {
+    GtkSettings* settings = gtk_settings_get_default();
+    if (settings == nullptr) return false;
+
+    gboolean prefer_dark = FALSE;
+    if (g_object_class_find_property(
+            G_OBJECT_GET_CLASS(settings),
+            "gtk-application-prefer-dark-theme") != nullptr) {
+        g_object_get(settings, "gtk-application-prefer-dark-theme",
+                     &prefer_dark, nullptr);
+        if (prefer_dark) return true;
+    }
+
+    gchar* theme_name = nullptr;
+    if (g_object_class_find_property(
+            G_OBJECT_GET_CLASS(settings), "gtk-theme-name") != nullptr) {
+        g_object_get(settings, "gtk-theme-name", &theme_name, nullptr);
+    }
+    std::string name = theme_name ? theme_name : "";
+    g_free(theme_name);
+    std::transform(name.begin(), name.end(), name.begin(),
+                   [](unsigned char ch) {
+                       return static_cast<char>(std::tolower(ch));
+                   });
+    return name.find("dark") != std::string::npos;
+}
+
+std::string theme_file() {
+    return (fs::path(g_get_user_config_dir()) /
+            "linux-defragger" / "theme").string();
+}
+
+InfiltratrThemeMode load_theme_mode() {
+    const std::string path = theme_file();
+    gchar* raw = nullptr;
+    gsize length = 0U;
+    if (!g_file_get_contents(path.c_str(), &raw, &length, nullptr))
+        return INFILTRATR_THEME_SYSTEM;
+    std::string value(raw, length);
+    g_free(raw);
+    while (!value.empty() &&
+           (value.back() == '\n' || value.back() == '\r' ||
+            value.back() == ' ' || value.back() == '\t'))
+        value.pop_back();
+    InfiltratrThemeMode mode = INFILTRATR_THEME_SYSTEM;
+    return infiltratr_theme_mode_parse(value.c_str(), &mode)
+        ? mode : INFILTRATR_THEME_SYSTEM;
+}
+
+void save_theme_mode(InfiltratrThemeMode mode) {
+    const fs::path path(theme_file());
+    std::error_code error;
+    fs::create_directories(path.parent_path(), error);
+    if (error) return;
+    const std::string value =
+        std::string(infiltratr_theme_mode_key(mode)) + "\n";
+    (void)g_file_set_contents(path.c_str(), value.c_str(),
+                              static_cast<gssize>(value.size()), nullptr);
+}
+
+const char* theme_label(InfiltratrThemeMode mode) {
+    switch (mode) {
+        case INFILTRATR_THEME_DAY: return "Appearance: Day";
+        case INFILTRATR_THEME_NIGHT: return "Appearance: Night";
+        case INFILTRATR_THEME_SYSTEM:
+        default: return "Appearance: Follow system";
+    }
+}
+
+const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
+    const auto* palette =
+        infiltratr_theme_resolve(mode, system_prefers_dark());
+    const auto* typography = infiltratr_typography();
+    const auto* metrics = infiltratr_design_metrics();
+    if (palette == nullptr || typography == nullptr || metrics == nullptr)
+        throw std::runtime_error("Common design contract is unavailable");
+
+    const std::string background = rgb_hex(palette->background_rgb);
+    const std::string panel = rgb_hex(palette->panel_rgb);
+    const std::string card = rgb_hex(palette->card_rgb);
+    const std::string surface = rgb_hex(palette->surface_rgb);
+    const std::string input = rgb_hex(palette->input_rgb);
+    const std::string border = rgb_hex(palette->border_rgb);
+    const std::string text = rgb_hex(palette->text_rgb);
+    const std::string heading = rgb_hex(palette->heading_rgb);
+    const std::string detail = rgb_hex(palette->detail_label_rgb);
+    const std::string kicker = rgb_hex(palette->kicker_rgb);
+    const std::string titlebar = rgb_hex(palette->titlebar_rgb);
+    const std::string accent = rgb_hex(palette->neutral_accent_rgb);
+    const std::string accent_hover = rgb_hex(palette->accent_hover_rgb);
+    const std::string button_bg = rgb_hex(palette->button_background_rgb);
+    const std::string button_fg = rgb_hex(palette->button_foreground_rgb);
+    const std::string fault = rgb_hex(palette->fault_rgb);
+    const std::string operation = rgb_hex(palette->operation_rgb);
+
+    std::string css;
+    css.reserve(4096U);
+    css += "window, .app-shell { background: " + background +
+           "; color: " + text + "; font-family: '" +
+           typography->ui_family + "'; }\n";
+    css += "headerbar { background: " + titlebar + "; color: " + heading +
+           "; border-bottom: 1px solid " + rgb_hex(palette->status_border_rgb) +
+           "; min-height: 44px; }\n";
+    css += "headerbar button { background: transparent; border: 0; color: " +
+           heading + "; box-shadow: none; }\n";
+    css += "headerbar button:hover { background: " +
+           rgb_hex(palette->surface_hover_rgb) + "; }\n";
+    css += ".brand-title { font-family: '" + std::string(typography->brand_family) +
+           "'; font-size: 20px; font-weight: 600; color: " + heading + "; }\n";
+    css += ".brand-subtitle { font-size: 10px; letter-spacing: 2px; color: " +
+           rgb_hex(palette->summary_rgb) + "; }\n";
+    css += ".sidebar { background: " + surface +
+           "; border-right: 1px solid " + border + "; }\n";
+    css += ".sidebar button { background: transparent; color: " + detail +
+           "; border: 0; text-align: left; }\n";
+    css += ".sidebar button:hover { background: " +
+           rgb_hex(palette->card_hover_rgb) + "; color: " + heading + "; }\n";
+    css += ".card, .panel { background: " + card + "; border: 1px solid " +
+           border + "; border-radius: " + std::to_string(metrics->card_radius) +
+           "px; }\n";
+    css += ".hero { border: 1px solid " + border + "; border-radius: " +
+           std::to_string(metrics->panel_radius) + "px; }\n";
+    css += ".hero-title { font-family: '" + std::string(typography->brand_family) +
+           "'; font-size: 30px; font-weight: 600; color: " + heading + "; }\n";
+    css += ".hint { color: " + detail + "; }\n";
+    css += ".kicker { color: " + kicker +
+           "; font-size: 11px; letter-spacing: 2px; }\n";
+    css += ".summary-value { color: " + heading + "; font-size: 19px; }\n";
+    css += "button { border-radius: " +
+           std::to_string(metrics->control_radius) +
+           "px; padding: 7px 12px; background: " + card + "; color: " + text +
+           "; border: 1px solid " + accent + "; }\n";
+    css += "button:hover { background: " +
+           rgb_hex(palette->card_hover_rgb) + "; border-color: " +
+           accent_hover + "; }\n";
+    css += ".primary-action { background: " + button_bg + "; color: " +
+           button_fg + "; font-weight: bold; }\n";
+    css += ".stop-action { background: " + operation + "; color: " + text +
+           "; border-color: " + fault + "; }\n";
+    css += "textview, textview text { background: " + input + "; color: " +
+           text + "; }\n";
+    css += "progressbar trough { background: " + panel +
+           "; border-radius: " + std::to_string(metrics->small_radius) +
+           "px; min-height: 8px; }\n";
+    css += "progressbar progress { background: " + accent +
+           "; border-radius: " + std::to_string(metrics->small_radius) +
+           "px; }\n";
+
+    if (style_provider == nullptr) {
+        style_provider = gtk_css_provider_new();
+        gtk_style_context_add_provider_for_screen(
+            gdk_screen_get_default(), GTK_STYLE_PROVIDER(style_provider),
+            GTK_STYLE_PROVIDER_PRIORITY_APPLICATION + 50);
+    }
+    GError* failure = nullptr;
+    if (!gtk_css_provider_load_from_data(
+            style_provider, css.c_str(), static_cast<gssize>(css.size()),
+            &failure)) {
+        std::string message =
+            failure ? failure->message : "unknown CSS parser error";
+        if (failure) g_error_free(failure);
+        throw std::runtime_error("Unable to apply Common theme: " + message);
+    }
+    return palette;
+}
+
 
 class Desktop {
 public:
@@ -97,6 +243,8 @@ public:
         mapper_ = defragger::resolve_program("mapper");
         engine_ = defragger::resolve_program("operation-engine");
         helper_path_ = defragger::resolve_program("helper");
+        theme_mode_ = load_theme_mode();
+        palette_ = install_style(theme_mode_);
         window_ = gtk_window_new(GTK_WINDOW_TOPLEVEL);
         g_object_set_data(G_OBJECT(window_), "desktop", this);
         gtk_window_set_title(GTK_WINDOW(window_), "Defragmenter");
@@ -106,7 +254,6 @@ public:
         g_signal_connect(window_, "destroy", G_CALLBACK(+[](GtkWidget*, gpointer) {
             gtk_main_quit();
         }), nullptr);
-        install_style();
         auto* header = gtk_header_bar_new();
         gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(header), FALSE);
         gtk_header_bar_set_custom_title(GTK_HEADER_BAR(header), gtk_label_new(""));
@@ -147,6 +294,7 @@ public:
         gtk_label_set_xalign(GTK_LABEL(overview), 0);
         gtk_box_pack_start(GTK_BOX(sidebar), overview, FALSE, FALSE, 0);
         add_button(sidebar, "Test Media", "test-media");
+        theme_ = add_button(sidebar, theme_label(theme_mode_), "theme");
         add_button(sidebar, "About", "about");
         auto* sidebar_art = gtk_image_new_from_file(artwork("sidebar-workbench.jpg").string().c_str());
         gtk_box_pack_end(GTK_BOX(sidebar), sidebar_art, FALSE, FALSE, 0);
@@ -227,15 +375,10 @@ public:
         gtk_widget_set_size_request(map_, -1, 200);
         gtk_box_pack_start(GTK_BOX(map_box), map_, TRUE, TRUE, 0);
         g_signal_connect(map_, "draw", G_CALLBACK(draw_map), this);
-        auto* legend = gtk_label_new(nullptr);
-        gtk_label_set_markup(GTK_LABEL(legend),
-            "<span foreground='#1267BD'>■</span> Used   "
-            "<span foreground='#FF253C'>■</span> Fragmented   "
-            "<span foreground='#9E2BFA'>■</span> Directory   "
-            "<span foreground='#05214A'>■</span> Free   "
-            "<span foreground='#FF9F0A'>■</span> Metadata / reserved");
-        gtk_label_set_xalign(GTK_LABEL(legend), 0);
-        gtk_box_pack_start(GTK_BOX(map_box), legend, FALSE, FALSE, 0);
+        legend_ = gtk_label_new(nullptr);
+        update_legend();
+        gtk_label_set_xalign(GTK_LABEL(legend_), 0);
+        gtk_box_pack_start(GTK_BOX(map_box), legend_, FALSE, FALSE, 0);
         summary_ = gtk_label_new("Run Analyse to inspect the allocation map.");
         gtk_label_set_xalign(GTK_LABEL(summary_), 0);
         gtk_box_pack_start(GTK_BOX(map_box), summary_, FALSE, FALSE, 0);
@@ -295,7 +438,9 @@ private:
     GtkWidget *window_{}, *volumes_widget_{}, *detail_{}, *volume_title_{}, *progress_{}, *status_{};
     GtkWidget *map_{}, *summary_{}, *log_{}, *analyse_{}, *unmount_{};
     GtkWidget *defrag_{}, *growth_{}, *recover_{}, *stop_{};
-    GtkWidget *refresh_{}, *image_{};
+    GtkWidget *refresh_{}, *image_{}, *theme_{}, *legend_{};
+    InfiltratrThemeMode theme_mode_ = INFILTRATR_THEME_SYSTEM;
+    const InfiltratrThemePalette* palette_ = nullptr;
     GtkWidget* cards_[4]{};
     std::vector<DesktopVolume> volumes_;
     std::vector<Json> cells_;
@@ -372,6 +517,21 @@ private:
         bool accepted = gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT;
         gtk_widget_destroy(dialog);
         return accepted;
+    }
+    void update_legend() {
+        if (legend_ == nullptr || palette_ == nullptr) return;
+        const std::string markup =
+            "<span foreground='" + rgb_hex(palette_->neutral_accent_rgb) +
+            "'>■</span> Used   <span foreground='" +
+            rgb_hex(palette_->fault_rgb) +
+            "'>■</span> Fragmented   <span foreground='" +
+            rgb_hex(palette_->operation_rgb) +
+            "'>■</span> Directory   <span foreground='" +
+            rgb_hex(palette_->background_rgb) +
+            "'>■</span> Free   <span foreground='" +
+            rgb_hex(palette_->warning_rgb) +
+            "'>■</span> Metadata / reserved";
+        gtk_label_set_markup(GTK_LABEL(legend_), markup.c_str());
     }
     void update() {
         auto* v = current();
@@ -482,6 +642,20 @@ private:
                 "wrap-license", TRUE,
                 "logo-icon-name", "io.github.linuxdefragger",
                 nullptr);
+            return;
+        }
+        if (action_name == "theme") {
+            theme_mode_ = infiltratr_theme_mode_next(theme_mode_);
+            save_theme_mode(theme_mode_);
+            try {
+                palette_ = install_style(theme_mode_);
+                gtk_button_set_label(GTK_BUTTON(theme_),
+                                     theme_label(theme_mode_));
+                update_legend();
+                gtk_widget_queue_draw(map_);
+            } catch (const std::exception& ex) {
+                error("Unable to change appearance", ex.what());
+            }
             return;
         }
         if (action_name == "test-media") {
@@ -795,9 +969,17 @@ private:
         auto* self = static_cast<Desktop*>(data);
         GtkAllocation allocation;
         gtk_widget_get_allocation(widget, &allocation);
-        cairo_set_source_rgb(cr, 0.09, 0.13, 0.19);
+        const auto* palette = self->palette_;
+        const auto cairo_rgb = [cr](std::uint32_t rgb) {
+            cairo_set_source_rgb(
+                cr,
+                static_cast<double>((rgb >> 16U) & 0xffU) / 255.0,
+                static_cast<double>((rgb >> 8U) & 0xffU) / 255.0,
+                static_cast<double>(rgb & 0xffU) / 255.0);
+        };
+        cairo_rgb(palette ? palette->background_rgb : 0U);
         cairo_paint(cr);
-        if (self->cells_.empty()) return FALSE;
+        if (self->cells_.empty() || palette == nullptr) return FALSE;
         int columns = std::max(1, allocation.width / 8);
         int rows = std::max(1, allocation.height / 8);
         const std::uint64_t first = number(self->cells_.front(), "start");
@@ -812,13 +994,13 @@ private:
                 [](const Json& cell, std::uint64_t needle) { return number(cell, "end") < needle; });
             if (found == self->cells_.end() || number(*found, "start") > unit) continue;
             const auto& cell = *found;
-            if (number(cell, "bad")) cairo_set_source_rgb(cr, 1.0, 0.625, 0.040);
-            else if (number(cell, "fragmented")) cairo_set_source_rgb(cr, 1.0, 0.145, 0.235);
-            else if (number(cell, "directory")) cairo_set_source_rgb(cr, 0.62, 0.17, 0.98);
-            else if (number(cell, "used")) cairo_set_source_rgb(cr, 0.020, 0.520, 1.0);
-            else if (number(cell, "free")) cairo_set_source_rgb(cr, 0.018, 0.050, 0.105);
-            else if (number(cell, "outside")) cairo_set_source_rgb(cr, 0.006, 0.014, 0.030);
-            else cairo_set_source_rgb(cr, 0.285, 0.330, 0.410);
+            if (number(cell, "bad")) cairo_rgb(palette->warning_rgb);
+            else if (number(cell, "fragmented")) cairo_rgb(palette->fault_rgb);
+            else if (number(cell, "directory")) cairo_rgb(palette->operation_rgb);
+            else if (number(cell, "used")) cairo_rgb(palette->neutral_accent_rgb);
+            else if (number(cell, "free")) cairo_rgb(palette->background_rgb);
+            else if (number(cell, "outside")) cairo_rgb(palette->panel_rgb);
+            else cairo_rgb(palette->muted_rgb);
             cairo_rectangle(cr, column * 8, row * 8, 7, 7);
             cairo_fill(cr);
         }
