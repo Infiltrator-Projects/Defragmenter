@@ -1593,7 +1593,6 @@ static int writer_scan_files(WriterModel *model, char *error,
 {
     uint64_t current = UINT64_MAX;
     uint32_t mode = 0U;
-    uint64_t inode_flags = 0U;
     bool have_inode = false;
     size_t current_file = SIZE_MAX;
     uint64_t expected_offset = 0U;
@@ -1603,7 +1602,6 @@ static int writer_scan_files(WriterModel *model, char *error,
         if (item->key.objectid != current) {
             current = item->key.objectid;
             mode = 0U;
-            inode_flags = 0U;
             have_inode = false;
             current_file = SIZE_MAX;
             expected_offset = 0U;
@@ -1615,7 +1613,6 @@ static int writer_scan_files(WriterModel *model, char *error,
                 return -1;
             }
             mode = infiltratr_load_le32(item->data + 52U);
-            inode_flags = infiltratr_load_le64(item->data + 64U);
             have_inode = true;
             continue;
         }
