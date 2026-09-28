@@ -2,6 +2,7 @@
 #pragma once
 
 #include <chrono>
+#include <csignal>
 #include <cstddef>
 #include <string>
 #include <vector>
@@ -14,6 +15,9 @@ struct CommandResult {
     std::string standard_error;
     bool output_truncated = false;
 };
+
+void set_run_capture_cancel_flag(
+    const volatile std::sig_atomic_t* flag) noexcept;
 
 CommandResult run_capture(
     const std::vector<std::string>& command,
