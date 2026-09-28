@@ -77,10 +77,11 @@ DesktopControls desktop_controls(const DesktopVolume* v, bool busy,
     out.unmount = v->mounted && !v->image;
     const auto* backend = backend_by_fstype(v->filesystem);
     if (!backend || !v->verified || v->readonly || v->mounted) return out;
-    out.defrag = v->exact_analysis && !journal_exists &&
-                 operation_for(*backend, "defrag");
-    out.growth_defrag = v->exact_analysis && !journal_exists &&
-                        operation_for(*backend, "growth-defrag");
+    out.defrag = v->exact_analysis && v->defrag_qualified &&
+                 !journal_exists && operation_for(*backend, "defrag");
+    out.growth_defrag =
+        v->exact_analysis && v->growth_qualified &&
+        !journal_exists && operation_for(*backend, "growth-defrag");
     // Recovery must remain available after restart even before a fresh map is
     // produced; the journal and worker rebind the exact target identity.
     out.recover = journal_exists && operation_for(*backend, "recover");
@@ -130,6 +131,10 @@ void desktop_verify_identity(DesktopVolume& v, std::string_view detected) {
     // Identity verification alone never authorises a raw write.  A fresh
     // exact allocation analysis must establish that separately.
     v.exact_analysis = false;
+    v.defrag_qualified = false;
+    v.growth_qualified = false;
+    v.defrag_reason.clear();
+    v.growth_reason.clear();
     v.verified = true;
 }
 
@@ -146,6 +151,16 @@ std::vector<std::string> desktop_mutation(const DesktopVolume& v,
     if (operation != "recover" && !v.exact_analysis)
         throw std::runtime_error(
             "An exact allocation analysis is required before filesystem mutation");
+    if (operation == "defrag" && !v.defrag_qualified)
+        throw std::runtime_error(
+            v.defrag_reason.empty()
+                ? "This exact filesystem layout is outside the qualified Defragment writer contract"
+                : v.defrag_reason);
+    if (operation == "growth-defrag" && !v.growth_qualified)
+        throw std::runtime_error(
+            v.growth_reason.empty()
+                ? "This exact filesystem layout is outside the qualified Growth Defrag writer contract"
+                : v.growth_reason);
     if ((operation == "recover") != journal_exists)
         throw std::runtime_error("An unfinished journal must be recovered before further writes");
     if (journal.empty()) throw std::runtime_error("A persistent journal path is required");
