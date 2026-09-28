@@ -585,16 +585,21 @@ static void aggregate_object_state(NtfsLayout *layout,
 
         const bool matches_fragmentation =
             stream->attribute_type ==
-                (object->directory ? NTFS_ATTR_INDEX_ALLOCATION : NTFS_ATTR_DATA) &&
-            (object->directory || stream->attribute_name[0] == '\0');
+                (object->directory ? NTFS_ATTR_INDEX_ALLOCATION
+                                   : NTFS_ATTR_DATA);
 
         if (matches_fragmentation) {
             object->matching_groups++;
-            if (stream->lowest_vcn != object->expected_vcn ||
-                stream_is_fragmented(stream))
+            /*
+             * Fragmentation is a property of every payload stream owned by
+             * the file, not only unnamed $DATA. A split logical stream is
+             * conservatively fragmented until all of its attribute-list
+             * segments can be rewritten by the native writer.
+             */
+            if (stream_is_fragmented(stream) ||
+                stream->lowest_vcn != 0U ||
+                catalogue_logical_stream_parts(catalogue, stream) != 1U)
                 object->fragmented = true;
-            object->expected_vcn =
-                stream->lowest_vcn + ntfs_run_clusters(&stream->runs);
         }
 
         if (!object->directory &&
@@ -617,8 +622,7 @@ static void aggregate_object_state(NtfsLayout *layout,
     for (size_t index = 0; index < objects->count; ++index) {
         ObjectState *object = &objects->items[index];
         if (!object->present) continue;
-        const bool fragmented =
-            object->matching_groups > 1U || object->fragmented;
+        const bool fragmented = object->fragmented;
         if (object->directory) {
             catalogue->directories++;
             if (fragmented) catalogue->fragmented_directories++;
