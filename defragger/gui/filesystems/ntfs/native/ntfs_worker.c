@@ -528,6 +528,55 @@ done:
     return result;
 }
 
+static int writer_preflight(const char *device, bool growth,
+                            char **error)
+{
+    NtfsVolume volume;
+    NtfsLayout layout;
+    NtfsCatalogue catalogue;
+    NtfsPlacementVec placements = {0};
+    memset(&volume, 0, sizeof(volume));
+    volume.fd = -1;
+    memset(&layout, 0, sizeof(layout));
+    memset(&catalogue, 0, sizeof(catalogue));
+
+    int result = -1;
+    if (ntfs_open_volume(device, false, &volume, error) != 0 ||
+        ntfs_read_layout(&volume, false, &layout, error) != 0 ||
+        ntfs_scan_catalogue(&volume, &layout, &catalogue, error) != 0)
+        goto done;
+    if (catalogue.malformed_records != 0U) {
+        ntfs_set_error(error,
+                       "NTFS contains malformed MFT records; refusing mutation");
+        goto done;
+    }
+    if (catalogue.hibernation_active) {
+        ntfs_set_error(error,
+                       "NTFS hibernation image is active; resume and shut down Windows fully first");
+        goto done;
+    }
+
+    result = ntfs_plan_layout(
+        &layout, &catalogue, volume.total_clusters,
+        growth, &placements, error);
+    if (result != 0 && error != NULL && *error != NULL &&
+        strstr(*error, "no supported movable") != NULL &&
+        catalogue.fragmented_files == 0U &&
+        catalogue.fragmented_directories == 0U &&
+        (!growth || catalogue.growth_10_satisfied)) {
+        free(*error);
+        *error = NULL;
+        result = 0;
+    }
+
+done:
+    ntfs_placements_free(&placements);
+    ntfs_catalogue_free(&catalogue);
+    ntfs_layout_free(&layout);
+    ntfs_close_volume(&volume);
+    return result;
+}
+
 static int build_and_commit(const char *device, const char *operation, const char *journal_path,
                             bool live_updates, char **error) {
     if (ld_path_is_mounted(device)) {
@@ -783,6 +832,20 @@ int main(int argc, char **argv) {
         char *error = NULL; int result = analyse_json(device, &error);
         if (result != 0 && error != NULL) fprintf(stderr, "%s\n", error);
         free(error); return result == 0 ? 0 : 1;
+    }
+    if (strcmp(operation, "preflight-defrag") == 0 ||
+        strcmp(operation, "preflight-growth") == 0) {
+        char *error = NULL;
+        const bool growth =
+            strcmp(operation, "preflight-growth") == 0;
+        const int result =
+            writer_preflight(device, growth, &error);
+        if (result != 0)
+            fprintf(stderr, "%s: %s\n", PROGRAM_NAME,
+                    error != NULL
+                        ? error : "NTFS layout is not writable");
+        free(error);
+        return result == 0 ? 0 : 1;
     }
     if (strcmp(operation, "defrag") != 0 && strcmp(operation, "growth-defrag") != 0 && strcmp(operation, "recover") != 0) {
         usage(stderr); return 2;
