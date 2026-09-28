@@ -46,14 +46,24 @@ int main(void) {
     REQUIRE(fclose(file) == 0);
     fixture_mountinfo = mountinfo;
 
-    REQUIRE(ld_mount_source_matches_regular_file(original));
-    REQUIRE(ld_mount_source_matches_regular_file(alias));
-    REQUIRE(!ld_mount_source_matches_regular_file(other));
-    REQUIRE(ld_loop_backing_file_matches(directory, original));
-    REQUIRE(ld_loop_backing_file_matches(directory, alias));
-    REQUIRE(!ld_loop_backing_file_matches(directory, other));
-    /* Also exercise the public refusal path, not just the private matcher. */
+    struct stat original_status, alias_status, other_status;
+    REQUIRE(stat(original, &original_status) == 0);
+    REQUIRE(stat(alias, &alias_status) == 0);
+    REQUIRE(stat(other, &other_status) == 0);
+    REQUIRE(ld_mount_source_matches_regular_identity(&original_status));
+    REQUIRE(ld_mount_source_matches_regular_identity(&alias_status));
+    REQUIRE(!ld_mount_source_matches_regular_identity(&other_status));
+    REQUIRE(ld_loop_backing_file_matches_identity(directory, &original_status));
+    REQUIRE(ld_loop_backing_file_matches_identity(directory, &alias_status));
+    REQUIRE(!ld_loop_backing_file_matches_identity(directory, &other_status));
+    /* Exercise both the public probe and the authoritative writable-open
+     * refusal against the same inode reached through a hard-link alias. */
     REQUIRE(ld_path_is_mounted(alias));
+    LdDevice writable = {.fd = -1};
+    errno = 0;
+    REQUIRE(ld_device_try_open(alias, true, &writable) != 0);
+    REQUIRE(errno == EBUSY);
+    REQUIRE(writable.fd < 0);
 
     REQUIRE(unlink(original) == 0 && unlink(alias) == 0 && unlink(other) == 0);
     REQUIRE(unlink(backing) == 0 && unlink(mountinfo) == 0);
