@@ -39,6 +39,7 @@ typedef struct {
     GtkWidget *operation_summary;
     GtkListStore *filesystem_store;
     GtkWidget *build_button;
+    GtkWidget *qualify_button;
     GtkWidget *verify_button;
     GtkWidget *progress;
     GtkTextBuffer *log_buffer;
@@ -117,6 +118,9 @@ static const char *display_result(const char *status) {
     if (strcmp(status, "verify-ok") == 0) return "✓ Verified";
     if (strcmp(status, "verify-fail") == 0) return "✕ Verification failed";
     if (strcmp(status, "verify-skip") == 0) return "— Verification skipped";
+    if (strcmp(status, "qualified") == 0) return "✓ Production qualified";
+    if (strcmp(status, "qualification-skipped") == 0) return "— Analysis-only";
+    if (strcmp(status, "qualification-failed") == 0) return "✕ Qualification failed";
     return status;
 }
 
@@ -217,6 +221,7 @@ static void set_worker_controls(LdtmApp *app, gboolean running) {
                            LDTM_DEVICE_COL_SAFE, &safe, -1);
     }
     gtk_widget_set_sensitive(app->build_button, !running && safe);
+    gtk_widget_set_sensitive(app->qualify_button, !running && safe);
     gtk_widget_set_sensitive(app->verify_button, !running && safe);
     gtk_widget_set_sensitive(GTK_WIDGET(app->device_combo), !running);
     if (running) {
@@ -483,6 +488,7 @@ static void device_changed(GtkComboBox *combo, gpointer user_data) {
     g_free(summary);
     if (!app->worker_running) {
         gtk_widget_set_sensitive(app->build_button, safe);
+        gtk_widget_set_sensitive(app->qualify_button, safe);
         gtk_widget_set_sensitive(app->verify_button, safe);
     }
     reset_filesystem_rows(app);
@@ -635,6 +641,20 @@ static void build_clicked(GtkButton *button, gpointer user_data) {
         append_log(app, "Preparing destructive filesystem test media...\n");
         (void)spawn_worker(app, "prepare", device, TRUE, fingerprint);
     }
+    g_free(device);
+}
+
+static void qualify_clicked(GtkButton *button, gpointer user_data) {
+    LdtmApp *app = (LdtmApp *)user_data;
+    char *device = selected_device(app);
+    (void)button;
+    if (device == NULL) return;
+    gtk_text_buffer_set_text(app->log_buffer, "", -1);
+    prepare_results_for_operation(app);
+    append_log(
+        app,
+        "Running production Defragment and Growth Defrag on every writable test partition, then verifying all retained payload bytes...\n");
+    (void)spawn_worker(app, "qualify", device, FALSE, NULL);
     g_free(device);
 }
 
@@ -913,6 +933,14 @@ int ldtm_gui_main(int argc, char **argv) {
     action_spacer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
     gtk_widget_set_hexpand(action_spacer, TRUE);
     gtk_box_pack_start(GTK_BOX(action_row), action_spacer, TRUE, TRUE, 0U);
+
+    app.qualify_button = gtk_button_new_with_label("Qualify Production Engines");
+    style = gtk_widget_get_style_context(app.qualify_button);
+    gtk_style_context_add_class(style, "suggested-action");
+    gtk_widget_set_sensitive(app.qualify_button, FALSE);
+    gtk_box_pack_start(GTK_BOX(action_row), app.qualify_button, FALSE, FALSE, 0U);
+    g_signal_connect(app.qualify_button, "clicked",
+                     G_CALLBACK(qualify_clicked), &app);
 
     app.verify_button = gtk_button_new_with_label("Verify After Defrag");
     style = gtk_widget_get_style_context(app.verify_button);
