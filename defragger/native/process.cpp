@@ -20,6 +20,8 @@ extern char **environ;
 namespace defragger {
 namespace {
 
+thread_local const volatile std::sig_atomic_t* g_cancel_flag = nullptr;
+
 class Fd {
 public:
     explicit Fd(int value = -1) noexcept : value_(value) {}
@@ -84,6 +86,11 @@ void terminate_process_group(pid_t child) noexcept {
 }
 
 } // namespace
+
+void set_run_capture_cancel_flag(
+    const volatile std::sig_atomic_t* flag) noexcept {
+    g_cancel_flag = flag;
+}
 
 CommandResult run_capture(const std::vector<std::string>& command,
                           std::size_t output_limit,
@@ -190,6 +197,7 @@ CommandResult run_capture(const std::vector<std::string>& command,
     const auto started = std::chrono::steady_clock::now();
     bool timed_out = false;
     bool killed_for_output = false;
+    bool cancelled = false;
     int status = 0;
     for (;;) {
         const pid_t waited = waitpid(child, &status, WNOHANG);
@@ -205,13 +213,16 @@ CommandResult run_capture(const std::vector<std::string>& command,
             stderr_exceeded.load(std::memory_order_acquire)) {
             killed_for_output = true;
             terminate_process_group(child);
+        } else if (g_cancel_flag != nullptr && *g_cancel_flag != 0) {
+            cancelled = true;
+            terminate_process_group(child);
         } else if (timeout > std::chrono::milliseconds::zero() &&
                    std::chrono::steady_clock::now() - started >= timeout) {
             timed_out = true;
             terminate_process_group(child);
         }
 
-        if (killed_for_output || timed_out) {
+        if (killed_for_output || timed_out || cancelled) {
             for (;;) {
                 const pid_t reaped = waitpid(child, &status, 0);
                 if (reaped == child) break;
@@ -239,6 +250,8 @@ CommandResult run_capture(const std::vector<std::string>& command,
         throw std::runtime_error("child process output exceeded safety limit");
     if (timed_out)
         throw std::runtime_error("child process exceeded execution-time limit");
+    if (cancelled)
+        throw std::runtime_error("child process cancelled");
     return result;
 }
 
