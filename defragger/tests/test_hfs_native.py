@@ -52,7 +52,24 @@ def _empty_leaf_node() -> bytes:
     return bytes(node)
 
 
-def _catalog_leaf_node() -> bytes:
+def _overflow_leaf_node() -> bytes:
+    node = bytearray(512)
+    node[8] = 0xFF
+    _be16(node, 10, 1)
+    start, end = 14, 34
+    _node_record(node, 0, start, end)
+    node[start] = 7  # extent-overflow key length; padded key is 8 bytes
+    node[start + 1] = 0  # data fork
+    _be32(node, start + 2, 16)  # file CNID
+    _be16(node, start + 6, 3)  # first file allocation block after inline extents
+    _be16(node, start + 8, 40)
+    _be16(node, start + 10, 1)
+    _be16(node, start + 12, 50)
+    _be16(node, start + 14, 1)
+    return bytes(node)
+
+
+def _catalog_leaf_node(*, overflow: bool = False) -> bytes:
     node = bytearray(512)
     node[8] = 0xFF
     _be16(node, 10, 1)
@@ -64,7 +81,7 @@ def _catalog_leaf_node() -> bytes:
     data = start + 8
     node[data] = 2  # file record
     _be32(node, data + 20, 16)  # file CNID
-    _be32(node, data + 30, 3 * 512)  # physical data-fork length
+    _be32(node, data + 30, (5 if overflow else 3) * 512)  # physical data-fork length
     _be32(node, data + 40, 0)  # resource-fork length
     for index, block in enumerate((10, 20, 30)):
         _be16(node, data + 74 + index * 4, block)
@@ -72,7 +89,7 @@ def _catalog_leaf_node() -> bytes:
     return bytes(node)
 
 
-def _make_fragmented_hfs(path: Path) -> None:
+def _make_fragmented_hfs(path: Path, *, overflow: bool = False) -> None:
     image = bytearray(128 * 1024)
     mdb = memoryview(image)[1024:1024 + 162]
     _be16(image, 1024, 0x4244)
@@ -81,7 +98,7 @@ def _make_fragmented_hfs(path: Path) -> None:
     _be16(image, 1024 + 18, 200)  # allocation blocks
     _be32(image, 1024 + 20, 512)  # allocation block size
     _be16(image, 1024 + 28, 4)  # first allocation block in 512-byte sectors
-    _be16(image, 1024 + 34, 193)  # free allocation blocks
+    _be16(image, 1024 + 34, 191 if overflow else 193)  # free allocation blocks
     _be32(image, 1024 + 84, 1)  # file count
     _be32(image, 1024 + 88, 0)  # directory count (catalog records only here)
     _be32(image, 1024 + 130, 1024)  # extents-overflow file size
@@ -94,17 +111,22 @@ def _make_fragmented_hfs(path: Path) -> None:
 
     allocation_base = 4 * 512
     image[allocation_base:allocation_base + 512] = _btree_header_node()
-    image[allocation_base + 512:allocation_base + 1024] = _empty_leaf_node()
+    image[allocation_base + 512:allocation_base + 1024] = (
+        _overflow_leaf_node() if overflow else _empty_leaf_node()
+    )
     catalog_base = allocation_base + 2 * 512
     image[catalog_base:catalog_base + 512] = _btree_header_node()
-    image[catalog_base + 512:catalog_base + 1024] = _catalog_leaf_node()
+    image[catalog_base + 512:catalog_base + 1024] = _catalog_leaf_node(
+        overflow=overflow
+    )
 
-    # Mark the two Extents B-tree blocks, two Catalog B-tree blocks and the
-    # three deliberately fragmented payload blocks allocated.
-    for block in (0, 1, 2, 3, 10, 20, 30):
+    # Mark the Extents/Catalog B-tree blocks and deliberately fragmented
+    # payload allocation blocks.
+    payload_blocks = (10, 20, 30, 40, 50) if overflow else (10, 20, 30)
+    for block in (0, 1, 2, 3, *payload_blocks):
         byte = 3 * 512 + block // 8
         image[byte] |= 0x80 >> (block & 7)
-    for ordinal, block in enumerate((10, 20, 30)):
+    for ordinal, block in enumerate(payload_blocks):
         start = allocation_base + block * 512
         image[start:start + 512] = bytes([0x41 + ordinal]) * 512
     path.write_bytes(image)
@@ -142,6 +164,37 @@ def _payload(path: Path) -> bytes:
     data = path.read_bytes()
     base = 4 * 512 + start * 512
     return data[base:base + count * 512]
+
+
+def _all_data_extents(path: Path, *, overflow: bool) -> list[tuple[int, int]]:
+    data = path.read_bytes()
+    allocation_base = 4 * 512
+    catalog_leaf = allocation_base + 3 * 512
+    record = catalog_leaf + 14
+    payload = record + 8
+    extents: list[tuple[int, int]] = []
+    for index in range(3):
+        start, count = struct.unpack_from(">HH", data, payload + 74 + index * 4)
+        if count:
+            extents.append((start, count))
+    if overflow:
+        overflow_leaf = allocation_base + 512
+        record = overflow_leaf + 14
+        for index in range(3):
+            start, count = struct.unpack_from(">HH", data, record + 8 + index * 4)
+            if count:
+                extents.append((start, count))
+    return extents
+
+
+def _logical_payload(path: Path, *, overflow: bool) -> bytes:
+    data = path.read_bytes()
+    allocation_base = 4 * 512
+    chunks: list[bytes] = []
+    for start, count in _all_data_extents(path, overflow=overflow):
+        begin = allocation_base + start * 512
+        chunks.append(data[begin:begin + count * 512])
+    return b"".join(chunks)
 
 
 def _bitmap_used(path: Path, block: int) -> bool:
@@ -222,6 +275,31 @@ def main() -> None:
         assert all(not _bitmap_used(growth, start + count + offset)
                    for offset in range(reserve))
         assert _payload(growth) == original_payload
+
+        overflow = Path(tmp) / "overflow-hfs.img"
+        _make_fragmented_hfs(overflow, overflow=True)
+        overflow_payload = b"".join(bytes([0x41 + index]) * 512 for index in range(5))
+        assert _logical_payload(overflow, overflow=True) == overflow_payload
+        assert _scan(overflow)["fragmented_files"] == 1
+        _mutate(overflow, "defrag")
+        assert _scan(overflow)["fragmented_files"] == 0
+        assert _logical_payload(overflow, overflow=True) == overflow_payload
+        extents = _all_data_extents(overflow, overflow=True)
+        cursor = extents[0][0]
+        for extent_start, extent_count in extents:
+            assert extent_start == cursor
+            cursor += extent_count
+
+        overflow_growth = Path(tmp) / "overflow-growth-hfs.img"
+        _make_fragmented_hfs(overflow_growth, overflow=True)
+        _mutate(overflow_growth, "growth-defrag")
+        assert _scan(overflow_growth)["fragmented_files"] == 0
+        assert _logical_payload(overflow_growth, overflow=True) == overflow_payload
+        extents = _all_data_extents(overflow_growth, overflow=True)
+        end = extents[0][0] + sum(count for _, count in extents)
+        reserve = (sum(count for _, count in extents) * 10 + 99) // 100
+        assert all(not _bitmap_used(overflow_growth, end + offset)
+                   for offset in range(reserve))
 
         recover = Path(tmp) / "recover-hfs.img"
         _make_fragmented_hfs(recover)
