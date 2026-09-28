@@ -15,6 +15,7 @@ This changelog records user-visible, compatibility, architecture and validation 
 - Accept and retain validated older APFS descriptor-ring checkpoint history while preserving strict active-checkpoint identity and fail-closed handling of unsupported object types.
 - Add recursive PFS3 nested user-directory traversal/ownership with cycle detection and qualify nested Defrag/Growth Defrag.
 - Prefer partition/filesystem UUID aliases before generic by-id aliases for block-device recovery identity.
+- Extend bounded exact ZFS analysis with first-party Fletcher2 and SHA-512/256 metadata checksum verification, with real allocation-critical fixture coverage.
 - Keep unsupported complex format states fail-closed rather than weakening the existing transaction/recovery safety model.
 
 ## 1.8.0-219
