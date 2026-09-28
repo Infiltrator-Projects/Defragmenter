@@ -52,6 +52,7 @@ typedef struct {
     uint32_t file_id;
     uint8_t fork_type;
     uint16_t first_file_block;
+    uint64_t data_logical_offset;
     hfs_extent extents[3];
 } hfs_overflow_record;
 
@@ -307,6 +308,9 @@ static int scan_extents_overflow(hfs_volume *volume)
             item.file_id = infiltratr_load_be32(record + 2U);
             item.first_file_block = infiltratr_load_be16(record + 6U);
             data = record + key_skip;
+            item.data_logical_offset =
+                (uint64_t)node_number * HFS_LOGICAL_BLOCK_SIZE +
+                start + key_skip;
             for (j = 0U; j < 3U; ++j) {
                 item.extents[j].start = infiltratr_load_be16(data + j * 4U);
                 item.extents[j].count = infiltratr_load_be16(data + j * 4U + 2U);
