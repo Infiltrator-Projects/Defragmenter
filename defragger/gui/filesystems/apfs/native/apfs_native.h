@@ -42,6 +42,8 @@ int apfs_read_summary(const char *path, ApfsSummary *summary,
 int apfs_analyse(const char *path, ApfsAnalysis *analysis,
                  char *error, size_t error_size);
 void apfs_analysis_free(ApfsAnalysis *analysis);
+int apfs_writer_preflight(const char *path,
+                          char *error, size_t error_size);
 int apfs_build_stage(const char *source, const char *stage,
                      bool growth, unsigned growth_percent,
                      bool live_updates, uint64_t *commit_bytes,
