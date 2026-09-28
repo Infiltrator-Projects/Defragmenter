@@ -63,6 +63,8 @@ int hfsplus_identify(const char *path, uint16_t *signature, uint16_t *version,
 int hfsplus_scan(const char *path, bool writable, HfsPlusVolume *volume, char **error);
 void hfsplus_close(HfsPlusVolume *volume);
 int hfsplus_analyse_json(const char *path, char **error);
+int hfsplus_writer_preflight(const char *path, bool growth,
+                             unsigned growth_percent, char **error);
 int hfsplus_build_stage(const char *source, const char *stage, bool growth,
                         unsigned growth_percent, bool live_updates,
                         uint64_t *commit_bytes, char **error);
