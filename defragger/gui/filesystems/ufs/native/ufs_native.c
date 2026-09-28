@@ -1289,19 +1289,30 @@ static int writer_supported(const UfsInventory *inventory,
     for (size_t index = 0U; index < inventory->file_count && result == 0; ++index) {
         const UfsFileRecord *file = &inventory->files[index];
         if (file->directory || file->size == 0U) continue;
-        if (file->sparse || file->size % summary->block_size != 0U ||
-            file->block_count == 0U) {
+        if (file->sparse || file->block_count == 0U) {
             ufs_error(error, error_size,
-                      "UFS writer requires non-sparse regular files with whole filesystem-block allocation");
+                      "UFS writer requires non-sparse regular files with allocated data");
             result = -1; break;
         }
         for (uint32_t block = 0U; block < file->block_count && result == 0; ++block) {
             const UfsBlockRef *reference =
                 &inventory->blocks[file->first_block + block];
-            if (reference->span_fragments != summary->fragments_per_block ||
-                reference->physical_fragment % summary->fragments_per_block != 0U) {
+            const bool final_block = block + 1U == file->block_count;
+            uint32_t expected_span = summary->fragments_per_block;
+            if (final_block && file->size % summary->block_size != 0U) {
+                expected_span = (uint32_t)(
+                    (file->size % summary->block_size +
+                     summary->fragment_size - 1U) /
+                    summary->fragment_size);
+            }
+            if (reference->span_fragments != expected_span ||
+                reference->span_fragments == 0U ||
+                reference->span_fragments > summary->fragments_per_block ||
+                (reference->span_fragments == summary->fragments_per_block &&
+                 reference->physical_fragment %
+                     summary->fragments_per_block != 0U)) {
                 ufs_error(error, error_size,
-                          "UFS writer requires full-block aligned regular-file data");
+                          "UFS regular-file fragment geometry is invalid for safe relocation");
                 result = -1; break;
             }
             for (uint32_t fragment = 0U;
@@ -1766,10 +1777,32 @@ int ufs_build_stage(const char *source_path, const char *stage_path,
     for (size_t fi = 0U; fi < source.file_count && result == 0; ++fi) {
         UfsFileRecord *file = &source.files[fi];
         if (file->directory || file->block_count == 0U) continue;
-        const uint64_t data_fragments =
-            (uint64_t)file->block_count * source.summary.fragments_per_block;
-        const uint64_t reserve = growth
-            ? (data_fragments * growth_percent + 99U) / 100U : 0U;
+        uint64_t data_fragments = 0U;
+        for (uint32_t b = 0U; b < file->block_count; ++b) {
+            const UfsBlockRef *ref =
+                &source.blocks[file->first_block + b];
+            if (!infiltratr_u64_add_checked(
+                    data_fragments, ref->span_fragments, &data_fragments)) {
+                ufs_error(error, error_size,
+                          "UFS file fragment count overflows");
+                result = -1;
+                break;
+            }
+        }
+        if (result != 0) break;
+        uint64_t reserve = 0U;
+        if (growth) {
+            uint64_t scaled = 0U;
+            if (!infiltratr_u64_multiply_checked(
+                    data_fragments, growth_percent, &scaled) ||
+                !infiltratr_u64_add_checked(scaled, 99U, &scaled)) {
+                ufs_error(error, error_size,
+                          "UFS growth reserve calculation overflows");
+                result = -1;
+                break;
+            }
+            reserve = scaled / 100U;
+        }
         const UfsBlockRef *first = &source.blocks[file->first_block];
         const uint32_t group = (uint32_t)(
             first->physical_fragment / source.summary.fragments_per_group);
@@ -1785,16 +1818,26 @@ int ufs_build_stage(const char *source_path, const char *stage_path,
                 (uint64_t)source.summary.fragment_size;
             const uint64_t to = cursor *
                 (uint64_t)source.summary.fragment_size;
-            const int copied = copy_bytes(source.fd, stage_fd, so, to,
-                source.summary.block_size, error, error_size);
+            const uint64_t copy_bytes64 =
+                (uint64_t)ref->span_fragments *
+                source.summary.fragment_size;
+            if (copy_bytes64 > SIZE_MAX) {
+                ufs_error(error, error_size,
+                          "UFS file fragment span exceeds addressable I/O size");
+                result = -1;
+                break;
+            }
+            const int copied = copy_bytes(
+                source.fd, stage_fd, so, to, copy_bytes64,
+                error, error_size);
             if (copied != 0) { result = copied; break; }
-            for (uint32_t fr = 0U; fr < source.summary.fragments_per_block; ++fr)
+            for (uint32_t fr = 0U; fr < ref->span_fragments; ++fr)
                 bit_set(final_free, cursor + fr, false);
             if (write_daddr_at(stage_fd, &source.summary, ref->pointer_offset,
                                cursor, error, error_size) != 0) {
                 result = -1; break;
             }
-            cursor += source.summary.fragments_per_block;
+            cursor += ref->span_fragments;
         }
         if (result == 0 && live_updates) {
             (void)printf(
