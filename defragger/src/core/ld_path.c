@@ -194,11 +194,11 @@ int ld_path_require_staging_capacity(const char *path, uint64_t payload_bytes,
     }
 
     const uint64_t reserve = payload_bytes / 20U;
-    uint64_t required = 0U;
-    if (!infiltratr_u64_add_checked(payload_bytes, reserve, &required)) {
+    if (payload_bytes > UINT64_MAX - reserve) {
         errno = EOVERFLOW;
         return -1;
     }
+    const uint64_t required = payload_bytes + reserve;
 
     *available_bytes = available;
     *required_bytes = required;
