@@ -20,6 +20,8 @@
 #define ANODE_INDEX_SECTOR 10U
 #define ANODE_BLOCK_SECTOR 12U
 #define ROOT_DIR_SECTOR 14U
+#define CHILD_DIR_SECTOR 16U
+#define CHILD_DATA_SECTOR 120U
 #define TEST_DIR_HEADER 20U
 
 static void put16(uint8_t *p, uint16_t v)
@@ -217,6 +219,57 @@ static void make_image(uint8_t *image, int fragmented)
     make_payload(image, fragmented);
 }
 
+static void make_nested_image(uint8_t *image)
+{
+    make_image(image, 1);
+
+    /* Allocate one more reserved 1 KiB directory block (slot 7 => sector 16). */
+    uint8_t *reserved = image + (ROOT_SECTOR + 1U) * TEST_SECTOR;
+    bitmap_bit(reserved + 12U, 7U, 0);
+    put32(image + ROOT_SECTOR * TEST_SECTOR + 60U, 24U);
+
+    /* Allocate one normal data sector to the nested file. */
+    uint8_t *normal_bitmap = image + BITMAP_SECTOR * TEST_SECTOR;
+    bitmap_bit(normal_bitmap + 12U, CHILD_DATA_SECTOR - FIRST_DATA, 0);
+    put32(image + ROOT_SECTOR * TEST_SECTOR + 68U, 186U);
+
+    uint8_t *anodes = image + ANODE_BLOCK_SECTOR * TEST_SECTOR;
+    put_anode(anodes, 8U, 1U, CHILD_DIR_SECTOR, 0U);
+    put_anode(anodes, 9U, 1U, CHILD_DATA_SECTOR, 0U);
+
+    /* Add a user-directory entry after the existing root file entry. */
+    uint8_t *root_directory = image + ROOT_DIR_SECTOR * TEST_SECTOR;
+    uint8_t *dir_entry = root_directory + TEST_DIR_HEADER + 26U;
+    dir_entry[0] = 26U;
+    dir_entry[1] = UINT8_C(2);
+    put32(dir_entry + 2U, 8U);
+    put32(dir_entry + 6U, 0U);
+    dir_entry[17U] = 3U;
+    memcpy(dir_entry + 18U, "sub", 3U);
+    dir_entry[21U] = 0U;
+    dir_entry[24U] = 0U;
+    dir_entry[26U] = 0U;
+
+    uint8_t *child = image + CHILD_DIR_SECTOR * TEST_SECTOR;
+    memset(child, 0, 1024U);
+    put16(child, UINT16_C(0x4442));
+    put32(child + 4U, UINT32_C(0x01020304));
+    put32(child + 12U, 8U);
+    put32(child + 16U, 5U);
+    uint8_t *file_entry = child + TEST_DIR_HEADER;
+    file_entry[0] = 28U;
+    file_entry[1] = UINT8_C(0xfd);
+    put32(file_entry + 2U, 9U);
+    put32(file_entry + 6U, TEST_SECTOR);
+    file_entry[17U] = 6U;
+    memcpy(file_entry + 18U, "nested", 6U);
+    file_entry[24U] = 0U;
+    file_entry[26U] = 0U;
+    file_entry[28U] = 0U;
+
+    fill_payload(image + CHILD_DATA_SECTOR * TEST_SECTOR, UINT8_C(0xc7));
+}
+
 static int write_image_path(const char *path, const uint8_t *image)
 {
     int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
@@ -267,6 +320,22 @@ static int make_stage_path(char path[64])
     if (close(fd) != 0 || unlink(path) != 0)
         return -1;
     return 0;
+}
+
+static int verify_nested_payload(const char *path, uint32_t sector)
+{
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0)
+        return -1;
+    uint8_t actual[TEST_SECTOR];
+    uint8_t expected[TEST_SECTOR];
+    fill_payload(expected, UINT8_C(0xc7));
+    const int result =
+        pread(fd, actual, sizeof(actual),
+              (off_t)sector * TEST_SECTOR) == (ssize_t)sizeof(actual) &&
+        memcmp(actual, expected, sizeof(actual)) == 0 ? 0 : -1;
+    (void)close(fd);
+    return result;
 }
 
 static int verify_payload(const char *path)
@@ -371,6 +440,44 @@ int main(int argc, char **argv)
         return 7;
     }
     (void)unlink(stage);
+
+    make_nested_image(image);
+    char nested[64];
+    if (save_image(image, nested) != 0) {
+        (void)unlink(source);
+        free(image);
+        return 8;
+    }
+    memset(error, 0, sizeof(error));
+    if (pfs3_analyse(nested, &analysis, NULL, 0U,
+                     error, sizeof(error)) != 0 ||
+        analysis.regular_files != 2U || analysis.directories != 2U ||
+        analysis.fragmented_files != 1U) {
+        (void)fprintf(stderr, "nested PFS3 fixture rejected: %s\n", error);
+        (void)unlink(source);
+        (void)unlink(nested);
+        free(image);
+        return 9;
+    }
+    if (make_stage_path(stage) != 0 ||
+        pfs3_build_stage(nested, stage, false, 10U, false,
+                         &commit_bytes, error, sizeof(error)) != 0 ||
+        pfs3_verify_layout(stage, false, 10U, error, sizeof(error)) != 0 ||
+        pfs3_analyse(stage, &staged, NULL, 0U,
+                     error, sizeof(error)) != 0 ||
+        staged.regular_files != 2U || staged.directories != 2U ||
+        staged.fragmented_files != 0U ||
+        verify_payload(stage) != 0 ||
+        verify_nested_payload(stage, FIRST_DATA + 3U) != 0) {
+        (void)fprintf(stderr, "nested PFS3 Defrag failed: %s\n", error);
+        (void)unlink(source);
+        (void)unlink(nested);
+        (void)unlink(stage);
+        free(image);
+        return 10;
+    }
+    (void)unlink(stage);
+    (void)unlink(nested);
 
     make_image(image, 1);
     put32(image + ROOT_SECTOR * TEST_SECTOR + 4U,
