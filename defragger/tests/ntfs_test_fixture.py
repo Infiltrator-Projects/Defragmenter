@@ -32,6 +32,9 @@ DATA_CLUSTERS = 16
 BLOCKER_LCN = 3800
 FIXED_USER_LCN = 3650
 FIXED_USER_CLUSTERS = 3
+ADS_LCN = 3560
+ADS_SECOND_LCN = 3600
+ADS_CLUSTERS = 4
 MIRROR_CLUSTERS = 4 * RECORD_SIZE // CLUSTER_SIZE
 
 
@@ -56,21 +59,27 @@ def runlist(runs: list[tuple[int, int]]) -> bytes:
 
 
 def nonresident(atype: int, runs: list[tuple[int, int]], data_size: int,
-                mapping_slack: int = 0) -> bytes:
+                mapping_slack: int = 0, name: str = "") -> bytes:
     mapping = runlist(runs)
-    length = (64 + len(mapping) + mapping_slack + 7) & ~7
+    name_bytes = name.encode("utf-16le")
+    run_offset = (64 + len(name_bytes) + 7) & ~7
+    length = (run_offset + len(mapping) + mapping_slack + 7) & ~7
     attr = bytearray(length)
     struct.pack_into("<I", attr, 0, atype)
     struct.pack_into("<I", attr, 4, length)
     attr[8] = 1
+    attr[9] = len(name)
+    if name_bytes:
+        struct.pack_into("<H", attr, 10, 64)
+        attr[64:64 + len(name_bytes)] = name_bytes
     clusters = sum(size for _lcn, size in runs)
     struct.pack_into("<Q", attr, 16, 0)
     struct.pack_into("<Q", attr, 24, clusters - 1)
-    struct.pack_into("<H", attr, 32, 64)
+    struct.pack_into("<H", attr, 32, run_offset)
     struct.pack_into("<Q", attr, 40, clusters * CLUSTER_SIZE)
     struct.pack_into("<Q", attr, 48, data_size)
     struct.pack_into("<Q", attr, 56, data_size)
-    attr[64:64 + len(mapping)] = mapping
+    attr[run_offset:run_offset + len(mapping)] = mapping
     return bytes(attr)
 
 
@@ -120,7 +129,8 @@ def make_image(path: Path, volume_flags: int = 0, high_mftmirr_blocker: bool = F
                fragmented_data: bool = False,
                occupied_tail: bool = False,
                directory_data: bool = False,
-               fixed_attribute_list_stream: bool = False) -> bytes:
+               fixed_attribute_list_stream: bool = False,
+               named_ads: bool = False) -> bytes:
     image = bytearray(TOTAL_CLUSTERS * CLUSTER_SIZE)
     boot = memoryview(image)[:BPS]
     boot[0:3] = b"\xeb\x52\x90"
@@ -149,10 +159,20 @@ def make_image(path: Path, volume_flags: int = 0, high_mftmirr_blocker: bool = F
     data_runs = ([(DATA_LCN, DATA_CLUSTERS // 2),
                   (DATA_LCN + 32, DATA_CLUSTERS // 2)]
                  if fragmented_data else [(DATA_LCN, DATA_CLUSTERS)])
-    records[24] = record(24, [nonresident(
+    user_attrs = [nonresident(
         0x80, data_runs, DATA_CLUSTERS * CLUSTER_SIZE,
         mapping_slack=0,
-    )])
+    )]
+    if named_ads:
+        user_attrs.append(nonresident(
+            0x80,
+            [(ADS_LCN, ADS_CLUSTERS // 2),
+             (ADS_SECOND_LCN, ADS_CLUSTERS // 2)],
+            ADS_CLUSTERS * CLUSTER_SIZE,
+            mapping_slack=32,
+            name="DefragADS",
+        ))
+    records[24] = record(24, user_attrs)
     if fixed_attribute_list_stream:
         # Model the real-world case that revision 90 rejected: a user record
         # has an $ATTRIBUTE_LIST, but its one unnamed $DATA segment is already
@@ -187,6 +207,10 @@ def make_image(path: Path, volume_flags: int = 0, high_mftmirr_blocker: bool = F
     used.add(BITMAP_LCN)
     for lcn, length in data_runs:
         used.update(range(lcn, lcn + length))
+    if named_ads:
+        used.update(range(ADS_LCN, ADS_LCN + ADS_CLUSTERS // 2))
+        used.update(range(ADS_SECOND_LCN,
+                          ADS_SECOND_LCN + ADS_CLUSTERS // 2))
     if fixed_attribute_list_stream:
         used.update(range(FIXED_USER_LCN, FIXED_USER_LCN + FIXED_USER_CLUSTERS))
     if directory_data:
@@ -211,6 +235,17 @@ def make_image(path: Path, volume_flags: int = 0, high_mftmirr_blocker: bool = F
         count = length * CLUSTER_SIZE
         image[lcn * CLUSTER_SIZE:(lcn + length) * CLUSTER_SIZE] = payload[offset:offset + count]
         offset += count
+    if named_ads:
+        ads_payload = bytes((index * 29 + 13) & 0xFF
+                            for index in range(ADS_CLUSTERS * CLUSTER_SIZE))
+        first_bytes = (ADS_CLUSTERS // 2) * CLUSTER_SIZE
+        image[ADS_LCN * CLUSTER_SIZE:
+              ADS_LCN * CLUSTER_SIZE + first_bytes] = ads_payload[:first_bytes]
+        image[ADS_SECOND_LCN * CLUSTER_SIZE:
+              ADS_SECOND_LCN * CLUSTER_SIZE +
+              (ADS_CLUSTERS - ADS_CLUSTERS // 2) * CLUSTER_SIZE] = (
+                  ads_payload[first_bytes:]
+              )
     if directory_data:
         directory_payload = bytes((index * 19 + 7) & 0xFF
                                   for index in range(directory_clusters * CLUSTER_SIZE))
@@ -226,4 +261,7 @@ def make_image(path: Path, volume_flags: int = 0, high_mftmirr_blocker: bool = F
 
 
 
-__all__ = ["make_image"]
+__all__ = [
+    "make_image", "ADS_CLUSTERS", "ADS_LCN", "ADS_SECOND_LCN",
+    "CLUSTER_SIZE",
+]
