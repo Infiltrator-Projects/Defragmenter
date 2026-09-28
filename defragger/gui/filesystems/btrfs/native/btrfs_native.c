@@ -2426,6 +2426,16 @@ int btrfs_verify_layout(const char *path, bool growth,
     return result;
 }
 
+int btrfs_writer_preflight(const char *path,
+                           char *error, size_t error_size)
+{
+    WriterModel model;
+    if (writer_model_load(path, &model, error, error_size) != 0)
+        return -1;
+    writer_model_free(&model);
+    return 0;
+}
+
 int btrfs_build_stage(const char *source_path, const char *stage_path,
                       bool growth, unsigned growth_percent,
                       bool live_updates, uint64_t *commit_bytes,
