@@ -48,6 +48,7 @@
 #define ZFS_DSL_DATASET_BP_OFFSET 128U
 #define ZFS_DSL_DATASET_NUM_CHILDREN_OFFSET 40U
 #define ZFS_CHECKSUM_OFF 2U
+#define ZFS_CHECKSUM_FLETCHER2 6U
 #define ZFS_CHECKSUM_FLETCHER4 7U
 #define ZFS_CHECKSUM_SHA256 8U
 #define ZFS_COMPRESS_OFF 2U
@@ -342,6 +343,24 @@ static void decode_block_pointer(const uint8_t raw[ZFS_BP_SIZE],
     bp->hole = !bp->embedded && first0 == 0U && first1 == 0U;
 }
 
+static bool checksum_fletcher2(const uint8_t *data, size_t length,
+                               LdZfsByteOrder order,
+                               const uint64_t expected[4])
+{
+    if ((length & 15U) != 0U)
+        return false;
+
+    uint64_t a0 = 0U, a1 = 0U, b0 = 0U, b1 = 0U;
+    for (size_t offset = 0U; offset < length; offset += 16U) {
+        a0 += load_u64_order(data + offset, order);
+        a1 += load_u64_order(data + offset + 8U, order);
+        b0 += a0;
+        b1 += a1;
+    }
+    return a0 == expected[0] && a1 == expected[1] &&
+           b0 == expected[2] && b1 == expected[3];
+}
+
 static bool checksum_fletcher4(const uint8_t *data, size_t length,
                                LdZfsByteOrder order,
                                const uint64_t expected[4])
@@ -584,6 +603,7 @@ static int read_block_pointer_data(ZfsContext *context,
         return -1;
     }
     if (bp->checksum != ZFS_CHECKSUM_OFF &&
+        bp->checksum != ZFS_CHECKSUM_FLETCHER2 &&
         bp->checksum != ZFS_CHECKSUM_FLETCHER4 &&
         bp->checksum != ZFS_CHECKSUM_SHA256) {
         errno = ENOTSUP;
@@ -641,7 +661,11 @@ static int read_block_pointer_data(ZfsContext *context,
             continue;
         }
         bool checksum_ok = true;
-        if (bp->checksum == ZFS_CHECKSUM_FLETCHER4)
+        if (bp->checksum == ZFS_CHECKSUM_FLETCHER2)
+            checksum_ok = checksum_fletcher2(
+                physical_data, (size_t)bp->psize,
+                bp->data_order, bp->checksum_words);
+        else if (bp->checksum == ZFS_CHECKSUM_FLETCHER4)
             checksum_ok = checksum_fletcher4(
                 physical_data, (size_t)bp->psize,
                 bp->data_order, bp->checksum_words);

@@ -230,6 +230,33 @@ static void put16(uint8_t *data, uint16_t value, int big)
     }
 }
 
+static void fletcher2(const uint8_t *data, size_t length, int big,
+                      uint64_t words[4])
+{
+    CHECK((length & 15U) == 0U);
+    uint64_t a0 = 0U, a1 = 0U, b0 = 0U, b1 = 0U;
+    for (size_t offset = 0U; offset < length; offset += 16U) {
+        uint64_t v0 = 0U, v1 = 0U;
+        for (unsigned byte = 0U; byte < 8U; ++byte) {
+            if (big) {
+                v0 = (v0 << 8U) | data[offset + byte];
+                v1 = (v1 << 8U) | data[offset + 8U + byte];
+            } else {
+                v0 |= (uint64_t)data[offset + byte] << (byte * 8U);
+                v1 |= (uint64_t)data[offset + 8U + byte] << (byte * 8U);
+            }
+        }
+        a0 += v0;
+        a1 += v1;
+        b0 += a0;
+        b1 += a1;
+    }
+    words[0] = a0;
+    words[1] = a1;
+    words[2] = b0;
+    words[3] = b1;
+}
+
 static void fletcher4(const uint8_t *data, size_t length, int big,
                       uint64_t words[4])
 {
@@ -259,8 +286,10 @@ static void fletcher4(const uint8_t *data, size_t length, int big,
     words[3] = d;
 }
 
-static void encode_bp(uint8_t bp[128], int big, uint64_t logical_offset,
-                      uint32_t type, const uint8_t *data, size_t data_size)
+static void encode_bp_checksum(uint8_t bp[128], int big,
+                               uint64_t logical_offset, uint32_t type,
+                               uint32_t checksum_type,
+                               const uint8_t *data, size_t data_size)
 {
     CHECK(data_size != 0U && (data_size % 512U) == 0U);
     memset(bp, 0, 128U);
@@ -272,7 +301,7 @@ static void encode_bp(uint8_t bp[128], int big, uint64_t logical_offset,
         (sectors - 1U) |
         ((sectors - 1U) << 16U) |
         (UINT64_C(2) << 32U) |
-        (UINT64_C(7) << 40U) |
+        ((uint64_t)checksum_type << 40U) |
         ((uint64_t)type << 48U) |
         (big ? 0U : (UINT64_C(1) << 63U));
     put64(bp + 0U, word0);
@@ -280,9 +309,20 @@ static void encode_bp(uint8_t bp[128], int big, uint64_t logical_offset,
     put64(bp + 48U, prop);
     put64(bp + 80U, 10U);
     uint64_t checksum[4];
-    fletcher4(data, data_size, big, checksum);
+    if (checksum_type == 6U)
+        fletcher2(data, data_size, big, checksum);
+    else {
+        CHECK(checksum_type == 7U);
+        fletcher4(data, data_size, big, checksum);
+    }
     for (size_t index = 0U; index < 4U; ++index)
         put64(bp + 96U + index * 8U, checksum[index]);
+}
+
+static void encode_bp(uint8_t bp[128], int big, uint64_t logical_offset,
+                      uint32_t type, const uint8_t *data, size_t data_size)
+{
+    encode_bp_checksum(bp, big, logical_offset, type, 7U, data, data_size);
 }
 
 static void make_dnode(uint8_t dnode[512], int big, uint8_t type,
@@ -337,8 +377,8 @@ static void write_exact_fixture(int fd, int log_spacemap)
               (off_t)(VDEV_DATA_START + SPACE_MAP_LOGICAL_OFFSET));
 
     uint8_t space_map_bp[128];
-    encode_bp(space_map_bp, 0, SPACE_MAP_LOGICAL_OFFSET, 8U,
-              space_map_data, sizeof(space_map_data));
+    encode_bp_checksum(space_map_bp, 0, SPACE_MAP_LOGICAL_OFFSET, 8U, 6U,
+                       space_map_data, sizeof(space_map_data));
 
     uint8_t metaslab_array_data[4096];
     memset(metaslab_array_data, 0, sizeof(metaslab_array_data));
