@@ -7,7 +7,7 @@
 
 #include <errno.h>
 #include <inttypes.h>
-#include <openssl/sha.h>
+#include <openssl/evp.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -398,18 +398,22 @@ static int copy_workspace_runs(int fd, sqlite3 *db,
 
 static int workspace_digest(int fd, sqlite3 *db, uint32_t block_size,
                             bool use_workspace,
-                            uint8_t output[SHA256_DIGEST_LENGTH], char **error) {
+                            uint8_t output[EXT_SHA256_BYTES], char **error) {
     sqlite3_stmt *stmt = NULL;
     if (sqlite3_prepare_v2(db,
             "SELECT original,slot FROM direct_workspace ORDER BY original",
             -1, &stmt, NULL) != SQLITE_OK)
         return workspace_sql_error(db, error, "preparing EXT workspace checksum");
-    SHA256_CTX digest;
-    if (SHA256_Init(&digest) != 1) {
+
+    EVP_MD_CTX *digest = EVP_MD_CTX_new();
+    if (digest == NULL ||
+        EVP_DigestInit_ex(digest, EVP_sha256(), NULL) != 1) {
+        EVP_MD_CTX_free(digest);
         sqlite3_finalize(stmt);
         ext_set_error(error, "initializing EXT workspace checksum failed");
         return -1;
     }
+
     uint8_t *buffer = ld_xmalloc(block_size);
     int state;
     while ((state = sqlite3_step(stmt)) == SQLITE_ROW) {
@@ -421,25 +425,34 @@ static int workspace_digest(int fd, sqlite3 *db, uint32_t block_size,
         if (got < 0 || (size_t)got != block_size) {
             free(buffer);
             sqlite3_finalize(stmt);
+            EVP_MD_CTX_free(digest);
             ext_set_error(error, "short read while checksumming the EXT workspace");
             return -1;
         }
         uint8_t identity[8];
         for (unsigned byte = 0; byte < 8U; ++byte)
             identity[byte] = (uint8_t)(original >> (byte * 8U));
-        if (SHA256_Update(&digest, identity, sizeof(identity)) != 1 ||
-            SHA256_Update(&digest, buffer, block_size) != 1) {
+        if (EVP_DigestUpdate(digest, identity, sizeof(identity)) != 1 ||
+            EVP_DigestUpdate(digest, buffer, block_size) != 1) {
             free(buffer);
             sqlite3_finalize(stmt);
+            EVP_MD_CTX_free(digest);
             ext_set_error(error, "updating EXT workspace checksum failed");
             return -1;
         }
     }
     free(buffer);
     sqlite3_finalize(stmt);
-    if (state != SQLITE_DONE || SHA256_Final(output, &digest) != 1) {
-        if (state != SQLITE_DONE)
-            return workspace_sql_error(db, error, "reading EXT workspace checksum map");
+    if (state != SQLITE_DONE) {
+        EVP_MD_CTX_free(digest);
+        return workspace_sql_error(db, error, "reading EXT workspace checksum map");
+    }
+
+    unsigned int digest_length = 0U;
+    const int finalised =
+        EVP_DigestFinal_ex(digest, output, &digest_length);
+    EVP_MD_CTX_free(digest);
+    if (finalised != 1 || digest_length != EXT_SHA256_BYTES) {
         ext_set_error(error, "finalizing EXT workspace checksum failed");
         return -1;
     }
@@ -447,14 +460,14 @@ static int workspace_digest(int fd, sqlite3 *db, uint32_t block_size,
 }
 
 static int store_workspace_digest(sqlite3 *db,
-                                  const uint8_t digest[SHA256_DIGEST_LENGTH],
+                                  const uint8_t digest[EXT_SHA256_BYTES],
                                   char **error) {
     sqlite3_stmt *stmt = NULL;
     if (sqlite3_prepare_v2(db,
             "INSERT OR REPLACE INTO direct_state(key,value) VALUES ('workspace_sha256',?)",
             -1, &stmt, NULL) != SQLITE_OK)
         return workspace_sql_error(db, error, "preparing EXT workspace checksum state");
-    sqlite3_bind_blob(stmt, 1, digest, SHA256_DIGEST_LENGTH, SQLITE_TRANSIENT);
+    sqlite3_bind_blob(stmt, 1, digest, EXT_SHA256_BYTES, SQLITE_TRANSIENT);
     if (sqlite3_step(stmt) != SQLITE_DONE) {
         sqlite3_finalize(stmt);
         return workspace_sql_error(db, error, "recording EXT workspace checksum");
@@ -471,15 +484,15 @@ static int verify_stored_workspace_digest(int fd, sqlite3 *db,
             -1, &stmt, NULL) != SQLITE_OK)
         return workspace_sql_error(db, error, "preparing EXT workspace checksum recovery");
     if (sqlite3_step(stmt) != SQLITE_ROW ||
-        sqlite3_column_bytes(stmt, 0) != SHA256_DIGEST_LENGTH) {
+        sqlite3_column_bytes(stmt, 0) != EXT_SHA256_BYTES) {
         sqlite3_finalize(stmt);
         ext_set_error(error, "EXT workspace recovery checksum is missing");
         return -1;
     }
-    uint8_t expected[SHA256_DIGEST_LENGTH];
+    uint8_t expected[EXT_SHA256_BYTES];
     memcpy(expected, sqlite3_column_blob(stmt, 0), sizeof(expected));
     sqlite3_finalize(stmt);
-    uint8_t actual[SHA256_DIGEST_LENGTH];
+    uint8_t actual[EXT_SHA256_BYTES];
     if (workspace_digest(fd, db, block_size, true, actual, error) != 0)
         return -1;
     if (memcmp(expected, actual, sizeof(expected)) != 0) {
@@ -494,8 +507,8 @@ int ext_workspace_stage(int fd, sqlite3 *db, const ExtWorkspace *workspace,
     int result = copy_workspace_runs(fd, db, workspace, false, true,
                                      "workspace staging", error);
     if (result != 0) return result;
-    uint8_t original[SHA256_DIGEST_LENGTH];
-    uint8_t staged[SHA256_DIGEST_LENGTH];
+    uint8_t original[EXT_SHA256_BYTES];
+    uint8_t staged[EXT_SHA256_BYTES];
     if (workspace_digest(fd, db, workspace->block_size, false, original, error) != 0 ||
         workspace_digest(fd, db, workspace->block_size, true, staged, error) != 0)
         return -1;
