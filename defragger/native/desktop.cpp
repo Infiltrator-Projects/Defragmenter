@@ -432,6 +432,14 @@ public:
         }
         if (helper_input_) g_object_unref(helper_input_);
         if (local_) g_object_unref(local_);
+        if (discovery_) {
+            g_subprocess_force_exit(discovery_);
+            g_object_unref(discovery_);
+        }
+        if (probe_) {
+            g_subprocess_force_exit(probe_);
+            g_object_unref(probe_);
+        }
     }
 
 private:
@@ -449,8 +457,12 @@ private:
     Json map_data_;
     GSubprocess* helper_ = nullptr;
     GSubprocess* local_ = nullptr;
+    GSubprocess* discovery_ = nullptr;
+    GSubprocess* probe_ = nullptr;
     GDataInputStream* helper_input_ = nullptr;
+    std::string refresh_selected_path_, pending_image_path_;
     bool helper_ready_ = false, busy_ = false, stopping_ = false, closing_ = false;
+    bool discovering_ = false, probing_ = false;
     int request_id_ = 0, active_id_ = 0;
     guint auth_timer_ = 0;
 
@@ -484,6 +496,12 @@ private:
             self->closing_ = true;
             self->request_stop();
             self->note("Waiting for the active operation to finish its journalled transaction before closing.");
+            return TRUE;
+        }
+        if (self->discovering_ || self->probing_) {
+            self->closing_ = true;
+            if (self->discovery_) g_subprocess_force_exit(self->discovery_);
+            if (self->probe_) g_subprocess_force_exit(self->probe_);
             return TRUE;
         }
         gtk_main_quit();
@@ -552,67 +570,217 @@ private:
         gtk_widget_set_sensitive(growth_, state.growth_defrag);
         gtk_widget_set_sensitive(recover_, state.recover);
         gtk_widget_set_sensitive(stop_, state.stop);
-        gtk_widget_set_sensitive(refresh_, !busy_);
-        gtk_widget_set_sensitive(image_, !busy_);
-        gtk_widget_set_sensitive(volumes_widget_, !busy_);
+        const bool idle_selection = !busy_ && !discovering_ && !probing_;
+        gtk_widget_set_sensitive(refresh_, idle_selection);
+        gtk_widget_set_sensitive(image_, idle_selection);
+        gtk_widget_set_sensitive(volumes_widget_, idle_selection);
     }
+    void maybe_finish_close() {
+        if (closing_ && !busy_ && !discovering_ && !probing_)
+            gtk_widget_destroy(window_);
+    }
+
     void refresh() {
-        if (busy_) return;
-        std::string selected_path = current() ? current()->path : "";
-        std::vector<DesktopVolume> images;
-        for (const auto& v : volumes_) if (v.image) images.push_back(v);
-        try {
-            auto result = defragger::run_capture(
-                {"lsblk", "--json", "--bytes", "--output",
-                 "NAME,PATH,TYPE,FSTYPE,FSVER,LABEL,PARTLABEL,UUID,PARTUUID,SIZE,MOUNTPOINTS,RM,RO,MODEL,TRAN"},
-                4U * 1024U * 1024U, std::chrono::seconds(5));
-            if (result.return_code != 0) throw std::runtime_error(result.standard_error);
-            volumes_ = defragger::desktop_discover(Json::parse(result.standard_output));
-            volumes_.insert(volumes_.end(), images.begin(), images.end());
-            gtk_combo_box_text_remove_all(GTK_COMBO_BOX_TEXT(volumes_widget_));
-            int preferred = 0;
-            for (size_t i = 0; i < volumes_.size(); ++i) {
-                const auto& v = volumes_[i];
-                std::string label = v.path + " — " + v.filesystem + " — " + bytes(v.size);
-                gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(volumes_widget_), label.c_str());
-                if (v.path == selected_path) preferred = static_cast<int>(i);
-            }
-            if (!volumes_.empty()) gtk_combo_box_set_active(GTK_COMBO_BOX(volumes_widget_), preferred);
-            else gtk_label_set_text(GTK_LABEL(detail_), "No supported volumes found. Open a filesystem image to begin.");
-            update();
-        } catch (const std::exception& ex) { error("Unable to discover volumes", ex.what()); }
-    }
-    void open_image() {
-        auto* chooser = gtk_file_chooser_dialog_new("Open filesystem image", GTK_WINDOW(window_),
-            GTK_FILE_CHOOSER_ACTION_OPEN, "Cancel", GTK_RESPONSE_CANCEL, "Open", GTK_RESPONSE_ACCEPT, nullptr);
-        if (gtk_dialog_run(GTK_DIALOG(chooser)) == GTK_RESPONSE_ACCEPT) {
-            char* name = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(chooser));
-            try {
-                fs::path path = fs::canonical(name);
-                if (!fs::is_regular_file(path)) throw std::runtime_error("Select a regular filesystem image.");
-                auto result = defragger::run_capture(
-                    {mapper_, path.string(), "--probe"},
-                    4U * 1024U * 1024U, std::chrono::seconds(5));
-                if (result.return_code != 0) throw std::runtime_error("Native filesystem probe failed: " + result.standard_error);
-                Json probe = Json::parse(result.standard_output);
-                DesktopVolume v;
-                v.path = path.string();
-                v.filesystem = field(probe, "filesystem");
-                if (!defragger::backend_by_fstype(v.filesystem)) throw std::runtime_error("Unsupported filesystem image.");
-                v.size = fs::file_size(path);
-                v.readonly = access(v.path.c_str(), W_OK) != 0;
-                v.image = v.verified = true;
-                volumes_.push_back(v);
-                gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(volumes_widget_),
-                    (v.path + " — " + v.filesystem + " — " + bytes(v.size)).c_str());
-                gtk_combo_box_set_active(GTK_COMBO_BOX(volumes_widget_), static_cast<int>(volumes_.size() - 1));
-                cells_.clear();
-                gtk_widget_queue_draw(map_);
-            } catch (const std::exception& ex) { error("Unable to open image", ex.what()); }
-            g_free(name);
+        if (busy_ || discovering_ || probing_) return;
+        refresh_selected_path_ = current() ? current()->path : "";
+        const char* argv[] = {
+            "lsblk", "--json", "--bytes", "--output",
+            "NAME,PATH,TYPE,FSTYPE,FSVER,LABEL,PARTLABEL,UUID,PARTUUID,SIZE,MOUNTPOINTS,RM,RO,MODEL,TRAN",
+            nullptr
+        };
+        GError* failure = nullptr;
+        discovery_ = g_subprocess_newv(
+            argv,
+            static_cast<GSubprocessFlags>(
+                G_SUBPROCESS_FLAGS_STDOUT_PIPE |
+                G_SUBPROCESS_FLAGS_STDERR_PIPE),
+            &failure);
+        if (!discovery_) {
+            std::string detail =
+                failure ? failure->message : "unable to start lsblk";
+            if (failure) g_error_free(failure);
+            error("Unable to discover volumes", detail);
+            return;
         }
-        gtk_widget_destroy(chooser);
+        discovering_ = true;
+        update();
+        g_subprocess_communicate_utf8_async(
+            discovery_, nullptr, nullptr,
+            [](GObject* source, GAsyncResult* result, gpointer data) {
+                auto* self = static_cast<Desktop*>(data);
+                gchar* out = nullptr;
+                gchar* err = nullptr;
+                GError* failure = nullptr;
+                const bool received = g_subprocess_communicate_utf8_finish(
+                    G_SUBPROCESS(source), result, &out, &err, &failure);
+                const int code =
+                    received &&
+                    g_subprocess_get_if_exited(self->discovery_)
+                    ? g_subprocess_get_exit_status(self->discovery_)
+                    : 127;
+                std::string detail =
+                    failure ? failure->message : (err ? err : "");
+                try {
+                    if (code != 0)
+                        throw std::runtime_error(
+                            detail.empty() ? "lsblk failed" : detail);
+                    std::vector<DesktopVolume> images;
+                    for (const auto& volume : self->volumes_)
+                        if (volume.image) images.push_back(volume);
+                    auto discovered = defragger::desktop_discover(
+                        Json::parse(out ? out : ""));
+                    discovered.insert(discovered.end(),
+                                      images.begin(), images.end());
+                    self->volumes_ = std::move(discovered);
+                    gtk_combo_box_text_remove_all(
+                        GTK_COMBO_BOX_TEXT(self->volumes_widget_));
+                    int preferred = 0;
+                    for (size_t i = 0; i < self->volumes_.size(); ++i) {
+                        const auto& volume = self->volumes_[i];
+                        const std::string label =
+                            volume.path + " — " + volume.filesystem +
+                            " — " + bytes(volume.size);
+                        gtk_combo_box_text_append_text(
+                            GTK_COMBO_BOX_TEXT(self->volumes_widget_),
+                            label.c_str());
+                        if (volume.path == self->refresh_selected_path_)
+                            preferred = static_cast<int>(i);
+                    }
+                    if (!self->volumes_.empty())
+                        gtk_combo_box_set_active(
+                            GTK_COMBO_BOX(self->volumes_widget_), preferred);
+                    else
+                        gtk_label_set_text(
+                            GTK_LABEL(self->detail_),
+                            "No supported volumes found. Open a filesystem image to begin.");
+                } catch (const std::exception& ex) {
+                    if (!self->closing_)
+                        self->error("Unable to discover volumes", ex.what());
+                }
+                if (failure) g_error_free(failure);
+                g_free(out);
+                g_free(err);
+                g_object_unref(self->discovery_);
+                self->discovery_ = nullptr;
+                self->discovering_ = false;
+                self->update();
+                self->maybe_finish_close();
+            }, this);
     }
+
+    void open_image() {
+        if (busy_ || discovering_ || probing_) return;
+        auto* chooser = gtk_file_chooser_dialog_new(
+            "Open filesystem image", GTK_WINDOW(window_),
+            GTK_FILE_CHOOSER_ACTION_OPEN,
+            "Cancel", GTK_RESPONSE_CANCEL,
+            "Open", GTK_RESPONSE_ACCEPT, nullptr);
+        if (gtk_dialog_run(GTK_DIALOG(chooser)) != GTK_RESPONSE_ACCEPT) {
+            gtk_widget_destroy(chooser);
+            return;
+        }
+        char* name =
+            gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(chooser));
+        gtk_widget_destroy(chooser);
+        try {
+            fs::path path = fs::canonical(name);
+            g_free(name);
+            name = nullptr;
+            if (!fs::is_regular_file(path))
+                throw std::runtime_error(
+                    "Select a regular filesystem image.");
+            pending_image_path_ = path.string();
+        } catch (const std::exception& ex) {
+            if (name) g_free(name);
+            error("Unable to open image", ex.what());
+            return;
+        }
+
+        const char* argv[] = {
+            mapper_.c_str(), pending_image_path_.c_str(), "--probe", nullptr
+        };
+        GError* failure = nullptr;
+        probe_ = g_subprocess_newv(
+            argv,
+            static_cast<GSubprocessFlags>(
+                G_SUBPROCESS_FLAGS_STDOUT_PIPE |
+                G_SUBPROCESS_FLAGS_STDERR_PIPE),
+            &failure);
+        if (!probe_) {
+            const std::string detail =
+                failure ? failure->message : "unable to start native probe";
+            if (failure) g_error_free(failure);
+            error("Unable to open image", detail);
+            pending_image_path_.clear();
+            return;
+        }
+        probing_ = true;
+        update();
+        g_subprocess_communicate_utf8_async(
+            probe_, nullptr, nullptr,
+            [](GObject* source, GAsyncResult* result, gpointer data) {
+                auto* self = static_cast<Desktop*>(data);
+                gchar* out = nullptr;
+                gchar* err = nullptr;
+                GError* failure = nullptr;
+                const bool received = g_subprocess_communicate_utf8_finish(
+                    G_SUBPROCESS(source), result, &out, &err, &failure);
+                const int code =
+                    received && g_subprocess_get_if_exited(self->probe_)
+                    ? g_subprocess_get_exit_status(self->probe_)
+                    : 127;
+                std::string detail =
+                    failure ? failure->message : (err ? err : "");
+                try {
+                    if (code != 0)
+                        throw std::runtime_error(
+                            "Native filesystem probe failed: " + detail);
+                    Json probe_data = Json::parse(out ? out : "");
+                    DesktopVolume volume;
+                    volume.path = self->pending_image_path_;
+                    volume.filesystem = field(probe_data, "filesystem");
+                    if (!defragger::backend_by_fstype(volume.filesystem))
+                        throw std::runtime_error(
+                            "Unsupported filesystem image.");
+                    std::error_code size_error;
+                    volume.size =
+                        fs::file_size(volume.path, size_error);
+                    if (size_error)
+                        throw std::runtime_error(
+                            "Filesystem image changed during probing");
+                    volume.readonly =
+                        access(volume.path.c_str(), W_OK) != 0;
+                    volume.image = true;
+                    volume.verified = true;
+                    self->volumes_.push_back(volume);
+                    const std::string label =
+                        volume.path + " — " + volume.filesystem +
+                        " — " + bytes(volume.size);
+                    gtk_combo_box_text_append_text(
+                        GTK_COMBO_BOX_TEXT(self->volumes_widget_),
+                        label.c_str());
+                    gtk_combo_box_set_active(
+                        GTK_COMBO_BOX(self->volumes_widget_),
+                        static_cast<int>(self->volumes_.size() - 1U));
+                    self->cells_.clear();
+                    self->map_data_ = Json();
+                    gtk_widget_queue_draw(self->map_);
+                } catch (const std::exception& ex) {
+                    if (!self->closing_)
+                        self->error("Unable to open image", ex.what());
+                }
+                if (failure) g_error_free(failure);
+                g_free(out);
+                g_free(err);
+                g_object_unref(self->probe_);
+                self->probe_ = nullptr;
+                self->probing_ = false;
+                self->pending_image_path_.clear();
+                self->update();
+                self->maybe_finish_close();
+            }, this);
+    }
+
     void action(const std::string& action_name) {
         if (action_name == "minimize") { gtk_window_iconify(GTK_WINDOW(window_)); return; }
         if (action_name == "maximize") {
