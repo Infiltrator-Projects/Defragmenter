@@ -904,6 +904,70 @@ uint32_t ext_fs_incompat(const ExtFs *fs) { return fs->incompat; }
 uint32_t ext_fs_ro_compat(const ExtFs *fs) { return fs->ro_compat; }
 const uint8_t *ext_fs_uuid(const ExtFs *fs) { return fs->uuid; }
 
+int ext_fs_foreach_block_run(ExtFs *fs, ExtBlockRunVisitor visitor,
+                             void *context, char **error)
+{
+    if (fs == NULL || visitor == NULL) {
+        set_error(error, "invalid EXT allocation-run request");
+        return -1;
+    }
+
+    bool have_run = false;
+    bool run_allocated = false;
+    uint64_t run_start = 0U;
+    uint64_t run_end = 0U;
+
+    for (uint32_t group = 0U; group < fs->group_count; ++group) {
+        if (load_block_bitmap(fs, group, error) != 0)
+            return -1;
+
+        const uint64_t first = group_first_block(fs, group);
+        const uint64_t end = group_last_block_exclusive(fs, group);
+        const uint64_t bits = end > first ? end - first : 0U;
+        uint64_t bit = 0U;
+
+        while (bit < bits) {
+            bool allocated = bit_test(fs->block_bitmap, bit);
+            uint64_t span = 1U;
+
+            if ((bit & 7U) == 0U && bits - bit >= 8U) {
+                const uint8_t byte = fs->block_bitmap[bit >> 3U];
+                if (byte == 0U || byte == UINT8_MAX) {
+                    allocated = byte == UINT8_MAX;
+                    span = 8U;
+                    while (bit + span + 8U <= bits &&
+                           fs->block_bitmap[(bit + span) >> 3U] == byte) {
+                        span += 8U;
+                    }
+                }
+            }
+
+            const uint64_t start = first + bit;
+            const uint64_t finish = start + span;
+            if (have_run && allocated == run_allocated &&
+                start == run_end) {
+                run_end = finish;
+            } else {
+                if (have_run &&
+                    visitor(run_start, run_end - run_start, run_allocated,
+                            context, error) != 0)
+                    return -1;
+                have_run = true;
+                run_allocated = allocated;
+                run_start = start;
+                run_end = finish;
+            }
+            bit += span;
+        }
+    }
+
+    if (have_run &&
+        visitor(run_start, run_end - run_start, run_allocated,
+                context, error) != 0)
+        return -1;
+    return 0;
+}
+
 int ext_fs_block_allocated(ExtFs *fs, uint64_t block, bool *allocated,
                            char **error)
 {
