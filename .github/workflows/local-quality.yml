@@ -46,7 +46,7 @@ jobs:
         shell: bash
         run: |
           set -u
-          commands=(cmake cc c++ make dpkg-deb pkg-config zip unzip python3 makefs udisksctl pkexec)
+          commands=(cmake cc c++ make dpkg-deb pkg-config zip unzip python3 makefs udisksctl pkexec xvfb-run)
           missing=()
           for command_name in "${commands[@]}"; do
             command -v "$command_name" >/dev/null 2>&1 || missing+=("$command_name")
@@ -80,6 +80,19 @@ jobs:
             -DLD_ENABLE_WERROR=ON \
             -DBUILD_TESTING=ON
           cmake --build build-local -j2
+      - name: Smoke-test the shipped native GTK desktop under Xvfb
+        if: steps.local-deps.outputs.available == 'true'
+        run: |
+          set +e
+          xvfb-run -a timeout --signal=TERM 5s ./build-local/linux-defragger-desktop             >native-desktop-smoke.log 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 124 ] && [ "$status" -ne 143 ]; then
+            cat native-desktop-smoke.log >&2
+            printf 'Native GTK desktop exited unexpectedly with status %s\n' "$status" >&2
+            exit 1
+          fi
+
       - name: Run local native, filesystem and GUI tests
         if: steps.local-deps.outputs.available == 'true'
         env:
