@@ -1454,6 +1454,7 @@ static int writer_validate_checkpoint_ring(ApfsWriterModel *model,
                   "out of memory validating APFS checkpoint ring");
         return -1;
     }
+    const uint64_t active_xid = obj_xid(model->nx);
     for (uint32_t position = 0U;
          position < model->desc_blocks; ++position) {
         if (writer_ring_position_active(position, model->desc_index,
@@ -1466,10 +1467,34 @@ static int writer_validate_checkpoint_ring(ApfsWriterModel *model,
             free(raw);
             return -1;
         }
-        if (!writer_block_is_zero(raw, model->reader.block_size)) {
+        if (writer_block_is_zero(raw, model->reader.block_size))
+            continue;
+
+        if (!checksum_valid(raw, model->reader.block_size) ||
+            obj_xid(raw) >= active_xid) {
             free(raw);
             set_error(error, error_size,
-                      "APFS writer refuses a descriptor ring containing older checkpoint objects");
+                      "APFS descriptor ring contains invalid or non-older checkpoint state");
+            return -1;
+        }
+        const uint32_t type = obj_type(raw) & APFS_OBJ_TYPE_MASK;
+        if (type == APFS_OBJECT_TYPE_NX_SUPERBLOCK) {
+            if (memcmp(raw + APFS_NX_MAGIC_OFFSET, "NXSB", 4U) != 0 ||
+                infiltratr_load_le32(raw + APFS_NX_BLOCK_SIZE_OFFSET) !=
+                    model->reader.block_size ||
+                infiltratr_load_le64(raw + APFS_NX_BLOCK_COUNT_OFFSET) !=
+                    model->reader.block_count ||
+                memcmp(raw + APFS_NX_UUID_OFFSET,
+                       model->nx + APFS_NX_UUID_OFFSET, 16U) != 0) {
+                free(raw);
+                set_error(error, error_size,
+                          "APFS older checkpoint NX object has incompatible container identity");
+                return -1;
+            }
+        } else if (type != APFS_OBJECT_TYPE_CHECKPOINT_MAP) {
+            free(raw);
+            set_error(error, error_size,
+                      "APFS descriptor ring contains an unsupported historical object type");
             return -1;
         }
     }
@@ -1483,7 +1508,7 @@ static int writer_validate_checkpoint_ring(ApfsWriterModel *model,
     free(raw);
     if (!same) {
         set_error(error, error_size,
-                  "APFS writer requires block-zero and active NX superblocks to describe the same sole checkpoint");
+                  "APFS writer requires block-zero and active NX superblocks to describe the same active checkpoint");
         return -1;
     }
     return 0;
