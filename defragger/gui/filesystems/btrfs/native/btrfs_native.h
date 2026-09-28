@@ -43,6 +43,8 @@ bool btrfs_probe(const char *path);
 int btrfs_analyse(const char *path, BtrfsAnalysis *analysis,
                   char *error, size_t error_size);
 void btrfs_analysis_free(BtrfsAnalysis *analysis);
+int btrfs_writer_preflight(const char *path,
+                           char *error, size_t error_size);
 int btrfs_build_stage(const char *source, const char *stage, bool growth,
                       unsigned growth_percent, bool live_updates,
                       uint64_t *commit_bytes, char *error, size_t error_size);
