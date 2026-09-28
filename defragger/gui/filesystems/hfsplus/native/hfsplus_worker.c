@@ -628,6 +628,21 @@ int main(int argc, char **argv) {
         return 0;
     }
 
+    if (argc == 3 &&
+        (strcmp(mode, "preflight-defrag") == 0 ||
+         strcmp(mode, "preflight-growth") == 0)) {
+        const bool preflight_growth =
+            strcmp(mode, "preflight-growth") == 0;
+        const int rc = hfsplus_writer_preflight(
+            device, preflight_growth, 10U, &error);
+        if (rc != 0)
+            fprintf(stderr, "%s\n",
+                    error == NULL
+                        ? "HFS+ layout is not writable" : error);
+        free(error);
+        return rc == 0 ? 0 : 1;
+    }
+
     bool growth = strcmp(mode, "growth-defrag") == 0;
     bool defrag = strcmp(mode, "defrag") == 0;
     bool recover = strcmp(mode, "recover") == 0;
