@@ -350,6 +350,17 @@ static int check_unchanged_target(const char *device, const XfsJournal *state,
     return 0;
 }
 
+static int writer_preflight(const char *path, char **error) {
+    XfsCatalogue catalogue;
+    memset(&catalogue, 0, sizeof(catalogue));
+    if (xfs_scan_catalogue(path, true, &catalogue, error) != 0)
+        return -1;
+    const int result =
+        xfs_validate_writer_support(&catalogue, error);
+    xfs_catalogue_free(&catalogue);
+    return result;
+}
+
 static uint64_t commit_range_bytes(const XfsCatalogue *catalogue) {
     uint64_t total = 0U;
     for (size_t index = 0; index < catalogue->used_ranges.count; ++index) {
@@ -718,6 +729,16 @@ int main(int argc, char **argv) {
         char *error = NULL;
         int result = xfs_emit_analysis_json(device, &error);
         if (result != 0) fprintf(stderr, "%s: %s\n", PROGRAM_NAME, error == NULL ? "XFS analysis failed" : error);
+        xfs_clear_error(&error);
+        return result == 0 ? 0 : 1;
+    }
+    if (strcmp(operation, "preflight-defrag") == 0 ||
+        strcmp(operation, "preflight-growth") == 0) {
+        char *error = NULL;
+        const int result = writer_preflight(device, &error);
+        if (result != 0)
+            fprintf(stderr, "%s: %s\n", PROGRAM_NAME,
+                    error == NULL ? "XFS layout is not writable" : error);
         xfs_clear_error(&error);
         return result == 0 ? 0 : 1;
     }
