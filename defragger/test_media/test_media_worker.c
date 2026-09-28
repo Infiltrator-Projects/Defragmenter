@@ -2259,6 +2259,17 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device,
               stderr);
         return 2;
     }
+    /*
+     * The earlier system-storage test deliberately permits ordinary desktop
+     * /media mounts so this worker can unmount them itself.  Recheck the full
+     * related-device mount/swap topology after that unmount and immediately
+     * before the destructive partition-table write.
+     */
+    if (ld_path_is_mounted(canonical)) {
+        fputs("The selected disk or related storage is still mounted or active; refusing destructive repartitioning.\n",
+              stderr);
+        return 2;
+    }
     if (ldtm_build_sfdisk_script(script, sizeof(script)) != 0) return 2;
     {
         const char *const argv[] = {"sfdisk", "--wipe", "always", "--lock", canonical, NULL};
