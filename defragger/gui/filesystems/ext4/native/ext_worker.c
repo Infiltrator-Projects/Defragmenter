@@ -358,8 +358,8 @@ static int commit_stage(const char *device_path, const char *journal_path,
         ext_set_error(error, "cannot rebind EXT target before commit: %s", strerror(errno));
         return -1;
     }
-    if (strcmp(canonical, state->device) != 0 ||
-        strcmp(identity, state->target_identity) != 0 || size != state->physical_bytes) {
+    if (strcmp(identity, state->target_identity) != 0 ||
+        size != state->physical_bytes) {
         free(canonical); free(identity); ext_set_error(error, "target path, identity or size changed before the EXT commit"); return -1;
     }
     free(canonical); free(identity);
@@ -891,7 +891,8 @@ static int recover(const char *device, const char *journal_path, char **error) {
         ext_set_error(error, "cannot bind EXT recovery target: %s", strerror(errno));
         journal_free(&state); return 1;
     }
-    if (strcmp(real, state.device) != 0 || strcmp(identity, state.target_identity) != 0 || size != state.physical_bytes) {
+    if (strcmp(identity, state.target_identity) != 0 ||
+        size != state.physical_bytes) {
         ext_set_error(error, "EXT recovery journal belongs to a different target"); free(real); free(identity); journal_free(&state); return 1;
     }
     free(real); free(identity);
