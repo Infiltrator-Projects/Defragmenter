@@ -491,6 +491,32 @@ static int analyse_json(const char *path, char **error) {
     ext_catalogue_free(&catalogue); return 0;
 }
 
+static int writer_preflight(const char *path, char **error) {
+    ExtGeometry geometry;
+    ExtCatalogue catalogue;
+    ExtFs *fs = NULL;
+    memset(&catalogue, 0, sizeof(catalogue));
+    if (ext_read_geometry(path, &geometry, error) != 0)
+        return -1;
+    if (ext_open_fs(path, false, &fs, error) != 0)
+        return -1;
+    if (ext_validate_writer_support(fs, &geometry, error) != 0) {
+        ext_fs_close(fs);
+        return -1;
+    }
+    ext_fs_close(fs);
+    if (ext_scan_catalogue(path, &geometry, &catalogue, error) != 0)
+        return -1;
+    const bool valid = catalogue.malformed_inodes == 0U;
+    ext_catalogue_free(&catalogue);
+    if (!valid) {
+        ext_set_error(error,
+                      "EXT contains malformed inodes outside the raw writer contract");
+        return -1;
+    }
+    return 0;
+}
+
 static void emit_live_reset(const ExtGeometry *geometry, const ExtCatalogue *catalogue) {
     printf("@@LIVE_RESET {\"unit_size\":%u,\"filesystem_units\":%" PRIu64 ",\"used_ranges\":[",
            geometry->block_size, geometry->total_blocks);
@@ -979,6 +1005,17 @@ int main(int argc, char **argv) {
         char *error = NULL; int result = analyse_json(argv[2], &error);
         if (result != 0) { fprintf(stderr, "%s: %s\n", PROGRAM_NAME, error != NULL ? error : "analysis failed"); free(error); return 1; }
         return 0;
+    }
+    if (argc == 3 &&
+        (strcmp(argv[1], "preflight-defrag") == 0 ||
+         strcmp(argv[1], "preflight-growth") == 0)) {
+        char *error = NULL;
+        const int result = writer_preflight(argv[2], &error);
+        if (result != 0)
+            fprintf(stderr, "%s: %s\n", PROGRAM_NAME,
+                    error != NULL ? error : "EXT layout is not writable");
+        free(error);
+        return result == 0 ? 0 : 1;
     }
     if (argc < 3 || (strcmp(argv[1], "defrag") != 0 && strcmp(argv[1], "growth-defrag") != 0 && strcmp(argv[1], "recover") != 0)) {
         usage(stderr); return 2;
