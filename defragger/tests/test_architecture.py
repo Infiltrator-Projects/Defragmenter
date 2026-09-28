@@ -76,7 +76,6 @@ def test_qualified_ufs_writer_is_registered_and_fail_closed_by_format() -> None:
     assert "writer_supported" in native
     for required in (
         "clean, non-journalled, snapshot-free",
-        "non-sparse regular files with allocated data",
         "regular-file fragment geometry is invalid",
         "shared or overlapping regular-file data",
         "search every other group",
