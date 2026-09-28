@@ -5,9 +5,10 @@
  *
  * The read-only parser remains authoritative in analyser.c.  This worker
  * includes that parser directly so allocation analysis and mutation share one
- * HFS decoder.  Mutation is deliberately fail-closed to regular-file data and
- * resource forks whose complete extent records fit inline in the catalog.
- * Special files and B-tree topology remain fixed.
+ * HFS decoder. Regular-file data/resource forks may span catalog and Extents
+ * Overflow records; relocation preserves those B-tree records and rewrites
+ * their physical extent starts in place. Special-file allocation and B-tree
+ * topology remain fixed.
  */
 
 #define main hfs_readonly_main
@@ -208,7 +209,7 @@ static int parse_inline_fork(const hfs_writer_volume *writer,
         if (extent.count == 0U ||
             (uint32_t)extent.start + extent.count >
                 writer->volume.total_allocation_blocks ||
-            described > required - extent.count) {
+            extent.count > required - described) {
             hfs_set_error(
                 error,
                 "HFS file %u %s fork extent is outside its validated length",
@@ -659,7 +660,7 @@ static int rewrite_file_fork(const hfs_writer_volume *writer, int stage_fd,
             const uint16_t count = fork->extents[extent_index++].count;
             if (count == 0U ||
                 destination + logical > UINT16_MAX ||
-                logical > fork->blocks - count) {
+                count > fork->blocks - logical) {
                 hfs_set_error(
                     error,
                     "HFS overflow extent structure changed during relocation");
