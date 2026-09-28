@@ -184,7 +184,7 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
     css += ".sidebar { background: " + surface +
            "; border-right: 1px solid " + border + "; }\n";
     css += ".sidebar button { background: transparent; color: " + detail +
-           "; border: 0; text-align: left; }\n";
+           "; border: 0; }\n";
     css += ".sidebar button:hover { background: " +
            rgb_hex(palette->card_hover_rgb) + "; color: " + heading + "; }\n";
     css += ".card, .panel { background: " + card + "; border: 1px solid " +
