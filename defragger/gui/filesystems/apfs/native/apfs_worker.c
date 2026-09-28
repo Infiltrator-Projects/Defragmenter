@@ -700,6 +700,18 @@ int main(int argc, char **argv)
         apfs_analysis_free(&analysis);
         return 0;
     }
+    if (argc == 3 &&
+        (strcmp(argv[1], "preflight-defrag") == 0 ||
+         strcmp(argv[1], "preflight-growth") == 0)) {
+        char error[512] = {0};
+        const int rc =
+            apfs_writer_preflight(argv[2], error, sizeof(error));
+        if (rc != 0)
+            (void)fprintf(stderr, "%s: %s\n", PROG,
+                          error[0] != '\0'
+                              ? error : "APFS layout is not writable");
+        return rc == 0 ? 0 : 1;
+    }
     if (argc < 3) {
         usage(stderr);
         return 2;
