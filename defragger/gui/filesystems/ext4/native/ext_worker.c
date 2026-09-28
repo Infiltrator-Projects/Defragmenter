@@ -230,12 +230,44 @@ static int copy_range(int source, int target, uint64_t offset, uint64_t length,
                       uint8_t *buffer, char **error) {
     uint64_t done = 0;
     while (done < length) {
+        if (ld_stop_requested()) {
+            ext_set_error(error, "stop requested before EXT source commit");
+            return -2;
+        }
         size_t amount = length - done > COPY_CHUNK ? COPY_CHUNK : (size_t)(length - done);
         ssize_t got = ld_pread_full(source, buffer, amount, offset + done);
         if (got < 0 || (size_t)got != amount) { ext_set_error(error, "short read cloning EXT working image"); return -1; }
         ssize_t wrote = ld_pwrite_full(target, buffer, amount, offset + done);
         if (wrote < 0 || (size_t)wrote != amount) { ext_set_error(error, "short write cloning EXT working image"); return -1; }
         done += amount;
+    }
+    return 0;
+}
+
+typedef struct {
+    int source_fd;
+    int stage_fd;
+    uint32_t block_size;
+    uint8_t *buffer;
+    uint64_t copied_blocks;
+} ExtCloneRunContext;
+
+static int clone_allocated_run(uint64_t start, uint64_t length,
+                               bool allocated, void *private_data,
+                               char **error) {
+    if (!allocated || length == 0U) return 0;
+    ExtCloneRunContext *context = private_data;
+    const uint64_t offset = start * (uint64_t)context->block_size;
+    const uint64_t bytes = length * (uint64_t)context->block_size;
+    const int result = copy_range(
+        context->source_fd, context->stage_fd, offset, bytes,
+        context->buffer, error);
+    if (result != 0) return result;
+    context->copied_blocks += length;
+    if ((context->copied_blocks % 65536U) < length) {
+        printf("EXT working-image clone: %llu allocated blocks copied.\n",
+               (unsigned long long)context->copied_blocks);
+        fflush(stdout);
     }
     return 0;
 }
@@ -249,36 +281,39 @@ static int create_stage(const char *source_path, const char *stage_path,
     if (ftruncate(stage, (off_t)geometry->physical_bytes) != 0) {
         ext_set_error(error, "cannot size EXT working image: %s", strerror(errno)); close(stage); ld_device_close(&source); unlink_if_exists(stage_path); return -1;
     }
-    ExtFs * fs = NULL;
+    ExtFs *fs = NULL;
     if (ext_open_fs(source_path, false, &fs, error) != 0) { close(stage); ld_device_close(&source); unlink_if_exists(stage_path); return -1; }
+
     uint8_t *buffer = ld_xmalloc(COPY_CHUNK);
-    uint64_t run_start = 0, run_length = 0, copied = 0;
     int result = 0;
-    for (uint64_t block = 0; block < geometry->total_blocks; ++block) {
-        bool allocated = block < geometry->first_data_block;
-        if (!allocated &&
-            ext_fs_block_allocated(fs, block, &allocated, error) != 0) {
-            result = -1;
-            break;
-        }
-        if (allocated) {
-            if (run_length == 0) run_start = block;
-            run_length++;
-        }
-        bool flush = run_length != 0 && (!allocated || block + 1U == geometry->total_blocks || run_length * geometry->block_size >= COPY_CHUNK);
-        if (flush) {
-            uint64_t bytes = run_length * geometry->block_size;
-            if (copy_range(source.fd, stage, run_start * geometry->block_size, bytes, buffer, error) != 0) { result = -1; break; }
-            copied += run_length; run_length = 0;
-            if ((copied % 65536U) < 1024U) {
-                printf("EXT working-image clone: %llu allocated blocks copied.\n", (unsigned long long)copied); fflush(stdout);
-            }
-            if (ld_stop_requested()) { ext_set_error(error, "stop requested before EXT source commit"); result = -2; break; }
-        }
+    ExtCloneRunContext context = {
+        .source_fd = source.fd,
+        .stage_fd = stage,
+        .block_size = geometry->block_size,
+        .buffer = buffer,
+        .copied_blocks = 0U,
+    };
+
+    if (geometry->first_data_block != 0U) {
+        result = copy_range(
+            source.fd, stage, 0U,
+            geometry->first_data_block * (uint64_t)geometry->block_size,
+            buffer, error);
+        if (result == 0)
+            context.copied_blocks = geometry->first_data_block;
     }
-    free(buffer); ext_fs_close(fs);
-    if (result == 0 && ld_sync_fd(stage) != 0) { ext_set_error(error, "cannot sync EXT working image: %s", strerror(errno)); result = -1; }
-    close(stage); ld_device_close(&source);
+    if (result == 0)
+        result = ext_fs_foreach_block_run(
+            fs, clone_allocated_run, &context, error);
+
+    free(buffer);
+    ext_fs_close(fs);
+    if (result == 0 && ld_sync_fd(stage) != 0) {
+        ext_set_error(error, "cannot sync EXT working image: %s", strerror(errno));
+        result = -1;
+    }
+    close(stage);
+    ld_device_close(&source);
     if (result != 0) unlink_if_exists(stage_path);
     return result;
 }
@@ -307,35 +342,52 @@ static int check_unchanged_target(const char *device, const ExtJournal *state,
     return 0;
 }
 
+typedef struct {
+    const ExtGeometry *geometry;
+    ExtRangeVec *ranges;
+    uint64_t allocated_blocks;
+} ExtAllocatedRangeContext;
+
+static int append_allocated_run(uint64_t start, uint64_t length,
+                                bool allocated, void *private_data,
+                                char **error) {
+    (void)error;
+    if (!allocated || length == 0U) return 0;
+    ExtAllocatedRangeContext *context = private_data;
+    ext_range_push(
+        context->ranges,
+        start * (uint64_t)context->geometry->block_size,
+        (start + length) * (uint64_t)context->geometry->block_size);
+    context->allocated_blocks += length;
+    return 0;
+}
+
 static int collect_allocated_ranges(const char *stage_path, const ExtGeometry *geometry,
                                     ExtRangeVec *ranges, uint64_t *allocated_blocks,
                                     char **error) {
-    ExtFs * fs = NULL;
+    ExtFs *fs = NULL;
     memset(ranges, 0, sizeof(*ranges));
-    *allocated_blocks = 0;
+    *allocated_blocks = 0U;
     if (ext_open_fs(stage_path, false, &fs, error) != 0) return -1;
 
-    uint64_t run_start = 0, run_length = 0;
-    for (uint64_t block = 0; block < geometry->total_blocks; ++block) {
-        bool allocated = block < geometry->first_data_block;
-        if (!allocated &&
-            ext_fs_block_allocated(fs, block, &allocated, error) != 0) {
-            ext_fs_close(fs);
-            ext_range_free(ranges);
-            return -1;
-        }
-        if (allocated) {
-            if (run_length == 0) run_start = block;
-            run_length++;
-            (*allocated_blocks)++;
-        }
-        if (run_length != 0 && (!allocated || block + 1U == geometry->total_blocks)) {
-            ext_range_push(ranges, run_start * geometry->block_size,
-                           (run_start + run_length) * geometry->block_size);
-            run_length = 0;
-        }
+    ExtAllocatedRangeContext context = {
+        .geometry = geometry,
+        .ranges = ranges,
+        .allocated_blocks = geometry->first_data_block,
+    };
+    if (geometry->first_data_block != 0U) {
+        ext_range_push(
+            ranges, 0U,
+            geometry->first_data_block * (uint64_t)geometry->block_size);
     }
+    const int result = ext_fs_foreach_block_run(
+        fs, append_allocated_run, &context, error);
     ext_fs_close(fs);
+    if (result != 0) {
+        ext_range_free(ranges);
+        return -1;
+    }
+    *allocated_blocks = context.allocated_blocks;
     return 0;
 }
 
