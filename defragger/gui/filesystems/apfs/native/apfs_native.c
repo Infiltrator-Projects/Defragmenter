@@ -2453,6 +2453,16 @@ int apfs_verify_layout(const char *path, bool growth,
     return result;
 }
 
+int apfs_writer_preflight(const char *path,
+                          char *error, size_t error_size)
+{
+    ApfsWriterModel model;
+    if (writer_model_load(path, &model, error, error_size) != 0)
+        return -1;
+    writer_model_free(&model);
+    return 0;
+}
+
 int apfs_build_stage(const char *source_path,
                      const char *stage_path,
                      bool growth, unsigned growth_percent,
