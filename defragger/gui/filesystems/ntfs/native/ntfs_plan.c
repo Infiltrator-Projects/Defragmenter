@@ -42,27 +42,6 @@ static uint64_t stream_span(const NtfsStream *s,bool growth){uint64_t reserve=gr
 static void set_stream_free(NtfsLayout *layout,const NtfsStream *s){for(size_t r=0;r<s->runs.count;++r){NtfsRun run=s->runs.items[r];if(run.sparse)continue;for(uint64_t c=0;c<run.length;++c)ntfs_bitmap_set(layout,run.lcn+c,false);}}
 static void collect_free(const NtfsLayout *layout,uint64_t total,FreeVec *free_runs){uint64_t upper=total>0?total-1U:0U;bool active=false;uint64_t start=0;for(uint64_t c=1;c<upper;++c){bool free=!ntfs_bitmap_bit(layout,c);if(free&&!active){active=true;start=c;}else if(!free&&active){free_push(free_runs,start,c-start);active=false;}}if(active)free_push(free_runs,start,upper-start);}
 
-static int select_best_fit(PlanItem *items,size_t count,uint64_t target,bool *selected,
-                           uint64_t *filled,char **error){
-    *filled = 0;
-    if (target == 0) return 0;
-    uint64_t choice_count_u64 = 0U;
-    size_t bytes = 0U;
-    if (!infiltratr_u64_add_checked(target, 1U, &choice_count_u64) ||
-        choice_count_u64 > SIZE_MAX ||
-        !infiltratr_size_multiply_checked((size_t)choice_count_u64,
-                                          sizeof(int32_t), &bytes)) {
-        ntfs_set_error(error,"NTFS low-layout target exceeds addressable memory");
-        return -1;
-    }
-    if ((uint64_t)bytes > NTFS_SUBSET_MEMORY_LIMIT) {ntfs_set_error(error,"NTFS low-layout planning would exceed the fixed 256 MiB memory safety limit");return -1;}
-    int32_t *choice=ld_xmalloc(bytes);for(uint64_t s=0;s<=target;++s)choice[s]=-1;choice[0]=-2;
-    for(size_t i=0;i<count;++i){uint64_t span=items[i].span;if(span==0||span>target)continue;for(uint64_t sum=target;;--sum){if(sum>=span&&choice[sum]<0&&choice[sum-span]!=-1)choice[sum]=(int32_t)i;if(sum==span)break;}}
-    uint64_t best=target;while(best>0&&choice[best]==-1)best--;
-    uint64_t remaining=best;while(remaining){int32_t index=choice[remaining];if(index<0||(size_t)index>=count||items[index].span>remaining){free(choice);ntfs_set_error(error,"NTFS low-layout subset recovery failed");return -1;}selected[index]=true;remaining-=items[index].span;}
-    *filled=best;free(choice);return 0;
-}
-
 static uint64_t stream_owner(const NtfsStream *stream) {
     return stream->base_record != 0 ? stream->base_record : stream->record_number;
 }
@@ -158,21 +137,64 @@ int ntfs_plan_layout(NtfsLayout *layout,NtfsCatalogue *catalogue,uint64_t total_
     }
     FreeVec free_runs={0};
     collect_free(layout,total_clusters,&free_runs);
-    PlanItem *remaining=ld_xmalloc(movable*sizeof(*remaining));memcpy(remaining,all,movable*sizeof(*remaining));size_t remaining_count=movable;uint64_t total_span=0;for(size_t i=0;i<remaining_count;++i)total_span+=remaining[i].span;
     bool have_start=false;
-    for(size_t fr=0;fr<free_runs.count&&remaining_count; ++fr){uint64_t run_start=free_runs.items[fr].start,capacity=free_runs.items[fr].length;if(capacity==0)continue;if(!have_start){placements->envelope_start=run_start;have_start=true;}
-        if(total_span<=capacity){uint64_t cursor=run_start;for(size_t i=0;i<remaining_count;++i){NtfsStream *s=remaining[i].stream;uint64_t reserve=remaining[i].span-s->clusters;placement_push(placements,(NtfsPlacement){s->record_number,s->attribute_offset,cursor,s->clusters,reserve});cursor+=remaining[i].span;}placements->envelope_end=cursor;remaining_count=0;total_span=0;break;}
-        bool *selected=calloc(remaining_count,sizeof(*selected));if(!selected){ntfs_set_error(error,"allocating NTFS subset planner failed");goto fail;}uint64_t filled=0;if(select_best_fit(remaining,remaining_count,capacity,selected,&filled,error)<0){free(selected);goto fail;}
-        uint64_t cursor=run_start;for(size_t i=0;i<remaining_count;++i)if(selected[i]){NtfsStream *s=remaining[i].stream;uint64_t reserve=remaining[i].span-s->clusters;placement_push(placements,(NtfsPlacement){s->record_number,s->attribute_offset,cursor,s->clusters,reserve});cursor+=remaining[i].span;}if(cursor!=run_start+filled){free(selected);ntfs_set_error(error,"NTFS low-layout planner produced an inconsistent best-fit run");goto fail;}placements->envelope_end=cursor;placements->fixed_slack_clusters+=capacity-filled;
-        size_t out=0;for(size_t i=0;i<remaining_count;++i)if(!selected[i])remaining[out++]=remaining[i];free(selected);remaining_count=out;total_span-=filled;
+    /*
+     * Place each canonical stream in the earliest legal free run that can hold
+     * the whole stream plus Growth reserve.  The previous exact subset-sum
+     * solver indexed a dynamic-programming table by cluster capacity, making
+     * planning time proportional to free-run clusters multiplied by stream
+     * count.  On large NTFS volumes that could require billions of iterations.
+     *
+     * This run-oriented first-fit policy is deterministic, never splits a
+     * stream, preserves the low-address packing objective and has no work term
+     * proportional to the number of clusters inside a run.
+     */
+    for(size_t item=0;item<movable;++item){
+        NtfsStream *s=all[item].stream;
+        const uint64_t span=all[item].span;
+        bool placed=false;
+        for(size_t fr=0;fr<free_runs.count;++fr){
+            FreeRun *run=&free_runs.items[fr];
+            if(run->length<span)continue;
+            const uint64_t start_cluster=run->start;
+            const uint64_t reserve=span-s->clusters;
+            placement_push(placements,(NtfsPlacement){
+                s->record_number,s->attribute_offset,start_cluster,
+                s->clusters,reserve});
+            run->start+=span;
+            run->length-=span;
+            if(!have_start){
+                placements->envelope_start=start_cluster;
+                have_start=true;
+            }
+            const uint64_t end_cluster=start_cluster+span;
+            if(end_cluster>placements->envelope_end)
+                placements->envelope_end=end_cluster;
+            placed=true;
+            break;
+        }
+        if(!placed){
+            ntfs_set_error(error,
+                           "NTFS has insufficient legal free clusters for the canonical layout");
+            goto fail;
+        }
     }
-    if(remaining_count){ntfs_set_error(error,"NTFS has insufficient legal free clusters for the canonical layout");goto fail;}
+    if(have_start){
+        for(size_t fr=0;fr<free_runs.count;++fr){
+            const FreeRun *run=&free_runs.items[fr];
+            if(run->length==0U||run->start>=placements->envelope_end)continue;
+            uint64_t end=run->start+run->length;
+            if(end>placements->envelope_end)end=placements->envelope_end;
+            if(end>run->start)
+                placements->fixed_slack_clusters+=end-run->start;
+        }
+    }
     for(size_t i=0;i<placements->count;++i){NtfsPlacement *p=&placements->items[i];for(uint64_t c=0;c<p->clusters;++c)ntfs_bitmap_set(layout,p->start+c,true);for(uint64_t c=0;c<p->reserve;++c)ntfs_bitmap_set(layout,p->start+p->clusters+c,false);}
     for(size_t i=0;i<reserved.count;++i)for(uint64_t c=0;c<reserved.items[i].length;++c)ntfs_bitmap_set(layout,reserved.items[i].start+c,false);
-    free(all);free(remaining);free(free_runs.items);free(reserved.items);return 0;
+    free(all);free(free_runs.items);free(reserved.items);return 0;
 fail:
     for(size_t i=0;i<reserved.count;++i)for(uint64_t c=0;c<reserved.items[i].length;++c)ntfs_bitmap_set(layout,reserved.items[i].start+c,false);
-    free(all);free(remaining);free(free_runs.items);free(reserved.items);ntfs_placements_free(placements);return -1;
+    free(all);free(free_runs.items);free(reserved.items);ntfs_placements_free(placements);return -1;
 fail_before_free:
     for(size_t i=0;i<reserved.count;++i)for(uint64_t c=0;c<reserved.items[i].length;++c)ntfs_bitmap_set(layout,reserved.items[i].start+c,false);
     free(all);free(reserved.items);ntfs_placements_free(placements);return -1;
