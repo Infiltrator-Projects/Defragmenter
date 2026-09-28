@@ -9,7 +9,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
-#include <openssl/sha.h>
+#include <openssl/evp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -589,7 +589,7 @@ static int collect_digest_block(ExtFs *fs, uint32_t ino,
 
 static int digest_inode(ExtFs *fs, int fd, uint32_t ino,
                         uint32_t block_size,
-                        uint8_t output[SHA256_DIGEST_LENGTH], char **error) {
+                        uint8_t output[EXT_SHA256_BYTES], char **error) {
     ExtInode inode;
     if (ext_fs_read_inode(fs, ino, &inode, error) != 0) return -1;
     ExtDigestContext context = {0};
@@ -601,18 +601,24 @@ static int digest_inode(ExtFs *fs, int fd, uint32_t ino,
         free(context.items);
         return -1;
     }
-    SHA256_CTX digest;
-    if (SHA256_Init(&digest) != 1) {
+
+    EVP_MD_CTX *digest = EVP_MD_CTX_new();
+    if (digest == NULL ||
+        EVP_DigestInit_ex(digest, EVP_sha256(), NULL) != 1) {
+        EVP_MD_CTX_free(digest);
         free(context.items);
         ext_set_error(error, "initializing EXT verification digest failed");
         return -1;
     }
+
     uint8_t *buffer = ld_xmalloc(block_size);
     for (size_t index = 0U; index < context.count; ++index) {
         ssize_t got = ld_pread_full(fd, buffer, block_size,
             context.items[index].physical * block_size);
         if (got < 0 || (size_t)got != block_size) {
-            free(buffer); free(context.items);
+            free(buffer);
+            free(context.items);
+            EVP_MD_CTX_free(digest);
             ext_set_error(error, "short read verifying EXT payload");
             return -1;
         }
@@ -620,15 +626,23 @@ static int digest_inode(ExtFs *fs, int fd, uint32_t ino,
         uint64_t value = (uint64_t)context.items[index].logical;
         for (unsigned byte = 0U; byte < 8U; ++byte)
             logical[byte] = (uint8_t)(value >> (byte * 8U));
-        if (SHA256_Update(&digest, logical, sizeof(logical)) != 1 ||
-            SHA256_Update(&digest, buffer, block_size) != 1) {
-            free(buffer); free(context.items);
+        if (EVP_DigestUpdate(digest, logical, sizeof(logical)) != 1 ||
+            EVP_DigestUpdate(digest, buffer, block_size) != 1) {
+            free(buffer);
+            free(context.items);
+            EVP_MD_CTX_free(digest);
             ext_set_error(error, "updating EXT verification digest failed");
             return -1;
         }
     }
-    free(buffer); free(context.items);
-    if (SHA256_Final(output, &digest) != 1) {
+    free(buffer);
+    free(context.items);
+
+    unsigned int digest_length = 0U;
+    const int finalised =
+        EVP_DigestFinal_ex(digest, output, &digest_length);
+    EVP_MD_CTX_free(digest);
+    if (finalised != 1 || digest_length != EXT_SHA256_BYTES) {
         ext_set_error(error, "finalizing EXT verification digest failed");
         return -1;
     }
@@ -702,11 +716,11 @@ int ext_verify_stage(const char *stage, sqlite3 *db, const ExtGeometry *geometry
                 ext_set_error(error, "EXT inode %u canonical allocation verification failed", ino);
             goto finalize;
         }
-        uint8_t digest[SHA256_DIGEST_LENGTH];
+        uint8_t digest[EXT_SHA256_BYTES];
         if (digest_inode(fs, fd, ino, geometry->block_size, digest, error) != 0) goto finalize;
         const void *stored = sqlite3_column_blob(objects, 6);
         int stored_size = sqlite3_column_bytes(objects, 6);
-        if (stored == NULL || stored_size != SHA256_DIGEST_LENGTH || memcmp(stored, digest, SHA256_DIGEST_LENGTH) != 0) {
+        if (stored == NULL || stored_size != EXT_SHA256_BYTES || memcmp(stored, digest, EXT_SHA256_BYTES) != 0) {
             ext_set_error(error, "EXT inode %u payload checksum changed", (unsigned)ino); goto finalize;
         }
     }
