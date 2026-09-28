@@ -87,8 +87,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/defragger/gui:${{ github.workspace }}/defragger/tests
           LINUX_DEFRAGGER_BUILD_DIR: ${{ github.workspace }}/defragger/build-local
         run: |
-          ctest --test-dir build-local --output-on-failure -I 1,10
-          ctest --test-dir build-local --output-on-failure -I 12,30
+          ctest --test-dir build-local --output-on-failure
       - name: Enforce architecture and release contracts
         if: steps.local-deps.outputs.available == 'true'
         env:
