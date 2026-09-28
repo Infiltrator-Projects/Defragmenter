@@ -533,64 +533,159 @@ static int fork_block_at(const hfs_writable_fork *fork, uint32_t logical,
     return -1;
 }
 
-static int write_catalog_bytes(const hfs_writer_volume *writer, int fd,
-                               uint64_t logical_offset, const void *buffer,
-                               size_t length, char **error)
+static int write_btree_bytes(const hfs_writer_volume *writer, int fd,
+                             const hfs_fork_map *btree,
+                             const char *name,
+                             uint64_t logical_offset,
+                             const void *buffer, size_t length,
+                             char **error)
 {
-    const hfs_fork_map *catalog = &writer->volume.catalog_file;
     const uint8_t *source = buffer;
     size_t done = 0U;
     uint64_t logical = 0U;
-    if (logical_offset > catalog->size_bytes ||
-        (uint64_t)length > catalog->size_bytes - logical_offset) {
-        hfs_set_error(error, "HFS Catalog rewrite exceeds catalog-file length");
+    if (logical_offset > btree->size_bytes ||
+        (uint64_t)length > btree->size_bytes - logical_offset) {
+        hfs_set_error(error, "HFS %s rewrite exceeds B-tree file length", name);
         return -1;
     }
-    for (size_t i = 0U; i < catalog->extent_count && done < length; ++i) {
-        const uint64_t span = extent_capacity_bytes(&writer->volume,
-                                                     &catalog->extents[i]);
+    for (size_t index = 0U;
+         index < btree->extent_count && done < length; ++index) {
+        const uint64_t span = extent_capacity_bytes(
+            &writer->volume, &btree->extents[index]);
         const uint64_t end = logical + span;
         if (logical_offset + done >= end) {
             logical = end;
             continue;
         }
-        const uint64_t within = logical_offset + done - logical;
-        uint64_t available = span - within;
+        const uint64_t within =
+            logical_offset + done - logical;
+        const uint64_t available = span - within;
         size_t take = length - done;
         if ((uint64_t)take > available)
             take = (size_t)available;
         const uint64_t physical =
-            extent_physical_offset(&writer->volume, &catalog->extents[i]) + within;
+            extent_physical_offset(
+                &writer->volume, &btree->extents[index]) + within;
         if (ld_pwrite_full(fd, source + done, take, physical) !=
             (ssize_t)take) {
-            hfs_set_error(error, "cannot rewrite HFS Catalog extent descriptor");
+            hfs_set_error(error, "cannot rewrite HFS %s bytes", name);
             return -1;
         }
         done += take;
         logical = end;
     }
     if (done != length) {
-        hfs_set_error(error, "HFS Catalog rewrite could not map all bytes");
+        hfs_set_error(error, "HFS %s rewrite could not map all bytes", name);
         return -1;
     }
     return 0;
 }
 
-static int rewrite_inline_fork(const hfs_writer_volume *writer, int stage_fd,
-                               const hfs_writable_fork *fork,
-                               uint32_t destination, char **error)
+static int write_catalog_bytes(const hfs_writer_volume *writer, int fd,
+                               uint64_t logical_offset, const void *buffer,
+                               size_t length, char **error)
+{
+    return write_btree_bytes(
+        writer, fd, &writer->volume.catalog_file, "Catalog",
+        logical_offset, buffer, length, error);
+}
+
+static int rewrite_file_fork(const hfs_writer_volume *writer, int stage_fd,
+                             uint32_t file_id,
+                             const hfs_writable_fork *fork,
+                             uint32_t destination, char **error)
 {
     if (fork->blocks == 0U)
         return 0;
-    if (fork->blocks > UINT16_MAX || destination > UINT16_MAX) {
-        hfs_set_error(error, "HFS contiguous fork exceeds 16-bit extent geometry");
+    if (fork->blocks > UINT16_MAX ||
+        destination > UINT16_MAX ||
+        destination + fork->blocks >
+            writer->volume.total_allocation_blocks) {
+        hfs_set_error(error,
+                      "HFS contiguous fork exceeds 16-bit extent geometry");
         return -1;
     }
-    uint8_t raw[12] = {0};
-    infiltratr_store_be16(raw, (uint16_t)destination);
-    infiltratr_store_be16(raw + 2U, (uint16_t)fork->blocks);
-    return write_catalog_bytes(writer, stage_fd, fork->catalog_extent_offset,
-                               raw, sizeof(raw), error);
+
+    /*
+     * Keep the existing catalog/overflow B-tree record topology and extent
+     * lengths. Only physical starts change. This avoids unsafe B-tree record
+     * deletion while still making the complete fork physically contiguous.
+     */
+    uint8_t inline_raw[12] = {0};
+    size_t extent_index = 0U;
+    uint32_t logical = 0U;
+    for (size_t slot = 0U;
+         slot < 3U && extent_index < fork->extent_count; ++slot) {
+        const uint16_t count = fork->extents[extent_index++].count;
+        if (count == 0U ||
+            destination + logical > UINT16_MAX ||
+            logical > fork->blocks - count) {
+            hfs_set_error(error,
+                          "HFS inline extent structure changed during relocation");
+            return -1;
+        }
+        infiltratr_store_be16(
+            inline_raw + slot * 4U,
+            (uint16_t)(destination + logical));
+        infiltratr_store_be16(
+            inline_raw + slot * 4U + 2U, count);
+        logical += count;
+    }
+    if (write_catalog_bytes(
+            writer, stage_fd, fork->catalog_extent_offset,
+            inline_raw, sizeof(inline_raw), error) != 0)
+        return -1;
+
+    while (logical < fork->blocks) {
+        if (logical > UINT16_MAX) {
+            hfs_set_error(error,
+                          "HFS overflow key exceeds 16-bit logical block range");
+            return -1;
+        }
+        const hfs_overflow_record *record =
+            find_overflow(&writer->volume, file_id, fork->fork_type,
+                          (uint16_t)logical);
+        if (record == NULL) {
+            hfs_set_error(
+                error,
+                "HFS file %u overflow extent record disappeared at logical block %u",
+                file_id, logical);
+            return -1;
+        }
+        uint8_t overflow_raw[12] = {0};
+        const uint32_t before = logical;
+        for (size_t slot = 0U;
+             slot < 3U && extent_index < fork->extent_count; ++slot) {
+            const uint16_t count = fork->extents[extent_index++].count;
+            if (count == 0U ||
+                destination + logical > UINT16_MAX ||
+                logical > fork->blocks - count) {
+                hfs_set_error(
+                    error,
+                    "HFS overflow extent structure changed during relocation");
+                return -1;
+            }
+            infiltratr_store_be16(
+                overflow_raw + slot * 4U,
+                (uint16_t)(destination + logical));
+            infiltratr_store_be16(
+                overflow_raw + slot * 4U + 2U, count);
+            logical += count;
+        }
+        if (logical == before ||
+            write_btree_bytes(
+                writer, stage_fd, &writer->volume.extents_file,
+                "Extents Overflow", record->data_logical_offset,
+                overflow_raw, sizeof(overflow_raw), error) != 0)
+            return -1;
+    }
+    if (logical != fork->blocks ||
+        extent_index != fork->extent_count) {
+        hfs_set_error(error,
+                      "HFS extent chain length changed during relocation");
+        return -1;
+    }
+    return 0;
 }
 
 static int copy_fork(const hfs_writer_volume *source, int stage_fd,
@@ -865,8 +960,9 @@ static int hfs_build_stage(const char *source_path, const char *stage_path,
                 break;
             }
             if (copy_fork(&source, stage_fd, fork, destination, error) != 0 ||
-                rewrite_inline_fork(&source, stage_fd, fork,
-                                    destination, error) != 0) {
+                rewrite_file_fork(&source, stage_fd,
+                                  source.files[i].file_id, fork,
+                                  destination, error) != 0) {
                 rc = -1;
                 break;
             }
@@ -931,16 +1027,45 @@ static int hfs_verify_layout(const char *path, bool growth,
             hfs_writable_fork *fork = forks[k];
             if (fork->blocks == 0U)
                 continue;
-            if (fork->extent_count != 1U ||
-                fork->extents[0].count != fork->blocks) {
-                hfs_set_error(error, "HFS file %u %s fork remains fragmented",
+            if (fork->extent_count == 0U) {
+                hfs_set_error(error,
+                              "HFS file %u %s fork has no extent descriptors",
                               writer.files[i].file_id, names[k]);
                 rc = -1;
                 break;
             }
+            uint32_t cursor = fork->extents[0].start;
+            uint32_t described = 0U;
+            for (size_t extent_index = 0U;
+                 extent_index < fork->extent_count; ++extent_index) {
+                const hfs_extent extent =
+                    fork->extents[extent_index];
+                if (extent.count == 0U ||
+                    extent.start != cursor ||
+                    described > fork->blocks - extent.count) {
+                    hfs_set_error(
+                        error,
+                        "HFS file %u %s fork remains fragmented",
+                        writer.files[i].file_id, names[k]);
+                    rc = -1;
+                    break;
+                }
+                cursor += extent.count;
+                described += extent.count;
+            }
+            if (rc != 0 || described != fork->blocks) {
+                if (rc == 0)
+                    hfs_set_error(
+                        error,
+                        "HFS file %u %s fork extent length changed",
+                        writer.files[i].file_id, names[k]);
+                rc = -1;
+                break;
+            }
             for (uint32_t block = 0U; block < fork->blocks; ++block) {
-                const uint32_t at = (uint32_t)fork->extents[0].start + block;
-                if (at >= writer.volume.total_allocation_blocks ||
+                uint32_t at = 0U;
+                if (fork_block_at(fork, block, &at) != 0 ||
+                    at >= writer.volume.total_allocation_blocks ||
                     !ld_bitmap_get(writer.used_map, at)) {
                     hfs_set_error(error,
                                   "HFS file %u %s fork references a block marked free",
@@ -953,8 +1078,7 @@ static int hfs_verify_layout(const char *path, bool growth,
                 continue;
             const uint32_t reserve =
                 (fork->blocks * growth_percent + 99U) / 100U;
-            const uint32_t end =
-                (uint32_t)fork->extents[0].start + fork->blocks;
+            const uint32_t end = cursor;
             for (uint32_t r = 0U; r < reserve; ++r) {
                 if (end + r >= writer.volume.total_allocation_blocks ||
                     ld_bitmap_get(writer.used_map, (uint64_t)end + r)) {
