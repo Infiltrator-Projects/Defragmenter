@@ -141,7 +141,10 @@ std::vector<std::string> desktop_mutation(const DesktopVolume& v,
     if (operation != "recover") {
         args.insert(args.end(), {"--batch-clusters", "4096"});
     }
-    args.insert(args.end(), {"--ram-buffer", "auto", "--workers", "auto"});
+    // Worker concurrency is engine-owned. FAT and NTFS already select their
+    // useful N-1 CPU budget internally; the other engines must not receive a
+    // cosmetic --workers option that they merely ignore.
+    args.insert(args.end(), {"--ram-buffer", "auto"});
     if (operation != "recover") {
         args.emplace_back("--live-map-cells");
         args.emplace_back(std::to_string(std::clamp(cells, 256U, 1048576U)));

@@ -32,7 +32,9 @@ def build_standard_arguments(operation: str, live_cells: int) -> list[str]:
     """Return operation-wide tuning flags independent of filesystem choice."""
 
     selected = Operation.parse(operation)
-    common = ["--ram-buffer", "auto", "--workers", "auto"]
+    # Worker concurrency is filesystem-engine policy. Do not advertise a
+    # generic --workers switch when most engines do not consume it.
+    common = ["--ram-buffer", "auto"]
     if selected is Operation.DEFRAG:
         return ["--batch-clusters", "4096", *common, "--live-map-cells", str(live_cells)]
     if selected is Operation.GROWTH_DEFRAG:
