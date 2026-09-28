@@ -857,12 +857,11 @@ static int read_group(const UfsInventory *inventory, uint32_t group,
 static int inventory_load_free_bitmap(UfsInventory *inventory,
                                       char *error, size_t error_size)
 {
-    if (inventory->summary.filesystem_fragments > (uint64_t)SIZE_MAX * 8U) {
+    if (!ld_bitmap_size(inventory->summary.filesystem_fragments,
+                        &inventory->bitmap_bytes)) {
         ufs_error(error, error_size, "UFS allocation bitmap is too large");
         return -1;
     }
-    inventory->bitmap_bytes =
-        (size_t)((inventory->summary.filesystem_fragments + 7U) / 8U);
     inventory->free_bitmap = calloc(
         inventory->bitmap_bytes == 0U ? 1U : inventory->bitmap_bytes, 1U);
     uint8_t *cg = malloc(inventory->summary.cylinder_group_size);
