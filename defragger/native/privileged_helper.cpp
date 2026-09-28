@@ -261,6 +261,22 @@ int wait_for_child(pid_t child) {
     }
 }
 
+bool owned_child_is_running(pid_t child) noexcept {
+    siginfo_t info {};
+    for (;;) {
+        if (waitid(P_PID, static_cast<id_t>(child), &info,
+                   WEXITED | WNOHANG | WNOWAIT) == 0)
+            return info.si_pid == 0;
+        if (errno == EINTR) continue;
+        /*
+         * ECHILD means the original child has already been reaped.  Never
+         * signal a numeric PID after ownership has been lost: it may already
+         * have been reused by an unrelated process.
+         */
+        return false;
+    }
+}
+
 void stop_and_reap(pid_t child) noexcept {
     if (child <= 0) return;
     (void)kill(-child, SIGINT);
@@ -404,7 +420,9 @@ private:
 
             stop_watchdog_armed_ = false;
             lock.unlock();
-            if (kill(-pid, SIGKILL) != 0 && errno == ESRCH)
+            if (owned_child_is_running(pid) &&
+                kill(-pid, SIGKILL) != 0 && errno == ESRCH &&
+                owned_child_is_running(pid))
                 (void)kill(pid, SIGKILL);
             lock.lock();
         }
