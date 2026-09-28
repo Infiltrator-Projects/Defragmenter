@@ -80,6 +80,14 @@ static void add_data_ranges(const ExtBlockVec *blocks, ExtRangeVec *ranges) {
         ext_range_push(ranges, blocks->items[index].physical,
                        blocks->items[index].physical + 1U);
 }
+static int bitmap_free(ExtFs *fs, uint64_t block, bool *is_free,
+                       char **error) {
+    bool allocated = false;
+    if (ext_fs_block_allocated(fs, block, &allocated, error) != 0) return -1;
+    *is_free = !allocated;
+    return 0;
+}
+
 typedef struct {
     ExtRangeVec *ranges;
 } FreeRangeContext;
