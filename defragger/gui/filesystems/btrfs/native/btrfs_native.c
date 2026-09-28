@@ -26,11 +26,12 @@
  *
  * Chunk mapping, root/tree decoding and extent ownership are intentionally
  * shared by read and write paths.  Mutation is limited to the single-device
- * CRC32C, level-0 mixed data/metadata contract: supported unshared NODATASUM
- * regular-file extents are staged, metadata generations/checksums are rebuilt,
+ * CRC32C, level-0 mixed data/metadata contract: supported unshared regular-file
+ * extents, including checksum-tree-protected data, are staged; data checksums
+ * are verified/remapped and metadata generations/checksums are rebuilt,
  * stale free-space-cache state is invalidated, and the result is reopened
  * through the same exact analyser.  Multi-device/striped, snapshot/qgroup,
- * active-log, shared/sparse/encoded/checksummed and deeper mutable layouts fail
+ * active-log, shared/sparse/encoded and deeper mutable layouts fail
  * closed before authoritative writes.
  */
 

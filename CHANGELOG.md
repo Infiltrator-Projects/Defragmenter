@@ -2,6 +2,21 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-220
+
+- Separate exact analysis from mutation qualification so the native desktop only enables raw writes after a read-only writer preflight accepts the selected layout.
+- Replace NTFS subset-sum placement with bounded run-oriented planning; add ordinary alternate-data-stream relocation, payload verification and file-level ADS fragmentation reporting.
+- Convert major EXT allocation scans, staging and free-space planning to contiguous bitmap runs and convert XFS target-extent/canonical checks from per-block loops to range arithmetic.
+- Restore Common 1.19.35 Follow-system/Day/Night theming in the native C++ GTK desktop, make discovery/probing asynchronous, bound Analyse Stop, run the complete local CTest suite and add native GTK Xvfb smoke qualification.
+- Add one-click Test Media qualification through real Defragmenter operations and dynamic media progress reporting.
+- Expand UFS mutation to sparse regular files while retaining fragment-tail and cross-cylinder-group safety.
+- Expand Classic HFS mutation to complete forks backed by Extents Overflow records and qualify Defrag/Growth Defrag with a real overflow-backed payload fixture.
+- Expand Btrfs mutation to ordinary CRC32C checksum-tree-protected file data; verify source sectors, remap checksum keys with payload moves, rebuild checksum items and verify the staged result.
+- Accept and retain validated older APFS descriptor-ring checkpoint history while preserving strict active-checkpoint identity and fail-closed handling of unsupported object types.
+- Add recursive PFS3 nested user-directory traversal/ownership with cycle detection and qualify nested Defrag/Growth Defrag.
+- Prefer partition/filesystem UUID aliases before generic by-id aliases for block-device recovery identity.
+- Keep unsupported complex format states fail-closed rather than weakening the existing transaction/recovery safety model.
+
 ## 1.8.0-219
 
 - Harden the native release boundary: Debian packages no longer carry GTK Python-introspection or `makefs` as hard runtime dependencies; `makefs` is now an optional test-media fixture generator.

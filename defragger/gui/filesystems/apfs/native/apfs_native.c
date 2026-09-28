@@ -1180,8 +1180,9 @@ bool apfs_probe(const char *path)
 
 /*
  * This writer is intentionally narrower than the exact read-only analyser.
- * It only mutates a single active checkpoint with no older descriptor-ring
- * checkpoint, one direct CIB with bounded per-chunk allocation bitmaps, zero spaceman free-queue state,
+ * It mutates one validated active checkpoint while retaining older checksum-valid
+ * descriptor-ring checkpoint history, one direct CIB with bounded per-chunk
+ * allocation bitmaps, zero spaceman free-queue state,
  * one unencrypted snapshot-free volume, flat catalog/extentref roots and
  * unshared plain regular-file extents. The source is never changed until a
  * complete independently verified stage exists.

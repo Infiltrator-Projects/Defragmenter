@@ -185,14 +185,14 @@ const std::vector<BackendInfo>& backend_registry() {
             "apfs-native", MapAdapter::NativeMap,
             standard_write_ops(
                 "apfs-native",
-                "APFS writing is offline and fail-closed to the qualified single-active-checkpoint, one-CIB, unencrypted, snapshot-free flat-tree subset.",
+                "APFS writing is offline and fail-closed to the qualified one-CIB, unencrypted, snapshot-free flat-tree subset; validated older descriptor-ring checkpoint history is retained unchanged.",
                 "APFS Growth Defrag leaves an exact 10% free-block reserve after each supported regular-file data stream.")});
         result.push_back({
             "btrfs", "Btrfs", {"btrfs"}, write, "exact",
             "btrfs-native", MapAdapter::NativeMap,
             standard_write_ops(
                 "btrfs-native",
-                "Btrfs writing is offline and fail-closed to the qualified single-device, CRC32C, level-0, mixed data/metadata, NODATASUM regular-file subset.",
+                "Btrfs writing is offline and fail-closed to the qualified single-device, CRC32C, level-0 mixed data/metadata subset, including relocation and verification of ordinary checksum-tree-protected regular-file extents.",
                 "Btrfs Growth Defrag leaves an exact 10% free-sector reserve after each supported regular file.")});
         result.push_back({
             "exfat", "exFAT", {"exfat"}, write, "exact",
@@ -217,7 +217,7 @@ const std::vector<BackendInfo>& backend_registry() {
             "hfs-native", MapAdapter::NativeMap,
             standard_write_ops(
                 "hfs-native",
-                "Classic HFS writing uses Defragmenter's offline first-party native C engine and fails closed when a regular-file fork requires overflow extent records.",
+                "Classic HFS writing uses Defragmenter's offline first-party native C engine and relocates complete regular-file forks across both inline and Extents Overflow records while preserving validated B-tree topology.",
                 "Classic HFS Growth Defrag leaves a 10% free allocation-block reserve after each supported non-empty file fork.")});
         result.push_back({
             "hfsplus", "Apple HFS+/HFSX", {"hfsplus", "hfs+", "hfsx"},
@@ -245,7 +245,7 @@ const std::vector<BackendInfo>& backend_registry() {
             write, "exact-allocation", "pfs3-native", MapAdapter::NativeMap,
             standard_write_ops(
                 "pfs3-native",
-                "Amiga PFS3 writing uses Defragmenter's offline first-party native C raw engine and fails closed outside its qualified subset.",
+                "Amiga PFS3 writing uses Defragmenter's offline first-party native C raw engine, recursively validates nested user directories, and fails closed on links/special entries or unsupported large-index modes.",
                 "PFS3 Growth Defrag leaves an exact 10% free-block reserve after every supported regular file.")});
         result.push_back({
             "sfs", "Amiga SFS", {"sfs", "sfs0", "sfs2", "smartfilesystem"},
