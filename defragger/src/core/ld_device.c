@@ -177,6 +177,8 @@ static bool ld_mount_target_is_user_media(const char *target) {
             infiltratr_string_starts_with(target, "/run/media/"));
 }
 
+static void ld_decode_mount_field(char *value);
+
 bool ld_device_number_is_mounted(dev_t device_number) {
     LdRelatedDevice related[LD_MAX_RELATED_DEVICES];
     size_t related_count = 0;
@@ -219,7 +221,49 @@ bool ld_device_number_is_mounted(dev_t device_number) {
     }
     free(line);
     fclose(file);
-    return mounted;
+    if (mounted) return true;
+
+    /*
+     * Active swap is just as authoritative as a mount for raw-write safety.
+     * Check both block-device swap and swapfiles hosted on any related device
+     * so every filesystem worker using ld_path_is_mounted() inherits the same
+     * fail-closed protection.
+     */
+    FILE *swaps = fopen("/proc/swaps", "r");
+    if (swaps == NULL) ld_die_errno("open /proc/swaps");
+    char swap_line[PATH_MAX + 256U];
+    if (fgets(swap_line, sizeof(swap_line), swaps) == NULL) {
+        const int failure = ferror(swaps) && errno != 0 ? errno : EIO;
+        fclose(swaps);
+        errno = failure;
+        ld_die_errno("read /proc/swaps");
+    }
+    while (fgets(swap_line, sizeof(swap_line), swaps) != NULL) {
+        char source[PATH_MAX];
+        if (sscanf(swap_line, "%4095s", source) != 1) continue;
+        ld_decode_mount_field(source);
+        struct stat swap_status;
+        if (stat(source, &swap_status) != 0) {
+            const int failure = errno;
+            fclose(swaps);
+            errno = failure;
+            ld_die_errno("stat active swap");
+        }
+        const dev_t found = S_ISBLK(swap_status.st_mode)
+            ? swap_status.st_rdev : swap_status.st_dev;
+        if (ld_related_contains(related, related_count, found)) {
+            fclose(swaps);
+            return true;
+        }
+    }
+    if (ferror(swaps)) {
+        const int failure = errno == 0 ? EIO : errno;
+        fclose(swaps);
+        errno = failure;
+        ld_die_errno("read /proc/swaps");
+    }
+    fclose(swaps);
+    return false;
 }
 
 static bool ld_sysfs_text(const char *sysfs, const char *suffix,
