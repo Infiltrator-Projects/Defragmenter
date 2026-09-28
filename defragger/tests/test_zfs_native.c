@@ -2,6 +2,7 @@
 #include "zfs_native.h"
 
 #include <fcntl.h>
+#include <openssl/evp.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -257,6 +258,30 @@ static void fletcher2(const uint8_t *data, size_t length, int big,
     words[3] = b1;
 }
 
+static void sha512_256(const uint8_t *data, size_t length, int big,
+                       uint64_t words[4])
+{
+    unsigned char digest[32];
+    unsigned int digest_length = 0U;
+    EVP_MD_CTX *context = EVP_MD_CTX_new();
+    CHECK(context != NULL);
+    CHECK(EVP_DigestInit_ex(context, EVP_sha512_256(), NULL) == 1);
+    CHECK(EVP_DigestUpdate(context, data, length) == 1);
+    CHECK(EVP_DigestFinal_ex(context, digest, &digest_length) == 1);
+    EVP_MD_CTX_free(context);
+    CHECK(digest_length == sizeof(digest));
+    for (size_t index = 0U; index < 4U; ++index) {
+        uint64_t value = 0U;
+        for (unsigned byte = 0U; byte < 8U; ++byte) {
+            if (big)
+                value = (value << 8U) | digest[index * 8U + byte];
+            else
+                value |= (uint64_t)digest[index * 8U + byte] << (byte * 8U);
+        }
+        words[index] = value;
+    }
+}
+
 static void fletcher4(const uint8_t *data, size_t length, int big,
                       uint64_t words[4])
 {
@@ -311,9 +336,11 @@ static void encode_bp_checksum(uint8_t bp[128], int big,
     uint64_t checksum[4];
     if (checksum_type == 6U)
         fletcher2(data, data_size, big, checksum);
-    else {
-        CHECK(checksum_type == 7U);
+    else if (checksum_type == 7U)
         fletcher4(data, data_size, big, checksum);
+    else {
+        CHECK(checksum_type == 11U);
+        sha512_256(data, data_size, big, checksum);
     }
     for (size_t index = 0U; index < 4U; ++index)
         put64(bp + 96U + index * 8U, checksum[index]);
@@ -388,8 +415,9 @@ static void write_exact_fixture(int fd, int log_spacemap)
               (off_t)(VDEV_DATA_START + METASLAB_ARRAY_LOGICAL_OFFSET));
 
     uint8_t metaslab_array_bp[128];
-    encode_bp(metaslab_array_bp, 0, METASLAB_ARRAY_LOGICAL_OFFSET, 2U,
-              metaslab_array_data, sizeof(metaslab_array_data));
+    encode_bp_checksum(metaslab_array_bp, 0,
+                       METASLAB_ARRAY_LOGICAL_OFFSET, 2U, 11U,
+                       metaslab_array_data, sizeof(metaslab_array_data));
 
     uint8_t dummy_file_data[4096];
     memset(dummy_file_data, 0, sizeof(dummy_file_data));

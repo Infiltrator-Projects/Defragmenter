@@ -51,6 +51,7 @@
 #define ZFS_CHECKSUM_FLETCHER2 6U
 #define ZFS_CHECKSUM_FLETCHER4 7U
 #define ZFS_CHECKSUM_SHA256 8U
+#define ZFS_CHECKSUM_SHA512 11U
 #define ZFS_COMPRESS_OFF 2U
 #define ZFS_COMPRESS_LZJB 3U
 #define ZFS_COMPRESS_ZLE 14U
@@ -411,6 +412,35 @@ static bool checksum_sha256(const uint8_t *data, size_t length,
     return true;
 }
 
+static bool checksum_sha512_256(const uint8_t *data, size_t length,
+                                LdZfsByteOrder order,
+                                const uint64_t expected[4])
+{
+    unsigned char digest[32];
+    unsigned int digest_length = 0U;
+    EVP_MD_CTX *context = EVP_MD_CTX_new();
+    if (context == NULL)
+        return false;
+
+    const bool complete =
+        EVP_DigestInit_ex(context, EVP_sha512_256(), NULL) == 1 &&
+        EVP_DigestUpdate(context, data, length) == 1 &&
+        EVP_DigestFinal_ex(context, digest, &digest_length) == 1;
+    EVP_MD_CTX_free(context);
+    if (!complete || digest_length != sizeof(digest))
+        return false;
+
+    /*
+     * OpenZFS stores SHA-512/256 through native/byteswap checksum variants.
+     * Interpret each digest word in the block pointer's data byte order.
+     */
+    for (size_t index = 0U; index < 4U; ++index) {
+        if (load_u64_order(digest + index * 8U, order) != expected[index])
+            return false;
+    }
+    return true;
+}
+
 static int decompress_zle(const uint8_t *source, size_t source_length,
                           uint8_t *destination, size_t destination_length)
 {
@@ -605,7 +635,8 @@ static int read_block_pointer_data(ZfsContext *context,
     if (bp->checksum != ZFS_CHECKSUM_OFF &&
         bp->checksum != ZFS_CHECKSUM_FLETCHER2 &&
         bp->checksum != ZFS_CHECKSUM_FLETCHER4 &&
-        bp->checksum != ZFS_CHECKSUM_SHA256) {
+        bp->checksum != ZFS_CHECKSUM_SHA256 &&
+        bp->checksum != ZFS_CHECKSUM_SHA512) {
         errno = ENOTSUP;
         set_error(error, error_size,
                   "unsupported ZFS metadata checksum in bounded exact reader");
@@ -672,6 +703,10 @@ static int read_block_pointer_data(ZfsContext *context,
         else if (bp->checksum == ZFS_CHECKSUM_SHA256)
             checksum_ok = checksum_sha256(
                 physical_data, (size_t)bp->psize, bp->checksum_words);
+        else if (bp->checksum == ZFS_CHECKSUM_SHA512)
+            checksum_ok = checksum_sha512_256(
+                physical_data, (size_t)bp->psize,
+                bp->data_order, bp->checksum_words);
         if (!checksum_ok) {
             last_errno = EIO;
             free(physical_data);
