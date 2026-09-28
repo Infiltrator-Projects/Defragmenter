@@ -10,6 +10,7 @@ extern "C" {
 #include <atomic>
 #include <cerrno>
 #include <chrono>
+#include <condition_variable>
 #include <cmath>
 #include <csignal>
 #include <cstdio>
@@ -39,6 +40,17 @@ constexpr std::uint64_t kProtocolVersion = 1U;
 constexpr std::size_t kMaxRequestBytes = 64U * 1024U;
 constexpr std::size_t kMaxArgumentCount = 128U;
 constexpr std::size_t kMaxArgumentBytes = 4096U;
+#ifdef LD_PRIVILEGED_HELPER_TEST_MODE
+constexpr auto kStopGracePeriod = std::chrono::milliseconds(750);
+#else
+/*
+ * Cooperative Stop is the normal writer path.  Hard escalation exists only
+ * for a wedged child after a deliberately long grace period; writer contracts
+ * require durable recovery material before authoritative source writes begin.
+ */
+constexpr auto kStopGracePeriod = std::chrono::seconds(300);
+#endif
+constexpr auto kStopPollInterval = std::chrono::milliseconds(20);
 
 enum class RequestLineStatus {
     End,
@@ -251,21 +263,39 @@ int wait_for_child(pid_t child) {
 
 void stop_and_reap(pid_t child) noexcept {
     if (child <= 0) return;
-    if (kill(-child, SIGINT) != 0 && errno != ESRCH) {
-        // Waiting is still mandatory. The child may have already exited or
-        // may honour a signal delivered by another shutdown path.
-    }
+    (void)kill(-child, SIGINT);
+
+    const auto deadline = std::chrono::steady_clock::now() + kStopGracePeriod;
     int status = 0;
+    for (;;) {
+        const pid_t waited = waitpid(child, &status, WNOHANG);
+        if (waited == child || (waited < 0 && errno == ECHILD)) return;
+        if (waited < 0 && errno != EINTR) break;
+        if (std::chrono::steady_clock::now() >= deadline) break;
+        std::this_thread::sleep_for(kStopPollInterval);
+    }
+
+    if (kill(-child, SIGKILL) != 0 && errno == ESRCH)
+        (void)kill(child, SIGKILL);
     while (waitpid(child, &status, 0) < 0 && errno == EINTR) {}
 }
 
 class Helper {
 public:
     explicit Helper(std::uint32_t invoking_uid)
-        : invoking_uid_(invoking_uid) {}
+        : invoking_uid_(invoking_uid) {
+        stop_watchdog_ = std::thread([this] { stop_watchdog_loop(); });
+    }
 
     ~Helper() {
         try { stop_active_and_wait(); } catch (...) {}
+        {
+            std::lock_guard<std::mutex> lock(active_mutex_);
+            stop_watchdog_shutdown_ = true;
+            stop_watchdog_armed_ = false;
+        }
+        active_cv_.notify_all();
+        if (stop_watchdog_.joinable()) stop_watchdog_.join();
     }
 
     int run() {
@@ -323,7 +353,9 @@ private:
     std::uint32_t invoking_uid_;
     std::mutex emit_mutex_;
     std::mutex active_mutex_;
+    std::condition_variable active_cv_;
     std::thread worker_;
+    std::thread stop_watchdog_;
     std::atomic<bool> transport_failed_{false};
     pid_t active_pid_ = -1;
     std::int64_t active_id_ = 0;
@@ -331,6 +363,52 @@ private:
     bool active_waits_for_output_ = false;
     bool pending_stop_ = false;
     bool worker_running_ = false;
+    bool stop_watchdog_shutdown_ = false;
+    bool stop_watchdog_armed_ = false;
+    pid_t stop_watchdog_pid_ = -1;
+    std::chrono::steady_clock::time_point stop_watchdog_deadline_{};
+
+    void arm_stop_watchdog(pid_t pid) {
+        if (pid <= 0) return;
+        {
+            std::lock_guard<std::mutex> lock(active_mutex_);
+            if (!worker_running_ || active_pid_ != pid) return;
+            stop_watchdog_pid_ = pid;
+            stop_watchdog_deadline_ =
+                std::chrono::steady_clock::now() + kStopGracePeriod;
+            stop_watchdog_armed_ = true;
+        }
+        active_cv_.notify_all();
+    }
+
+    void stop_watchdog_loop() noexcept {
+        std::unique_lock<std::mutex> lock(active_mutex_);
+        for (;;) {
+            active_cv_.wait(lock, [this] {
+                return stop_watchdog_shutdown_ || stop_watchdog_armed_;
+            });
+            if (stop_watchdog_shutdown_) return;
+
+            const pid_t pid = stop_watchdog_pid_;
+            const auto deadline = stop_watchdog_deadline_;
+            const bool changed = active_cv_.wait_until(
+                lock, deadline, [this, pid] {
+                    return stop_watchdog_shutdown_ ||
+                           !stop_watchdog_armed_ ||
+                           stop_watchdog_pid_ != pid ||
+                           !worker_running_ ||
+                           active_pid_ != pid;
+                });
+            if (stop_watchdog_shutdown_) return;
+            if (changed) continue;
+
+            stop_watchdog_armed_ = false;
+            lock.unlock();
+            if (kill(-pid, SIGKILL) != 0 && errno == ESRCH)
+                (void)kill(pid, SIGKILL);
+            lock.lock();
+        }
+    }
 
     bool emit(Json::Object object) noexcept {
         if (transport_failed_.load(std::memory_order_acquire)) return false;
@@ -562,7 +640,12 @@ private:
             active_waits_for_output_ = false;
             pending_stop_ = false;
             worker_running_ = false;
+            if (stop_watchdog_pid_ == child) {
+                stop_watchdog_armed_ = false;
+                stop_watchdog_pid_ = -1;
+            }
         }
+        active_cv_.notify_all();
         (void)emit(Json::Object{
             {"type", Json("finished")}, {"id", Json::integer(id)},
             {"returncode", Json::integer(return_code)}});
@@ -571,6 +654,7 @@ private:
     void deliver_stop(pid_t pid, Json id, std::int64_t active_id,
                       const char* success_message = "SIGINT delivered") {
         if (kill(-pid, SIGINT) == 0) {
+            arm_stop_watchdog(pid);
             (void)emit(Json::Object{
                 {"type", Json("stop-result")},
                 {"id", std::move(id)},
@@ -634,18 +718,27 @@ private:
         pid_t signalled = -1;
         for (;;) {
             pid_t pid = -1;
-            bool running = false;
             {
-                std::lock_guard<std::mutex> lock(active_mutex_);
+                std::unique_lock<std::mutex> lock(active_mutex_);
+                if (!worker_running_) break;
                 pid = active_pid_;
-                running = worker_running_;
+                if (pid <= 0) {
+                    active_cv_.wait_for(lock, kStopPollInterval);
+                    continue;
+                }
             }
-            if (pid > 0 && pid != signalled) {
-                if (kill(-pid, SIGINT) == 0 || errno == ESRCH)
+            if (pid != signalled) {
+                if (kill(-pid, SIGINT) == 0) {
                     signalled = pid;
+                    arm_stop_watchdog(pid);
+                } else if (errno == ESRCH) {
+                    signalled = pid;
+                }
             }
-            if (!running) break;
-            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            std::unique_lock<std::mutex> lock(active_mutex_);
+            active_cv_.wait_for(lock, kStopPollInterval, [this] {
+                return !worker_running_;
+            });
         }
         if (worker_.joinable()) worker_.join();
     }
