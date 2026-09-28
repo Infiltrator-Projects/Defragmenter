@@ -2867,3 +2867,183 @@ int ldtm_worker_verify(const char *device) {
     }
     return 0;
 }
+
+
+static int run_production_defrag(
+    const char *engine, const LdtmFilesystemSpec *spec,
+    const char *partition, const char *operation, const char *journal)
+{
+    const bool growth = strcmp(operation, "growth-defrag") == 0;
+    const char *argv[16];
+    size_t arg = 0U;
+    argv[arg++] = engine;
+    argv[arg++] = operation;
+    argv[arg++] = partition;
+    argv[arg++] = "--filesystem";
+    argv[arg++] = spec->key;
+    argv[arg++] = "--write";
+    argv[arg++] = "--confirm";
+    argv[arg++] = partition;
+    argv[arg++] = "--journal";
+    argv[arg++] = journal;
+    if (growth) {
+        argv[arg++] = "--growth-percent";
+        argv[arg++] = "10";
+    }
+    argv[arg] = NULL;
+    return run_process(argv, NULL, 0);
+}
+
+int ldtm_worker_qualify(const char *device)
+{
+    char canonical[PATH_MAX];
+    char safety[512];
+    char state_path[PATH_MAX];
+    char fingerprint[LDTM_HASH_HEX];
+    char engine[PATH_MAX];
+    LdtmPartitionMap map;
+    LdtmVerifyFilesystem expected[LDTM_SPEC_COUNT];
+    int failures = 0;
+
+    if (geteuid() != 0) {
+        fputs("Test-media qualification worker must run as root.\n", stderr);
+        return 2;
+    }
+    if (ldtm_canonicalize_device(device, canonical, sizeof(canonical)) != 0 ||
+        ldtm_device_safety_check(canonical, 0, safety, sizeof(safety)) != 0) {
+        fprintf(stderr, "%s\n", safety);
+        return 2;
+    }
+    if (state_path_for_device(canonical, state_path, sizeof(state_path)) != 0 ||
+        load_verify_state(state_path, canonical, expected) != 0) {
+        fprintf(stderr,
+                "No matching protected test-media state found for %s.\n",
+                canonical);
+        return 2;
+    }
+    if (ldtm_device_fingerprint(canonical, fingerprint) != 0) {
+        fputs("Unable to rebind the protected test disk identity.\n", stderr);
+        return 2;
+    }
+    if (ldtm_resolve_program(
+            "/usr/lib/linux-defragger/linux-defragger-operation-engine",
+            engine, sizeof(engine)) != 0) {
+        fputs("The installed production Defragmenter operation engine is unavailable.\n",
+              stderr);
+        return 2;
+    }
+    if (unmount_descendants(canonical) != 0 ||
+        load_partition_map(canonical, &map) != 0) {
+        fputs("Unable to obtain an unmounted qualified partition map.\n", stderr);
+        return 2;
+    }
+
+    for (size_t index = 0U; index < LDTM_SPEC_COUNT; ++index) {
+        const LdtmFilesystemSpec *spec = &ldtm_specs()[index];
+        const char *partition;
+        char journal[PATH_MAX];
+        char detail[512] = {0};
+
+        if (!expected[index].populated)
+            continue;
+        partition = partition_for_label(&map, spec->label);
+        if (partition == NULL) {
+            emit_status(spec->key, "qualification-failed",
+                        "partition label is missing");
+            failures++;
+            continue;
+        }
+
+        if (spec->creator == LDTM_CREATOR_ZFS ||
+            spec->creator == LDTM_CREATOR_SWAP) {
+            emit_status(
+                spec->key, "qualification-skipped",
+                spec->creator == LDTM_CREATOR_ZFS
+                    ? "ZFS is analysis-only; retained payload and exact analysis will still be verified"
+                    : "swap has no Defragment operation; its native map will still be verified");
+            continue;
+        }
+
+        if (snprintf(
+                journal, sizeof(journal),
+                LDTM_STATE_ROOT "/qualification-%.16s-%s.journal",
+                fingerprint, spec->key) <= 0) {
+            emit_status(spec->key, "qualification-failed",
+                        "could not construct the protected transaction journal path");
+            failures++;
+            continue;
+        }
+
+        printf("\n=== qualify %s on %s ===\n", spec->key, partition);
+        fflush(stdout);
+
+        /*
+         * A previous interrupted qualification deliberately leaves the real
+         * production journal behind. Recover it with the production engine
+         * before starting a new destructive transaction.
+         */
+        if (access(journal, F_OK) == 0) {
+            printf("+ recovering interrupted production transaction\n");
+            fflush(stdout);
+            if (run_production_defrag(
+                    engine, spec, partition, "recover", journal) != 0) {
+                emit_status(
+                    spec->key, "qualification-failed",
+                    "production Recover could not complete the previous test transaction");
+                failures++;
+                continue;
+            }
+        }
+
+        printf("+ production Defragment\n");
+        fflush(stdout);
+        if (run_production_defrag(
+                engine, spec, partition, "defrag", journal) != 0 ||
+            require_fragmentation_state(
+                spec, partition, 0, detail, sizeof(detail)) != 0) {
+            emit_status(
+                spec->key, "qualification-failed",
+                detail[0] != '\0'
+                    ? detail
+                    : "production Defragment failed");
+            failures++;
+            continue;
+        }
+
+        /*
+         * Growth Defrag is a separate writer contract. Run it after packed
+         * Defragment so the final test medium proves both mutation paths on
+         * the same retained payload before independent byte verification.
+         */
+        detail[0] = '\0';
+        printf("+ production Growth Defrag (10%% reserve)\n");
+        fflush(stdout);
+        if (run_production_defrag(
+                engine, spec, partition, "growth-defrag", journal) != 0 ||
+            require_fragmentation_state(
+                spec, partition, 0, detail, sizeof(detail)) != 0) {
+            emit_status(
+                spec->key, "qualification-failed",
+                detail[0] != '\0'
+                    ? detail
+                    : "production Growth Defrag failed");
+            failures++;
+            continue;
+        }
+
+        emit_status(
+            spec->key, "qualified",
+            "production Defragment and Growth Defrag completed; exact analyser reports zero fragmentation");
+    }
+
+    if (failures != 0) {
+        fprintf(stderr,
+                "Production mutation qualification failed closed for %d filesystem%s; payload verification was not used to hide those failures.\n",
+                failures, failures == 1 ? "" : "s");
+        return 1;
+    }
+
+    puts("\nAll writable production engines completed. Verifying retained payload bytes independently...");
+    fflush(stdout);
+    return ldtm_worker_verify(canonical);
+}
