@@ -43,7 +43,11 @@ void visit(const Json& node, std::vector<DesktopVolume>& result) {
         if (volume.label.empty()) volume.label = label;
         volume.filesystem_uuid = value(node, "uuid");
         volume.partition_uuid = value(node, "partuuid");
+        volume.serial = value(node, "serial");
+        volume.wwn = value(node, "wwn");
         if (const auto* size = node.find("size")) volume.size = size->unsigned_or();
+        if (const auto* start = node.find("start"))
+            volume.start_sector = start->unsigned_or();
         volume.readonly = flag(node, "ro");
         if (const auto* mounts = node.find("mountpoints"); mounts && mounts->is_array()) {
             for (const auto& mount : mounts->array())
@@ -88,6 +92,16 @@ std::string desktop_journal(const DesktopVolume& v, unsigned uid) {
     if (!v.partition_uuid.empty()) {
         if (!identity.empty()) identity += '|';
         identity += v.partition_uuid;
+    }
+    if (identity.empty() && (!v.serial.empty() || !v.wwn.empty())) {
+        identity = "media:";
+        identity += v.serial;
+        identity += '|';
+        identity += v.wwn;
+        identity += '|';
+        identity += std::to_string(v.start_sector);
+        identity += '|';
+        identity += std::to_string(v.size);
     }
     const bool have_stable_identity = !identity.empty();
     const std::string material =
