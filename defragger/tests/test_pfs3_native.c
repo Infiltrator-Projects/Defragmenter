@@ -270,6 +270,66 @@ static void make_nested_image(uint8_t *image)
     fill_payload(image + CHILD_DATA_SECTOR * TEST_SECTOR, UINT8_C(0xc7));
 }
 
+static void make_hardlink_image(uint8_t *image)
+{
+    make_image(image, 1);
+    uint8_t *anodes = image + ANODE_BLOCK_SECTOR * TEST_SECTOR;
+    /* Link node: master object lives in root dir; link entry also lives there. */
+    put_anode(anodes, 10U, 5U, 5U, 0U);
+
+    uint8_t *root = image + ROOT_DIR_SECTOR * TEST_SECTOR;
+    uint8_t *entry = root + TEST_DIR_HEADER + 26U;
+    entry[0] = 28U;
+    entry[1] = UINT8_C(0xfc); /* ST_LINKFILE */
+    put32(entry + 2U, 10U);
+    put32(entry + 6U, 3U * TEST_SECTOR);
+    entry[17U] = 4U;
+    memcpy(entry + 18U, "hard", 4U);
+    entry[22U] = 0U;
+    put16(entry + 24U, 6U); /* extrafields.link low word */
+    put16(entry + 26U, 2U); /* bit 1: low word of link target */
+    entry[28U] = 0U;
+}
+
+static void make_softlink_image(uint8_t *image)
+{
+    make_image(image, 1);
+    const uint32_t soft_sector = 120U;
+    uint8_t *normal_bitmap = image + BITMAP_SECTOR * TEST_SECTOR;
+    bitmap_bit(normal_bitmap + 12U, soft_sector - FIRST_DATA, 0);
+    put32(image + ROOT_SECTOR * TEST_SECTOR + 68U, 186U);
+
+    uint8_t *anodes = image + ANODE_BLOCK_SECTOR * TEST_SECTOR;
+    put_anode(anodes, 10U, 1U, soft_sector, 0U);
+
+    uint8_t *root = image + ROOT_DIR_SECTOR * TEST_SECTOR;
+    uint8_t *entry = root + TEST_DIR_HEADER + 26U;
+    entry[0] = 26U;
+    entry[1] = UINT8_C(3); /* ST_SOFTLINK */
+    put32(entry + 2U, 10U);
+    put32(entry + 6U, 6U);
+    entry[17U] = 4U;
+    memcpy(entry + 18U, "soft", 4U);
+    entry[22U] = 0U;
+    entry[24U] = 0U;
+    entry[26U] = 0U;
+    memcpy(image + (size_t)soft_sector * TEST_SECTOR, "target", 6U);
+}
+
+static int verify_softlink_payload(const char *path, uint32_t sector)
+{
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0)
+        return -1;
+    char payload[6];
+    const int result =
+        pread(fd, payload, sizeof(payload),
+              (off_t)sector * TEST_SECTOR) == (ssize_t)sizeof(payload) &&
+        memcmp(payload, "target", sizeof(payload)) == 0 ? 0 : -1;
+    (void)close(fd);
+    return result;
+}
+
 static int write_image_path(const char *path, const uint8_t *image)
 {
     int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
@@ -499,6 +559,62 @@ int main(int argc, char **argv)
     }
     (void)unlink(stage);
     (void)unlink(nested);
+
+    make_hardlink_image(image);
+    char linked[64];
+    if (save_image(image, linked) != 0) {
+        (void)unlink(source);
+        free(image);
+        return 12;
+    }
+    memset(error, 0, sizeof(error));
+    if (pfs3_analyse(linked, &analysis, NULL, 0U,
+                     error, sizeof(error)) != 0 ||
+        analysis.regular_files != 1U ||
+        analysis.fragmented_files != 1U ||
+        make_stage_path(stage) != 0 ||
+        pfs3_build_stage(linked, stage, false, 10U, false,
+                         &commit_bytes, error, sizeof(error)) != 0 ||
+        pfs3_verify_layout(stage, false, 10U,
+                           error, sizeof(error)) != 0 ||
+        verify_payload(stage) != 0) {
+        (void)fprintf(stderr, "PFS3 hard-link preservation failed: %s\n", error);
+        (void)unlink(source);
+        (void)unlink(linked);
+        (void)unlink(stage);
+        free(image);
+        return 13;
+    }
+    (void)unlink(stage);
+    (void)unlink(linked);
+
+    make_softlink_image(image);
+    if (save_image(image, linked) != 0) {
+        (void)unlink(source);
+        free(image);
+        return 14;
+    }
+    memset(error, 0, sizeof(error));
+    if (pfs3_analyse(linked, &analysis, NULL, 0U,
+                     error, sizeof(error)) != 0 ||
+        analysis.regular_files != 1U ||
+        analysis.data_blocks != 4U ||
+        make_stage_path(stage) != 0 ||
+        pfs3_build_stage(linked, stage, true, 10U, false,
+                         &commit_bytes, error, sizeof(error)) != 0 ||
+        pfs3_verify_layout(stage, true, 10U,
+                           error, sizeof(error)) != 0 ||
+        verify_payload(stage) != 0 ||
+        verify_softlink_payload(stage, FIRST_DATA + 4U) != 0) {
+        (void)fprintf(stderr, "PFS3 soft-link relocation failed: %s\n", error);
+        (void)unlink(source);
+        (void)unlink(linked);
+        (void)unlink(stage);
+        free(image);
+        return 15;
+    }
+    (void)unlink(stage);
+    (void)unlink(linked);
 
     make_image(image, 1);
     put32(image + ROOT_SECTOR * TEST_SECTOR + 4U,

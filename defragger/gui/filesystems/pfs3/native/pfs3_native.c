@@ -49,7 +49,10 @@
 #define PFS_ROOT_ANODE 5U
 #define PFS_USER_FIRST_ANODE 6U
 #define PFS_ST_USERDIR 2
+#define PFS_ST_SOFTLINK 3
+#define PFS_ST_LINKDIR 4
 #define PFS_ST_FILE (-3)
+#define PFS_ST_LINKFILE (-4)
 #define PFS_INDEX_HEADER 12U
 #define PFS_ANODE_HEADER 16U
 #define PFS_DIR_HEADER 20U
@@ -101,8 +104,14 @@ typedef struct {
     size_t extent_capacity;
     uint64_t blocks;
     bool fragmented;
+    bool regular_file;
     uint32_t target;
 } PfsFile;
+
+typedef struct {
+    uint32_t target_anode;
+    bool directory;
+} PfsHardLink;
 
 typedef struct {
     int fd;
@@ -114,6 +123,9 @@ typedef struct {
     PfsFile *files;
     size_t file_count;
     size_t file_capacity;
+    PfsHardLink *hardlinks;
+    size_t hardlink_count;
+    size_t hardlink_capacity;
     uint32_t *visited_directories;
     size_t visited_directory_count;
     size_t visited_directory_capacity;
@@ -538,6 +550,7 @@ static int file_push_extent(PfsFile *file, PfsAnode anode,
 }
 
 static int model_push_file(PfsModel *model, uint32_t anode, uint64_t size,
+                           bool regular_file,
                            char *error, size_t error_size)
 {
     for (size_t index = 0U; index < model->file_count; ++index) {
@@ -555,6 +568,23 @@ static int model_push_file(PfsModel *model, uint32_t anode, uint64_t size,
     memset(file, 0, sizeof(*file));
     file->first_anode = anode;
     file->size_bytes = size;
+    file->regular_file = regular_file;
+    return 0;
+}
+
+static int model_push_hardlink(PfsModel *model, uint32_t target_anode,
+                               bool directory,
+                               char *error, size_t error_size)
+{
+    if (reserve_array((void **)&model->hardlinks,
+                      &model->hardlink_capacity,
+                      model->hardlink_count + 1U,
+                      sizeof(*model->hardlinks),
+                      error, error_size) != 0)
+        return -1;
+    model->hardlinks[model->hardlink_count++] =
+        (PfsHardLink){.target_anode = target_anode,
+                      .directory = directory};
     return 0;
 }
 
@@ -576,6 +606,109 @@ static int model_mark_directory(PfsModel *model, uint32_t anode,
         return -1;
     model->visited_directories[model->visited_directory_count++] = anode;
     model->directory_count++;
+    return 0;
+}
+
+static int hardlink_target(const uint8_t *entry, size_t record_length,
+                           uint32_t *target,
+                           char *error, size_t error_size)
+{
+    if (record_length < 2U) {
+        set_error(error, error_size, "PFS3 hard-link entry is truncated");
+        return -1;
+    }
+    const uint16_t flags =
+        infiltratr_load_be16(entry + record_length - 2U);
+    size_t cursor = record_length - 2U;
+    uint16_t high = 0U, low = 0U;
+    for (unsigned field = 0U; field < 2U; ++field) {
+        if ((flags & (uint16_t)(1U << field)) == 0U)
+            continue;
+        if (cursor < 2U) {
+            set_error(error, error_size,
+                      "PFS3 hard-link extension is truncated");
+            return -1;
+        }
+        cursor -= 2U;
+        const uint16_t word = infiltratr_load_be16(entry + cursor);
+        if (field == 0U)
+            high = word;
+        else
+            low = word;
+    }
+    *target = ((uint32_t)high << 16U) | low;
+    if (*target < PFS_USER_FIRST_ANODE) {
+        set_error(error, error_size,
+                  "PFS3 hard link does not identify a user object anode");
+        return -1;
+    }
+    return 0;
+}
+
+static int validate_hardlink_entry(PfsModel *model,
+                                   uint32_t directory_anode,
+                                   uint32_t link_anode,
+                                   const uint8_t *entry,
+                                   size_t record_length,
+                                   bool directory,
+                                   char *error, size_t error_size)
+{
+    if ((model->root.options & PFS_MODE_DIR_EXTENSION) == 0U) {
+        set_error(error, error_size,
+                  "PFS3 hard link requires directory-extension metadata");
+        return -1;
+    }
+    uint32_t target = 0U;
+    if (hardlink_target(entry, record_length, &target,
+                        error, error_size) != 0)
+        return -1;
+
+    PfsAnode link;
+    if (read_anode(model->fd, &model->root, link_anode,
+                   &link, error, error_size) != 0)
+        return -1;
+    if (link.clusters < PFS_ROOT_ANODE ||
+        link.block != directory_anode ||
+        (link.next != 0U && link.next < PFS_USER_FIRST_ANODE)) {
+        set_error(error, error_size,
+                  "PFS3 hard-link list node is malformed");
+        return -1;
+    }
+    return model_push_hardlink(model, target, directory,
+                               error, error_size);
+}
+
+static bool model_has_file_anode(const PfsModel *model, uint32_t anode)
+{
+    for (size_t index = 0U; index < model->file_count; ++index)
+        if (model->files[index].first_anode == anode)
+            return true;
+    return false;
+}
+
+static bool model_has_directory_anode(const PfsModel *model, uint32_t anode)
+{
+    for (size_t index = 0U;
+         index < model->visited_directory_count; ++index)
+        if (model->visited_directories[index] == anode)
+            return true;
+    return false;
+}
+
+static int validate_hardlink_targets(const PfsModel *model,
+                                     char *error, size_t error_size)
+{
+    for (size_t index = 0U; index < model->hardlink_count; ++index) {
+        const PfsHardLink *link = &model->hardlinks[index];
+        const bool found = link->directory
+            ? model_has_directory_anode(model, link->target_anode)
+            : model_has_file_anode(model, link->target_anode);
+        if (!found) {
+            set_error(error, error_size,
+                      "PFS3 hard link references an object outside the validated directory tree");
+            return -1;
+        }
+    }
     return 0;
 }
 
@@ -685,16 +818,28 @@ static int parse_directory(PfsModel *model, uint32_t directory_anode,
             return -1;
         }
         if (type == PFS_ST_FILE) {
-            if (model_push_file(model, anode, size,
+            if (model_push_file(model, anode, size, true,
+                                error, error_size) != 0)
+                return -1;
+        } else if (type == PFS_ST_SOFTLINK) {
+            if (model_push_file(model, anode, size, false,
                                 error, error_size) != 0)
                 return -1;
         } else if (type == PFS_ST_USERDIR) {
             if (parse_directory(model, anode, directory_anode,
                                 depth + 1U, error, error_size) != 0)
                 return -1;
+        } else if (type == PFS_ST_LINKFILE ||
+                   type == PFS_ST_LINKDIR) {
+            if (validate_hardlink_entry(
+                    model, directory_anode, anode,
+                    directory + offset, next,
+                    type == PFS_ST_LINKDIR,
+                    error, error_size) != 0)
+                return -1;
         } else {
             set_error(error, error_size,
-                      "PFS3 links or special directory entries remain outside the validated writer subset");
+                      "PFS3 rollover or special directory entry remains outside the validated writer subset");
             return -1;
         }
         offset += next;
@@ -789,7 +934,7 @@ static int load_file_extents(PfsModel *model, PfsFile *file,
 static bool file_growth_satisfied(const PfsModel *model, const PfsFile *file,
                                   unsigned percent)
 {
-    if (file->blocks == 0U)
+    if (!file->regular_file || file->blocks == 0U)
         return true;
     if (file->fragmented || file->extent_count == 0U)
         return false;
@@ -818,6 +963,7 @@ static void model_free(PfsModel *model)
     for (size_t index = 0U; index < model->file_count; ++index)
         free(model->files[index].extents);
     free(model->files);
+    free(model->hardlinks);
     free(model->visited_directories);
     free(model->free_map);
     free(model->fragmented_map);
@@ -848,7 +994,8 @@ static int model_load(const char *path, PfsModel *model,
         load_free_map(model->fd, &model->root,
                       &model->free_map, &model->bitmap_blocks,
                       error, error_size) != 0 ||
-        parse_root_directory(model, error, error_size) != 0)
+        parse_root_directory(model, error, error_size) != 0 ||
+        validate_hardlink_targets(model, error, error_size) != 0)
         goto failure;
 
     uint8_t *claimed = ld_bitmap_calloc(model->root.disksize);
@@ -908,11 +1055,15 @@ static void fill_analysis(const PfsModel *model, Pfs3Analysis *analysis)
     for (uint32_t block = first_data; block < model->root.disksize; ++block)
         if (ld_bitmap_get(model->free_map, block))
             free_blocks++;
+    uint64_t regular_files = 0U;
     for (size_t index = 0U; index < model->file_count; ++index) {
         const PfsFile *file = &model->files[index];
         data_blocks += file->blocks;
-        if (file->fragmented)
-            fragmented_files++;
+        if (file->regular_file) {
+            regular_files++;
+            if (file->fragmented)
+                fragmented_files++;
+        }
         if (!file_growth_satisfied(model, file, 10U))
             growth_ok = false;
     }
@@ -932,7 +1083,7 @@ static void fill_analysis(const PfsModel *model, Pfs3Analysis *analysis)
     analysis->free_blocks = free_blocks;
     analysis->used_blocks = model->root.disksize - free_blocks;
     analysis->data_blocks = data_blocks;
-    analysis->regular_files = model->file_count;
+    analysis->regular_files = regular_files;
     analysis->directories = model->directory_count;
     analysis->fragmented_files = fragmented_files;
     analysis->growth_10_satisfied = growth_ok;
@@ -1207,7 +1358,7 @@ int pfs3_verify_layout(const char *path, bool growth, unsigned growth_percent,
                 break;
             cursor += file->blocks;
         }
-        if (growth) {
+        if (growth && file->regular_file) {
             const uint64_t reserve =
                 (file->blocks * growth_percent + 99U) / 100U;
             if (cursor + reserve > model.root.disksize) {
@@ -1264,7 +1415,7 @@ int pfs3_build_stage(const char *source, const char *stage, bool growth,
     uint64_t cursor = first_data;
     for (size_t index = 0U; index < model.file_count; ++index) {
         PfsFile *file = &model.files[index];
-        const uint64_t reserve = growth
+        const uint64_t reserve = growth && file->regular_file
             ? (file->blocks * growth_percent + 99U) / 100U : 0U;
         if (cursor + file->blocks + reserve > model.root.disksize ||
             cursor > UINT32_MAX) {
