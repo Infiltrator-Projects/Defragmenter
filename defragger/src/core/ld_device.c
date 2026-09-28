@@ -551,7 +551,16 @@ static void ld_decode_mount_field(char *value) {
     *write_cursor = '\0';
 }
 
-static bool ld_mount_source_matches_regular_file(const char *real_path) {
+static bool ld_same_regular_object(const struct stat *left,
+                                        const struct stat *right) {
+    return left != NULL && right != NULL &&
+           S_ISREG(left->st_mode) && S_ISREG(right->st_mode) &&
+           left->st_dev == right->st_dev &&
+           left->st_ino == right->st_ino;
+}
+
+static bool ld_mount_source_matches_regular_identity(
+    const struct stat *target) {
     FILE *file = fopen("/proc/self/mountinfo", "r");
     if (file == NULL) ld_die_errno("open /proc/self/mountinfo");
 
@@ -570,12 +579,9 @@ static bool ld_mount_source_matches_regular_file(const char *real_path) {
         *source_end = '\0';
         ld_decode_mount_field(cursor);
 
-        struct stat source, target;
+        struct stat source;
         mounted = stat(cursor, &source) == 0 &&
-                  stat(real_path, &target) == 0 &&
-                  S_ISREG(source.st_mode) &&
-                  source.st_dev == target.st_dev &&
-                  source.st_ino == target.st_ino;
+                  ld_same_regular_object(&source, target);
         *source_end = ' ';
         if (mounted) break;
     }
@@ -584,8 +590,8 @@ static bool ld_mount_source_matches_regular_file(const char *real_path) {
     return mounted;
 }
 
-static bool ld_loop_backing_file_matches(const char *sysfs_path,
-                                         const char *real_path) {
+static bool ld_loop_backing_file_matches_identity(
+    const char *sysfs_path, const struct stat *target) {
     char backing_path[PATH_MAX];
     int length = snprintf(backing_path, sizeof(backing_path),
                           "%s/loop/backing_file", sysfs_path);
@@ -608,19 +614,17 @@ static bool ld_loop_backing_file_matches(const char *sysfs_path,
     }
     if (length < 0 || (size_t)length >= sizeof(candidate)) return false;
 
-    /* Canonical path strings do not identify hard links. Bind the loop's
-     * backing object to the selected inode, just as the verified open does. */
-    struct stat backing, target;
+    struct stat backing;
     return stat(candidate, &backing) == 0 &&
-           stat(real_path, &target) == 0 && S_ISREG(backing.st_mode) &&
-           backing.st_dev == target.st_dev && backing.st_ino == target.st_ino;
+           ld_same_regular_object(&backing, target);
 }
 
-static bool ld_regular_file_loop_is_mounted(const char *real_path) {
+static bool ld_regular_file_has_loop_mapping(
+    const struct stat *target, bool require_mounted) {
     DIR *directory = opendir("/sys/dev/block");
     if (directory == NULL) return false;
 
-    bool mounted = false;
+    bool conflict = false;
     struct dirent *entry = NULL;
     while ((entry = readdir(directory)) != NULL) {
         if (entry->d_name[0] == '.') continue;
@@ -630,14 +634,72 @@ static bool ld_regular_file_loop_is_mounted(const char *real_path) {
         char sysfs_path[PATH_MAX];
         if (!ld_resolve_sysfs_device(device, sysfs_path, sizeof(sysfs_path)))
             continue;
-        if (ld_loop_backing_file_matches(sysfs_path, real_path) &&
-            ld_device_number_is_mounted(device)) {
-            mounted = true;
+        if (!ld_loop_backing_file_matches_identity(sysfs_path, target))
+            continue;
+        if (!require_mounted || ld_device_number_is_mounted(device)) {
+            conflict = true;
             break;
         }
     }
     closedir(directory);
-    return mounted;
+    return conflict;
+}
+
+static bool ld_regular_file_is_active_swap(const struct stat *target) {
+    FILE *swaps = fopen("/proc/swaps", "r");
+    if (swaps == NULL) ld_die_errno("open /proc/swaps");
+
+    char swap_line[PATH_MAX + 256U];
+    if (fgets(swap_line, sizeof(swap_line), swaps) == NULL) {
+        const int failure = ferror(swaps) && errno != 0 ? errno : EIO;
+        fclose(swaps);
+        errno = failure;
+        ld_die_errno("read /proc/swaps");
+    }
+
+    bool active = false;
+    while (fgets(swap_line, sizeof(swap_line), swaps) != NULL) {
+        char source_path[PATH_MAX];
+        if (sscanf(swap_line, "%4095s", source_path) != 1) continue;
+        ld_decode_mount_field(source_path);
+        struct stat source;
+        if (stat(source_path, &source) != 0) {
+            const int failure = errno;
+            fclose(swaps);
+            errno = failure;
+            ld_die_errno("stat active swap");
+        }
+        if (ld_same_regular_object(&source, target)) {
+            active = true;
+            break;
+        }
+    }
+    if (ferror(swaps)) {
+        const int failure = errno == 0 ? EIO : errno;
+        fclose(swaps);
+        errno = failure;
+        ld_die_errno("read /proc/swaps");
+    }
+    fclose(swaps);
+    return active;
+}
+
+static bool ld_regular_file_is_mounted_identity(const struct stat *target) {
+    return ld_mount_source_matches_regular_identity(target) ||
+           ld_regular_file_has_loop_mapping(target, true) ||
+           ld_regular_file_is_active_swap(target);
+}
+
+static bool ld_regular_file_write_conflict_identity(
+    const struct stat *target) {
+    /*
+     * A writable image is unsafe not only while mounted, but while any loop
+     * device still references the same inode. The loop may be mounted between
+     * an earlier path check and the authoritative writable open.
+     */
+    return ld_mount_source_matches_regular_identity(target) ||
+           ld_regular_file_has_loop_mapping(target, false) ||
+           ld_regular_file_is_active_swap(target);
 }
 
 bool ld_path_is_mounted(const char *path) {
@@ -661,8 +723,7 @@ bool ld_path_is_mounted(const char *path) {
     if (S_ISBLK(status.st_mode)) {
         mounted = ld_device_number_is_mounted(status.st_rdev);
     } else if (S_ISREG(status.st_mode)) {
-        mounted = ld_mount_source_matches_regular_file(resolved) ||
-                  ld_regular_file_loop_is_mounted(resolved);
+        mounted = ld_regular_file_is_mounted_identity(&status);
     }
 
     free(resolved);
@@ -674,10 +735,11 @@ bool ld_path_is_mounted(const char *path) {
  *
  * A pathname is not a stable authority: another process can replace a regular
  * image or change block-device mount state after preflight. Therefore this
- * routine resolves and stats the candidate, rejects mounted writable block
- * targets, opens with no-follow/exclusive semantics where applicable, compares
- * fstat() identity with the pre-open object, then repeats the mounted-state
- * check on the descriptor's block identity. Filesystem writers add their
+ * routine resolves and stats the candidate, rejects mounted/in-use writable
+ * block devices and regular images, opens with no-follow/exclusive semantics
+ * where applicable, compares fstat() identity with the pre-open object, then
+ * repeats the mounted/in-use check against the opened object's stable identity.
+ * Filesystem writers add their
  * UUID/serial/geometry checks on top of this generic object binding.
  */
 int ld_device_try_open(const char *path, bool writable, LdDevice *device) {
@@ -699,12 +761,15 @@ int ld_device_try_open(const char *path, bool writable, LdDevice *device) {
         return -1;
     }
     const bool block = S_ISBLK(expected.st_mode);
-    if (!block && !S_ISREG(expected.st_mode)) {
+    const bool regular = S_ISREG(expected.st_mode);
+    if (!block && !regular) {
         free(resolved);
         errno = EINVAL;
         return -1;
     }
-    if (block && writable && ld_device_number_is_mounted(expected.st_rdev)) {
+    if (writable &&
+        ((block && ld_device_number_is_mounted(expected.st_rdev)) ||
+         (regular && ld_regular_file_write_conflict_identity(&expected)))) {
         free(resolved);
         errno = EBUSY;
         return -1;
@@ -743,7 +808,9 @@ int ld_device_try_open(const char *path, bool writable, LdDevice *device) {
         errno = ESTALE;
         return -1;
     }
-    if (block && writable && ld_device_number_is_mounted(opened.st_rdev)) {
+    if (writable &&
+        ((block && ld_device_number_is_mounted(opened.st_rdev)) ||
+         (regular && ld_regular_file_write_conflict_identity(&opened)))) {
         (void)close(fd);
         free(resolved);
         errno = EBUSY;
