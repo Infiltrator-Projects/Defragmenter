@@ -145,7 +145,79 @@ def run_case(mode, program):
             reader.join(timeout=1)
 
 
+
+def run_uncooperative_case():
+    """A child that ignores SIGINT must still be reaped by bounded supervision."""
+    with tempfile.TemporaryDirectory(prefix="defragger-supervisor-hard-stop-") as temporary:
+        child_marker = Path(temporary) / "child"
+        process = subprocess.Popen(
+            [helper], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, text=True,
+            env={**os.environ, "LD_HELPER_TEST_CHILD": str(child),
+                 "LD_HELPER_TEST_MARKER": str(child_marker),
+                 "LD_HELPER_TEST_IGNORE_SIGINT": "1"},
+        )
+
+        def send(message):
+            process.stdin.write(json.dumps(message) + "\n")
+            process.stdin.flush()
+
+        def read_event(kind, request_id=None):
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                line = process.stdout.readline()
+                assert line, process.stderr.read()
+                event = json.loads(line)
+                if event["type"] == kind and (
+                    request_id is None or event.get("id") == request_id
+                ):
+                    return event
+                assert event["type"] != "error", event
+            raise AssertionError(f"timed out waiting for {kind}")
+
+        pid = None
+        try:
+            read_event("ready")
+            send({
+                "action": "run", "id": 20, "program": "operation-engine",
+                "argv": ["defrag", "/dev/test", "--filesystem", "fat12",
+                         "--journal",
+                         "/var/lib/linux-defragger/state/1000/test.journal"],
+            })
+            started = read_event("started", 20)
+            pid = started["pid"]
+            wait_for(lambda: child_marker.with_suffix(".ready").exists())
+            read_event("output", 20)
+            send({"action": "stop", "id": 21})
+            stop_result = read_event("stop-result", 21)
+            assert stop_result["delivered"], stop_result
+            finished = read_event("finished", 20)
+            assert finished["returncode"] == 137, finished
+            assert not Path(f"/proc/{pid}").exists(), "hard-stopped child was not reaped"
+            assert not child_marker.with_suffix(".stopped").exists(), (
+                "uncooperative child unexpectedly reached cooperative boundary"
+            )
+            send({"action": "quit"})
+            read_event("bye")
+            process.wait(timeout=5)
+            assert process.returncode == 0, process.stderr.read()
+        finally:
+            if process.poll() is None:
+                try:
+                    process.stdin.close()
+                except BrokenPipeError:
+                    pass
+                if pid is not None:
+                    try:
+                        os.killpg(pid, 9)
+                    except ProcessLookupError:
+                        pass
+                process.kill()
+                process.wait()
+
+
 for mode in ("stop", "queued-stop", "immediate-stop", "control-eof", "output-closed"):
     run_case(mode, "operation-engine")
 run_case("stop", "mapper")
-print("native helper child Stop, queued Stop, follow-on, EOF and broken-output tests passed")
+run_uncooperative_case()
+print("native helper Stop, escalation, follow-on, EOF and broken-output tests passed")
