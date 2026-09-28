@@ -843,10 +843,16 @@ static bool ld_stable_block_alias(dev_t device_number,
 {
     if (buffer == NULL || buffer_size == 0U) return false;
     buffer[0] = '\0';
+    /*
+     * Partition UUID is the strongest ordinary partition identity because it
+     * is unique to the partition rather than the parent hardware. Filesystem
+     * UUID is the next best stable alias. Whole disks normally have neither,
+     * so they fall back to hardware by-id; mapper names remain last.
+     */
     const char *roots[] = {
-        "/dev/disk/by-id",
         "/dev/disk/by-partuuid",
         "/dev/disk/by-uuid",
+        "/dev/disk/by-id",
         "/dev/mapper",
     };
     char best[PATH_MAX] = "";
