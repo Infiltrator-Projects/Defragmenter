@@ -23,12 +23,18 @@ int main() {
     assert(v.verified);
     assert(!desktop_controls(&v, false, false, false).defrag);
     v.exact_analysis = true;
+    assert(!desktop_controls(&v, false, false, false).defrag);
+    v.defrag_qualified = true;
+    v.growth_qualified = true;
     assert(desktop_controls(&v, false, false, false).defrag);
+    assert(desktop_controls(&v, false, false, false).growth_defrag);
     DesktopVolume fat = v;
     fat.filesystem = "vfat";
     fat.verified = false;
     desktop_verify_identity(fat, "fat16");
-    assert(fat.verified && fat.filesystem == "fat16" && !fat.exact_analysis);
+    assert(fat.verified && fat.filesystem == "fat16" &&
+           !fat.exact_analysis && !fat.defrag_qualified &&
+           !fat.growth_qualified);
     DesktopVolume removable = v;
     removable.filesystem_uuid.clear();
     removable.partition_uuid.clear();
@@ -40,6 +46,17 @@ int main() {
     removable.path = "/dev/sdc1";
     assert(desktop_journal(removable, 1000) == stable_journal);
     const auto journal = desktop_journal(v, 1000);
+    DesktopVolume rejected = v;
+    rejected.defrag_qualified = false;
+    rejected.defrag_reason = "qualified writer rejected feature X";
+    try {
+        (void)desktop_mutation(
+            rejected, "defrag", "/tmp/engine", journal, 512, false);
+        assert(false);
+    } catch (const std::runtime_error& error) {
+        assert(std::string(error.what()) ==
+               "qualified writer rejected feature X");
+    }
     const auto args = desktop_mutation(v, "defrag", "/tmp/engine", journal, 512, false);
     assert(args.at(0) == "/tmp/engine" && args.at(1) == "defrag");
     assert(args.at(7) == v.path && args.at(9) == journal);
