@@ -206,11 +206,11 @@ static int parse_inline_fork(const hfs_writer_volume *writer,
         physical_bytes / writer->volume.allocation_block_size;
     uint32_t inline_described = 0U;
     for (size_t index = 0U; index < 3U; ++index) {
-        const uint16_t count =
+        const uint16_t inline_count =
             infiltratr_load_be16(raw + index * 4U + 2U);
-        if (count > required - inline_described)
+        if (inline_count > required - inline_described)
             break;
-        inline_described += count;
+        inline_described += inline_count;
     }
     fork->uses_overflow = inline_described < required;
 
