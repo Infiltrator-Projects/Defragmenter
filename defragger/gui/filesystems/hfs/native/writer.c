@@ -42,9 +42,10 @@
 
 typedef struct {
     uint32_t blocks;
-    hfs_extent extents[3];
+    hfs_extent *extents;
     size_t extent_count;
     uint64_t catalog_extent_offset;
+    uint8_t fork_type;
 } hfs_writable_fork;
 
 typedef struct {
@@ -103,6 +104,10 @@ static void writer_volume_close(hfs_writer_volume *writer)
     if (writer == NULL)
         return;
     free(writer->used_map);
+    for (size_t index = 0U; index < writer->file_count; ++index) {
+        free(writer->files[index].data_fork.extents);
+        free(writer->files[index].resource_fork.extents);
+    }
     free(writer->files);
     writer->used_map = NULL;
     writer->files = NULL;
@@ -152,60 +157,84 @@ static int validate_special_fork_used(const hfs_writer_volume *writer,
 }
 
 static int parse_inline_fork(const hfs_writer_volume *writer,
-                             uint32_t file_id, const char *fork_name,
+                             uint32_t file_id, uint8_t fork_type,
+                             const char *fork_name,
                              uint32_t physical_bytes, const uint8_t *raw,
                              uint64_t logical_offset,
                              hfs_writable_fork *fork, char **error)
 {
     memset(fork, 0, sizeof(*fork));
     fork->catalog_extent_offset = logical_offset;
+    fork->fork_type = fork_type;
     if (physical_bytes == 0U) {
-        for (size_t i = 0U; i < 3U; ++i) {
-            if (infiltratr_load_be16(raw + i * 4U + 2U) != 0U) {
-                hfs_set_error(error,
-                              "HFS file %u %s fork has extents with zero physical length",
-                              file_id, fork_name);
+        for (size_t index = 0U; index < 3U; ++index) {
+            if (infiltratr_load_be16(raw + index * 4U + 2U) != 0U) {
+                hfs_set_error(
+                    error,
+                    "HFS file %u %s fork has extents with zero physical length",
+                    file_id, fork_name);
                 return -1;
             }
         }
         return 0;
     }
     if (physical_bytes % writer->volume.allocation_block_size != 0U) {
-        hfs_set_error(error, "HFS file %u %s fork length is not allocation-block aligned",
-                      file_id, fork_name);
+        hfs_set_error(
+            error,
+            "HFS file %u %s fork length is not allocation-block aligned",
+            file_id, fork_name);
         return -1;
     }
-    const uint32_t required = physical_bytes / writer->volume.allocation_block_size;
+
+    hfs_extent collected[HFS_MAX_EXTENTS];
+    size_t count = 0U;
+    int fragmented = 0;
+    if (collect_file_fork(
+            &writer->volume, file_id, fork_type, physical_bytes, raw,
+            collected, &count, &fragmented) != 0 ||
+        count == 0U) {
+        hfs_set_error(
+            error,
+            "HFS file %u %s fork has an invalid inline/overflow extent chain",
+            file_id, fork_name);
+        return -1;
+    }
+
+    const uint32_t required =
+        physical_bytes / writer->volume.allocation_block_size;
     uint32_t described = 0U;
-    for (size_t i = 0U; i < 3U && described < required; ++i) {
-        hfs_extent extent = {
-            infiltratr_load_be16(raw + i * 4U),
-            infiltratr_load_be16(raw + i * 4U + 2U),
-        };
-        if (extent.count == 0U) {
-            hfs_set_error(error,
-                          "HFS file %u %s fork requires an unsupported overflow extent record",
-                          file_id, fork_name);
+    for (size_t index = 0U; index < count; ++index) {
+        const hfs_extent extent = collected[index];
+        if (extent.count == 0U ||
+            (uint32_t)extent.start + extent.count >
+                writer->volume.total_allocation_blocks ||
+            described > required - extent.count) {
+            hfs_set_error(
+                error,
+                "HFS file %u %s fork extent is outside its validated length",
+                file_id, fork_name);
             return -1;
         }
-        if ((uint32_t)extent.start + extent.count >
-            writer->volume.total_allocation_blocks ||
-            described + extent.count > required) {
-            hfs_set_error(error, "HFS file %u %s fork extent is outside its validated length",
-                          file_id, fork_name);
-            return -1;
-        }
-        fork->extents[fork->extent_count++] = extent;
         described += extent.count;
     }
     if (described != required) {
-        hfs_set_error(error,
-                      "HFS file %u %s fork uses the Extents Overflow B-tree; "
-                      "the bounded writer supports complete inline fork maps only",
-                      file_id, fork_name);
+        hfs_set_error(
+            error,
+            "HFS file %u %s fork extent chain does not cover its physical length",
+            file_id, fork_name);
         return -1;
     }
+
+    fork->extents = malloc(count * sizeof(*fork->extents));
+    if (fork->extents == NULL) {
+        hfs_set_error(error,
+                      "out of memory retaining HFS file extent chain");
+        return -1;
+    }
+    memcpy(fork->extents, collected, count * sizeof(*fork->extents));
+    fork->extent_count = count;
     fork->blocks = required;
+    (void)fragmented;
     return 0;
 }
 
@@ -287,15 +316,24 @@ static int writer_scan_catalog(hfs_writer_volume *writer, char **error)
             const uint64_t node_offset =
                 (uint64_t)node_number * HFS_LOGICAL_BLOCK_SIZE;
             if (parse_inline_fork(
-                    writer, file.file_id, "data", data_physical, data + 74U,
+                    writer, file.file_id, HFS_DATA_FORK, "data",
+                    data_physical, data + 74U,
                     node_offset + start + key_skip + 74U,
                     &file.data_fork, error) != 0 ||
                 parse_inline_fork(
-                    writer, file.file_id, "resource", resource_physical, data + 86U,
+                    writer, file.file_id, HFS_RESOURCE_FORK, "resource",
+                    resource_physical, data + 86U,
                     node_offset + start + key_skip + 86U,
-                    &file.resource_fork, error) != 0 ||
-                append_file(writer, &file, error) != 0)
+                    &file.resource_fork, error) != 0) {
+                free(file.data_fork.extents);
+                free(file.resource_fork.extents);
                 return -1;
+            }
+            if (append_file(writer, &file, error) != 0) {
+                free(file.data_fork.extents);
+                free(file.resource_fork.extents);
+                return -1;
+            }
         }
         if (node_number == header.last_leaf && next != 0U) {
             hfs_set_error(error, "HFS Catalog leaf chain continues after lastLeafNode");
