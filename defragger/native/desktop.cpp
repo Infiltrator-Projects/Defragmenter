@@ -585,7 +585,7 @@ private:
         refresh_selected_path_ = current() ? current()->path : "";
         const char* argv[] = {
             "lsblk", "--json", "--bytes", "--output",
-            "NAME,PATH,TYPE,FSTYPE,FSVER,LABEL,PARTLABEL,UUID,PARTUUID,SIZE,MOUNTPOINTS,RM,RO,MODEL,TRAN",
+            "NAME,PATH,TYPE,FSTYPE,FSVER,LABEL,PARTLABEL,UUID,PARTUUID,SERIAL,WWN,START,SIZE,MOUNTPOINTS,RM,RO,MODEL,TRAN",
             nullptr
         };
         GError* failure = nullptr;
