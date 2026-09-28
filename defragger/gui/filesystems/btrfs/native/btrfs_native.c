@@ -1632,11 +1632,6 @@ static int writer_scan_files(WriterModel *model, char *error,
         }
         if (item->data[20U] == BTRFS_FILE_EXTENT_INLINE)
             continue;
-        if ((inode_flags & BTRFS_INODE_NODATASUM) == 0U) {
-            set_error(error, error_size,
-                      "Btrfs writer supports external extents only on NODATASUM files");
-            return -1;
-        }
         if (item->data[20U] != BTRFS_FILE_EXTENT_REG || item->size < 53U ||
             item->data[16U] != 0U || item->data[17U] != 0U ||
             infiltratr_load_le16(item->data + 18U) != 0U) {
@@ -1712,37 +1707,216 @@ static int writer_validate_csum_tree(const WriterModel *model,
 {
     if (!model->have_csum_leaf)
         return 0;
+    uint64_t previous_end = 0U;
+    uint64_t previous_objectid = 0U;
+    bool have_previous = false;
     for (size_t index = 0U; index < model->csum_leaf.items.count; ++index) {
         const TreeItem *item = &model->csum_leaf.items.items[index];
         if (item->key.type != BTRFS_EXTENT_CSUM_KEY)
             continue;
-        if (item->size % 4U != 0U) {
+        if (item->size == 0U || item->size % 4U != 0U) {
             set_error(error, error_size,
                       "Btrfs CRC32 checksum item has an invalid size");
             return -1;
         }
         const uint64_t sectors = item->size / 4U;
         if (sectors > UINT64_MAX / model->sector_size) {
-            set_error(error, error_size, "checksum range overflows in Btrfs metadata");
+            set_error(error, error_size,
+                      "checksum range overflows in Btrfs metadata");
             return -1;
         }
         const uint64_t length = sectors * model->sector_size;
         if (item->key.offset > UINT64_MAX - length) {
-            set_error(error, error_size, "checksum range overflows in Btrfs metadata");
+            set_error(error, error_size,
+                      "checksum range overflows in Btrfs metadata");
             return -1;
         }
         const uint64_t end = item->key.offset + length;
-        for (size_t move = 0U; move < model->moves.count; ++move) {
-            const WriterMove *entry = &model->moves.items[move];
-            if (writer_ranges_overlap(item->key.offset, end,
-                                      entry->old_bytenr,
-                                      entry->old_bytenr + entry->length)) {
+        if (have_previous &&
+            item->key.objectid == previous_objectid &&
+            item->key.offset < previous_end) {
+            set_error(error, error_size,
+                      "Btrfs checksum-tree ranges overlap");
+            return -1;
+        }
+        previous_objectid = item->key.objectid;
+        previous_end = end;
+        have_previous = true;
+    }
+    return 0;
+}
+
+typedef struct {
+    uint64_t objectid;
+    uint64_t bytenr;
+    uint32_t checksum;
+} WriterCsumEntry;
+
+static int writer_csum_entry_compare(const void *left0, const void *right0)
+{
+    const WriterCsumEntry *left = left0;
+    const WriterCsumEntry *right = right0;
+    if (left->objectid < right->objectid) return -1;
+    if (left->objectid > right->objectid) return 1;
+    if (left->bytenr < right->bytenr) return -1;
+    if (left->bytenr > right->bytenr) return 1;
+    return 0;
+}
+
+static int writer_remap_csum_bytenr(const WriterModel *model,
+                                    uint64_t source,
+                                    uint64_t *target,
+                                    char *error, size_t error_size)
+{
+    *target = source;
+    for (size_t index = 0U; index < model->moves.count; ++index) {
+        const WriterMove *move = &model->moves.items[index];
+        if (move->old_bytenr > UINT64_MAX - move->length) {
+            set_error(error, error_size,
+                      "Btrfs move range overflows while remapping checksums");
+            return -1;
+        }
+        const uint64_t end = move->old_bytenr + move->length;
+        if (source < move->old_bytenr || source >= end)
+            continue;
+        if (move->new_bytenr == 0U ||
+            move->new_bytenr > UINT64_MAX - (source - move->old_bytenr)) {
+            set_error(error, error_size,
+                      "Btrfs checksum relocation target is invalid");
+            return -1;
+        }
+        *target = move->new_bytenr + (source - move->old_bytenr);
+        return 0;
+    }
+    return 0;
+}
+
+static int writer_rebuild_csum_tree(WriterModel *model,
+                                    char *error, size_t error_size)
+{
+    if (!model->have_csum_leaf)
+        return 0;
+
+    size_t entry_count = 0U;
+    for (size_t index = 0U; index < model->csum_leaf.items.count; ++index) {
+        const TreeItem *item = &model->csum_leaf.items.items[index];
+        if (item->key.type != BTRFS_EXTENT_CSUM_KEY)
+            continue;
+        const size_t sectors = item->size / 4U;
+        if (sectors > SIZE_MAX - entry_count) {
+            set_error(error, error_size,
+                      "Btrfs checksum entry count overflows");
+            return -1;
+        }
+        entry_count += sectors;
+    }
+    if (entry_count == 0U)
+        return 0;
+
+    WriterCsumEntry *entries =
+        calloc(entry_count, sizeof(*entries));
+    if (entries == NULL) {
+        set_error(error, error_size,
+                  "out of memory rebuilding Btrfs checksum tree");
+        return -1;
+    }
+
+    size_t output = 0U;
+    for (size_t index = 0U; index < model->csum_leaf.items.count; ++index) {
+        const TreeItem *item = &model->csum_leaf.items.items[index];
+        if (item->key.type != BTRFS_EXTENT_CSUM_KEY)
+            continue;
+        const size_t sectors = item->size / 4U;
+        for (size_t sector = 0U; sector < sectors; ++sector) {
+            uint64_t source = item->key.offset;
+            const uint64_t delta =
+                (uint64_t)sector * model->sector_size;
+            if (source > UINT64_MAX - delta) {
+                free(entries);
                 set_error(error, error_size,
-                          "Btrfs writer refuses a movable extent that still has a checksum-tree entry");
+                          "Btrfs checksum sector address overflows");
                 return -1;
             }
+            source += delta;
+            uint64_t target = 0U;
+            if (writer_remap_csum_bytenr(
+                    model, source, &target, error, error_size) != 0) {
+                free(entries);
+                return -1;
+            }
+            entries[output++] = (WriterCsumEntry){
+                item->key.objectid,
+                target,
+                infiltratr_load_le32(item->data + sector * 4U),
+            };
         }
     }
+
+    qsort(entries, entry_count, sizeof(*entries),
+          writer_csum_entry_compare);
+    for (size_t index = 1U; index < entry_count; ++index) {
+        if (entries[index - 1U].objectid == entries[index].objectid &&
+            entries[index - 1U].bytenr == entries[index].bytenr) {
+            free(entries);
+            set_error(error, error_size,
+                      "Btrfs checksum relocation produced duplicate sectors");
+            return -1;
+        }
+    }
+
+    ItemVec rebuilt = {0};
+    size_t first = 0U;
+    while (first < entry_count) {
+        size_t end = first + 1U;
+        while (end < entry_count &&
+               entries[end].objectid == entries[first].objectid &&
+               entries[end - 1U].bytenr <=
+                   UINT64_MAX - model->sector_size &&
+               entries[end].bytenr ==
+                   entries[end - 1U].bytenr + model->sector_size) {
+            ++end;
+        }
+        const size_t sectors = end - first;
+        if (sectors > UINT32_MAX / 4U) {
+            item_vec_free(&rebuilt);
+            free(entries);
+            set_error(error, error_size,
+                      "Btrfs checksum item exceeds on-disk size limits");
+            return -1;
+        }
+        const uint32_t bytes = (uint32_t)(sectors * 4U);
+        uint8_t *payload = malloc(bytes);
+        if (payload == NULL) {
+            item_vec_free(&rebuilt);
+            free(entries);
+            set_error(error, error_size,
+                      "out of memory rebuilding Btrfs checksum item");
+            return -1;
+        }
+        for (size_t index = 0U; index < sectors; ++index)
+            infiltratr_store_le32(
+                payload + index * 4U,
+                entries[first + index].checksum);
+        const Key key = {
+            entries[first].objectid,
+            BTRFS_EXTENT_CSUM_KEY,
+            entries[first].bytenr,
+        };
+        const int pushed = item_push(
+            &rebuilt, key, payload, bytes, error, error_size);
+        free(payload);
+        if (pushed != 0) {
+            item_vec_free(&rebuilt);
+            free(entries);
+            return -1;
+        }
+        first = end;
+    }
+    free(entries);
+
+    /* writer_leaf_write() performs the final fixed-block capacity check. */
+    item_vec_free(&model->csum_leaf.items);
+    model->csum_leaf.items = rebuilt;
     return 0;
 }
 
@@ -2544,12 +2718,20 @@ int btrfs_build_stage(const char *source_path, const char *stage_path,
         }
     }
     if (result == 0 &&
+        writer_rebuild_csum_tree(&source, error, error_size) != 0)
+        result = -1;
+
+    if (result == 0 &&
         (writer_update_root_item(&source.root_leaf,
                                  BTRFS_EXTENT_TREE_OBJECTID,
                                  new_generation,
                                  error, error_size) != 0 ||
          writer_update_root_item(&source.root_leaf,
                                  BTRFS_FS_TREE_OBJECTID,
+                                 new_generation,
+                                 error, error_size) != 0 ||
+         writer_update_root_item(&source.root_leaf,
+                                 BTRFS_CSUM_TREE_OBJECTID,
                                  new_generation,
                                  error, error_size) != 0 ||
          writer_update_metadata_generation(
@@ -2561,9 +2743,14 @@ int btrfs_build_stage(const char *source_path, const char *stage_path,
          writer_update_metadata_generation(
              &source.extent_leaf, source.fs_leaf.logical,
              new_generation, error, error_size) != 0 ||
+         writer_update_metadata_generation(
+             &source.extent_leaf, source.csum_leaf.logical,
+             new_generation, error, error_size) != 0 ||
          writer_leaf_write(&source, stage_fd, &source.fs_leaf,
                            new_generation, error, error_size) != 0 ||
          writer_leaf_write(&source, stage_fd, &source.extent_leaf,
+                           new_generation, error, error_size) != 0 ||
+         writer_leaf_write(&source, stage_fd, &source.csum_leaf,
                            new_generation, error, error_size) != 0 ||
          writer_leaf_write(&source, stage_fd, &source.root_leaf,
                            new_generation, error, error_size) != 0 ||
