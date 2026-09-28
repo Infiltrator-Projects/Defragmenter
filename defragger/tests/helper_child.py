@@ -16,7 +16,10 @@ def stop(_signal, _frame):
     stopped = True
 
 
-signal.signal(signal.SIGINT, stop)
+if os.environ.get("LD_HELPER_TEST_IGNORE_SIGINT") == "1":
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+else:
+    signal.signal(signal.SIGINT, stop)
 # A supervised worker must not inherit and consume the GUI control channel.
 assert os.read(0, 1) == b""
 marker.with_suffix(".ready").write_text(str(os.getpid()))
