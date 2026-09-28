@@ -8,6 +8,9 @@
 
 #include "ext_disk.h"
 #include <sqlite3.h>
+
+#define EXT_SHA256_BYTES 32U
+
 /*
  * Native EXT2/3/4 representation contract.
  *
