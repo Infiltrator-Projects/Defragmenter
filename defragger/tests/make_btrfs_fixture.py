@@ -36,6 +36,8 @@ BTRFS_EXTENT_FLAG_DATA = 1
 BTRFS_EXTENT_FLAG_TREE = 2
 BTRFS_TREE_BLOCK_REF_KEY = 176
 BTRFS_EXTENT_DATA_REF_KEY = 178
+BTRFS_EXTENT_CSUM_OBJECTID = (1 << 64) - 10
+BTRFS_EXTENT_CSUM_KEY = 128
 BTRFS_INODE_NODATASUM = 1
 BTRFS_INCOMPAT_MIXED_GROUPS = 1 << 2
 BTRFS_INCOMPAT_SKINNY_METADATA = 1 << 8
@@ -177,7 +179,8 @@ def leaf(bytenr: int, owner: int, records: list[tuple[bytes, bytes]]) -> bytes:
 
 
 def build(path: Path, *, malformed: bool = False, multi_device: bool = False,
-          striped: bool = False, encoded: bool = False) -> None:
+          striped: bool = False, encoded: bool = False,
+          checksummed: bool = False) -> None:
     image = bytearray(IMAGE_SIZE)
     system_chunk = chunk_data(SYSTEM_LOGICAL, SYSTEM_LENGTH, 2)
     mixed_chunk = chunk_data(MIXED_LOGICAL, MIXED_LENGTH, 5, striped=striped)
@@ -253,14 +256,26 @@ def build(path: Path, *, malformed: bool = False, multi_device: bool = False,
     image[FS_TREE:FS_TREE + NODE] = leaf(
         FS_TREE, 5,
         [
-            (key(256, 1, 0), inode_item(0o100644, nodatasum=True)),
+            (key(256, 1, 0), inode_item(0o100644, nodatasum=not checksummed)),
             (key(256, 108, 0), file_extent(DATA1, encoded=encoded)),
             (key(256, 108, SECTOR), file_extent(DATA2)),
             (key(257, 1, 0), inode_item(0o040755)),
         ],
     )
     image[DEV_TREE:DEV_TREE + NODE] = leaf(DEV_TREE, 4, [])
-    image[CSUM_TREE:CSUM_TREE + NODE] = leaf(CSUM_TREE, 7, [])
+    csum_records: list[tuple[bytes, bytes]] = []
+    if checksummed:
+        csum_records = [
+            (
+                key(BTRFS_EXTENT_CSUM_OBJECTID, BTRFS_EXTENT_CSUM_KEY, DATA1),
+                le32(crc32c(b"A" * SECTOR)),
+            ),
+            (
+                key(BTRFS_EXTENT_CSUM_OBJECTID, BTRFS_EXTENT_CSUM_KEY, DATA2),
+                le32(crc32c(b"B" * SECTOR)),
+            ),
+        ]
+    image[CSUM_TREE:CSUM_TREE + NODE] = leaf(CSUM_TREE, 7, csum_records)
 
     image[DATA1:DATA1 + SECTOR] = b"A" * SECTOR
     image[DATA2:DATA2 + SECTOR] = b"B" * SECTOR
@@ -279,9 +294,11 @@ def main() -> None:
     parser.add_argument("--multi-device", action="store_true")
     parser.add_argument("--striped", action="store_true")
     parser.add_argument("--encoded", action="store_true")
+    parser.add_argument("--checksummed", action="store_true")
     args = parser.parse_args()
     build(args.path, malformed=args.malformed, multi_device=args.multi_device,
-          striped=args.striped, encoded=args.encoded)
+          striped=args.striped, encoded=args.encoded,
+          checksummed=args.checksummed)
 
 
 if __name__ == "__main__":
