@@ -1195,6 +1195,41 @@ def test_forensic_scalability_protocol_and_safety_contracts() -> None:
     assert '"/run/udev/data/b%u:%u"' in device_source
     assert "ld_sysfs_size_bytes" in device_source
     assert '"device/cid"' in device_source
+    assert "ld_regular_file_write_conflict_identity" in device_source
+    assert "ld_regular_file_has_loop_mapping(target, false)" in device_source
+
+    unmount_position = test_media.index("if (unmount_descendants(canonical) != 0)")
+    destructive_recheck = test_media.index(
+        "if (ld_path_is_mounted(canonical))", unmount_position
+    )
+    repartition_position = test_media.index(
+        '{"sfdisk", "--wipe", "always", "--lock", canonical, NULL}',
+        destructive_recheck,
+    )
+    assert unmount_position < destructive_recheck < repartition_position
+
+    ufs_native = (
+        GUI / "filesystems" / "ufs" / "native" / "ufs_native.c"
+    ).read_text()
+    assert "ld_bitmap_size(inventory->summary.filesystem_fragments" in ufs_native
+    assert "(uint64_t)SIZE_MAX * 8U" not in ufs_native
+
+    for ext_source in (
+        GUI / "filesystems" / "ext4" / "native" / "ext_catalog.c",
+        GUI / "filesystems" / "ext4" / "native" / "ext_plan.c",
+        GUI / "filesystems" / "ext4" / "native" / "ext_workspace.c",
+    ):
+        source = ext_source.read_text()
+        assert "EVP_DigestInit_ex" in source
+        for deprecated in ("SHA256_Init(", "SHA256_Update(", "SHA256_Final("):
+            assert deprecated not in source
+
+    project_cmake = (ROOT / "cmake" / "project.cmake").read_text()
+    assert project_cmake.index("find_package(OpenSSL REQUIRED)") < project_cmake.index(
+        "OpenSSL::Crypto"
+    )
+    assert project_cmake.count("-Wno-deprecated-declarations") == 1
+
     assert '"findmnt"' not in test_media
     assert '"SIZE,MODEL,SERIAL,WWN,TRAN"' not in test_media
     assert '"SIZE,RM,RO,TRAN"' not in test_media
