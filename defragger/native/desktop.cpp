@@ -610,16 +610,16 @@ private:
                 auto* self = static_cast<Desktop*>(data);
                 gchar* out = nullptr;
                 gchar* err = nullptr;
-                GError* failure = nullptr;
+                GError* callback_error = nullptr;
                 const bool received = g_subprocess_communicate_utf8_finish(
-                    G_SUBPROCESS(source), result, &out, &err, &failure);
+                    G_SUBPROCESS(source), result, &out, &err, &callback_error);
                 const int code =
                     received &&
                     g_subprocess_get_if_exited(self->discovery_)
                     ? g_subprocess_get_exit_status(self->discovery_)
                     : 127;
                 std::string detail =
-                    failure ? failure->message : (err ? err : "");
+                    callback_error ? callback_error->message : (err ? err : "");
                 try {
                     if (code != 0)
                         throw std::runtime_error(
@@ -657,7 +657,7 @@ private:
                     if (!self->closing_)
                         self->error("Unable to discover volumes", ex.what());
                 }
-                if (failure) g_error_free(failure);
+                if (callback_error) g_error_free(callback_error);
                 g_free(out);
                 g_free(err);
                 g_object_unref(self->discovery_);
@@ -722,15 +722,15 @@ private:
                 auto* self = static_cast<Desktop*>(data);
                 gchar* out = nullptr;
                 gchar* err = nullptr;
-                GError* failure = nullptr;
+                GError* callback_error = nullptr;
                 const bool received = g_subprocess_communicate_utf8_finish(
-                    G_SUBPROCESS(source), result, &out, &err, &failure);
+                    G_SUBPROCESS(source), result, &out, &err, &callback_error);
                 const int code =
                     received && g_subprocess_get_if_exited(self->probe_)
                     ? g_subprocess_get_exit_status(self->probe_)
                     : 127;
                 std::string detail =
-                    failure ? failure->message : (err ? err : "");
+                    callback_error ? callback_error->message : (err ? err : "");
                 try {
                     if (code != 0)
                         throw std::runtime_error(
@@ -769,7 +769,7 @@ private:
                     if (!self->closing_)
                         self->error("Unable to open image", ex.what());
                 }
-                if (failure) g_error_free(failure);
+                if (callback_error) g_error_free(callback_error);
                 g_free(out);
                 g_free(err);
                 g_object_unref(self->probe_);
