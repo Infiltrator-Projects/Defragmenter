@@ -1714,6 +1714,17 @@ int ufs_verify_layout(const char *path, bool growth, unsigned growth_percent,
     return result;
 }
 
+int ufs_writer_preflight(const char *path,
+                         char *error, size_t error_size)
+{
+    UfsInventory inventory;
+    if (inventory_load(path, &inventory, error, error_size) != 0)
+        return -1;
+    const int result = writer_supported(&inventory, error, error_size);
+    inventory_free(&inventory);
+    return result;
+}
+
 int ufs_build_stage(const char *source_path, const char *stage_path,
                     bool growth, unsigned growth_percent, bool live_updates,
                     uint64_t *commit_bytes, char *error, size_t error_size)
