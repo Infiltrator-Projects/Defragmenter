@@ -153,6 +153,16 @@ def test_native_writer(work: Path) -> None:
     mutate(growth, "growth-defrag")
     assert json.loads(run("analyse-json", growth).stdout)["fragmented_files"] == 0
 
+    checksummed = work / "checksummed.img"
+    make(checksummed, "--checksummed")
+    mutate(checksummed, "defrag")
+    assert json.loads(run("analyse-json", checksummed).stdout)["fragmented_files"] == 0
+
+    checksummed_growth = work / "checksummed-growth.img"
+    make(checksummed_growth, "--checksummed")
+    mutate(checksummed_growth, "growth-defrag")
+    assert json.loads(run("analyse-json", checksummed_growth).stdout)["fragmented_files"] == 0
+
     encoded = work / "encoded.img"
     make(encoded, "--encoded")
     before = hashlib.sha256(encoded.read_bytes()).digest()
