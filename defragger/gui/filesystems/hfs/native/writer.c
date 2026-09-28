@@ -455,6 +455,15 @@ static int writer_volume_open(const char *path, hfs_writer_volume *writer,
     return 0;
 }
 
+static int hfs_writer_preflight(const char *path, char **error)
+{
+    hfs_writer_volume writer;
+    if (writer_volume_open(path, &writer, error) != 0)
+        return -1;
+    writer_volume_close(&writer);
+    return 0;
+}
+
 static hfs_writable_file *find_writer_file(hfs_writer_volume *writer,
                                            uint32_t file_id)
 {
@@ -1516,6 +1525,19 @@ int main(int argc, char **argv)
          strcmp(argv[1], "scan-json") == 0 ||
          strcmp(argv[1], "map") == 0))
         return hfs_readonly_main(argc, argv);
+
+    if (argc == 3 &&
+        (strcmp(argv[1], "preflight-defrag") == 0 ||
+         strcmp(argv[1], "preflight-growth") == 0)) {
+        char *error = NULL;
+        const int result = hfs_writer_preflight(argv[2], &error);
+        if (result != 0)
+            (void)fprintf(stderr, "%s: %s\n", HFS_PROG,
+                          error != NULL
+                              ? error : "HFS layout is not writable");
+        free(error);
+        return result == 0 ? 0 : 1;
+    }
 
     if (argc < 3) {
         writer_usage(stderr);
