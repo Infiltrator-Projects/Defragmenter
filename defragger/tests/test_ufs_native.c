@@ -282,6 +282,59 @@ static void build_fragment_tail_fixture(int fd, bool ufs1)
     write_all(fd, inode, inode_size, inode_offset);
 }
 
+static void build_sparse_writer_fixture(int fd, bool ufs1)
+{
+    build_fragmented_writer_fixture(fd, ufs1);
+    const size_t inode_size = ufs1 ? 128U : 256U;
+    uint8_t inode[256];
+    const off_t inode_offset = (off_t)(80U * 1024U + 2U * inode_size);
+    CHECK(pread(fd, inode, inode_size, inode_offset) == (ssize_t)inode_size);
+    if (ufs1) {
+        put_le64(inode + 8U, UINT64_C(24576));
+        put_le32(inode + 44U, 0U);
+        put_le32(inode + 48U, 120U);
+    } else {
+        put_le64(inode + 16U, UINT64_C(24576));
+        put_le64(inode + 120U, 0U);
+        put_le64(inode + 128U, 120U);
+    }
+    write_all(fd, inode, inode_size, inode_offset);
+}
+
+static void test_sparse_writer(int fd, const char *path, bool ufs1)
+{
+    build_sparse_writer_fixture(fd, ufs1);
+    LdUfsAnalysis analysis;
+    char error[256] = {0};
+    CHECK(ufs_analyse_allocation(path, &analysis, NULL, 0U,
+                                 error, sizeof(error)) == 0);
+    CHECK(analysis.regular_files == 1U);
+    CHECK(analysis.sparse_files == 1U);
+
+    char stage[512];
+    CHECK(snprintf(stage, sizeof(stage), "%s.%s-sparse-stage",
+                   path, ufs1 ? "ufs1" : "ufs2") > 0);
+    (void)unlink(stage);
+    uint64_t commit_bytes = 0U;
+    CHECK(ufs_build_stage(path, stage, false, 10U, false, &commit_bytes,
+                          error, sizeof(error)) == 0);
+    CHECK(ufs_verify_layout(stage, false, 10U, error, sizeof(error)) == 0);
+    CHECK(ufs_analyse_allocation(stage, &analysis, NULL, 0U,
+                                 error, sizeof(error)) == 0);
+    CHECK(analysis.sparse_files == 1U);
+    CHECK(analysis.fragmented_files == 0U);
+    CHECK(unlink(stage) == 0);
+
+    build_sparse_writer_fixture(fd, ufs1);
+    CHECK(snprintf(stage, sizeof(stage), "%s.%s-sparse-growth-stage",
+                   path, ufs1 ? "ufs1" : "ufs2") > 0);
+    (void)unlink(stage);
+    CHECK(ufs_build_stage(path, stage, true, 10U, false, &commit_bytes,
+                          error, sizeof(error)) == 0);
+    CHECK(ufs_verify_layout(stage, true, 10U, error, sizeof(error)) == 0);
+    CHECK(unlink(stage) == 0);
+}
+
 static void test_fragment_tail_writer(int fd, const char *path, bool ufs1)
 {
     build_fragment_tail_fixture(fd, ufs1);
@@ -468,6 +521,8 @@ int main(void)
     test_fragmented_writer_variant(fd, path, false);
     test_fragment_tail_writer(fd, path, true);
     test_fragment_tail_writer(fd, path, false);
+    test_sparse_writer(fd, path, true);
+    test_sparse_writer(fd, path, false);
     test_large_contigsum_writer(fd, path);
 
     clear_image(fd);
