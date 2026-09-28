@@ -137,15 +137,23 @@ std::vector<std::string> desktop_mutation(const DesktopVolume& v,
     if (journal.empty()) throw std::runtime_error("A persistent journal path is required");
     std::vector<std::string> args = {std::string(engine), std::string(operation), v.path,
         "--filesystem", v.filesystem, "--write", "--confirm", v.path, "--journal", std::string(journal)};
-    if (operation == "growth-defrag") { args.emplace_back("--growth-percent"); args.emplace_back("10"); }
-    if (operation != "recover") {
-        args.insert(args.end(), {"--batch-clusters", "4096"});
+    if (operation == "growth-defrag") {
+        args.emplace_back("--growth-percent");
+        args.emplace_back("10");
     }
-    // Worker concurrency is engine-owned. FAT and NTFS already select their
-    // useful N-1 CPU budget internally; the other engines must not receive a
-    // cosmetic --workers option that they merely ignore.
-    args.insert(args.end(), {"--ram-buffer", "auto"});
+    /*
+     * Pass tuning only to engines that actually consume it.  Cosmetic options
+     * are worse than no options: they imply a control exists when the worker
+     * merely parses and discards the value.
+     */
     if (operation != "recover") {
+        if (backend->id == "fat12" || backend->id == "fat16" ||
+            backend->id == "fat32" || backend->id == "exfat") {
+            args.insert(args.end(), {"--batch-clusters", "4096",
+                                     "--ram-buffer", "auto"});
+        } else if (backend->id == "ext4") {
+            args.insert(args.end(), {"--batch-clusters", "4096"});
+        }
         args.emplace_back("--live-map-cells");
         args.emplace_back(std::to_string(std::clamp(cells, 256U, 1048576U)));
     }
