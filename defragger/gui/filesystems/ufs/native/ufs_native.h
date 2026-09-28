@@ -76,6 +76,8 @@ int ufs_read_summary(const char *path, LdUfsSummary *summary,
 int ufs_analyse_allocation(const char *path, LdUfsAnalysis *analysis,
                            LdUfsMapCell *cells, uint64_t cell_count,
                            char *error, size_t error_size);
+int ufs_writer_preflight(const char *path,
+                         char *error, size_t error_size);
 int ufs_build_stage(const char *source, const char *stage,
                     bool growth, unsigned growth_percent,
                     bool live_updates, uint64_t *commit_bytes,
