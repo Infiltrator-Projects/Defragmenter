@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -25,9 +26,18 @@ FORBIDDEN_TOKENS = {
     "fsck.exfat",
     "exfatfsck",
     "btrfs filesystem defragment",
-    "btrfs check",
     "losetup",
 }
+
+# Multi-word tool commands must be recognised as argv/shell syntax rather than
+# arbitrary prose.  In particular, native diagnostics such as "Btrfs checksum"
+# must never be mistaken for an invocation of `btrfs check`.
+FORBIDDEN_PATTERNS = (
+    re.compile(r'["\']btrfs["\']\s*,\s*["\']check["\']'),
+    re.compile(r'["\']btrfs["\']\s*,\s*["\']filesystem["\']\s*,\s*["\']defragment["\']'),
+    re.compile(r'\bbtrfs\s+check\b.*(?:subprocess|exec|spawn|system)', re.DOTALL),
+)
+
 
 PRODUCTION_ROOTS = [
     ROOT / "gui",
@@ -55,6 +65,11 @@ def main() -> None:
         for token in FORBIDDEN_TOKENS:
             if token in text:
                 offenders.append(f"{path.relative_to(ROOT)}: {token}")
+        for pattern in FORBIDDEN_PATTERNS:
+            if pattern.search(text):
+                offenders.append(
+                    f"{path.relative_to(ROOT)}: {pattern.pattern}"
+                )
     if offenders:
         rendered = "\n".join(f"  - {item}" for item in offenders)
         raise AssertionError(
