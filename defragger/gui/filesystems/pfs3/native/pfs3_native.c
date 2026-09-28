@@ -215,7 +215,7 @@ static int parse_root(int fd, uint64_t physical_bytes, PfsRoot *root,
     if (root->disk_type != PFS1_DISK_ID) {
         if (root->disk_type == PFS2_DISK_ID)
             set_error(error, error_size,
-                      "PFS\2 media is identified but outside the validated 512-byte small-disk writer subset");
+                      "PFS2 media is identified but outside the validated 512-byte small-disk writer subset");
         else
             set_error(error, error_size, "PFS3 root signature is not present");
         return -1;
