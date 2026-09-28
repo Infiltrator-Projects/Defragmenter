@@ -53,6 +53,7 @@
 #define PFS_ST_LINKDIR 4
 #define PFS_ST_FILE (-3)
 #define PFS_ST_LINKFILE (-4)
+#define PFS_ST_ROLLOVERFILE (-16)
 #define PFS_INDEX_HEADER 12U
 #define PFS_ANODE_HEADER 16U
 #define PFS_DIR_HEADER 20U
@@ -817,7 +818,15 @@ static int parse_directory(PfsModel *model, uint32_t directory_anode,
                       "PFS3 user directory entry references a reserved anode");
             return -1;
         }
-        if (type == PFS_ST_FILE) {
+        if (type == PFS_ST_FILE ||
+                   type == PFS_ST_ROLLOVERFILE) {
+            /*
+             * Rollover files use the ordinary anode data chain. Their
+             * virtualsize/rollpointer state is directory-entry metadata, which
+             * this relayout does not rewrite. Moving the chain byte-for-byte
+             * therefore preserves the ring semantics while allowing its
+             * physical allocation to be packed like a regular file.
+             */
             if (model_push_file(model, anode, size, true,
                                 error, error_size) != 0)
                 return -1;
@@ -839,7 +848,7 @@ static int parse_directory(PfsModel *model, uint32_t directory_anode,
                 return -1;
         } else {
             set_error(error, error_size,
-                      "PFS3 rollover or special directory entry remains outside the validated writer subset");
+                      "PFS3 special directory entry remains outside the validated writer subset");
             return -1;
         }
         offset += next;
