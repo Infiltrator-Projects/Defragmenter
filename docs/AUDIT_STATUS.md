@@ -6,8 +6,8 @@ Completed: 2026-09-22
 Extended: 2026-09-28
 
 Applies to: release version 1.8.0-220
-Audited source commit: 3771bd3e321b4575661511deeb5060424f12affc
-Audited release-governance commit: 3771bd3e321b4575661511deeb5060424f12affc
+Audited source commit: a3c3bf4fed0007178886d411e4172ce2b5302643
+Audited release-governance commit: a3c3bf4fed0007178886d411e4172ce2b5302643
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
@@ -15,11 +15,11 @@ This document records the current release safety case. Historical audit-developm
 
 ## Qualification evidence
 
-The current audited production-source baseline is commit `3771bd3e321b4575661511deeb5060424f12affc` for release version 1.8.0-220. The immediately preceding source candidate `7ad685b9220ddda816ab1639e3cf043f9018f364` completed the complete Local Linux / heavy qualification successfully, including the native/filesystem/GUI CTest suite. The final source delta adds bounded first-party SHA-512/256 verification to the ZFS exact reader on top of the independently qualified Fletcher2 checksum path; neither change affects any write-capable filesystem engine or transaction/recovery semantics.
+The current audited production-source baseline is commit `a3c3bf4fed0007178886d411e4172ce2b5302643` for release version 1.8.0-220. Local Linux / heavy qualification run 400 completed successfully on this exact source, including the complete native/filesystem/GUI CTest suite. The immediately preceding ZFS checksum candidates also completed heavy qualification successfully: Fletcher2 at `7ad685b9220ddda816ab1639e3cf043f9018f364` and SHA-512/256 at `3771bd3e321b4575661511deeb5060424f12affc`. Hosted qualification on the previous audit-only head completed all 46 CTest tests and ASan/UBSan successfully; its sole release-gate failure was the audit contract wording/baseline deliberately corrected here.
 
-The 1.8.0-220 capability baseline also includes the completed writer-qualification gating, run-oriented NTFS planning, range-oriented EXT/XFS work, Common 1.19.35 native theme restoration, asynchronous discovery/probing, bounded Analyse Stop, complete local CTest execution, Xvfb native GTK smoke, end-to-end Test Media production qualification, sparse-UFS relocation, HFS Extents Overflow relocation, checksummed Btrfs data relocation, APFS checkpoint-history retention, recursive PFS3 directories, NTFS alternate-data-stream relocation and stable recovery identities. Each capability remains behind its filesystem-specific preflight, durable transaction/recovery contract and final verification.
+The 1.8.0-220 capability baseline includes writer-qualification gating, run-oriented NTFS planning and alternate-data-stream relocation, range-oriented EXT/XFS work, Common 1.19.35 native theming, asynchronous discovery/probing, bounded Analyse Stop, complete local CTest execution, Xvfb native GTK smoke, end-to-end Test Media production qualification, sparse-UFS relocation, HFS Extents Overflow relocation, checksummed Btrfs data relocation, APFS checkpoint-history retention, recursive PFS3 directories plus validated hard-link preservation and soft-link relocation, stable recovery identities, and expanded exact ZFS checksum coverage. Each write capability remains behind its filesystem-specific preflight, durable transaction/recovery contract and final verification.
 
-The release-governance baseline is `3771bd3e321b4575661511deeb5060424f12affc`. The malformed-media matrix, transaction/recovery tests, native integration fixtures, GUI contract tests, release/package tests and architecture ownership checks remain part of the permanent **Project quality gate**. Environment-dependent destructive-media evidence remains supplementary and is not represented as hosted-CI proof.
+The release-governance baseline is `a3c3bf4fed0007178886d411e4172ce2b5302643`. The malformed-media matrix, transaction/recovery tests, native integration fixtures, GUI contract tests, release/package tests and architecture ownership checks remain part of the permanent **Project quality gate**. Environment-dependent destructive-media evidence remains supplementary and is not represented as hosted-CI proof.
 
 ## Current safety case
 
@@ -33,11 +33,11 @@ Write-capable engines are admitted only when the parser, placement model, durabl
 - **Btrfs** — exact first-party analysis plus bounded offline Defragment, exact 10% Growth Defrag and Recover for the single-device CRC32C, level-0 mixed-group subset, including ordinary checksum-tree-protected regular-file data with checksum verification/remapping; unsupported profiles, sharing, encoding, snapshots/qgroups and active transaction state fail closed.
 - **Amiga OFS/FFS** — native raw catalogue, relocation, verification and Recover for the qualified classic layout; allocation is trusted only with a valid root bitmap-valid word, and DOS\\6/DOS\\7 long-name layouts fail closed.
 - **Amiga SFS0/SFS2** — native supported-subset relayout and Recover with format-specific metadata checksums, 107-character namespace validation, SFS2 48-bit file-size encoding and 32-bit extent geometry.
-- **Amiga PFS3** — bounded small-disk native allocation/anode analysis, recursive user-directory ownership/traversal, Defragment, exact 10% Growth Defrag and Recover with validated root-extension roving/delete-directory/filename geometry and directory-entry extension bounds; SUPERINDEX/LARGEFILE and special/link entries remain outside the writer subset.
+- **Amiga PFS3** — bounded small-disk native allocation/anode analysis, recursive user-directory traversal, validated hard-link preservation and soft-link payload relocation, Defragment, exact 10% Growth Defrag and Recover; SUPERINDEX/LARGEFILE, rollover and remaining special entries stay fail-closed.
 - **Classic Macintosh HFS** — exact allocation/catalog analysis plus bounded offline Defragment, exact 10% Growth Defrag and Recover for clean volumes, including regular-file forks whose complete extent maps continue through the Extents Overflow B-tree.
 - **HFS+/HFSX** — native staged transaction and Recover for the qualified clean/journal state.
 - **Minix v1/v2/v3** — exact native analysis plus recoverable Defragment, exact 10% Growth Defrag and Recover.
-- **APFS** — exact checkpoint/spaceman/catalog analysis plus bounded offline Defragment, exact 10% Growth Defrag and Recover for one active two-object checkpoint with validated retained historical checkpoint objects, direct-CIB, unencrypted/unsealed, snapshot-free, flat-tree state; shared/cloned/sparse/unsupported state fails closed.
+- **APFS** — exact checkpoint/spaceman/catalog analysis plus bounded offline Defragment, exact 10% Growth Defrag and Recover for a **single active two-object checkpoint** with validated retained historical checkpoint objects, direct-CIB, unencrypted/unsealed, snapshot-free, flat-tree state; shared/cloned/sparse/unsupported state fails closed.
 - **UFS1/UFS2** — exact cylinder-group allocation and inode block-tree fragmentation analysis plus bounded clean, non-journalled, snapshot-free Defragment, exact 10% Growth Defrag and durable Recover, including fragment-sized tails, cross-cylinder-group source layouts and sparse regular files.
 
 ZFS/OpenZFS and Linux swap are complete by design as analysis-only. ZFS exactness is bounded to the qualified single-disk topology and now verifies OFF, Fletcher2, Fletcher4, SHA-256 and SHA-512/256 block checksums plus the qualified compression forms; unsupported block forms, read-critical MOS features, remaining checksum/compression algorithms and active log-space-map state are rejected rather than approximated. Raw ZFS mutation is outside product scope because Defragmenter does not replace the filesystem's CoW/TXG transaction engine or claim an exact persistent post-file reserve that ZFS itself may relocate.
