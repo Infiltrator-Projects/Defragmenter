@@ -44,15 +44,33 @@ static int original_allocated(ExtFs *fs, const ExtGeometry *geometry,
     return ext_fs_block_allocated(fs, block, allocated, error);
 }
 
+typedef struct {
+    uint64_t allocated;
+} AllocatedCountContext;
+
+static int count_allocated_run(uint64_t start, uint64_t length,
+                               bool allocated, void *private_data,
+                               char **error) {
+    (void)start;
+    AllocatedCountContext *context = private_data;
+    if (!allocated) return 0;
+    if (UINT64_MAX - context->allocated < length) {
+        ext_set_error(error, "EXT allocated-block count overflows");
+        return -1;
+    }
+    context->allocated += length;
+    return 0;
+}
+
 static int allocated_block_count(ExtFs *fs, const ExtGeometry *geometry,
                                  uint64_t *count, char **error) {
-    *count = 0U;
-    for (uint64_t block = 0U; block < geometry->total_blocks; ++block) {
-        bool allocated = false;
-        if (original_allocated(fs, geometry, block, &allocated, error) != 0)
-            return -1;
-        if (allocated) (*count)++;
-    }
+    AllocatedCountContext context = {
+        .allocated = geometry->first_data_block,
+    };
+    if (ext_fs_foreach_block_run(
+            fs, count_allocated_run, &context, error) != 0)
+        return -1;
+    *count = context.allocated;
     return 0;
 }
 
