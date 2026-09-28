@@ -48,6 +48,7 @@
 #define PFS_ALLOWED_OPTIONS (PFS_MODE_HARDDISK | PFS_MODE_SPLIT_ANODES | PFS_MODE_DIR_EXTENSION | PFS_MODE_DELDIR | PFS_MODE_SIZEFIELD | PFS_MODE_EXTENSION | PFS_MODE_DATESTAMP | PFS_MODE_EXTROVING | PFS_MODE_LONGFN | PFS_MODE_STORED_GEOM)
 #define PFS_ROOT_ANODE 5U
 #define PFS_USER_FIRST_ANODE 6U
+#define PFS_ST_USERDIR 2
 #define PFS_ST_FILE (-3)
 #define PFS_INDEX_HEADER 12U
 #define PFS_ANODE_HEADER 16U
@@ -113,6 +114,10 @@ typedef struct {
     PfsFile *files;
     size_t file_count;
     size_t file_capacity;
+    uint32_t *visited_directories;
+    size_t visited_directory_count;
+    size_t visited_directory_capacity;
+    uint64_t directory_count;
     uint32_t bitmap_blocks;
     bool transaction_pending;
 } PfsModel;
@@ -535,6 +540,13 @@ static int file_push_extent(PfsFile *file, PfsAnode anode,
 static int model_push_file(PfsModel *model, uint32_t anode, uint64_t size,
                            char *error, size_t error_size)
 {
+    for (size_t index = 0U; index < model->file_count; ++index) {
+        if (model->files[index].first_anode == anode) {
+            set_error(error, error_size,
+                      "PFS3 directory tree references the same file anode more than once");
+            return -1;
+        }
+    }
     if (reserve_array((void **)&model->files, &model->file_capacity,
                       model->file_count + 1U, sizeof(*model->files),
                       error, error_size) != 0)
@@ -546,28 +558,64 @@ static int model_push_file(PfsModel *model, uint32_t anode, uint64_t size,
     return 0;
 }
 
-static int parse_root_directory(PfsModel *model, char *error, size_t error_size)
+static int model_mark_directory(PfsModel *model, uint32_t anode,
+                                char *error, size_t error_size)
 {
-    PfsAnode root_dir;
-    if (read_anode(model->fd, &model->root, PFS_ROOT_ANODE,
-                   &root_dir, error, error_size) != 0)
+    for (size_t index = 0U; index < model->visited_directory_count; ++index) {
+        if (model->visited_directories[index] == anode) {
+            set_error(error, error_size,
+                      "PFS3 directory anode cycle or duplicate reference detected");
+            return -1;
+        }
+    }
+    if (reserve_array((void **)&model->visited_directories,
+                      &model->visited_directory_capacity,
+                      model->visited_directory_count + 1U,
+                      sizeof(*model->visited_directories),
+                      error, error_size) != 0)
         return -1;
-    if (root_dir.clusters != 1U || root_dir.next != 0U ||
-        !reserved_pointer_valid(&model->root, root_dir.block)) {
+    model->visited_directories[model->visited_directory_count++] = anode;
+    model->directory_count++;
+    return 0;
+}
+
+static int parse_directory(PfsModel *model, uint32_t directory_anode,
+                           uint32_t expected_parent, unsigned depth,
+                           char *error, size_t error_size)
+{
+    if (depth > 1024U) {
         set_error(error, error_size,
-                  "PFS3 root directory is outside the validated single-block subset");
+                  "PFS3 directory nesting exceeds the bounded recursion limit");
+        return -1;
+    }
+    if (model_mark_directory(model, directory_anode,
+                             error, error_size) != 0)
+        return -1;
+
+    PfsAnode directory_anode_record;
+    if (read_anode(model->fd, &model->root, directory_anode,
+                   &directory_anode_record, error, error_size) != 0)
+        return -1;
+    if (directory_anode_record.clusters != 1U ||
+        directory_anode_record.next != 0U ||
+        !reserved_pointer_valid(&model->root,
+                                directory_anode_record.block)) {
+        set_error(error, error_size,
+                  "PFS3 directory is outside the validated single-reserved-block representation");
         return -1;
     }
 
     uint8_t directory[PFS_RESBLOCK_SIZE];
-    if (read_reserved_block(model->fd, &model->root, root_dir.block,
+    if (read_reserved_block(model->fd, &model->root,
+                            directory_anode_record.block,
                             directory, error, error_size,
-                            "cannot read PFS3 root directory") != 0)
+                            "cannot read PFS3 directory") != 0)
         return -1;
     if (infiltratr_load_be16(directory) != PFS_DB_ID ||
-        infiltratr_load_be32(directory + 12U) != PFS_ROOT_ANODE ||
-        infiltratr_load_be32(directory + 16U) != 0U) {
-        set_error(error, error_size, "PFS3 root directory header is invalid");
+        infiltratr_load_be32(directory + 12U) != directory_anode ||
+        infiltratr_load_be32(directory + 16U) != expected_parent) {
+        set_error(error, error_size,
+                  "PFS3 directory header does not match its anode/parent");
         return -1;
     }
 
@@ -578,12 +626,15 @@ static int parse_root_directory(PfsModel *model, char *error, size_t error_size)
             break;
         if ((next & 1U) != 0U || next < 20U ||
             offset + next > PFS_RESBLOCK_SIZE) {
-            set_error(error, error_size, "PFS3 directory entry length is invalid");
+            set_error(error, error_size,
+                      "PFS3 directory entry length is invalid");
             return -1;
         }
         const int type = (int)(int8_t)directory[offset + 1U];
-        const uint32_t anode = infiltratr_load_be32(directory + offset + 2U);
-        const uint32_t size = infiltratr_load_be32(directory + offset + 6U);
+        const uint32_t anode =
+            infiltratr_load_be32(directory + offset + 2U);
+        const uint32_t size =
+            infiltratr_load_be32(directory + offset + 6U);
         const uint8_t name_length = directory[offset + 17U];
         if (name_length > model->root.filename_size) {
             set_error(error, error_size,
@@ -628,17 +679,33 @@ static int parse_root_directory(PfsModel *model, char *error, size_t error_size)
                       "PFS3 directory entry comment exceeds its record");
             return -1;
         }
-        if (type != PFS_ST_FILE) {
+        if (anode < PFS_USER_FIRST_ANODE) {
             set_error(error, error_size,
-                      "PFS3 nested directories, links or special entries are outside the validated writer subset");
+                      "PFS3 user directory entry references a reserved anode");
             return -1;
         }
-        if (anode < PFS_USER_FIRST_ANODE ||
-            model_push_file(model, anode, size, error, error_size) != 0)
+        if (type == PFS_ST_FILE) {
+            if (model_push_file(model, anode, size,
+                                error, error_size) != 0)
+                return -1;
+        } else if (type == PFS_ST_USERDIR) {
+            if (parse_directory(model, anode, directory_anode,
+                                depth + 1U, error, error_size) != 0)
+                return -1;
+        } else {
+            set_error(error, error_size,
+                      "PFS3 links or special directory entries remain outside the validated writer subset");
             return -1;
+        }
         offset += next;
     }
     return 0;
+}
+
+static int parse_root_directory(PfsModel *model, char *error, size_t error_size)
+{
+    return parse_directory(model, PFS_ROOT_ANODE, 0U, 0U,
+                           error, error_size);
 }
 
 static int load_file_extents(PfsModel *model, PfsFile *file,
@@ -751,6 +818,7 @@ static void model_free(PfsModel *model)
     for (size_t index = 0U; index < model->file_count; ++index)
         free(model->files[index].extents);
     free(model->files);
+    free(model->visited_directories);
     free(model->free_map);
     free(model->fragmented_map);
     memset(model, 0, sizeof(*model));
@@ -865,7 +933,7 @@ static void fill_analysis(const PfsModel *model, Pfs3Analysis *analysis)
     analysis->used_blocks = model->root.disksize - free_blocks;
     analysis->data_blocks = data_blocks;
     analysis->regular_files = model->file_count;
-    analysis->directories = 1U;
+    analysis->directories = model->directory_count;
     analysis->fragmented_files = fragmented_files;
     analysis->growth_10_satisfied = growth_ok;
     analysis->primary_root_valid = true;
