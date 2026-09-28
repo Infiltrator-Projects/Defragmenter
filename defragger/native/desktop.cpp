@@ -420,6 +420,7 @@ public:
 
     ~Desktop() {
         if (auth_timer_) g_source_remove(auth_timer_);
+        if (local_stop_timer_) g_source_remove(local_stop_timer_);
         if (helper_) {
             // Never close an active helper transport; the helper treats EOF as a Stop.
             if (!busy_) {
@@ -465,6 +466,7 @@ private:
     bool discovering_ = false, probing_ = false;
     int request_id_ = 0, active_id_ = 0;
     guint auth_timer_ = 0;
+    guint local_stop_timer_ = 0;
 
     static GtkWidget* add_button(GtkWidget* box, const char* label, const char* action) {
         auto* widget = gtk_button_new_with_label(label);
@@ -500,8 +502,10 @@ private:
         }
         if (self->discovering_ || self->probing_) {
             self->closing_ = true;
-            if (self->discovery_) g_subprocess_force_exit(self->discovery_);
-            if (self->probe_) g_subprocess_force_exit(self->probe_);
+            if (self->discovery_)
+                g_subprocess_force_exit(self->discovery_);
+            if (self->probe_)
+                g_subprocess_send_signal(self->probe_, SIGTERM);
             return TRUE;
         }
         gtk_main_quit();
@@ -914,6 +918,10 @@ private:
                     ? g_subprocess_get_exit_status(self->local_) : 127;
                 if (local_error) g_error_free(local_error);
                 g_free(out); g_free(err);
+                if (self->local_stop_timer_ != 0U) {
+                    g_source_remove(self->local_stop_timer_);
+                    self->local_stop_timer_ = 0U;
+                }
                 g_object_unref(self->local_);
                 self->local_ = nullptr;
                 self->completed(code, detail);
@@ -1027,7 +1035,23 @@ private:
         update();
         if (local_) {
             g_subprocess_send_signal(local_, SIGINT);
-            note("Stopping read-only analysis…");
+            note("Stopping read-only analysis and its filesystem worker…");
+            if (local_stop_timer_ == 0U) {
+                local_stop_timer_ = g_timeout_add_seconds(
+                    5U,
+                    [](gpointer data) -> gboolean {
+                        auto* self = static_cast<Desktop*>(data);
+                        self->local_stop_timer_ = 0U;
+                        if (self->local_ != nullptr &&
+                            self->busy_ && self->stopping_) {
+                            self->note(
+                                "Analysis did not stop cooperatively; terminating it now.");
+                            g_subprocess_force_exit(self->local_);
+                        }
+                        return G_SOURCE_REMOVE;
+                    },
+                    this);
+            }
             return;
         }
         if (!active_id_) {
