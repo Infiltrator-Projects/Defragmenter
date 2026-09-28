@@ -126,6 +126,36 @@ def test_ntfs(work: Path) -> None:
 
 
 
+def test_ntfs_relocates_named_data_stream(work: Path) -> None:
+    worker = BUILD / "linux-defragger-ntfs-worker"
+    image = work / "ntfs-ads.img"
+    make_ntfs_image(
+        image,
+        fragmented_data=True,
+        directory_data=True,
+        named_ads=True,
+    )
+    from ntfs_test_fixture import ADS_CLUSTERS, CLUSTER_SIZE
+
+    ads_payload = bytes((index * 29 + 13) & 0xFF
+                        for index in range(ADS_CLUSTERS * CLUSTER_SIZE))
+    assert image.read_bytes().find(ads_payload) == -1
+    output = mutate(worker, image, "defrag", work / "ntfs-ads.journal")
+    assert "unsupported-but-safe NTFS user stream" not in output
+    assert image.read_bytes().find(ads_payload) >= 0
+
+    growth = work / "ntfs-ads-growth.img"
+    make_ntfs_image(
+        growth,
+        fragmented_data=True,
+        directory_data=True,
+        named_ads=True,
+    )
+    mutate(worker, growth, "growth-defrag",
+           work / "ntfs-ads-growth.journal")
+    assert growth.read_bytes().find(ads_payload) >= 0
+
+
 def test_ntfs_preserves_safe_unsupported_user_stream(work: Path) -> None:
     worker = BUILD / "linux-defragger-ntfs-worker"
     image = work / "ntfs-fixed-user-stream.img"
@@ -210,6 +240,7 @@ def main() -> None:
         work = Path(directory)
         test_exfat(work)
         test_ntfs(work)
+        test_ntfs_relocates_named_data_stream(work)
         test_ntfs_preserves_safe_unsupported_user_stream(work)
         test_ext(work)
     print("native EXT, NTFS and exFAT Defrag/Growth Defrag tests passed")
