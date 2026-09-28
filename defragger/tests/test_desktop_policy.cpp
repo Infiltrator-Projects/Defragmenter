@@ -29,6 +29,16 @@ int main() {
     fat.verified = false;
     desktop_verify_identity(fat, "fat16");
     assert(fat.verified && fat.filesystem == "fat16" && !fat.exact_analysis);
+    DesktopVolume removable = v;
+    removable.filesystem_uuid.clear();
+    removable.partition_uuid.clear();
+    removable.serial = "DISK-SERIAL";
+    removable.wwn = "0x5000000000000001";
+    removable.start_sector = 2048U;
+    removable.size = 1048576U;
+    const auto stable_journal = desktop_journal(removable, 1000);
+    removable.path = "/dev/sdc1";
+    assert(desktop_journal(removable, 1000) == stable_journal);
     const auto journal = desktop_journal(v, 1000);
     const auto args = desktop_mutation(v, "defrag", "/tmp/engine", journal, 512, false);
     assert(args.at(0) == "/tmp/engine" && args.at(1) == "defrag");
