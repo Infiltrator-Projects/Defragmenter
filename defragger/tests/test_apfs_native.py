@@ -68,21 +68,29 @@ def test_writer(work: Path) -> None:
     bitmap = raw[33 * 4096:34 * 4096]
     assert bitmap[12 >> 3] & (1 << (12 & 7)) == 0
 
-    for option, expected in (
-        ("--stale-checkpoint", "older checkpoint"),
-        ("--shared", "unshared"),
-    ):
-        rejected = work / (option[2:] + ".img")
-        make(rejected, option)
-        before = hashlib.sha256(rejected.read_bytes()).digest()
-        failed = run(
-            "defrag", rejected, "--write", "--confirm", rejected,
-            "--journal", work / (option[2:] + ".journal"),
-            check=False,
-        )
-        assert failed.returncode != 0
-        assert expected in failed.stderr.lower()
-        assert hashlib.sha256(rejected.read_bytes()).digest() == before
+    stale = work / "stale-checkpoint.img"
+    make(stale, "--stale-checkpoint")
+    stale_before = stale.read_bytes()[3 * 4096:4 * 4096]
+    mutate(stale, "defrag")
+    assert json.loads(run("analyse-json", stale).stdout)["fragmented_files"] == 0
+    assert stale.read_bytes()[3 * 4096:4 * 4096] == stale_before
+
+    stale_growth = work / "stale-checkpoint-growth.img"
+    make(stale_growth, "--stale-checkpoint")
+    mutate(stale_growth, "growth-defrag")
+    assert json.loads(run("analyse-json", stale_growth).stdout)["fragmented_files"] == 0
+
+    rejected = work / "shared.img"
+    make(rejected, "--shared")
+    before = hashlib.sha256(rejected.read_bytes()).digest()
+    failed = run(
+        "defrag", rejected, "--write", "--confirm", rejected,
+        "--journal", work / "shared.journal",
+        check=False,
+    )
+    assert failed.returncode != 0
+    assert "unshared" in failed.stderr.lower()
+    assert hashlib.sha256(rejected.read_bytes()).digest() == before
 
 
 def test_recovery(work: Path) -> None:
