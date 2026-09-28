@@ -1289,17 +1289,15 @@ static int writer_supported(const UfsInventory *inventory,
     for (size_t index = 0U; index < inventory->file_count && result == 0; ++index) {
         const UfsFileRecord *file = &inventory->files[index];
         if (file->directory || file->size == 0U) continue;
-        if (file->sparse || file->block_count == 0U) {
-            ufs_error(error, error_size,
-                      "UFS writer requires non-sparse regular files with allocated data");
-            result = -1; break;
-        }
+        const uint64_t logical_blocks =
+            (file->size + summary->block_size - 1U) / summary->block_size;
         for (uint32_t block = 0U; block < file->block_count && result == 0; ++block) {
             const UfsBlockRef *reference =
                 &inventory->blocks[file->first_block + block];
-            const bool final_block = block + 1U == file->block_count;
+            const bool final_logical_block =
+                reference->logical_block + 1U == logical_blocks;
             uint32_t expected_span = summary->fragments_per_block;
-            if (final_block && file->size % summary->block_size != 0U) {
+            if (final_logical_block && file->size % summary->block_size != 0U) {
                 expected_span = (uint32_t)(
                     (file->size % summary->block_size +
                      summary->fragment_size - 1U) /
