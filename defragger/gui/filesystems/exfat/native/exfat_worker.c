@@ -601,7 +601,12 @@ static int recover_transaction(const char *device, const char *journal_path,
         exfat_set_error(error, "cannot bind exFAT recovery target: %s", strerror(errno));
         goto done;
     }
-    if (strcmp(real, state.device) != 0 || strcmp(identity, state.target_identity) != 0 || size != state.physical_bytes) { exfat_set_error(error, "recovery journal belongs to a different exFAT target"); goto done; }
+    if (strcmp(identity, state.target_identity) != 0 ||
+        size != state.physical_bytes) {
+        exfat_set_error(error,
+                        "recovery journal belongs to a different exFAT target");
+        goto done;
+    }
     if (strcmp(state.phase, "committing") != 0 && strcmp(state.phase, "verifying-source") != 0) {
         transaction_cleanup(journal_path, &state); puts("Discarded an incomplete exFAT working image; the source was unchanged."); result = 0; goto done;
     }
