@@ -80,27 +80,24 @@ static void add_data_ranges(const ExtBlockVec *blocks, ExtRangeVec *ranges) {
         ext_range_push(ranges, blocks->items[index].physical,
                        blocks->items[index].physical + 1U);
 }
-static int bitmap_free(ExtFs *fs, uint64_t block, bool *is_free,
-                       char **error) {
-    bool allocated = false;
-    if (ext_fs_block_allocated(fs, block, &allocated, error) != 0) return -1;
-    *is_free = !allocated;
+typedef struct {
+    ExtRangeVec *ranges;
+} FreeRangeContext;
+
+static int collect_free_run(uint64_t start, uint64_t length, bool allocated,
+                            void *private_data, char **error) {
+    (void)error;
+    FreeRangeContext *context = private_data;
+    if (!allocated && length != 0U)
+        ext_range_push(context->ranges, start, start + length);
     return 0;
 }
+
 static int scan_free_ranges(ExtFs *fs, const ExtGeometry *geometry,
                             ExtRangeVec *ranges, char **error) {
-    bool in_run = false; uint64_t start = 0U;
-    for (uint64_t block = geometry->first_data_block;
-         block < geometry->total_blocks; ++block) {
-        bool free_block = false;
-        if (bitmap_free(fs, block, &free_block, error) != 0) return -1;
-        if (free_block && !in_run) { start = block; in_run = true; }
-        else if (!free_block && in_run) {
-            ext_range_push(ranges, start, block); in_run = false;
-        }
-    }
-    if (in_run) ext_range_push(ranges, start, geometry->total_blocks);
-    return 0;
+    (void)geometry;
+    FreeRangeContext context = {.ranges = ranges};
+    return ext_fs_foreach_block_run(fs, collect_free_run, &context, error);
 }
 typedef struct {
     const ExtGeometry *geometry;
