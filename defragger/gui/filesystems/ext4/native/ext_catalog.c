@@ -10,7 +10,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
-#include <openssl/sha.h>
+#include <openssl/evp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -244,33 +244,44 @@ int ext_open_plan_db(const char *path, bool create, sqlite3 **db, char **error) 
 }
 
 static int payload_digest(int fd, uint32_t block_size, const ExtBlockVec *blocks,
-                          uint8_t output[SHA256_DIGEST_LENGTH], char **error) {
-    SHA256_CTX digest;
-    if (SHA256_Init(&digest) != 1) {
+                          uint8_t output[EXT_SHA256_BYTES], char **error) {
+    EVP_MD_CTX *digest = EVP_MD_CTX_new();
+    if (digest == NULL ||
+        EVP_DigestInit_ex(digest, EVP_sha256(), NULL) != 1) {
+        EVP_MD_CTX_free(digest);
         ext_set_error(error, "initializing EXT payload digest failed");
         return -1;
     }
+
     uint8_t *buffer = ld_xmalloc(block_size);
     for (size_t index = 0; index < blocks->count; ++index) {
-                uint64_t physical = blocks->items[index].physical;
+        uint64_t physical = blocks->items[index].physical;
         ssize_t got = ld_pread_full(fd, buffer, block_size, physical * block_size);
         if (got < 0 || (size_t)got != block_size) {
             ext_set_error(error, "short read while hashing EXT payload data");
             free(buffer);
+            EVP_MD_CTX_free(digest);
             return -1;
         }
         uint8_t logical[8];
         uint64_t value = (uint64_t)blocks->items[index].logical;
-        for (unsigned byte = 0; byte < 8U; ++byte) logical[byte] = (uint8_t)(value >> (byte * 8U));
-        if (SHA256_Update(&digest, logical, sizeof(logical)) != 1 ||
-            SHA256_Update(&digest, buffer, block_size) != 1) {
+        for (unsigned byte = 0; byte < 8U; ++byte)
+            logical[byte] = (uint8_t)(value >> (byte * 8U));
+        if (EVP_DigestUpdate(digest, logical, sizeof(logical)) != 1 ||
+            EVP_DigestUpdate(digest, buffer, block_size) != 1) {
             ext_set_error(error, "updating EXT payload digest failed");
             free(buffer);
+            EVP_MD_CTX_free(digest);
             return -1;
         }
     }
     free(buffer);
-    if (SHA256_Final(output, &digest) != 1) {
+
+    unsigned int digest_length = 0U;
+    const int finalised =
+        EVP_DigestFinal_ex(digest, output, &digest_length);
+    EVP_MD_CTX_free(digest);
+    if (finalised != 1 || digest_length != EXT_SHA256_BYTES) {
         ext_set_error(error, "finalizing EXT payload digest failed");
         return -1;
     }
@@ -302,7 +313,7 @@ static int plan_inode(ExtFs *fs, ExtInode *inode, void *private_data,
     /* Payload moves; extent-index/indirect metadata stays physically fixed.
        The native disk layer rewrites only physical payload references. */
     if (collect_inode_blocks(fs, inode, &blocks, error) != 0) { block_free(&blocks); return -1; }
-    uint8_t digest[SHA256_DIGEST_LENGTH];
+    uint8_t digest[EXT_SHA256_BYTES];
     if (payload_digest(context->raw_fd, context->geometry->block_size,
                        &blocks, digest, error) != 0) { block_free(&blocks); return -1; }
     int sort_class = inode->number == EXT_ROOT_INO ? 0 : (kind == LINUX_S_IFDIR ? 1 : 2);
@@ -314,7 +325,7 @@ static int plan_inode(ExtFs *fs, ExtInode *inode, void *private_data,
     if (bind_int64(object,5,inode->size,error)!=0) { block_free(&blocks); return -1; }
     sqlite3_bind_int64(object,6,(sqlite3_int64)blocks.count);
     sqlite3_bind_int64(object,7,(sqlite3_int64)blocks.count);
-    sqlite3_bind_blob(object,8,digest,SHA256_DIGEST_LENGTH,SQLITE_TRANSIENT);
+    sqlite3_bind_blob(object,8,digest,EXT_SHA256_BYTES,SQLITE_TRANSIENT);
     sqlite3_bind_int(object,9,sort_class);
     if(sqlite3_step(object)!=SQLITE_DONE){
         ext_set_error(error,"cataloguing EXT inode %u: %s",inode->number,sqlite3_errmsg(context->db));
