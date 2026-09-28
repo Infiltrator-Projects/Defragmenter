@@ -89,6 +89,50 @@ CommandResult worker(
     return run_capture(command, output_limit, timeout);
 }
 
+struct MutationQualification {
+    bool qualified = false;
+    std::string reason;
+};
+
+bool backend_has_writer_preflight(const BackendInfo& backend) {
+    return backend.id == "apfs" || backend.id == "btrfs" ||
+           backend.id == "ext4" || backend.id == "hfs" ||
+           backend.id == "hfsplus" || backend.id == "ntfs" ||
+           backend.id == "ufs" || backend.id == "xfs";
+}
+
+std::string concise_child_detail(const CommandResult& result) {
+    std::string detail = !result.standard_error.empty()
+        ? result.standard_error : result.standard_output;
+    while (!detail.empty() &&
+           (detail.back() == '\n' || detail.back() == '\r'))
+        detail.pop_back();
+    constexpr std::size_t kMaxReason = 2048U;
+    if (detail.size() > kMaxReason) {
+        detail.resize(kMaxReason);
+        detail += "...";
+    }
+    return detail;
+}
+
+MutationQualification mutation_qualification(
+    const BackendInfo& backend, const std::string& path,
+    const char* mode) {
+    try {
+        const CommandResult result = worker(
+            backend, mode, path, {}, 2U * 1024U * 1024U,
+            std::chrono::seconds(60));
+        if (result.return_code == 0)
+            return {true, {}};
+        std::string detail = concise_child_detail(result);
+        if (detail.empty())
+            detail = "The native writer rejected this on-disk layout.";
+        return {false, std::move(detail)};
+    } catch (const std::exception& error) {
+        return {false, error.what()};
+    }
+}
+
 std::vector<UnitRange> pair_ranges(
     const Json& payload,
     std::string_view key,
@@ -793,25 +837,53 @@ bool backend_probe(const BackendInfo& backend, const std::string& path) {
 Json map_backend(const BackendInfo& backend, const std::string& path,
                  std::size_t cells) {
     (void)map_capture_limit(cells);
+    Json result;
     switch (backend.map_adapter) {
     case MapAdapter::NativeMap:
-        return map_native(backend, path, cells);
+        result = map_native(backend, path, cells);
+        break;
     case MapAdapter::Affs:
-        return map_affs(backend, path, cells);
+        result = map_affs(backend, path, cells);
+        break;
     case MapAdapter::Exfat:
-        return map_exfat(backend, path, cells);
+        result = map_exfat(backend, path, cells);
+        break;
     case MapAdapter::Ext:
-        return map_ext(backend, path, cells);
+        result = map_ext(backend, path, cells);
+        break;
     case MapAdapter::Fat:
-        return map_fat(backend, path, cells);
+        result = map_fat(backend, path, cells);
+        break;
     case MapAdapter::HfsPlus:
-        return map_hfsplus(backend, path, cells);
+        result = map_hfsplus(backend, path, cells);
+        break;
     case MapAdapter::Ntfs:
-        return map_ntfs(backend, path, cells);
+        result = map_ntfs(backend, path, cells);
+        break;
     case MapAdapter::Xfs:
-        return map_xfs(backend, path, cells);
+        result = map_xfs(backend, path, cells);
+        break;
+    default:
+        throw std::runtime_error("unknown allocation-map adapter");
     }
-    throw std::runtime_error("unknown allocation-map adapter");
+
+    if ((backend.capabilities & CAP_DEFRAG) != 0U) {
+        MutationQualification defrag{true, {}};
+        MutationQualification growth{true, {}};
+        if (backend_has_writer_preflight(backend)) {
+            defrag = mutation_qualification(
+                backend, path, "preflight-defrag");
+            growth = mutation_qualification(
+                backend, path, "preflight-growth");
+        }
+        set(result, "defrag_qualified", Json(defrag.qualified));
+        set(result, "growth_qualified", Json(growth.qualified));
+        if (!defrag.reason.empty())
+            set(result, "defrag_reason", Json(std::move(defrag.reason)));
+        if (!growth.reason.empty())
+            set(result, "growth_reason", Json(std::move(growth.reason)));
+    }
+    return result;
 }
 
 } // namespace defragger
