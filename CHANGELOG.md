@@ -2,6 +2,16 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-229
+
+- Make the physical allocation raster strictly one-to-one with actual GTK screen pixels. An analyser cell may occupy exactly one visible pixel, never be enlarged into multiple visible pixels.
+- When the analysed map contains fewer cells than the available drawing area, unused screen pixels remain background instead of stretching allocation data.
+- When the window becomes smaller than the analysed cell set, adjacent cells are combined in physical order so every visible pixel still represents one or more complete allocation units.
+- Remove raster scaling and nearest-neighbour enlargement from the native map renderer.
+- Report map density from the number of real visible map pixels, preserving the invariant of at least one block/cluster per pixel.
+- Add regression checks forbidding Cairo scaling in the physical allocation map.
+- No filesystem writer, placement, transaction or recovery semantics are changed.
+
 ## 1.8.0-228
 
 - Accept the exact FAT width proven by the native analyser even when discovery reported the generic Linux `vfat` alias and the worker returns a display identity such as `FAT16`. Verified identities are canonicalised through the native registry, fixing the false "Native filesystem identity conflicts with discovery metadata" failure.
