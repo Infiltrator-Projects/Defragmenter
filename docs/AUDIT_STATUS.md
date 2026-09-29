@@ -5,11 +5,11 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-09-29
 
-Applies to: release version 1.8.0-226
-Audited source commit: d4daedca534b2a53081accfeb31938ba6a91635c
+Applies to: release version 1.8.0-227
+Audited source commit: 61ef623c503619cb7aa31a27936df79fb67ce81a
 Audited release-governance commit: e09599f6c84b31e7f29ec5da9e5f9db23807b9d9
 
-This status records the 1.8.0-226 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
+This status records the 1.8.0-227 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
@@ -17,9 +17,9 @@ This document records the current release safety case. Historical audit-developm
 
 ## Qualification evidence
 
-The current audited production-source baseline is commit `d4daedca534b2a53081accfeb31938ba6a91635c` for release version 1.8.0-226. The delta from the qualified 1.8.0-225 storage baseline is confined to the native GTK shell: the titlebar now uses the same deterministic trailing control-box structure as System Settings, the legacy duplicate menu strip is removed, and About remains available from Settings. Filesystem parsing, planning, mutation, recovery and privileged-operation semantics are unchanged. Publication remains conditioned on the exact-head hosted warnings-as-errors build, shipped native GTK Xvfb smoke test, complete CTest suite and ASan/UBSan lane; the release workflow will not publish this audit identity unless those gates pass.
+The current audited production-source baseline is commit `61ef623c503619cb7aa31a27936df79fb67ce81a` for release version 1.8.0-227. The delta from the qualified 1.8.0-226 storage baseline repairs the native desktop's read-only presentation contracts: FAT12/FAT16/FAT32 mapper output is augmented with the common geometry/totals fields already required by the C++ desktop; exact LD_* Test Media labels are accepted only as discovery hints when host metadata cannot name a filesystem; mounted/unmounted state is surfaced explicitly; and the physical allocation raster again reports approximate units per rendered pixel. FAT on-disk parsing, writer placement, transaction, recovery and privileged-operation semantics are unchanged. Publication remains conditioned on the exact-head hosted warnings-as-errors build, shipped native GTK Xvfb smoke test, complete CTest suite and ASan/UBSan lane; the release workflow will not publish this audit identity unless those gates pass.
 
-The 1.8.0-226 capability baseline retains the fully qualified 1.8.0-225 filesystem, transaction, layout, icon-colour and Day/Night semantics while aligning the application chrome with System Settings. Minimize, Maximize and Close are packed into one trailing titlebar group so Close is always the far-right control; the production native shell no longer carries redundant File/View/About menus, and About is exposed from Settings instead. The correction does not reintroduce the retired Python runtime and does not change filesystem parsing, placement, mutation or recovery semantics. Each write capability remains behind its filesystem-specific preflight, durable transaction/recovery contract and final verification.
+The 1.8.0-227 capability baseline retains the fully qualified 1.8.0-226 filesystem, transaction, titlebar, icon-colour and Day/Night semantics while repairing the remaining migration breakage visible on Test Media. FAT maps now satisfy both the FAT-native cluster contract and the desktop's common allocation-map contract, labelled FAT12 media is no longer silently omitted when lsblk cannot classify it, selector rows and the hero state explicitly distinguish mounted from unmounted media, and the map caption again exposes physical raster density in clusters/allocation units per pixel. These corrections do not weaken identity verification: LD_* labels only make a candidate visible, and the native analyser must still establish the real filesystem before write controls become eligible. Each write capability remains behind its filesystem-specific preflight, durable transaction/recovery contract and final verification.
 
 The release-governance baseline is `a3c3bf4fed0007178886d411e4172ce2b5302643`. The malformed-media matrix, transaction/recovery tests, native integration fixtures, GUI contract tests, release/package tests and architecture ownership checks remain part of the permanent **Project quality gate**. Environment-dependent destructive-media evidence remains supplementary and is not represented as hosted-CI proof.
 
