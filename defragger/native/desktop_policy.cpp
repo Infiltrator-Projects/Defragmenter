@@ -75,9 +75,13 @@ void visit(const Json& node, std::vector<DesktopVolume>& result) {
         if (const auto* start = node.find("start"))
             volume.start_sector = start->unsigned_or();
         volume.readonly = flag(node, "ro");
-        if (const auto* mounts = node.find("mountpoints"); mounts && mounts->is_array()) {
-            for (const auto& mount : mounts->array())
-                volume.mounted |= !mount.string_or().empty();
+        if (const auto* mounts = node.find("mountpoints"); mounts != nullptr) {
+            if (mounts->is_array()) {
+                for (const auto& mount : mounts->array())
+                    volume.mounted |= !mount.string_or().empty();
+            } else {
+                volume.mounted = !mounts->string_or().empty();
+            }
         }
         // lsblk routing hints do not establish the identity required for raw writes.
         result.push_back(std::move(volume));
