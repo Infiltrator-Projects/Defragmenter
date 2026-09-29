@@ -406,11 +406,13 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
      */
     css += "headerbar { background: " + chrome_titlebar + "; color: " +
            chrome_heading + "; border-bottom: 1px solid " + chrome_border +
-           "; min-height: 48px; padding: 2px 8px; }\n";
+           "; min-height: 58px; padding: 2px 8px; }\n";
     css += "headerbar button { background: transparent; border: 0; color: " +
            chrome_heading + "; box-shadow: none; padding: 2px; }\n";
-    css += ".header-control { min-width: 30px; min-height: 30px; border-radius: 6px; }\n";
-    css += "headerbar button:hover { background: " + chrome_hover + "; }\n";
+    css += ".header-end { margin-left: 10px; }\n";
+    css += ".header-control { min-width: 30px; min-height: 30px; padding: 4px; background: transparent; border: 1px solid transparent; border-radius: 8px; }\n";
+    css += ".header-control:hover { background: " + chrome_hover + "; border-color: " + chrome_border + "; }\n";
+    css += ".header-control-close:hover { background: " + fault + "; color: " + button_fg + "; }\n";
     css += ".brand-title { font-family: '" +
            std::string(typography->brand_family) +
            "'; font-size: 20px; font-weight: 600; color: " +
@@ -511,13 +513,6 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
     css += ".ready-dot { color: " + success + "; }\n";
     css += ".footer-volume { color: " + heading + "; font-weight: 700; }\n";
     css += ".status-text { color: " + note + "; }\n";
-    css += "menubar { background: " + panel + "; color: " + text +
-           "; border-bottom: 1px solid " + border + "; }\n";
-    css += "menubar menuitem, menubar menuitem label, menu menuitem, menu menuitem label { color: " +
-           text + "; }\n";
-    css += "menu { background: " + panel + "; color: " + text +
-           "; border: 1px solid " + border + "; }\n";
-    css += "menuitem:hover { background: " + rgb_hex(palette->card_hover_rgb) + "; }\n";
     css += ".page-title { font-family: '" + std::string(typography->brand_family) +
            "'; font-size: 32px; font-weight: 600; color: " + heading + "; }\n";
     css += ".page-subtitle, .page-volume { color: " + detail + "; }\n";
@@ -598,7 +593,7 @@ public:
         auto* header = gtk_header_bar_new();
         gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(header), FALSE);
         gtk_header_bar_set_custom_title(GTK_HEADER_BAR(header), gtk_label_new(""));
-        gtk_widget_set_size_request(header, -1, 50);
+        gtk_widget_set_size_request(header, -1, 58);
         auto* brand = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 9);
         auto* icon = app_icon_image(32);
         gtk_box_pack_start(GTK_BOX(brand), icon, FALSE, FALSE, 0);
@@ -613,23 +608,48 @@ public:
         gtk_box_pack_start(GTK_BOX(brand_text), suite, FALSE, FALSE, 0);
         gtk_box_pack_start(GTK_BOX(brand), brand_text, FALSE, FALSE, 0);
         gtk_header_bar_pack_start(GTK_HEADER_BAR(header), brand);
-        for (const auto* name : {"minimize", "maximize", "close"}) {
-            auto* button = gtk_button_new_from_icon_name(
-                (std::string("window-") + name + "-symbolic").c_str(),
-                GTK_ICON_SIZE_BUTTON);
+
+        /*
+         * Match System Settings: pack one trailing box so GTK cannot reverse
+         * the individual controls. The visible order is always
+         * Minimize | Maximize | Close, with Close at the far right.
+         */
+        auto* header_end = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+        css_class(header_end, "header-end");
+
+        auto* minimize = gtk_button_new_from_icon_name(
+            "window-minimize-symbolic", GTK_ICON_SIZE_BUTTON);
+        auto* maximize = gtk_button_new_from_icon_name(
+            "window-maximize-symbolic", GTK_ICON_SIZE_BUTTON);
+        auto* close = gtk_button_new_from_icon_name(
+            "window-close-symbolic", GTK_ICON_SIZE_BUTTON);
+        for (auto* button : {minimize, maximize, close}) {
             css_class(button, "header-control");
             gtk_widget_set_size_request(button, 32, 32);
-            g_object_set_data_full(
-                G_OBJECT(button), "action", g_strdup(name), g_free);
-            g_signal_connect(button, "clicked", G_CALLBACK(clicked), nullptr);
-            gtk_header_bar_pack_end(GTK_HEADER_BAR(header), button);
         }
+        css_class(close, "header-control-close");
+
+        g_object_set_data_full(
+            G_OBJECT(minimize), "action", g_strdup("minimize"), g_free);
+        g_object_set_data_full(
+            G_OBJECT(maximize), "action", g_strdup("maximize"), g_free);
+        g_object_set_data_full(
+            G_OBJECT(close), "action", g_strdup("close"), g_free);
+        g_signal_connect(minimize, "clicked", G_CALLBACK(clicked), nullptr);
+        g_signal_connect(maximize, "clicked", G_CALLBACK(clicked), nullptr);
+        g_signal_connect(close, "clicked", G_CALLBACK(clicked), nullptr);
+
+        gtk_box_pack_start(
+            GTK_BOX(header_end), minimize, FALSE, FALSE, 0);
+        gtk_box_pack_start(
+            GTK_BOX(header_end), maximize, FALSE, FALSE, 0);
+        gtk_box_pack_start(
+            GTK_BOX(header_end), close, FALSE, FALSE, 0);
+        gtk_header_bar_pack_end(GTK_HEADER_BAR(header), header_end);
         gtk_window_set_titlebar(GTK_WINDOW(window_), header);
 
         auto* outer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
         gtk_container_add(GTK_CONTAINER(window_), outer);
-        gtk_box_pack_start(
-            GTK_BOX(outer), build_menu_bar(), FALSE, FALSE, 0);
 
         auto* paned = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
         gtk_box_pack_start(GTK_BOX(outer), paned, TRUE, TRUE, 0);
@@ -1077,52 +1097,6 @@ private:
     guint local_stop_timer_ = 0;
     guint selection_analysis_timer_ = 0;
 
-    GtkWidget* add_menu_item(
-        GtkWidget* menu, const char* label, const char* action)
-    {
-        auto* item = gtk_menu_item_new_with_label(label);
-        g_object_set_data_full(
-            G_OBJECT(item), "action", g_strdup(action), g_free);
-        g_signal_connect(item, "activate", G_CALLBACK(activated), this);
-        gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
-        return item;
-    }
-
-    GtkWidget* build_menu_bar()
-    {
-        auto* bar = gtk_menu_bar_new();
-
-        auto* file = gtk_menu_item_new_with_label("File");
-        auto* file_menu = gtk_menu_new();
-        gtk_menu_item_set_submenu(GTK_MENU_ITEM(file), file_menu);
-        add_menu_item(file_menu, "Open image…", "image");
-        add_menu_item(file_menu, "Refresh volumes", "refresh");
-        gtk_menu_shell_append(
-            GTK_MENU_SHELL(file_menu), gtk_separator_menu_item_new());
-        add_menu_item(file_menu, "Quit", "close");
-        gtk_menu_shell_append(GTK_MENU_SHELL(bar), file);
-
-        auto* view = gtk_menu_item_new_with_label("View");
-        auto* view_menu = gtk_menu_new();
-        gtk_menu_item_set_submenu(GTK_MENU_ITEM(view), view_menu);
-        add_menu_item(view_menu, "Overview", "page-overview");
-        add_menu_item(view_menu, "Analyse", "page-analyse");
-        add_menu_item(view_menu, "Defragment", "page-defrag");
-        add_menu_item(view_menu, "Growth Defrag", "page-growth");
-        add_menu_item(view_menu, "Recover", "page-recover");
-        gtk_menu_shell_append(
-            GTK_MENU_SHELL(view_menu), gtk_separator_menu_item_new());
-        add_menu_item(view_menu, "Settings", "page-settings");
-        gtk_menu_shell_append(GTK_MENU_SHELL(bar), view);
-
-        auto* about = gtk_menu_item_new_with_label("About");
-        auto* about_menu = gtk_menu_new();
-        gtk_menu_item_set_submenu(GTK_MENU_ITEM(about), about_menu);
-        add_menu_item(about_menu, "About Defragmenter", "about");
-        gtk_menu_shell_append(GTK_MENU_SHELL(bar), about);
-        return bar;
-    }
-
     GtkWidget* build_operation_page(
         const char* title,
         const char* subtitle,
@@ -1270,6 +1244,22 @@ private:
             GTK_BOX(box), theme_combo_, FALSE, FALSE, 0);
         gtk_box_pack_start(
             GTK_BOX(page), section(nullptr, box), FALSE, FALSE, 0);
+
+        auto* about_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 9);
+        auto* about_heading = gtk_label_new("ABOUT");
+        css_class(about_heading, "kicker");
+        gtk_label_set_xalign(GTK_LABEL(about_heading), 0);
+        gtk_box_pack_start(
+            GTK_BOX(about_box), about_heading, FALSE, FALSE, 0);
+        auto* about_note = gtk_label_new(
+            "Version, licence and project information.");
+        css_class(about_note, "page-subtitle");
+        gtk_label_set_xalign(GTK_LABEL(about_note), 0);
+        gtk_box_pack_start(
+            GTK_BOX(about_box), about_note, FALSE, FALSE, 0);
+        add_button(about_box, "About Defragmenter", "about");
+        gtk_box_pack_start(
+            GTK_BOX(page), section(nullptr, about_box), FALSE, FALSE, 0);
         return scroll;
     }
 
