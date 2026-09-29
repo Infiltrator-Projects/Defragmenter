@@ -7,6 +7,7 @@
 #include <cctype>
 #include <cstdio>
 #include <stdexcept>
+#include <utility>
 
 namespace defragger {
 namespace {
