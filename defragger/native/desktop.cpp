@@ -1020,11 +1020,14 @@ private:
 
         theme_combo_ = gtk_combo_box_text_new();
         gtk_combo_box_text_append_text(
-            GTK_COMBO_BOX_TEXT(theme_combo_), "Follow system");
+            GTK_COMBO_BOX_TEXT(theme_combo_),
+            theme_label(INFILTRATR_THEME_SYSTEM));
         gtk_combo_box_text_append_text(
-            GTK_COMBO_BOX_TEXT(theme_combo_), "Day");
+            GTK_COMBO_BOX_TEXT(theme_combo_),
+            theme_label(INFILTRATR_THEME_DAY));
         gtk_combo_box_text_append_text(
-            GTK_COMBO_BOX_TEXT(theme_combo_), "Night");
+            GTK_COMBO_BOX_TEXT(theme_combo_),
+            theme_label(INFILTRATR_THEME_NIGHT));
         gtk_combo_box_set_active(
             GTK_COMBO_BOX(theme_combo_), theme_index(theme_mode_));
         g_signal_connect(
