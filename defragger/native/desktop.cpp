@@ -1372,11 +1372,6 @@ private:
         auto* top = gtk_widget_get_toplevel(widget);
         return static_cast<Desktop*>(g_object_get_data(G_OBJECT(top), "desktop"));
     }
-    static void activated(GtkMenuItem* item, gpointer data) {
-        auto* self = static_cast<Desktop*>(data);
-        if (self) self->action(static_cast<const char*>(
-            g_object_get_data(G_OBJECT(item), "action")));
-    }
     static gboolean draw_gauge(GtkWidget* widget, cairo_t* cr, gpointer data) {
         auto* self = static_cast<Desktop*>(data);
         const int index = GPOINTER_TO_INT(
