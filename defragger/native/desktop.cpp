@@ -68,6 +68,52 @@ fs::path artwork(const char* name) {
     return {};
 }
 
+GtkWidget* app_icon_image(int size)
+{
+    const fs::path candidates[] = {
+        "/usr/lib/linux-defragger/defragmenter-icon.png",
+        "/usr/share/icons/hicolor/96x96/apps/io.github.linuxdefragger.png",
+        fs::path("defragger/packaging/io.github.linuxdefragger.png"),
+        fs::path("packaging/io.github.linuxdefragger.png"),
+    };
+    for (const auto& path : candidates) {
+        if (!fs::is_regular_file(path)) continue;
+        GError* failure = nullptr;
+        auto* pixbuf = gdk_pixbuf_new_from_file_at_scale(
+            path.string().c_str(), size, size, TRUE, &failure);
+        if (failure != nullptr) g_error_free(failure);
+        if (pixbuf == nullptr) continue;
+        auto* image = gtk_image_new_from_pixbuf(pixbuf);
+        g_object_unref(pixbuf);
+        return image;
+    }
+    auto* image = gtk_image_new_from_icon_name(
+        "io.github.linuxdefragger", GTK_ICON_SIZE_DIALOG);
+    gtk_image_set_pixel_size(GTK_IMAGE(image), size);
+    return image;
+}
+
+void apply_window_icon(GtkWindow* window)
+{
+    const fs::path candidates[] = {
+        "/usr/lib/linux-defragger/defragmenter-icon.png",
+        "/usr/share/icons/hicolor/96x96/apps/io.github.linuxdefragger.png",
+        fs::path("defragger/packaging/io.github.linuxdefragger.png"),
+        fs::path("packaging/io.github.linuxdefragger.png"),
+    };
+    for (const auto& path : candidates) {
+        if (!fs::is_regular_file(path)) continue;
+        GError* failure = nullptr;
+        auto* pixbuf = gdk_pixbuf_new_from_file(path.string().c_str(), &failure);
+        if (failure != nullptr) g_error_free(failure);
+        if (pixbuf == nullptr) continue;
+        gtk_window_set_icon(window, pixbuf);
+        g_object_unref(pixbuf);
+        return;
+    }
+    gtk_window_set_icon_name(window, "io.github.linuxdefragger");
+}
+
 gboolean draw_hero_art(GtkWidget* widget, cairo_t* cr, gpointer) {
     GtkAllocation allocation;
     gtk_widget_get_allocation(widget, &allocation);
@@ -537,7 +583,7 @@ public:
         gtk_widget_set_size_request(window_, 900, 620);
         g_signal_connect(
             window_, "realize", G_CALLBACK(fit_window_to_workarea), nullptr);
-        gtk_window_set_icon_name(GTK_WINDOW(window_), "io.github.linuxdefragger");
+        apply_window_icon(GTK_WINDOW(window_));
         g_signal_connect(window_, "delete-event", G_CALLBACK(close_requested), this);
         g_signal_connect(window_, "destroy", G_CALLBACK(+[](GtkWidget*, gpointer) {
             gtk_main_quit();
@@ -547,9 +593,7 @@ public:
         gtk_header_bar_set_custom_title(GTK_HEADER_BAR(header), gtk_label_new(""));
         gtk_widget_set_size_request(header, -1, 50);
         auto* brand = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 9);
-        auto* icon = gtk_image_new_from_icon_name(
-            "io.github.linuxdefragger", GTK_ICON_SIZE_DIALOG);
-        gtk_image_set_pixel_size(GTK_IMAGE(icon), 32);
+        auto* icon = app_icon_image(32);
         gtk_box_pack_start(GTK_BOX(brand), icon, FALSE, FALSE, 0);
         auto* brand_text = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
         auto* brand_name = gtk_label_new("Defragmenter");
@@ -590,9 +634,7 @@ public:
         gtk_paned_set_position(GTK_PANED(paned), 238);
 
         auto* sidebar_brand = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 9);
-        auto* sidebar_icon = gtk_image_new_from_icon_name(
-            "io.github.linuxdefragger", GTK_ICON_SIZE_DIALOG);
-        gtk_image_set_pixel_size(GTK_IMAGE(sidebar_icon), 52);
+        auto* sidebar_icon = app_icon_image(52);
         gtk_box_pack_start(
             GTK_BOX(sidebar_brand), sidebar_icon, FALSE, FALSE, 0);
         auto* sidebar_copy = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
