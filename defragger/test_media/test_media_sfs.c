@@ -16,7 +16,13 @@
 #define SFS_TM_HEADER_BYTES 12U
 #define SFS_TM_CAP_BYTES (UINT64_C(2) * LDTM_GIB)
 #define SFS_TM_BITMAP_BASE 1U
+#define SFS_TM_ROOT_NODE 1U
+#define SFS_TM_RECYCLED_NODE 2U
 #define SFS_TM_FILE_ID 10U
+#define SFS_TM_OTYPE_HIDDEN 1U
+#define SFS_TM_OTYPE_DIR 128U
+#define SFS_TM_ADMIN_AREA_START 32U
+#define SFS_TM_ADMIN_AREA_BLOCKS 32U
 #define SFS_TM_FRAGMENTS 100U
 #define SFS_TM_CHUNK_BLOCKS 512U
 #define SFS_TM_CHUNK_KIB 2048U
@@ -30,6 +36,8 @@ typedef struct {
     uint32_t admin;
     uint32_t extents;
     uint32_t objects;
+    uint32_t children;
+    uint32_t transaction;
     uint32_t object_nodes;
 } SfsTmGeometry;
 
@@ -86,8 +94,13 @@ static int geometry_for_path(const char *path, SfsTmGeometry *geometry)
     value.admin = SFS_TM_BITMAP_BASE + value.bitmap_blocks;
     value.extents = value.admin + 1U;
     value.objects = value.extents + 1U;
-    value.object_nodes = value.objects + 1U;
-    if (value.object_nodes + 2U >= value.total_blocks - 1U)
+    value.children = value.objects + 1U;
+    value.transaction = value.objects + 2U;
+    value.object_nodes = value.objects + 3U;
+    if (value.object_nodes >= SFS_TM_ADMIN_AREA_START ||
+        SFS_TM_ADMIN_AREA_START + SFS_TM_ADMIN_AREA_BLOCKS >=
+            SFS_TM_LOW_START ||
+        value.object_nodes >= value.total_blocks - 1U)
         return -1;
     *geometry = value;
     return 0;
@@ -152,7 +165,12 @@ static int geometry_is_used(const SfsTmGeometry *geometry, uint32_t block)
         block < SFS_TM_BITMAP_BASE + geometry->bitmap_blocks)
         return 1;
     if (block == geometry->admin || block == geometry->extents ||
-        block == geometry->objects || block == geometry->object_nodes)
+        block == geometry->objects || block == geometry->children ||
+        block == geometry->transaction ||
+        block == geometry->object_nodes)
+        return 1;
+    if (block >= SFS_TM_ADMIN_AREA_START &&
+        block < SFS_TM_ADMIN_AREA_START + SFS_TM_ADMIN_AREA_BLOCKS)
         return 1;
     for (uint32_t fragment = 0U; fragment < SFS_TM_FRAGMENTS; ++fragment) {
         const uint32_t start = fragment_start(geometry, fragment);
@@ -239,12 +257,70 @@ static void make_extent_tree(uint8_t *block, const SfsTmGeometry *geometry,
     stamp_checksum(block);
 }
 
-static void make_object_container(uint8_t *block,
-                                  const SfsTmGeometry *geometry,
-                                  const LdtmFragmentProfile *profile)
+static uint32_t count_free_blocks(const SfsTmGeometry *geometry)
+{
+    uint32_t free_blocks = 0U;
+    for (uint32_t block = 0U; block < geometry->total_blocks; ++block)
+        if (!geometry_is_used(geometry, block))
+            ++free_blocks;
+    return free_blocks;
+}
+
+static size_t append_directory_object(uint8_t *block, size_t offset,
+                                      uint32_t node, uint32_t first_child,
+                                      uint8_t flags, const char *name)
+{
+    const size_t name_length = strlen(name);
+    uint8_t *object = block + offset;
+
+    infiltratr_store_be32(object + 4U, node);
+    infiltratr_store_be32(object + 8U, 0x0fU);
+    infiltratr_store_be32(object + 12U, 0U);
+    infiltratr_store_be32(object + 16U, first_child);
+    object[24U] = (uint8_t)(SFS_TM_OTYPE_DIR | flags);
+    memcpy(object + 25U, name, name_length);
+    object[25U + name_length] = 0U;
+    object[26U + name_length] = 0U;
+
+    offset += 27U + name_length;
+    if ((offset & 1U) != 0U)
+        ++offset;
+    return offset;
+}
+
+static void make_root_object_container(uint8_t *block,
+                                       const SfsTmGeometry *geometry)
 {
     memset(block, 0, SFS_TM_BLOCK_SIZE);
     set_header(block, "OBJC", geometry->objects);
+
+    size_t offset = 24U;
+    offset = append_directory_object(
+        block, offset, SFS_TM_ROOT_NODE, geometry->children, 0U, "LD_SFS");
+    (void)append_directory_object(
+        block, offset, SFS_TM_RECYCLED_NODE, 0U,
+        SFS_TM_OTYPE_HIDDEN, "Recycled");
+
+    /*
+     * The Linux SFS implementation consumes fsRootInfo from the tail of the
+     * root object container.  Keep its cached free-block count consistent
+     * with the allocation bitmap so the mounted filesystem remains writable.
+     */
+    uint8_t *root_info = block + SFS_TM_BLOCK_SIZE - 36U;
+    infiltratr_store_be32(root_info + 8U, count_free_blocks(geometry));
+    infiltratr_store_be32(
+        root_info + 28U, SFS_TM_FILE_ID + LDTM_TARGET_FILE_COUNT - 1U);
+    stamp_checksum(block);
+}
+
+static void make_file_object_container(uint8_t *block,
+                                       const SfsTmGeometry *geometry,
+                                       const LdtmFragmentProfile *profile)
+{
+    memset(block, 0, SFS_TM_BLOCK_SIZE);
+    set_header(block, "OBJC", geometry->children);
+    infiltratr_store_be32(block + 12U, SFS_TM_ROOT_NODE);
+
     size_t offset = 24U;
     for (uint32_t file = 0U; file < profile->files; ++file) {
         char name[32];
@@ -265,8 +341,42 @@ static void make_object_container(uint8_t *block,
         object[25U + name_length] = 0U;
         object[26U + name_length] = 0U;
         offset += 27U + name_length;
-        if ((offset & 1U) != 0U) ++offset;
+        if ((offset & 1U) != 0U)
+            ++offset;
     }
+    stamp_checksum(block);
+}
+
+static void make_object_node_tree(uint8_t *block,
+                                  const SfsTmGeometry *geometry,
+                                  const LdtmFragmentProfile *profile)
+{
+    memset(block, 0, SFS_TM_BLOCK_SIZE);
+    set_header(block, "NDC ", geometry->object_nodes);
+    infiltratr_store_be32(block + 12U, SFS_TM_ROOT_NODE);
+    infiltratr_store_be32(block + 16U, 1U);
+
+    /* Leaf slot = object node - base node; each SFS0 object-node is 10 bytes. */
+    infiltratr_store_be32(block + 20U, geometry->objects);
+    infiltratr_store_be32(block + 30U, geometry->objects);
+
+    for (uint32_t file = 0U; file < profile->files; ++file) {
+        const uint32_t node = SFS_TM_FILE_ID + file;
+        const size_t slot = (size_t)(node - SFS_TM_ROOT_NODE);
+        infiltratr_store_be32(
+            block + 20U + slot * 10U, geometry->children);
+    }
+    stamp_checksum(block);
+}
+
+static void make_adminspace_container(uint8_t *block,
+                                      const SfsTmGeometry *geometry)
+{
+    memset(block, 0, SFS_TM_BLOCK_SIZE);
+    set_header(block, "ADMC", geometry->admin);
+    block[20U] = SFS_TM_ADMIN_AREA_BLOCKS;
+    infiltratr_store_be32(block + 24U, SFS_TM_ADMIN_AREA_START);
+    infiltratr_store_be32(block + 28U, 0U);
     stamp_checksum(block);
 }
 
@@ -329,17 +439,28 @@ int ldtm_format_sfs_volume(const char *path)
             goto cleanup;
     }
 
-    memset(block, 0, SFS_TM_BLOCK_SIZE);
-    if (write_block(fd, geometry.admin, block) != 0 ||
-        write_block(fd, geometry.object_nodes, block) != 0 ||
-        write_block(fd, geometry.objects + 2U, block) != 0)
+    make_adminspace_container(block, &geometry);
+    if (write_block(fd, geometry.admin, block) != 0)
         goto cleanup;
 
     make_extent_tree(block, &geometry, &profile);
     if (write_block(fd, geometry.extents, block) != 0)
         goto cleanup;
-    make_object_container(block, &geometry, &profile);
+
+    make_root_object_container(block, &geometry);
     if (write_block(fd, geometry.objects, block) != 0)
+        goto cleanup;
+
+    make_file_object_container(block, &geometry, &profile);
+    if (write_block(fd, geometry.children, block) != 0)
+        goto cleanup;
+
+    make_object_node_tree(block, &geometry, &profile);
+    if (write_block(fd, geometry.object_nodes, block) != 0)
+        goto cleanup;
+
+    memset(block, 0, SFS_TM_BLOCK_SIZE);
+    if (write_block(fd, geometry.transaction, block) != 0)
         goto cleanup;
 
     for (uint32_t fragment = 0U; fragment < SFS_TM_FRAGMENTS; ++fragment) {
@@ -389,6 +510,9 @@ static int verify_current_payload(const char *path,
 {
     uint8_t *root = NULL;
     uint8_t *objects = NULL;
+    uint8_t *children = NULL;
+    uint8_t *nodes = NULL;
+    uint8_t *admin = NULL;
     uint8_t *extent_tree = NULL;
     uint8_t *actual = NULL;
     uint8_t *expected = NULL;
@@ -397,10 +521,14 @@ static int verify_current_payload(const char *path,
 
     root = malloc(SFS_TM_BLOCK_SIZE);
     objects = malloc(SFS_TM_BLOCK_SIZE);
+    children = malloc(SFS_TM_BLOCK_SIZE);
+    nodes = malloc(SFS_TM_BLOCK_SIZE);
+    admin = malloc(SFS_TM_BLOCK_SIZE);
     extent_tree = malloc(SFS_TM_BLOCK_SIZE);
     actual = malloc(SFS_TM_BLOCK_SIZE);
     expected = malloc(SFS_TM_BLOCK_SIZE);
-    if (root == NULL || objects == NULL || extent_tree == NULL ||
+    if (root == NULL || objects == NULL || children == NULL ||
+        nodes == NULL || admin == NULL || extent_tree == NULL ||
         actual == NULL || expected == NULL)
         goto cleanup;
 
@@ -412,16 +540,43 @@ static int verify_current_payload(const char *path,
         goto cleanup;
 
     const uint32_t total_blocks = load_be32(root + 48U);
+    const uint32_t admin_block = load_be32(root + 100U);
     const uint32_t object_block = load_be32(root + 104U);
     const uint32_t extent_block = load_be32(root + 108U);
-    if (total_blocks < 16384U || object_block >= total_blocks ||
-        extent_block >= total_blocks ||
+    const uint32_t node_block = load_be32(root + 112U);
+    if (total_blocks < 16384U || admin_block >= total_blocks ||
+        object_block >= total_blocks || extent_block >= total_blocks ||
+        node_block >= total_blocks ||
+        read_block(fd, admin_block, admin) != 0 ||
         read_block(fd, object_block, objects) != 0 ||
-        read_block(fd, extent_block, extent_tree) != 0)
+        read_block(fd, extent_block, extent_tree) != 0 ||
+        read_block(fd, node_block, nodes) != 0)
         goto cleanup;
-    if (memcmp(objects, "OBJC", 4U) != 0 ||
+
+    if (memcmp(admin, "ADMC", 4U) != 0 ||
+        memcmp(objects, "OBJC", 4U) != 0 ||
         memcmp(extent_tree, "BNDC", 4U) != 0 ||
+        memcmp(nodes, "NDC ", 4U) != 0 ||
         extent_tree[14U] == 0U || extent_tree[15U] != 14U)
+        goto cleanup;
+
+    const uint8_t *root_object = objects + 24U;
+    if (load_be32(root_object + 4U) != SFS_TM_ROOT_NODE ||
+        (root_object[24U] & SFS_TM_OTYPE_DIR) == 0U)
+        goto cleanup;
+
+    const uint32_t child_block = load_be32(root_object + 16U);
+    if (child_block == 0U || child_block >= total_blocks ||
+        read_block(fd, child_block, children) != 0 ||
+        memcmp(children, "OBJC", 4U) != 0 ||
+        load_be32(children + 8U) != child_block ||
+        load_be32(children + 12U) != SFS_TM_ROOT_NODE)
+        goto cleanup;
+
+    if (load_be32(nodes + 12U) != SFS_TM_ROOT_NODE ||
+        load_be32(nodes + 16U) != 1U ||
+        load_be32(nodes + 20U) != object_block ||
+        load_be32(nodes + 30U) != object_block)
         goto cleanup;
 
     const uint16_t extent_count = infiltratr_load_be16(extent_tree + 12U);
@@ -429,13 +584,19 @@ static int verify_current_payload(const char *path,
     for (uint32_t file = 0U; file < profile->files; ++file) {
         if (object_offset + 27U > SFS_TM_BLOCK_SIZE)
             goto cleanup;
-        const uint8_t *object = objects + object_offset;
+        const uint8_t *object = children + object_offset;
         const uint64_t expected_bytes =
             ldtm_profile_file_bytes(profile, file);
         if (expected_bytes == 0U || expected_bytes > UINT32_MAX ||
             load_be32(object + 4U) != SFS_TM_FILE_ID + file ||
             load_be32(object + 16U) != (uint32_t)expected_bytes)
             goto cleanup;
+        {
+            const size_t slot =
+                (size_t)(SFS_TM_FILE_ID + file - SFS_TM_ROOT_NODE);
+            if (load_be32(nodes + 20U + slot * 10U) != child_block)
+                goto cleanup;
+        }
 
         uint32_t key = load_be32(object + 12U);
         uint32_t previous = 0U;
@@ -486,10 +647,10 @@ static int verify_current_payload(const char *path,
             goto cleanup;
 
         const size_t name_offset = object_offset + 25U;
-        const uint8_t *limit = objects + SFS_TM_BLOCK_SIZE;
+        const uint8_t *limit = children + SFS_TM_BLOCK_SIZE;
         const uint8_t *name_end =
-            memchr(objects + name_offset, 0,
-                   (size_t)(limit - (objects + name_offset)));
+            memchr(children + name_offset, 0,
+                   (size_t)(limit - (children + name_offset)));
         if (name_end == NULL)
             goto cleanup;
         const uint8_t *comment = name_end + 1U;
@@ -499,7 +660,7 @@ static int verify_current_payload(const char *path,
                 : NULL;
         if (comment_end == NULL)
             goto cleanup;
-        object_offset = (size_t)(comment_end - objects) + 1U;
+        object_offset = (size_t)(comment_end - children) + 1U;
         if ((object_offset & 1U) != 0U) ++object_offset;
     }
     result = 0;
@@ -510,6 +671,9 @@ cleanup:
     free(expected);
     free(actual);
     free(extent_tree);
+    free(admin);
+    free(nodes);
+    free(children);
     free(objects);
     free(root);
     return result;
@@ -537,6 +701,7 @@ static int verify_sfs_payload_state(const char *path,
         analysis.total_blocks != geometry.total_blocks ||
         analysis.data_blocks != SFS_TM_DATA_BLOCKS ||
         analysis.regular_files != LDTM_TARGET_FILE_COUNT ||
+        analysis.directories < 2U ||
         analysis.fragmented_files !=
             (expect_fragmented != 0 ? LDTM_TARGET_FILE_COUNT : 0U) ||
         !analysis.primary_root_valid || !analysis.backup_root_valid ||
