@@ -2531,47 +2531,58 @@ private:
         cairo_paint(cr);
         if (self->cells_.empty()) return FALSE;
 
-        const std::uint64_t first =
-            number(self->cells_.front(), "start");
-        const std::uint64_t last =
-            number(self->cells_.back(), "end");
-        if (last < first) return FALSE;
+        /*
+         * One logical map pixel is one analyser cell.  The analyser never
+         * creates more cells than allocation units, so a logical pixel always
+         * represents one or more whole units -- never a fractional block or
+         * cluster.  Scale that logical raster to the widget with nearest
+         * neighbour filtering rather than inventing extra semantic pixels.
+         */
+        const std::size_t logical_count = self->cells_.size();
+        const double aspect =
+            static_cast<double>(width) / static_cast<double>(height);
+        const std::size_t logical_width = std::max<std::size_t>(
+            1U, std::min<std::size_t>(
+                logical_count,
+                static_cast<std::size_t>(std::ceil(
+                    std::sqrt(
+                        static_cast<double>(logical_count) *
+                        std::max(0.01, aspect))))));
+        const std::size_t logical_height =
+            (logical_count + logical_width - 1U) / logical_width;
+        const std::size_t raster_count =
+            logical_width * logical_height;
 
-        const std::size_t pixel_count =
-            static_cast<std::size_t>(width) *
-            static_cast<std::size_t>(height);
         std::vector<std::uint32_t> pixels(
-            pixel_count, UINT32_C(0xFF000000) | background);
-        const long double span =
-            static_cast<long double>(last - first) + 1.0L;
-        std::size_t cell_index = 0U;
-        for (std::size_t pixel = 0U;
-             pixel < pixel_count; ++pixel) {
-            const std::uint64_t unit =
-                first + static_cast<std::uint64_t>(
-                    static_cast<long double>(pixel) * span /
-                    static_cast<long double>(pixel_count));
-            while (cell_index < self->cells_.size() &&
-                   number(self->cells_[cell_index], "end") < unit)
-                ++cell_index;
-            if (cell_index >= self->cells_.size()) break;
-            const Json& cell = self->cells_[cell_index];
-            if (number(cell, "start") > unit) continue;
-            pixels[pixel] =
-                UINT32_C(0xFF000000) | map_cell_rgb(cell);
+            raster_count, UINT32_C(0xFF000000) | background);
+        for (std::size_t index = 0U;
+             index < logical_count; ++index) {
+            pixels[index] =
+                UINT32_C(0xFF000000) |
+                map_cell_rgb(self->cells_[index]);
         }
 
         cairo_surface_t* surface =
             cairo_image_surface_create_for_data(
                 reinterpret_cast<unsigned char*>(pixels.data()),
                 CAIRO_FORMAT_ARGB32,
-                width, height,
-                width * static_cast<int>(sizeof(std::uint32_t)));
+                static_cast<int>(logical_width),
+                static_cast<int>(logical_height),
+                static_cast<int>(
+                    logical_width * sizeof(std::uint32_t)));
         if (cairo_surface_status(surface) == CAIRO_STATUS_SUCCESS) {
+            cairo_save(cr);
+            cairo_scale(
+                cr,
+                static_cast<double>(width) /
+                    static_cast<double>(logical_width),
+                static_cast<double>(height) /
+                    static_cast<double>(logical_height));
             cairo_set_source_surface(cr, surface, 0.0, 0.0);
             cairo_pattern_set_filter(
                 cairo_get_source(cr), CAIRO_FILTER_NEAREST);
             cairo_paint(cr);
+            cairo_restore(cr);
         }
         cairo_surface_destroy(surface);
         return FALSE;
