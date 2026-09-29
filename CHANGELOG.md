@@ -2,6 +2,15 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-228
+
+- Accept the exact FAT width proven by the native analyser even when discovery reported the generic Linux `vfat` alias and the worker returns a display identity such as `FAT16`. Verified identities are canonicalised through the native registry, fixing the false "Native filesystem identity conflicts with discovery metadata" failure.
+- Restore the allocation-map invariant that one logical map pixel represents one or more whole allocation units, never a fraction of a block or cluster.
+- Render one analyser cell per logical map pixel and nearest-neighbour scale that logical raster to the GTK drawing area instead of inventing additional semantic pixels from LCD resolution.
+- Report map density from logical analyser cells, so FAT12 and other small filesystems bottom out at exactly 1 cluster/block per map pixel rather than showing fractional values below 1.
+- Add regression coverage for uppercase FAT worker identities, canonical lower-case verified IDs and one-cell-per-logical-pixel rendering.
+- No filesystem writer, placement, transaction or recovery semantics are changed.
+
 ## 1.8.0-227
 
 - Repair native FAT12/FAT16/FAT32 analysis in the C++ desktop. The FAT mapper now preserves its native cluster contract while also publishing the common unit/totals fields consumed by the migrated desktop, fixing the repeated "Invalid allocation map: Missing or inconsistent allocation cells" failures on FAT Test Media partitions.
