@@ -120,22 +120,6 @@ static size_t write_dirent_first_clusters_batched(
     return sector_writes;
 }
 
-static uint32_t read_dirent_first_cluster(Fat32 *filesystem, uint64_t offset) {
-    uint8_t entry[32];
-    if (ld_pread_full(
-            filesystem->dev.fd,
-            entry,
-            sizeof(entry),
-            offset) != (ssize_t)sizeof(entry)) {
-        ld_die_errno("read directory entry");
-    }
-    uint32_t first = infiltratr_load_le16(entry + 26);
-    if (filesystem->fat_type == FAT_TYPE_32) {
-        first |= (uint32_t)infiltratr_load_le16(entry + 20) << 16;
-    }
-    return first & fat_mask(filesystem);
-}
-
 static uint32_t data_offset_to_cluster(
     const Fat32 *filesystem,
     uint64_t offset
@@ -283,22 +267,6 @@ static void free_cluster_list(
     FatUpdate *updates = ld_xmalloc(count * sizeof(*updates));
     for (size_t index = 0; index < count; index++) {
         updates[index] = (FatUpdate){.cluster = clusters[index], .value = 0};
-    }
-    fat32_apply_updates(filesystem, updates, count);
-    free(updates);
-}
-
-static void free_contiguous_run(
-    Fat32 *filesystem,
-    uint32_t start,
-    size_t count
-) {
-    FatUpdate *updates = ld_xmalloc(count * sizeof(*updates));
-    for (size_t index = 0; index < count; index++) {
-        updates[index] = (FatUpdate){
-            .cluster = start + (uint32_t)index,
-            .value = 0,
-        };
     }
     fat32_apply_updates(filesystem, updates, count);
     free(updates);
