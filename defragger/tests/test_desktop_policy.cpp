@@ -10,6 +10,14 @@ int main() {
     assert(volumes.size() == 1);
     auto& v = volumes.front();
     assert(v.path == "/dev/sdb1" && !v.verified && !v.mounted);
+
+    auto labelled = desktop_discover(Json::parse(
+        R"({"blockdevices":[{"path":"/dev/mmcblk0","children":[{"path":"/dev/mmcblk0p1","fstype":null,"label":"LD_FAT12","partlabel":"LD_FAT12","size":267386880,"mountpoints":[null]}]}]})"));
+    assert(labelled.size() == 1);
+    assert(labelled.front().path == "/dev/mmcblk0p1");
+    assert(labelled.front().filesystem == "fat12");
+    assert(labelled.front().label == "LD_FAT12");
+    assert(!labelled.front().mounted);
     assert(desktop_controls(&v, false, false, false).analyse);
     assert(!desktop_controls(&v, false, false, false).defrag);
     assert(desktop_journal(v, 1000) ==
@@ -64,6 +72,10 @@ int main() {
         (void)desktop_mutation(v, "defrag", "/tmp/engine", journal, 512, true);
         assert(false);
     } catch (const std::runtime_error&) {}
+    auto mounted = desktop_discover(Json::parse(
+        R"({"blockdevices":[{"path":"/dev/sdc1","fstype":"ext4","size":1048576,"mountpoints":["/mnt/test"]}]})"));
+    assert(mounted.size() == 1 && mounted.front().mounted);
+
     v.mounted = true;
     assert(desktop_controls(&v, false, false, false).unmount);
     assert(!desktop_controls(&v, false, false, false).defrag);
