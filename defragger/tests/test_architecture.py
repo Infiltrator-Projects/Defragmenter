@@ -94,7 +94,7 @@ def test_dispatch_is_filesystem_neutral() -> None:
     for required in (
         "backend_by_fstype(filesystem)",
         "operation_for(*backend, operation)",
-        "resolve_program(specification->worker)",
+        "resolve_program(specification->worker, false)",
         "without_options(forwarded, specification->unsupported_options)",
     ):
         assert required in source
