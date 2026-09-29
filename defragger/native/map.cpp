@@ -415,6 +415,50 @@ Json map_fat(const BackendInfo& backend, const std::string& path,
             "native FAT mapper totals do not match filesystem geometry");
     }
 
+    /*
+     * The FAT worker deliberately emits its native FAT-specific contract
+     * (cluster_size/data_clusters/free_clusters and cluster-number cell
+     * bounds starting at 2).  The C++ desktop consumes the common allocation
+     * map contract used by every other adapter.  Preserve all FAT-specific
+     * fields and cells, but add the common geometry/totals here so the GUI
+     * does not need a second FAT-only presenter.
+     */
+    set(payload, "schema", Json::unsigned_integer(1U));
+    set(payload, "backend", Json("read-only-domain"));
+    set(payload, "map_accuracy", Json(backend.map_accuracy));
+    set(payload, "unit_size", Json::unsigned_integer(cluster_size));
+    set(payload, "total_units", Json::unsigned_integer(total));
+    set(payload, "total_bytes", Json::unsigned_integer(
+        multiply_or_throw(total, cluster_size, "FAT capacity")));
+    set(payload, "free_bytes", Json::unsigned_integer(
+        multiply_or_throw(declared_free, cluster_size, "FAT free space")));
+    set(payload, "used_bytes", Json::unsigned_integer(
+        multiply_or_throw(total - declared_free, cluster_size,
+                          "FAT used space")));
+    set(payload, "unknown_bytes", Json::unsigned_integer(0U));
+    set(payload, "outside_bytes", Json::unsigned_integer(0U));
+    set(payload, "filesystem_bytes", Json::unsigned_integer(
+        multiply_or_throw(total, cluster_size, "FAT filesystem size")));
+
+    const std::uint64_t regular_files =
+        optional_u64(payload, "regular_files");
+    const std::uint64_t fragmented_files =
+        optional_u64(payload, "fragmented_files");
+    set(payload, "fragmentation_percent", Json::real(
+        regular_files == 0U
+            ? 0.0
+            : 100.0 * static_cast<double>(fragmented_files) /
+                  static_cast<double>(regular_files)));
+
+    Json::Object details;
+    details["cluster_size"] = Json::unsigned_integer(cluster_size);
+    details["data_clusters"] = Json::unsigned_integer(total);
+    details["free_clusters"] = Json::unsigned_integer(declared_free);
+    details["fragmentation_available"] = Json(true);
+    details["fragmentation_basis"] =
+        Json("native C FAT directory catalogue and cluster-chain scan");
+    set(payload, "details", Json(std::move(details)));
+
     return payload;
 }
 
