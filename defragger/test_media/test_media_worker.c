@@ -2085,12 +2085,12 @@ static int create_ufs_and_populate(const LdtmFilesystemSpec *spec, const char *p
     }
     if (state_write_status(
             state, spec, "populated",
-            "deterministic UFS2 payload created at the capped media size and production analyser proved fragmentation") != 0 ||
+            "deterministic bounded UFS2 payload created below makefs's 2 GiB image boundary; production analyser proved fragmentation") != 0 ||
         state_write_targets(state, spec, records, record_count, directory_entries) != 0)
         return -1;
     emit_status(
         spec->key, "populated",
-        "deterministic UFS2 payload created at the capped media size and production analyser proved fragmentation");
+        "deterministic bounded UFS2 payload created below makefs's 2 GiB image boundary; production analyser proved fragmentation");
     return 0;
 }
 
@@ -2797,8 +2797,18 @@ int ldtm_worker_verify(const char *device) {
          * accept the pool.
          */
         if (spec->creator == LDTM_CREATOR_ZFS) {
-            if (!zfs_exact_analysis_ok(partition) ||
-                verify_zfs(spec, work, &expected[index]) != 0)
+            char detail[512] = {0};
+            if (!zfs_exact_analysis_ok(
+                    partition, detail, sizeof(detail))) {
+                emit_status(
+                    spec->key, "verify-failed",
+                    detail[0] != '\0'
+                        ? detail
+                        : "native exact ZFS analyser rejected the retained pool");
+                failures++;
+                continue;
+            }
+            if (verify_zfs(spec, work, &expected[index]) != 0)
                 failures++;
             continue;
         }

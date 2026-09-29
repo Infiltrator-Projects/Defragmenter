@@ -636,7 +636,8 @@ int main(void) {
     CHECK(strstr(ufs->note, "UFS2") != NULL &&
           strstr(ufs->note, "exact allocation/fragmentation") != NULL);
     CHECK(zfs->package_hint != NULL && strcmp(zfs->package_hint, "zfsutils-linux") == 0);
-    CHECK(strstr(zfs->note, "ZFS v28") != NULL &&
+    CHECK(strstr(zfs->note, "feature-flags") != NULL &&
+          strstr(zfs->note, "optional features disabled") != NULL &&
           strstr(zfs->note, "native exact analyser") != NULL);
     CHECK(fat12->size_mib == 255U);
     CHECK(fat16->size_mib == 2048U);
