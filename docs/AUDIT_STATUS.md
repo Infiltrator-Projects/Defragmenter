@@ -5,11 +5,11 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-09-29
 
-Applies to: release version 1.8.0-227
-Audited source commit: 61ef623c503619cb7aa31a27936df79fb67ce81a
+Applies to: release version 1.8.0-228
+Audited source commit: 53862ab2e6f56e9a0b23936c01cec5aee93bb3d1
 Audited release-governance commit: e09599f6c84b31e7f29ec5da9e5f9db23807b9d9
 
-This status records the 1.8.0-227 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
+This status records the 1.8.0-228 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
@@ -17,9 +17,9 @@ This document records the current release safety case. Historical audit-developm
 
 ## Qualification evidence
 
-The current audited production-source baseline is commit `61ef623c503619cb7aa31a27936df79fb67ce81a` for release version 1.8.0-227. The delta from the qualified 1.8.0-226 storage baseline repairs the native desktop's read-only presentation contracts: FAT12/FAT16/FAT32 mapper output is augmented with the common geometry/totals fields already required by the C++ desktop; exact LD_* Test Media labels are accepted only as discovery hints when host metadata cannot name a filesystem; mounted/unmounted state is surfaced explicitly; and the physical allocation raster again reports approximate units per rendered pixel. FAT on-disk parsing, writer placement, transaction, recovery and privileged-operation semantics are unchanged. Publication remains conditioned on the exact-head hosted warnings-as-errors build, shipped native GTK Xvfb smoke test, complete CTest suite and ASan/UBSan lane; the release workflow will not publish this audit identity unless those gates pass.
+The current audited production-source baseline is commit `53862ab2e6f56e9a0b23936c01cec5aee93bb3d1` for release version 1.8.0-228. The delta from the qualified 1.8.0-227 storage baseline is confined to read-only identity/presentation handling in the native desktop: a FAT worker identity such as `FAT16` is resolved through the canonical registry before comparison with generic discovery aliases such as `vfat`, and the allocation raster now treats each analyser cell as one logical map pixel before nearest-neighbour scaling. This restores the invariant that a logical map pixel represents one or more whole allocation units and prevents false FAT identity conflicts. FAT on-disk parsing, writer placement, transaction, recovery and privileged-operation semantics are unchanged. Publication remains conditioned on the exact-head hosted warnings-as-errors build, shipped native GTK Xvfb smoke test, complete CTest suite and ASan/UBSan lane; the release workflow will not publish this audit identity unless those gates pass.
 
-The 1.8.0-227 capability baseline retains the fully qualified 1.8.0-226 filesystem, transaction, titlebar, icon-colour and Day/Night semantics while repairing the remaining migration breakage visible on Test Media. FAT maps now satisfy both the FAT-native cluster contract and the desktop's common allocation-map contract, labelled FAT12 media is no longer silently omitted when lsblk cannot classify it, selector rows and the hero state explicitly distinguish mounted from unmounted media, and the map caption again exposes physical raster density in clusters/allocation units per pixel. These corrections do not weaken identity verification: LD_* labels only make a candidate visible, and the native analyser must still establish the real filesystem before write controls become eligible. Each write capability remains behind its filesystem-specific preflight, durable transaction/recovery contract and final verification.
+The 1.8.0-228 capability baseline retains the fully qualified 1.8.0-227 filesystem, transaction, titlebar, icon-colour, volume-state and Day/Night semantics while correcting two remaining native migration defects. Generic FAT discovery can now be refined safely to the exact analyser-proven FAT12/FAT16/FAT32 identity regardless of worker display case, and the physical map's semantic raster can no longer claim fractional allocation units per pixel: one logical map pixel is one analyser cell, representing at least one whole block/cluster, with GTK scaling kept purely visual. Identity verification remains fail-closed for conflicting non-alias filesystems, and every write capability remains behind its filesystem-specific preflight, durable transaction/recovery contract and final verification.
 
 The release-governance baseline is `a3c3bf4fed0007178886d411e4172ce2b5302643`. The malformed-media matrix, transaction/recovery tests, native integration fixtures, GUI contract tests, release/package tests and architecture ownership checks remain part of the permanent **Project quality gate**. Environment-dependent destructive-media evidence remains supplementary and is not represented as hosted-CI proof.
 
