@@ -695,19 +695,17 @@ def test_theme_modes_are_persistent_and_shared_across_windows() -> None:
         'selection_analysis_timer_ = g_idle_add(',
         'std::to_string(desired_map_cells())',
         'std::vector<std::uint32_t> pixels(',
-        'const std::size_t logical_count = self->cells_.size();',
-        'const std::size_t logical_width',
-        'const std::size_t logical_height',
-        'map_cell_rgb(self->cells_[index])',
-        'cairo_scale(',
+        'const std::size_t source_count = self->cells_.size();',
+        'const std::size_t display_count',
+        'const std::size_t map_pixel_count',
+        'map_cell_rgb(self->cells_[begin])',
         'CAIRO_FORMAT_ARGB32',
-        'CAIRO_FILTER_NEAREST',
         'volume_combo_text(volume)',
         'v->mounted ? "● Mounted" : "● Unmounted"',
         'update_map_caption()',
         'const std::uint64_t map_pixels',
         'std::max(\n            1.0,',
-        '" map pixels · approximately "',
+        '" physical pixels · approximately "',
         '"clusters"',
         '" per pixel"',
         '0x0585FF',
@@ -721,6 +719,8 @@ def test_theme_modes_are_persistent_and_shared_across_windows() -> None:
         )
     assert "allocation.width / 8" not in native_desktop
     assert "allocation.height / 8" not in native_desktop
+    assert "cairo_scale(" not in native_desktop
+    assert "CAIRO_FILTER_NEAREST" not in native_desktop
     assert "gtk_menu_bar_new()" not in native_desktop
     assert 'gtk_menu_item_new_with_label("File")' not in native_desktop
     assert 'gtk_menu_item_new_with_label("View")' not in native_desktop
