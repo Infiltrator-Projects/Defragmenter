@@ -687,10 +687,11 @@ def test_theme_modes_are_persistent_and_shared_across_windows() -> None:
         '"page-settings"',
         'build_operation_page(',
         'build_settings_page()',
-        'build_menu_bar()',
-        '"File"',
-        '"View"',
-        '"About"',
+        '"About Defragmenter"',
+        'gtk_box_pack_start(\n            GTK_BOX(header_end), minimize',
+        'gtk_box_pack_start(\n            GTK_BOX(header_end), maximize',
+        'gtk_box_pack_start(\n            GTK_BOX(header_end), close',
+        'gtk_header_bar_pack_end(GTK_HEADER_BAR(header), header_end)',
         'selection_analysis_timer_ = g_idle_add(',
         'std::to_string(desired_map_cells())',
         'std::vector<std::uint32_t> pixels(',
@@ -707,6 +708,10 @@ def test_theme_modes_are_persistent_and_shared_across_windows() -> None:
         )
     assert "allocation.width / 8" not in native_desktop
     assert "allocation.height / 8" not in native_desktop
+    assert "gtk_menu_bar_new()" not in native_desktop
+    assert 'gtk_menu_item_new_with_label("File")' not in native_desktop
+    assert 'gtk_menu_item_new_with_label("View")' not in native_desktop
+    assert "for (const auto* name : {\"minimize\", \"maximize\", \"close\"})" not in native_desktop
 
     # Day mode must remain visually coherent even when the host GTK theme is
     # dark: menu text is explicit, dark hero artwork keeps light Common chrome,
