@@ -379,7 +379,7 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
            "'; font-size: 20px; font-weight: 600; color: " + heading + "; }\n";
     css += ".sidebar-brand-subtitle { font-size: 11px; color: " + detail + "; }\n";
     css += ".nav-button { background: transparent; color: " + detail +
-           "; border: 1px solid transparent; padding: 4px 7px; min-height: 48px; border-radius: " +
+           "; border: 1px solid transparent; padding: 4px 7px; min-height: 44px; border-radius: " +
            std::to_string(metrics->card_radius) + "px; }\n";
     css += ".nav-button:hover { background: " +
            rgb_hex(palette->card_hover_rgb) + "; color: " + heading +
@@ -606,11 +606,6 @@ public:
         gtk_box_pack_start(
             GTK_BOX(sidebar), sidebar_brand, FALSE, FALSE, 5);
 
-        auto* navigation = gtk_label_new("WORKSPACE");
-        css_class(navigation, "kicker");
-        gtk_widget_set_halign(navigation, GTK_ALIGN_START);
-        gtk_box_pack_start(GTK_BOX(sidebar), navigation, FALSE, FALSE, 6);
-
         nav_overview_ = add_nav_button(
             sidebar, "go-home-symbolic", "Overview", "Drive at a glance",
             "page-overview", true);
@@ -638,7 +633,7 @@ public:
             "Appearance and preferences", "page-settings", false);
 
         auto* sidebar_art = gtk_drawing_area_new();
-        gtk_widget_set_size_request(sidebar_art, 210, 250);
+        gtk_widget_set_size_request(sidebar_art, 210, 160);
         gtk_widget_set_halign(sidebar_art, GTK_ALIGN_CENTER);
         gtk_widget_set_valign(sidebar_art, GTK_ALIGN_END);
         gtk_widget_set_hexpand(sidebar_art, FALSE);
