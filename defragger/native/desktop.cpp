@@ -49,6 +49,17 @@ std::string bytes(std::uint64_t value) {
     g_snprintf(text, sizeof(text), "%.1f %s", amount, units[index]);
     return text;
 }
+
+std::string volume_combo_text(const DesktopVolume& volume) {
+    std::string label;
+    if (!volume.label.empty())
+        label = volume.label + " — ";
+    label += volume.path + " — " + volume.filesystem + " — " +
+             bytes(volume.size) + " — " +
+             (volume.mounted ? "mounted" : "unmounted");
+    if (volume.readonly) label += " · read-only";
+    return label;
+}
 GtkWidget* section(const char* title, GtkWidget* child) {
     auto* frame = gtk_frame_new(title);
     gtk_frame_set_shadow_type(GTK_FRAME(frame), GTK_SHADOW_NONE);
@@ -371,6 +382,7 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
     const std::string button_bg = rgb_hex(palette->button_background_rgb);
     const std::string button_fg = rgb_hex(palette->button_foreground_rgb);
     const std::string fault = rgb_hex(palette->fault_rgb);
+    const std::string warning = rgb_hex(palette->warning_rgb);
     const std::string success = rgb_hex(palette->success_rgb);
     const std::string info = rgb_hex(palette->info_rgb);
     const std::string summary = rgb_hex(palette->summary_rgb);
@@ -471,9 +483,13 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
     css += ".version-badge { background: rgba(5, 10, 16, 0.78); border: 1px solid " +
            chrome_border + "; border-radius: 8px; padding: 6px 9px; color: " +
            chrome_summary + "; }\n";
-    css += ".hero-status { color: " + success +
+    css += ".hero-status { color: " + chrome_summary +
            "; background: rgba(5, 10, 16, 0.78); border: 1px solid " +
            chrome_border + "; border-radius: 7px; padding: 5px 8px; }\n";
+    css += ".hero-mounted { color: " + success +
+           "; border-color: " + success + "; }\n";
+    css += ".hero-unmounted { color: " + warning +
+           "; border-color: " + warning + "; }\n";
     css += ".hero-title { font-family: '" +
            std::string(typography->brand_family) +
            "'; font-size: 23px; font-weight: 600; color: " +
@@ -868,6 +884,8 @@ public:
         gtk_widget_set_size_request(map_, -1, 64);
         gtk_box_pack_start(GTK_BOX(map_box), map_, TRUE, TRUE, 0);
         g_signal_connect(map_, "draw", G_CALLBACK(draw_map), this);
+        g_signal_connect(
+            map_, "size-allocate", G_CALLBACK(map_size_allocate), this);
         legend_ = gtk_label_new(nullptr);
         update_legend();
         gtk_label_set_xalign(GTK_LABEL(legend_), 0);
@@ -1434,6 +1452,12 @@ private:
         auto* self = owner(GTK_WIDGET(button));
         if (self) self->action(static_cast<const char*>(g_object_get_data(G_OBJECT(button), "action")));
     }
+    static void map_size_allocate(
+        GtkWidget*, GtkAllocation*, gpointer data) {
+        auto* self = static_cast<Desktop*>(data);
+        if (self != nullptr) self->update_map_caption();
+    }
+
     static void selected(GtkComboBox* combo, gpointer data) {
         auto* self = static_cast<Desktop*>(data);
         self->cells_.clear();
@@ -1559,6 +1583,60 @@ private:
                 "Run Analyse to inspect the allocation map.");
     }
 
+    void update_map_caption() {
+        if (summary_ == nullptr || map_ == nullptr || cells_.empty()) return;
+
+        GtkAllocation allocation;
+        gtk_widget_get_allocation(map_, &allocation);
+        const std::uint64_t width =
+            static_cast<std::uint64_t>(std::max(1, allocation.width));
+        const std::uint64_t height =
+            static_cast<std::uint64_t>(std::max(1, allocation.height));
+        const std::uint64_t pixels = std::max<std::uint64_t>(
+            1U, width * height);
+
+        const std::uint64_t first =
+            number(cells_.front(), "start");
+        const std::uint64_t last =
+            number(cells_.back(), "end");
+        if (last < first) return;
+        const std::uint64_t units = last - first + 1U;
+        const double units_per_pixel =
+            static_cast<double>(units) / static_cast<double>(pixels);
+
+        std::string unit_label = "allocation units";
+        std::string suffix;
+        if (map_data_.find("cluster_size") != nullptr &&
+            map_data_.find("data_clusters") != nullptr) {
+            unit_label = "clusters";
+            const std::uint64_t cluster_size =
+                number(map_data_, "cluster_size");
+            if (cluster_size != 0U)
+                suffix = " · " + bytes(cluster_size) + "/cluster";
+        } else {
+            const std::uint64_t unit = number(map_data_, "unit_size");
+            if (unit == 512U) unit_label = "sectors";
+            else if (unit == 4096U) unit_label = "4 KiB units";
+            else if (unit != 0U) unit_label = bytes(unit) + " units";
+        }
+
+        char density[64];
+        if (units_per_pixel >= 100.0)
+            g_snprintf(density, sizeof(density), "%.0f", units_per_pixel);
+        else if (units_per_pixel >= 10.0)
+            g_snprintf(density, sizeof(density), "%.1f", units_per_pixel);
+        else if (units_per_pixel >= 1.0)
+            g_snprintf(density, sizeof(density), "%.2f", units_per_pixel);
+        else
+            g_snprintf(density, sizeof(density), "%.3f", units_per_pixel);
+
+        const std::string caption =
+            "Allocation image: " + std::to_string(pixels) +
+            " pixels · approximately " + density + " " +
+            unit_label + " per pixel" + suffix;
+        gtk_label_set_text(GTK_LABEL(summary_), caption.c_str());
+    }
+
     std::uint64_t desired_map_cells() const {
         if (map_ == nullptr) return 4096U;
         GtkAllocation allocation;
@@ -1614,10 +1692,20 @@ private:
             gtk_label_set_text(
                 GTK_LABEL(volume_title_),
                 v->label.empty() ? v->path.c_str() : v->label.c_str());
-            if (hero_status_ != nullptr)
+            if (hero_status_ != nullptr) {
+                auto* context =
+                    gtk_widget_get_style_context(hero_status_);
+                gtk_style_context_remove_class(
+                    context, "hero-mounted");
+                gtk_style_context_remove_class(
+                    context, "hero-unmounted");
+                gtk_style_context_add_class(
+                    context,
+                    v->mounted ? "hero-mounted" : "hero-unmounted");
                 gtk_label_set_text(
                     GTK_LABEL(hero_status_),
-                    v->mounted ? "● Mounted" : "● Offline");
+                    v->mounted ? "● Mounted" : "● Unmounted");
+            }
             if (footer_volume_ != nullptr)
                 gtk_label_set_text(
                     GTK_LABEL(footer_volume_),
@@ -1636,8 +1724,15 @@ private:
             gtk_label_set_text(
                 GTK_LABEL(detail_),
                 "Choose a volume or open a filesystem image.");
-            if (hero_status_ != nullptr)
+            if (hero_status_ != nullptr) {
+                auto* context =
+                    gtk_widget_get_style_context(hero_status_);
+                gtk_style_context_remove_class(
+                    context, "hero-mounted");
+                gtk_style_context_remove_class(
+                    context, "hero-unmounted");
                 gtk_label_set_text(GTK_LABEL(hero_status_), "Ready");
+            }
             if (footer_volume_ != nullptr)
                 gtk_label_set_text(
                     GTK_LABEL(footer_volume_), "No volume selected");
@@ -1733,8 +1828,7 @@ private:
                     for (size_t i = 0; i < self->volumes_.size(); ++i) {
                         const auto& volume = self->volumes_[i];
                         const std::string label =
-                            volume.path + " — " + volume.filesystem +
-                            " — " + bytes(volume.size);
+                            volume_combo_text(volume);
                         gtk_combo_box_text_append_text(
                             GTK_COMBO_BOX_TEXT(self->volumes_widget_),
                             label.c_str());
@@ -2299,7 +2393,7 @@ private:
                 ? (std::to_string(regular_files) + " files · " +
                    std::to_string(directories) + " dirs").c_str()
                 : "Not calculated");
-        gtk_label_set_text(GTK_LABEL(summary_), summary.c_str());
+        update_map_caption();
         note(summary);
     }
     void apply_live(const std::string& line) {
