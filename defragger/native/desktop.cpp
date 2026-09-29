@@ -376,8 +376,8 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
            "); border-right: 1px solid " + status_border + "; }\n";
     css += ".sidebar-brand-title { font-family: '" +
            std::string(typography->brand_family) +
-           "'; font-size: 17px; font-weight: 600; color: " + heading + "; }\n";
-    css += ".sidebar-brand-subtitle { font-size: 9px; color: " + detail + "; }\n";
+           "'; font-size: 20px; font-weight: 600; color: " + heading + "; }\n";
+    css += ".sidebar-brand-subtitle { font-size: 11px; color: " + detail + "; }\n";
     css += ".nav-button { background: transparent; color: " + detail +
            "; border: 1px solid transparent; padding: 4px 7px; min-height: 48px; border-radius: " +
            std::to_string(metrics->card_radius) + "px; }\n";
@@ -388,7 +388,7 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
            accent + ", 0.22), alpha(" + info +
            ", 0.08)); color: " + heading +
            "; border-color: " + accent + "; }\n";
-    css += ".nav-title { font-weight: 700; color: " + heading + "; }\n";
+    css += ".nav-title { font-size: 13px; font-weight: 700; color: " + heading + "; }\n";
     css += ".nav-subtitle { font-size: 9px; color: " + detail + "; }\n";
     css += ".nav-analyse image { color: " + accent + "; }\n";
     css += ".nav-defrag image { color: " + info + "; }\n";
@@ -420,7 +420,7 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
            chrome_border + "; border-radius: 7px; padding: 5px 8px; }\n";
     css += ".hero-title { font-family: '" +
            std::string(typography->brand_family) +
-           "'; font-size: 30px; font-weight: 600; color: " +
+           "'; font-size: 23px; font-weight: 600; color: " +
            chrome_heading + "; }\n";
     css += ".hero .hint { color: " + chrome_detail + "; }\n";
     css += ".hero .kicker { color: " +
@@ -429,7 +429,7 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
     css += ".hint { color: " + detail + "; }\n";
     css += ".kicker { color: " + kicker +
            "; font-size: 11px; letter-spacing: 2px; }\n";
-    css += ".summary-value { color: " + heading + "; font-size: 20px; font-weight: 700; }\n";
+    css += ".summary-value { color: " + heading + "; font-size: 26px; font-weight: 700; }\n";
     css += ".summary-detail { color: " + detail + "; font-size: 8px; }\n";
     css += ".panel { background: " + card_background + "; border: 1px solid " +
            border + "; border-radius: " +
@@ -443,7 +443,7 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
     css += ".action-growth { border-color: " + success + "; }\n";
     css += ".action-recover { border-color: #8F52FF; }\n";
     css += ".action-arrow { font-size: 22px; font-weight: 700; padding: 0 5px; }\n";
-    css += ".action-title { font-weight: 700; color: " + heading + "; }\n";
+    css += ".action-title { font-size: 15px; font-weight: 700; color: " + heading + "; }\n";
     css += ".action-subtitle { font-size: 9px; color: " + detail + "; }\n";
     css += ".activity-primary { font-weight: 700; color: " + heading + "; }\n";
     css += ".activity-secondary { color: " + detail + "; font-size: 9px; }\n";
@@ -461,7 +461,7 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
            "; border: 1px solid " + border + "; }\n";
     css += "menuitem:hover { background: " + rgb_hex(palette->card_hover_rgb) + "; }\n";
     css += ".page-title { font-family: '" + std::string(typography->brand_family) +
-           "'; font-size: 27px; font-weight: 600; color: " + heading + "; }\n";
+           "'; font-size: 32px; font-weight: 600; color: " + heading + "; }\n";
     css += ".page-subtitle, .page-volume { color: " + detail + "; }\n";
     css += ".operation-page { background: " + shell_background + "; }\n";
     css += ".operation-page .panel { background: " + card_background + "; }\n";
@@ -577,7 +577,7 @@ public:
 
         auto* paned = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
         gtk_box_pack_start(GTK_BOX(outer), paned, TRUE, TRUE, 0);
-        auto* sidebar = gtk_box_new(GTK_ORIENTATION_VERTICAL, 9);
+        auto* sidebar = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
         css_class(sidebar, "sidebar");
         gtk_container_set_border_width(GTK_CONTAINER(sidebar), 12);
         gtk_widget_set_size_request(sidebar, 238, -1);
@@ -587,7 +587,7 @@ public:
         auto* sidebar_brand = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 9);
         auto* sidebar_icon = gtk_image_new_from_icon_name(
             "io.github.linuxdefragger", GTK_ICON_SIZE_DIALOG);
-        gtk_image_set_pixel_size(GTK_IMAGE(sidebar_icon), 40);
+        gtk_image_set_pixel_size(GTK_IMAGE(sidebar_icon), 52);
         gtk_box_pack_start(
             GTK_BOX(sidebar_brand), sidebar_icon, FALSE, FALSE, 0);
         auto* sidebar_copy = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
@@ -1089,13 +1089,13 @@ private:
 
         auto* page = gtk_box_new(GTK_ORIENTATION_VERTICAL, 16);
         css_class(page, "operation-page");
-        gtk_container_set_border_width(GTK_CONTAINER(page), 22);
+        gtk_container_set_border_width(GTK_CONTAINER(page), 24);
         gtk_container_add(GTK_CONTAINER(scroll), page);
 
         auto* heading = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 14);
         auto* icon = gtk_image_new_from_icon_name(
             icon_name, GTK_ICON_SIZE_DIALOG);
-        gtk_image_set_pixel_size(GTK_IMAGE(icon), 42);
+        gtk_image_set_pixel_size(GTK_IMAGE(icon), 44);
         gtk_box_pack_start(GTK_BOX(heading), icon, FALSE, FALSE, 0);
         auto* copy = gtk_box_new(GTK_ORIENTATION_VERTICAL, 3);
         auto* title_label = gtk_label_new(title);
@@ -1112,12 +1112,15 @@ private:
         gtk_box_pack_start(GTK_BOX(heading), copy, TRUE, TRUE, 0);
         gtk_box_pack_start(GTK_BOX(page), heading, FALSE, FALSE, 0);
 
-        auto* volume_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
-        auto* volume_icon = gtk_image_new_from_icon_name(
-            "drive-harddisk-symbolic", GTK_ICON_SIZE_BUTTON);
-        gtk_image_set_pixel_size(GTK_IMAGE(volume_icon), 28);
+        auto* volume_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+        auto* volume_art = gtk_drawing_area_new();
+        gtk_widget_set_size_request(volume_art, 84, 74);
+        gtk_widget_set_hexpand(volume_art, FALSE);
+        gtk_widget_set_vexpand(volume_art, FALSE);
+        g_signal_connect(
+            volume_art, "draw", G_CALLBACK(draw_drive_art), nullptr);
         gtk_box_pack_start(
-            GTK_BOX(volume_box), volume_icon, FALSE, FALSE, 0);
+            GTK_BOX(volume_box), volume_art, FALSE, FALSE, 0);
         auto* selected = gtk_label_new("No volume selected");
         css_class(selected, "page-volume");
         gtk_label_set_xalign(GTK_LABEL(selected), 0);
@@ -1137,7 +1140,7 @@ private:
             gtk_box_pack_start(
                 GTK_BOX(map_box), label, FALSE, FALSE, 0);
             auto* detail_map = gtk_drawing_area_new();
-            gtk_widget_set_size_request(detail_map, -1, 300);
+            gtk_widget_set_size_request(detail_map, -1, 320);
             g_signal_connect(
                 detail_map, "draw", G_CALLBACK(draw_map), this);
             detail_maps_.push_back(detail_map);
@@ -1251,7 +1254,7 @@ private:
         auto* row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 9);
         auto* icon = gtk_image_new_from_icon_name(
             icon_name, GTK_ICON_SIZE_BUTTON);
-        gtk_image_set_pixel_size(GTK_IMAGE(icon), 22);
+        gtk_image_set_pixel_size(GTK_IMAGE(icon), 28);
         gtk_box_pack_start(GTK_BOX(row), icon, FALSE, FALSE, 0);
         auto* copy = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
         auto* primary = gtk_label_new(title);
@@ -1291,7 +1294,7 @@ private:
         auto* row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 9);
         auto* icon = gtk_image_new_from_icon_name(
             icon_name, GTK_ICON_SIZE_DIALOG);
-        gtk_image_set_pixel_size(GTK_IMAGE(icon), 26);
+        gtk_image_set_pixel_size(GTK_IMAGE(icon), 32);
         gtk_box_pack_start(GTK_BOX(row), icon, FALSE, FALSE, 0);
         auto* copy = gtk_box_new(GTK_ORIENTATION_VERTICAL, 1);
         auto* primary = gtk_label_new(title);
