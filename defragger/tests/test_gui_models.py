@@ -676,6 +676,38 @@ def test_theme_modes_are_persistent_and_shared_across_windows() -> None:
     assert "resolved is ThemeMode.SYSTEM and _system_prefers_dark()" in theme_source
     assert "_night_css() if effective is ThemeMode.NIGHT else _day_css()" in theme_source
 
+    native_desktop = (ROOT / "native" / "desktop.cpp").read_text()
+    for required in (
+        'gtk_stack_add_named(GTK_STACK(pages_), outer_scroll, "overview")',
+        '"page-analyse"',
+        '"page-defrag"',
+        '"page-growth"',
+        '"page-recover"',
+        '"page-test-media"',
+        '"page-settings"',
+        'build_operation_page(',
+        'build_settings_page()',
+        'build_menu_bar()',
+        '"File"',
+        '"View"',
+        '"About"',
+        'selection_analysis_timer_ = g_idle_add(',
+        'std::to_string(desired_map_cells())',
+        'std::vector<std::uint32_t> pixels(',
+        'CAIRO_FORMAT_ARGB32',
+        'CAIRO_FILTER_NEAREST',
+        '0x0585FF',
+        '0xFF253C',
+        '0x9E2BFA',
+        '0xFF9F0A',
+        'draw_gauge',
+    ):
+        assert required in native_desktop, (
+            f"native desktop lost polished interface parity: {required}"
+        )
+    assert "allocation.width / 8" not in native_desktop
+    assert "allocation.height / 8" not in native_desktop
+
     # Day mode must remain visually coherent even when the host GTK theme is
     # dark: menu text is explicit, dark hero artwork keeps light Common chrome,
     # and action/summary cards stay neutral instead of becoming pastel slabs.

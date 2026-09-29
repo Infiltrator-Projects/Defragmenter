@@ -2,6 +2,17 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-223
+
+- Restore the full polished navigation model that existed before the native-launcher migration: Overview, Analyse, Defragment, Growth Defrag, Recover, Test Media and Settings are again first-class sidebar destinations.
+- Add native GtkStack operation pages with selected-volume identity, dedicated operation actions and shared physical-allocation views instead of collapsing every task into one prototype dashboard.
+- Restore the File / View / About menu bar used by the pre-migration interface.
+- Restore automatic read-only Analyse when a selected volume has no current map so the dashboard does not open with an apparently missing allocation view.
+- Replace the regressed 8×8 procedural map grid with the dense one-pixel physical-position raster, using the established Defragmenter data colours for free, used, fragmented, directory, unknown and metadata/reserved regions.
+- Restore native radial summary gauges for fragmentation, free space and allocated space while keeping the existing filesystem safety/control plane unchanged.
+- Request allocation-map resolution from the actual visible pixel surface (bounded to 1,048,576 cells) rather than freezing the native UI at 4,096 cells.
+- Add native parity regressions so packaging cannot again replace the polished dashboard with a reduced migration shell while still claiming visual parity.
+
 ## 1.8.0-222
 
 - Restore visual parity to the installed native C++ desktop after the first native-launcher release exposed the migration prototype instead of the polished dashboard hierarchy.

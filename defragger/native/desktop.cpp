@@ -16,6 +16,7 @@ extern "C" {
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <memory>
 #include <stdexcept>
@@ -34,6 +35,10 @@ const char* field(const Json& data, const char* key) {
 std::uint64_t number(const Json& data, const char* key) {
     const auto* item = data.find(key);
     return item ? item->unsigned_or() : 0;
+}
+double real_number(const Json& data, const char* key, double fallback = 0.0) {
+    const auto* item = data.find(key);
+    return item ? item->real_or(fallback) : fallback;
 }
 std::string bytes(std::uint64_t value) {
     const char* units[] = {"B", "KiB", "MiB", "GiB", "TiB"};
@@ -332,6 +337,19 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
     css += ".action-title { font-weight: 700; color: " + heading + "; }\n";
     css += ".action-subtitle { font-size: 9px; color: " + detail + "; }\n";
     css += ".activity-primary { font-weight: 600; color: " + heading + "; }\n";
+    css += "menubar { background: " + panel + "; color: " + text +
+           "; border-bottom: 1px solid " + border + "; }\n";
+    css += "menubar menuitem, menubar menuitem label, menu menuitem, menu menuitem label { color: " +
+           text + "; }\n";
+    css += "menu { background: " + panel + "; color: " + text +
+           "; border: 1px solid " + border + "; }\n";
+    css += "menuitem:hover { background: " + rgb_hex(palette->card_hover_rgb) + "; }\n";
+    css += ".page-title { font-family: '" + std::string(typography->brand_family) +
+           "'; font-size: 27px; font-weight: 600; color: " + heading + "; }\n";
+    css += ".page-subtitle, .page-volume { color: " + detail + "; }\n";
+    css += ".operation-page { background: " + shell_background + "; }\n";
+    css += ".operation-page .panel { background: " + card_background + "; }\n";
+    css += ".gauge-title { color: " + detail + "; font-size: 10px; letter-spacing: 1px; }\n";
 
     css += "button { border-radius: " +
            std::to_string(metrics->control_radius) +
@@ -434,8 +452,13 @@ public:
         }
         gtk_window_set_titlebar(GTK_WINDOW(window_), header);
 
+        auto* outer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+        gtk_container_add(GTK_CONTAINER(window_), outer);
+        gtk_box_pack_start(
+            GTK_BOX(outer), build_menu_bar(), FALSE, FALSE, 0);
+
         auto* paned = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
-        gtk_container_add(GTK_CONTAINER(window_), paned);
+        gtk_box_pack_start(GTK_BOX(outer), paned, TRUE, TRUE, 0);
         auto* sidebar = gtk_box_new(GTK_ORIENTATION_VERTICAL, 9);
         css_class(sidebar, "sidebar");
         gtk_container_set_border_width(GTK_CONTAINER(sidebar), 12);
@@ -470,17 +493,31 @@ public:
         gtk_widget_set_halign(navigation, GTK_ALIGN_START);
         gtk_box_pack_start(GTK_BOX(sidebar), navigation, FALSE, FALSE, 6);
 
-        add_nav_button(
-            sidebar, "go-home-symbolic", "Overview", "Allocation map",
-            "overview", true);
-        add_nav_button(
+        nav_overview_ = add_nav_button(
+            sidebar, "go-home-symbolic", "Overview", "Drive at a glance",
+            "page-overview", true);
+        nav_analyse_ = add_nav_button(
+            sidebar, "system-search-symbolic", "Analyse", "Scan and visualise",
+            "page-analyse", false);
+        nav_defrag_ = add_nav_button(
+            sidebar, "view-grid-symbolic", "Defragment", "Optimise file layout",
+            "page-defrag", false);
+        nav_growth_ = add_nav_button(
+            sidebar, "go-up-symbolic", "Growth Defrag",
+            "Keep free space contiguous", "page-growth", false);
+        nav_recover_ = add_nav_button(
+            sidebar, "edit-undo-symbolic", "Recover", "Resume safe recovery",
+            "page-recover", false);
+
+        auto* nav_separator = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
+        gtk_box_pack_start(GTK_BOX(sidebar), nav_separator, FALSE, FALSE, 5);
+
+        nav_test_media_ = add_nav_button(
             sidebar, "drive-removable-media-symbolic", "Test Media",
-            "Build sacrificial media", "test-media", false);
-        theme_ = add_button(sidebar, theme_label(theme_mode_), "theme");
-        css_class(theme_, "nav-button");
-        add_nav_button(
-            sidebar, "help-about-symbolic", "About", "Version and credits",
-            "about", false);
+            "Check and diagnose", "page-test-media", false);
+        nav_settings_ = add_nav_button(
+            sidebar, "preferences-system-symbolic", "Settings",
+            "Appearance and preferences", "page-settings", false);
 
         auto* sidebar_footer = gtk_label_new("Native C++ desktop");
         css_class(sidebar_footer, "nav-subtitle");
@@ -488,11 +525,18 @@ public:
         gtk_box_pack_end(
             GTK_BOX(sidebar), sidebar_footer, FALSE, FALSE, 3);
 
+        pages_ = gtk_stack_new();
+        gtk_stack_set_transition_type(
+            GTK_STACK(pages_), GTK_STACK_TRANSITION_TYPE_CROSSFADE);
+        gtk_stack_set_transition_duration(GTK_STACK(pages_), 110U);
+        gtk_paned_pack2(GTK_PANED(paned), pages_, TRUE, TRUE);
+
         auto* outer_scroll = gtk_scrolled_window_new(nullptr, nullptr);
         gtk_scrolled_window_set_policy(
             GTK_SCROLLED_WINDOW(outer_scroll),
             GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
-        gtk_paned_pack2(GTK_PANED(paned), outer_scroll, TRUE, TRUE);
+        gtk_stack_add_named(GTK_STACK(pages_), outer_scroll, "overview");
+
         auto* base = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
         css_class(base, "app-shell");
         gtk_container_set_border_width(GTK_CONTAINER(base), 16);
@@ -577,17 +621,33 @@ public:
         gtk_grid_set_column_homogeneous(GTK_GRID(cards), TRUE);
         const char* captions[] = {"FRAGMENTATION", "FREE SPACE", "ALLOCATED", "FILES"};
         for (int i = 0; i < 4; ++i) {
-            auto* card = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+            auto* card = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
             css_class(card, "card");
-            gtk_container_set_border_width(GTK_CONTAINER(card), 12);
+            gtk_container_set_border_width(GTK_CONTAINER(card), 10);
+
+            if (i < 3) {
+                gauges_[i] = gtk_drawing_area_new();
+                gtk_widget_set_size_request(gauges_[i], 72, 72);
+                g_object_set_data(
+                    G_OBJECT(gauges_[i]), "gauge-index", GINT_TO_POINTER(i));
+                g_signal_connect(
+                    gauges_[i], "draw", G_CALLBACK(draw_gauge), this);
+                gtk_box_pack_start(
+                    GTK_BOX(card), gauges_[i], FALSE, FALSE, 0);
+            }
+
+            auto* copy = gtk_box_new(GTK_ORIENTATION_VERTICAL, 3);
+            gtk_widget_set_valign(copy, GTK_ALIGN_CENTER);
             auto* caption = gtk_label_new(captions[i]);
             gtk_label_set_xalign(GTK_LABEL(caption), 0);
-            css_class(caption, "kicker");
-            gtk_box_pack_start(GTK_BOX(card), caption, FALSE, FALSE, 0);
+            css_class(caption, "gauge-title");
+            gtk_box_pack_start(GTK_BOX(copy), caption, FALSE, FALSE, 0);
             cards_[i] = gtk_label_new("—");
             css_class(cards_[i], "summary-value");
             gtk_label_set_xalign(GTK_LABEL(cards_[i]), 0);
-            gtk_box_pack_start(GTK_BOX(card), cards_[i], FALSE, FALSE, 0);
+            gtk_label_set_line_wrap(GTK_LABEL(cards_[i]), TRUE);
+            gtk_box_pack_start(GTK_BOX(copy), cards_[i], FALSE, FALSE, 0);
+            gtk_box_pack_start(GTK_BOX(card), copy, TRUE, TRUE, 0);
             gtk_grid_attach(GTK_GRID(cards), card, i, 0, 1, 1);
         }
         gtk_box_pack_start(GTK_BOX(base), cards, FALSE, FALSE, 0);
@@ -668,6 +728,53 @@ public:
         gtk_container_add(GTK_CONTAINER(scroll), log_);
         gtk_box_pack_start(
             GTK_BOX(base), section(nullptr, activity), FALSE, FALSE, 0);
+
+        gtk_stack_add_named(
+            GTK_STACK(pages_),
+            build_operation_page(
+                "Analyse",
+                "Scan the selected filesystem and render its true physical allocation.",
+                "system-search-symbolic",
+                "Analyse selected volume",
+                "analyse",
+                true),
+            "analyse");
+        gtk_stack_add_named(
+            GTK_STACK(pages_),
+            build_operation_page(
+                "Defragment",
+                "Compact movable extents while preserving the verified filesystem contract.",
+                "view-grid-symbolic",
+                "Defragment selected volume",
+                "defrag",
+                true),
+            "defrag");
+        gtk_stack_add_named(
+            GTK_STACK(pages_),
+            build_operation_page(
+                "Growth Defrag",
+                "Keep at least the qualified growth reserve contiguous after file data.",
+                "go-up-symbolic",
+                "Growth Defrag selected volume",
+                "growth-defrag",
+                true),
+            "growth");
+        gtk_stack_add_named(
+            GTK_STACK(pages_),
+            build_operation_page(
+                "Recover",
+                "Resume a journalled operation without weakening target identity checks.",
+                "edit-undo-symbolic",
+                "Recover selected volume",
+                "recover",
+                true),
+            "recover");
+        gtk_stack_add_named(
+            GTK_STACK(pages_), build_test_media_page(), "test-media");
+        gtk_stack_add_named(
+            GTK_STACK(pages_), build_settings_page(), "settings");
+        gtk_stack_set_visible_child_name(GTK_STACK(pages_), "overview");
+
         gtk_widget_show_all(window_);
         refresh();
         // Request authentication once per session, matching the existing desktop behavior.
@@ -681,6 +788,8 @@ public:
     ~Desktop() {
         if (auth_timer_) g_source_remove(auth_timer_);
         if (local_stop_timer_) g_source_remove(local_stop_timer_);
+        if (selection_analysis_timer_)
+            g_source_remove(selection_analysis_timer_);
         if (helper_) {
             // Never close an active helper transport; the helper treats EOF as a Stop.
             if (!busy_) {
@@ -704,14 +813,21 @@ public:
     }
 
 private:
-    GtkWidget *window_{}, *volumes_widget_{}, *detail_{}, *volume_title_{}, *progress_{}, *status_{};
-    GtkWidget *map_{}, *summary_{}, *log_{}, *analyse_{}, *unmount_{};
-    GtkWidget *defrag_{}, *growth_{}, *recover_{}, *stop_{};
-    GtkWidget *refresh_{}, *image_{}, *theme_{}, *legend_{};
+    GtkWidget *window_{}, *pages_{}, *volumes_widget_{}, *detail_{}, *volume_title_{};
+    GtkWidget *progress_{}, *status_{}, *map_{}, *summary_{}, *log_{};
+    GtkWidget *analyse_{}, *unmount_{}, *defrag_{}, *growth_{}, *recover_{}, *stop_{};
+    GtkWidget *refresh_{}, *image_{}, *legend_{}, *theme_combo_{};
+    GtkWidget *nav_overview_{}, *nav_analyse_{}, *nav_defrag_{}, *nav_growth_{};
+    GtkWidget *nav_recover_{}, *nav_test_media_{}, *nav_settings_{};
+    GtkWidget *page_analyse_{}, *page_defrag_{}, *page_growth_{}, *page_recover_{};
     InfiltratrThemeMode theme_mode_ = INFILTRATR_THEME_SYSTEM;
     const InfiltratrThemePalette* palette_ = nullptr;
     const InfiltratrThemePalette* map_palette_ = nullptr;
     GtkWidget* cards_[4]{};
+    GtkWidget* gauges_[3]{};
+    double gauge_values_[3]{};
+    std::vector<GtkWidget*> detail_maps_;
+    std::vector<GtkWidget*> page_volume_labels_;
     std::vector<DesktopVolume> volumes_;
     std::vector<Json> cells_;
     std::string mapper_, engine_, helper_path_, pending_program_, purpose_, output_, result_status_;
@@ -728,6 +844,207 @@ private:
     int request_id_ = 0, active_id_ = 0;
     guint auth_timer_ = 0;
     guint local_stop_timer_ = 0;
+    guint selection_analysis_timer_ = 0;
+
+    GtkWidget* add_menu_item(
+        GtkWidget* menu, const char* label, const char* action)
+    {
+        auto* item = gtk_menu_item_new_with_label(label);
+        g_object_set_data_full(
+            G_OBJECT(item), "action", g_strdup(action), g_free);
+        g_signal_connect(item, "activate", G_CALLBACK(activated), this);
+        gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
+        return item;
+    }
+
+    GtkWidget* build_menu_bar()
+    {
+        auto* bar = gtk_menu_bar_new();
+
+        auto* file = gtk_menu_item_new_with_label("File");
+        auto* file_menu = gtk_menu_new();
+        gtk_menu_item_set_submenu(GTK_MENU_ITEM(file), file_menu);
+        add_menu_item(file_menu, "Open image…", "image");
+        add_menu_item(file_menu, "Refresh volumes", "refresh");
+        gtk_menu_shell_append(
+            GTK_MENU_SHELL(file_menu), gtk_separator_menu_item_new());
+        add_menu_item(file_menu, "Quit", "close");
+        gtk_menu_shell_append(GTK_MENU_SHELL(bar), file);
+
+        auto* view = gtk_menu_item_new_with_label("View");
+        auto* view_menu = gtk_menu_new();
+        gtk_menu_item_set_submenu(GTK_MENU_ITEM(view), view_menu);
+        add_menu_item(view_menu, "Overview", "page-overview");
+        add_menu_item(view_menu, "Analyse", "page-analyse");
+        add_menu_item(view_menu, "Defragment", "page-defrag");
+        add_menu_item(view_menu, "Growth Defrag", "page-growth");
+        add_menu_item(view_menu, "Recover", "page-recover");
+        gtk_menu_shell_append(
+            GTK_MENU_SHELL(view_menu), gtk_separator_menu_item_new());
+        add_menu_item(view_menu, "Settings", "page-settings");
+        gtk_menu_shell_append(GTK_MENU_SHELL(bar), view);
+
+        auto* about = gtk_menu_item_new_with_label("About");
+        auto* about_menu = gtk_menu_new();
+        gtk_menu_item_set_submenu(GTK_MENU_ITEM(about), about_menu);
+        add_menu_item(about_menu, "About Defragmenter", "about");
+        gtk_menu_shell_append(GTK_MENU_SHELL(bar), about);
+        return bar;
+    }
+
+    GtkWidget* build_operation_page(
+        const char* title,
+        const char* subtitle,
+        const char* icon_name,
+        const char* button_text,
+        const char* action_name,
+        bool show_map)
+    {
+        auto* scroll = gtk_scrolled_window_new(nullptr, nullptr);
+        gtk_scrolled_window_set_policy(
+            GTK_SCROLLED_WINDOW(scroll),
+            GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+
+        auto* page = gtk_box_new(GTK_ORIENTATION_VERTICAL, 16);
+        css_class(page, "operation-page");
+        gtk_container_set_border_width(GTK_CONTAINER(page), 22);
+        gtk_container_add(GTK_CONTAINER(scroll), page);
+
+        auto* heading = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 14);
+        auto* icon = gtk_image_new_from_icon_name(
+            icon_name, GTK_ICON_SIZE_DIALOG);
+        gtk_image_set_pixel_size(GTK_IMAGE(icon), 42);
+        gtk_box_pack_start(GTK_BOX(heading), icon, FALSE, FALSE, 0);
+        auto* copy = gtk_box_new(GTK_ORIENTATION_VERTICAL, 3);
+        auto* title_label = gtk_label_new(title);
+        css_class(title_label, "page-title");
+        gtk_label_set_xalign(GTK_LABEL(title_label), 0);
+        auto* subtitle_label = gtk_label_new(subtitle);
+        css_class(subtitle_label, "page-subtitle");
+        gtk_label_set_xalign(GTK_LABEL(subtitle_label), 0);
+        gtk_label_set_line_wrap(GTK_LABEL(subtitle_label), TRUE);
+        gtk_box_pack_start(
+            GTK_BOX(copy), title_label, FALSE, FALSE, 0);
+        gtk_box_pack_start(
+            GTK_BOX(copy), subtitle_label, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(heading), copy, TRUE, TRUE, 0);
+        gtk_box_pack_start(GTK_BOX(page), heading, FALSE, FALSE, 0);
+
+        auto* volume_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+        auto* volume_icon = gtk_image_new_from_icon_name(
+            "drive-harddisk-symbolic", GTK_ICON_SIZE_BUTTON);
+        gtk_image_set_pixel_size(GTK_IMAGE(volume_icon), 28);
+        gtk_box_pack_start(
+            GTK_BOX(volume_box), volume_icon, FALSE, FALSE, 0);
+        auto* selected = gtk_label_new("No volume selected");
+        css_class(selected, "page-volume");
+        gtk_label_set_xalign(GTK_LABEL(selected), 0);
+        gtk_label_set_ellipsize(
+            GTK_LABEL(selected), PANGO_ELLIPSIZE_END);
+        gtk_box_pack_start(
+            GTK_BOX(volume_box), selected, TRUE, TRUE, 0);
+        page_volume_labels_.push_back(selected);
+        gtk_box_pack_start(
+            GTK_BOX(page), section(nullptr, volume_box), FALSE, FALSE, 0);
+
+        if (show_map) {
+            auto* map_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+            auto* label = gtk_label_new("CURRENT PHYSICAL ALLOCATION");
+            css_class(label, "kicker");
+            gtk_label_set_xalign(GTK_LABEL(label), 0);
+            gtk_box_pack_start(
+                GTK_BOX(map_box), label, FALSE, FALSE, 0);
+            auto* detail_map = gtk_drawing_area_new();
+            gtk_widget_set_size_request(detail_map, -1, 300);
+            g_signal_connect(
+                detail_map, "draw", G_CALLBACK(draw_map), this);
+            detail_maps_.push_back(detail_map);
+            gtk_box_pack_start(
+                GTK_BOX(map_box), detail_map, TRUE, TRUE, 0);
+            gtk_box_pack_start(
+                GTK_BOX(page), section(nullptr, map_box), TRUE, TRUE, 0);
+        }
+
+        auto* action_button = make_action_button(
+            icon_name, button_text,
+            "Run this operation on the selected volume", action_name);
+        gtk_box_pack_start(
+            GTK_BOX(page), action_button, FALSE, FALSE, 0);
+        const std::string action_id(action_name);
+        if (action_id == "analyse") page_analyse_ = action_button;
+        else if (action_id == "defrag") page_defrag_ = action_button;
+        else if (action_id == "growth-defrag") page_growth_ = action_button;
+        else if (action_id == "recover") page_recover_ = action_button;
+        return scroll;
+    }
+
+    GtkWidget* build_test_media_page()
+    {
+        return build_operation_page(
+            "Test Media",
+            "Create and diagnose sacrificial filesystem media in the native companion tool.",
+            "drive-removable-media-symbolic",
+            "Launch Test Media",
+            "test-media",
+            false);
+    }
+
+    GtkWidget* build_settings_page()
+    {
+        auto* scroll = gtk_scrolled_window_new(nullptr, nullptr);
+        gtk_scrolled_window_set_policy(
+            GTK_SCROLLED_WINDOW(scroll),
+            GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+        auto* page = gtk_box_new(GTK_ORIENTATION_VERTICAL, 16);
+        css_class(page, "operation-page");
+        gtk_container_set_border_width(GTK_CONTAINER(page), 22);
+        gtk_container_add(GTK_CONTAINER(scroll), page);
+
+        auto* title = gtk_label_new("Settings");
+        css_class(title, "page-title");
+        gtk_label_set_xalign(GTK_LABEL(title), 0);
+        gtk_box_pack_start(GTK_BOX(page), title, FALSE, FALSE, 0);
+
+        auto* note = gtk_label_new(
+            "Appearance follows the same Common Day/Night contract as the rest of Infiltrator OS.");
+        css_class(note, "page-subtitle");
+        gtk_label_set_xalign(GTK_LABEL(note), 0);
+        gtk_label_set_line_wrap(GTK_LABEL(note), TRUE);
+        gtk_box_pack_start(GTK_BOX(page), note, FALSE, FALSE, 0);
+
+        auto* box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 9);
+        auto* heading = gtk_label_new("APPEARANCE");
+        css_class(heading, "kicker");
+        gtk_label_set_xalign(GTK_LABEL(heading), 0);
+        gtk_box_pack_start(GTK_BOX(box), heading, FALSE, FALSE, 0);
+
+        theme_combo_ = gtk_combo_box_text_new();
+        gtk_combo_box_text_append_text(
+            GTK_COMBO_BOX_TEXT(theme_combo_), "Follow system");
+        gtk_combo_box_text_append_text(
+            GTK_COMBO_BOX_TEXT(theme_combo_), "Day");
+        gtk_combo_box_text_append_text(
+            GTK_COMBO_BOX_TEXT(theme_combo_), "Night");
+        gtk_combo_box_set_active(
+            GTK_COMBO_BOX(theme_combo_), theme_index(theme_mode_));
+        g_signal_connect(
+            theme_combo_, "changed", G_CALLBACK(theme_changed), this);
+        gtk_box_pack_start(
+            GTK_BOX(box), theme_combo_, FALSE, FALSE, 0);
+        gtk_box_pack_start(
+            GTK_BOX(page), section(nullptr, box), FALSE, FALSE, 0);
+        return scroll;
+    }
+
+    static int theme_index(InfiltratrThemeMode mode)
+    {
+        switch (mode) {
+            case INFILTRATR_THEME_DAY: return 1;
+            case INFILTRATR_THEME_NIGHT: return 2;
+            case INFILTRATR_THEME_SYSTEM:
+            default: return 0;
+        }
+    }
 
     static GtkWidget* add_nav_button(
         GtkWidget* box,
@@ -805,19 +1122,112 @@ private:
         auto* top = gtk_widget_get_toplevel(widget);
         return static_cast<Desktop*>(g_object_get_data(G_OBJECT(top), "desktop"));
     }
+    static void activated(GtkMenuItem* item, gpointer data) {
+        auto* self = static_cast<Desktop*>(data);
+        if (self) self->action(static_cast<const char*>(
+            g_object_get_data(G_OBJECT(item), "action")));
+    }
+    static gboolean draw_gauge(GtkWidget* widget, cairo_t* cr, gpointer data) {
+        auto* self = static_cast<Desktop*>(data);
+        const int index = GPOINTER_TO_INT(
+            g_object_get_data(G_OBJECT(widget), "gauge-index"));
+        if (index < 0 || index >= 3 || self->palette_ == nullptr)
+            return FALSE;
+
+        GtkAllocation allocation;
+        gtk_widget_get_allocation(widget, &allocation);
+        const double cx = allocation.width / 2.0;
+        const double cy = allocation.height / 2.0;
+        const double radius = std::max(
+            8.0, std::min(allocation.width, allocation.height) / 2.0 - 8.0);
+        const double value = std::clamp(
+            self->gauge_values_[index], 0.0, 1.0);
+        const auto set_rgb = [cr](std::uint32_t rgb) {
+            cairo_set_source_rgb(
+                cr,
+                static_cast<double>((rgb >> 16U) & 0xffU) / 255.0,
+                static_cast<double>((rgb >> 8U) & 0xffU) / 255.0,
+                static_cast<double>(rgb & 0xffU) / 255.0);
+        };
+
+        cairo_set_line_width(cr, 7.0);
+        set_rgb(self->palette_->border_rgb);
+        cairo_arc(cr, cx, cy, radius, 0.0, 6.283185307179586);
+        cairo_stroke(cr);
+
+        const std::uint32_t colour =
+            index == 0 ? self->palette_->fault_rgb :
+            index == 1 ? self->palette_->neutral_accent_rgb :
+                         self->palette_->warning_rgb;
+        set_rgb(colour);
+        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+        cairo_arc(
+            cr, cx, cy, radius, -1.5707963267948966,
+            -1.5707963267948966 + value * 6.283185307179586);
+        cairo_stroke(cr);
+
+        char text[16];
+        std::snprintf(
+            text, sizeof(text), "%.0f%%", value * 100.0);
+        const auto* typography = infiltratr_typography();
+        if (typography != nullptr)
+            cairo_select_font_face(
+                cr, typography->ui_family,
+                CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+        cairo_set_font_size(cr, 12.0);
+        cairo_text_extents_t extents;
+        cairo_text_extents(cr, text, &extents);
+        set_rgb(self->palette_->heading_rgb);
+        cairo_move_to(
+            cr,
+            cx - (extents.width / 2.0 + extents.x_bearing),
+            cy - (extents.height / 2.0 + extents.y_bearing));
+        cairo_show_text(cr, text);
+        return FALSE;
+    }
     static void clicked(GtkButton* button, gpointer) {
         auto* self = owner(GTK_WIDGET(button));
         if (self) self->action(static_cast<const char*>(g_object_get_data(G_OBJECT(button), "action")));
     }
     static void selected(GtkComboBox* combo, gpointer data) {
+        auto* self = static_cast<Desktop*>(data);
+        self->cells_.clear();
+        self->map_data_ = Json();
+        self->gauge_values_[0] = 0.0;
+        self->gauge_values_[1] = 0.0;
+        self->gauge_values_[2] = 0.0;
+        self->queue_maps();
+        self->queue_gauges();
+        self->reset_summary();
+        self->update();
+
+        if (self->selection_analysis_timer_ != 0U) {
+            g_source_remove(self->selection_analysis_timer_);
+            self->selection_analysis_timer_ = 0U;
+        }
         if (gtk_combo_box_get_active(combo) >= 0) {
-            auto* self = static_cast<Desktop*>(data);
-            self->cells_.clear();
-            self->map_data_ = Json();
-            gtk_widget_queue_draw(self->map_);
-            self->update();
+            self->selection_analysis_timer_ = g_idle_add(
+                [](gpointer pointer) -> gboolean {
+                    auto* desktop = static_cast<Desktop*>(pointer);
+                    desktop->selection_analysis_timer_ = 0U;
+                    if (!desktop->closing_ && !desktop->busy_ &&
+                        !desktop->discovering_ && !desktop->probing_ &&
+                        desktop->current() != nullptr)
+                        desktop->action("analyse");
+                    return G_SOURCE_REMOVE;
+                },
+                self);
         }
     }
+    static void theme_changed(GtkComboBox* combo, gpointer data) {
+        auto* self = static_cast<Desktop*>(data);
+        const int index = gtk_combo_box_get_active(combo);
+        InfiltratrThemeMode mode = INFILTRATR_THEME_SYSTEM;
+        if (index == 1) mode = INFILTRATR_THEME_DAY;
+        else if (index == 2) mode = INFILTRATR_THEME_NIGHT;
+        self->set_theme(mode);
+    }
+
     static gboolean close_requested(GtkWidget*, GdkEvent*, gpointer data) {
         auto* self = static_cast<Desktop*>(data);
         if (self->busy_) {
@@ -841,6 +1251,82 @@ private:
         int index = gtk_combo_box_get_active(GTK_COMBO_BOX(volumes_widget_));
         return index >= 0 && static_cast<size_t>(index) < volumes_.size() ? &volumes_[index] : nullptr;
     }
+    void switch_page(const std::string& name) {
+        if (pages_ == nullptr) return;
+        gtk_stack_set_visible_child_name(GTK_STACK(pages_), name.c_str());
+        const struct {
+            const char* name;
+            GtkWidget* widget;
+        } navigation[] = {
+            {"overview", nav_overview_},
+            {"analyse", nav_analyse_},
+            {"defrag", nav_defrag_},
+            {"growth", nav_growth_},
+            {"recover", nav_recover_},
+            {"test-media", nav_test_media_},
+            {"settings", nav_settings_},
+        };
+        for (const auto& item : navigation) {
+            if (item.widget == nullptr) continue;
+            auto* context = gtk_widget_get_style_context(item.widget);
+            gtk_style_context_remove_class(context, "nav-selected");
+            if (name == item.name)
+                gtk_style_context_add_class(context, "nav-selected");
+        }
+    }
+
+    void set_theme(InfiltratrThemeMode mode) {
+        theme_mode_ = mode;
+        save_theme_mode(theme_mode_);
+        try {
+            palette_ = install_style(theme_mode_);
+            if (theme_combo_ != nullptr &&
+                gtk_combo_box_get_active(GTK_COMBO_BOX(theme_combo_)) !=
+                    theme_index(theme_mode_))
+                gtk_combo_box_set_active(
+                    GTK_COMBO_BOX(theme_combo_), theme_index(theme_mode_));
+            update_legend();
+            queue_maps();
+            queue_gauges();
+        } catch (const std::exception& ex) {
+            error("Unable to change appearance", ex.what());
+        }
+    }
+
+    void queue_maps() {
+        if (map_ != nullptr) gtk_widget_queue_draw(map_);
+        for (auto* widget : detail_maps_)
+            if (widget != nullptr) gtk_widget_queue_draw(widget);
+    }
+
+    void queue_gauges() {
+        for (auto* widget : gauges_)
+            if (widget != nullptr) gtk_widget_queue_draw(widget);
+    }
+
+    void reset_summary() {
+        for (auto* label : cards_)
+            if (label != nullptr)
+                gtk_label_set_text(GTK_LABEL(label), "—");
+        if (summary_ != nullptr)
+            gtk_label_set_text(
+                GTK_LABEL(summary_),
+                "Run Analyse to inspect the allocation map.");
+    }
+
+    std::uint64_t desired_map_cells() const {
+        if (map_ == nullptr) return 4096U;
+        GtkAllocation allocation;
+        gtk_widget_get_allocation(map_, &allocation);
+        const std::uint64_t width =
+            static_cast<std::uint64_t>(std::max(1, allocation.width));
+        const std::uint64_t height =
+            static_cast<std::uint64_t>(std::max(1, allocation.height));
+        const std::uint64_t pixels = width * height;
+        return std::clamp<std::uint64_t>(
+            pixels, 256U, 1048576U);
+    }
+
     void note(const std::string& message) {
         GtkTextBuffer* buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(log_));
         GtkTextIter end;
@@ -867,31 +1353,40 @@ private:
         return accepted;
     }
     void update_legend() {
-        if (legend_ == nullptr || map_palette_ == nullptr) return;
+        if (legend_ == nullptr) return;
         const std::string markup =
-            "<span foreground='" + rgb_hex(map_palette_->neutral_accent_rgb) +
-            "'>■</span> Used   <span foreground='" +
-            rgb_hex(map_palette_->fault_rgb) +
-            "'>■</span> Fragmented   <span foreground='" +
-            rgb_hex(map_palette_->operation_rgb) +
-            "'>■</span> Directory   <span foreground='" +
-            rgb_hex(map_palette_->background_rgb) +
-            "'>■</span> Free   <span foreground='" +
-            rgb_hex(map_palette_->warning_rgb) +
-            "'>■</span> Metadata / reserved";
+            "<span foreground='#0585FF'>■</span> Used   "
+            "<span foreground='#FF253C'>■</span> Fragmented   "
+            "<span foreground='#9E2BFA'>■</span> Directory   "
+            "<span foreground='#050D1B'>■</span> Free   "
+            "<span foreground='#FF9F0A'>■</span> Metadata / reserved";
         gtk_label_set_markup(GTK_LABEL(legend_), markup.c_str());
     }
     void update() {
         auto* v = current();
+        std::string page_identity = "No volume selected";
         if (v) {
-            gtk_label_set_text(GTK_LABEL(volume_title_), v->label.empty() ? v->path.c_str() : v->label.c_str());
-            std::string details = v->path + " · " + v->filesystem + " · " + bytes(v->size)
+            gtk_label_set_text(
+                GTK_LABEL(volume_title_),
+                v->label.empty() ? v->path.c_str() : v->label.c_str());
+            std::string details =
+                v->path + " · " + v->filesystem + " · " + bytes(v->size)
                 + (v->mounted ? " · mounted" : " · unmounted")
-                + (v->verified ? " · identity verified" : " · native identity pending");
+                + (v->verified
+                    ? " · identity verified"
+                    : " · native identity pending");
             gtk_label_set_text(GTK_LABEL(detail_), details.c_str());
+            page_identity =
+                v->path + " — " + v->filesystem + " — " + bytes(v->size);
         } else {
             gtk_label_set_text(GTK_LABEL(volume_title_), "Choose a disk");
+            gtk_label_set_text(
+                GTK_LABEL(detail_),
+                "Choose a volume or open a filesystem image.");
         }
+        for (auto* label : page_volume_labels_)
+            gtk_label_set_text(
+                GTK_LABEL(label), page_identity.c_str());
         bool journal = v && fs::exists(defragger::desktop_journal(*v, getuid()));
         auto state = defragger::desktop_controls(v, busy_, stopping_, journal);
         gtk_widget_set_sensitive(analyse_, state.analyse);
@@ -899,6 +1394,14 @@ private:
         gtk_widget_set_sensitive(defrag_, state.defrag);
         gtk_widget_set_sensitive(growth_, state.growth_defrag);
         gtk_widget_set_sensitive(recover_, state.recover);
+        if (page_analyse_ != nullptr)
+            gtk_widget_set_sensitive(page_analyse_, state.analyse);
+        if (page_defrag_ != nullptr)
+            gtk_widget_set_sensitive(page_defrag_, state.defrag);
+        if (page_growth_ != nullptr)
+            gtk_widget_set_sensitive(page_growth_, state.growth_defrag);
+        if (page_recover_ != nullptr)
+            gtk_widget_set_sensitive(page_recover_, state.recover);
         gtk_widget_set_sensitive(stop_, state.stop);
         const bool idle_selection = !busy_ && !discovering_ && !probing_;
         gtk_widget_set_sensitive(refresh_, idle_selection);
@@ -1094,7 +1597,7 @@ private:
                         static_cast<int>(self->volumes_.size() - 1U));
                     self->cells_.clear();
                     self->map_data_ = Json();
-                    gtk_widget_queue_draw(self->map_);
+                    self->queue_maps();
                 } catch (const std::exception& ex) {
                     if (!self->closing_)
                         self->error("Unable to open image", ex.what());
@@ -1118,8 +1621,14 @@ private:
             else gtk_window_maximize(GTK_WINDOW(window_));
             return;
         }
-        if (action_name == "close") { gtk_window_close(GTK_WINDOW(window_)); return; }
-        if (action_name == "overview") return;
+        if (action_name == "close") {
+            gtk_window_close(GTK_WINDOW(window_));
+            return;
+        }
+        if (action_name.rfind("page-", 0) == 0) {
+            switch_page(action_name.substr(5));
+            return;
+        }
         if (busy_ && action_name != "stop" && action_name != "about") return;
         if (action_name == "refresh") { refresh(); return; }
         if (action_name == "image") { open_image(); return; }
@@ -1144,18 +1653,7 @@ private:
             return;
         }
         if (action_name == "theme") {
-            theme_mode_ = infiltratr_theme_mode_next(theme_mode_);
-            save_theme_mode(theme_mode_);
-            try {
-                palette_ = install_style(theme_mode_);
-                gtk_button_set_label(GTK_BUTTON(theme_),
-                                     theme_label(theme_mode_));
-                css_class(theme_, "nav-button");
-                update_legend();
-                gtk_widget_queue_draw(map_);
-            } catch (const std::exception& ex) {
-                error("Unable to change appearance", ex.what());
-            }
+            set_theme(infiltratr_theme_mode_next(theme_mode_));
             return;
         }
         if (action_name == "test-media") {
@@ -1188,7 +1686,10 @@ private:
             v->growth_qualified = false;
             v->defrag_reason.clear();
             v->growth_reason.clear();
-            start({mapper_, v->path, "--fstype", v->filesystem, "--cells", "4096"}, "mapper", "analysis");
+            start({
+                mapper_, v->path, "--fstype", v->filesystem,
+                "--cells", std::to_string(desired_map_cells())},
+                "mapper", "analysis");
         } else if (action_name == "unmount") {
             if (confirm("Unmount " + v->path + "?", "The selected volume must be unmounted for raw filesystem operations."))
                 start({"udisksctl", "unmount", "-b", v->path}, "udisksctl", "unmount");
@@ -1461,7 +1962,7 @@ private:
                  v->growth_reason);
         map_data_ = map;
         cells_ = raw->array();
-        gtk_widget_queue_draw(map_);
+        queue_maps();
         const bool complete_allocation = number(map, "unknown_bytes") == 0U;
         const bool complete_fragmentation =
             v->exact_analysis && map.find("fragmented_files") != nullptr;
@@ -1471,14 +1972,71 @@ private:
             + (complete_allocation ? bytes(number(map, "free_bytes")) : std::string("Not calculated"))
             + "    Used "
             + (complete_allocation ? bytes(number(map, "used_bytes")) : std::string("Not calculated"));
-        gtk_label_set_text(GTK_LABEL(cards_[0]), complete_fragmentation ?
-            (std::to_string(number(map, "fragmented_files")) + " files").c_str() : "Not calculated");
-        gtk_label_set_text(GTK_LABEL(cards_[1]), complete_allocation ?
-            bytes(number(map, "free_bytes")).c_str() : "Not calculated");
-        gtk_label_set_text(GTK_LABEL(cards_[2]), complete_allocation ?
-            bytes(number(map, "used_bytes")).c_str() : "Not calculated");
-        gtk_label_set_text(GTK_LABEL(cards_[3]), complete_file_count ?
-            (std::to_string(number(map, "regular_files")) + " files").c_str() : "Not calculated");
+        const std::uint64_t total_bytes = number(map, "total_bytes");
+        const std::uint64_t free_bytes = number(map, "free_bytes");
+        const std::uint64_t used_bytes = number(map, "used_bytes");
+        const std::uint64_t regular_files = number(map, "regular_files");
+        const std::uint64_t directories = number(map, "directories");
+        const std::uint64_t fragmented_files =
+            number(map, "fragmented_files");
+        const std::uint64_t fragmented_directories =
+            number(map, "fragmented_directories");
+
+        gauge_values_[0] = std::clamp(
+            real_number(
+                map, "fragmentation_percent",
+                regular_files == 0U
+                    ? 0.0
+                    : 100.0 * static_cast<double>(fragmented_files) /
+                        static_cast<double>(regular_files)) /
+                100.0,
+            0.0, 1.0);
+        gauge_values_[1] =
+            complete_allocation && total_bytes != 0U
+                ? std::clamp(
+                    static_cast<double>(free_bytes) /
+                        static_cast<double>(total_bytes),
+                    0.0, 1.0)
+                : 0.0;
+        gauge_values_[2] =
+            complete_allocation && total_bytes != 0U
+                ? std::clamp(
+                    static_cast<double>(used_bytes) /
+                        static_cast<double>(total_bytes),
+                    0.0, 1.0)
+                : 0.0;
+        queue_gauges();
+
+        const auto percentage = [](double value) {
+            char text[24];
+            std::snprintf(
+                text, sizeof(text), "%.1f%%", value * 100.0);
+            return std::string(text);
+        };
+        gtk_label_set_text(
+            GTK_LABEL(cards_[0]),
+            complete_fragmentation
+                ? (std::to_string(fragmented_files) + " files · " +
+                   std::to_string(fragmented_directories) + " dirs").c_str()
+                : "Not calculated");
+        gtk_label_set_text(
+            GTK_LABEL(cards_[1]),
+            complete_allocation
+                ? (bytes(free_bytes) + " (" +
+                   percentage(gauge_values_[1]) + ")").c_str()
+                : "Not calculated");
+        gtk_label_set_text(
+            GTK_LABEL(cards_[2]),
+            complete_allocation
+                ? (bytes(used_bytes) + " (" +
+                   percentage(gauge_values_[2]) + ")").c_str()
+                : "Not calculated");
+        gtk_label_set_text(
+            GTK_LABEL(cards_[3]),
+            complete_file_count
+                ? (std::to_string(regular_files) + " files · " +
+                   std::to_string(directories) + " dirs").c_str()
+                : "Not calculated");
         gtk_label_set_text(GTK_LABEL(summary_), summary.c_str());
         note(summary);
     }
@@ -1497,60 +2055,155 @@ private:
         } else if (kind == "@@LIVE_MAP") {
             if (!cells_.empty()) {
                 defragger::desktop_live_cells(map_data_, cells_, payload);
-                gtk_widget_queue_draw(map_);
+                queue_maps();
             }
         } else if (kind == "@@LIVE_RANGE" || kind == "@@LIVE_RANGES") {
             if (!cells_.empty()) {
                 defragger::desktop_live_ranges(map_data_, cells_, payload,
                     kind == "@@LIVE_RANGES");
-                gtk_widget_queue_draw(map_);
+                queue_maps();
             }
         } else if (kind == "@@LIVE_RESET") {
             if (!cells_.empty()) {
                 defragger::desktop_live_reset(map_data_, cells_, payload);
-                gtk_widget_queue_draw(map_);
+                queue_maps();
             }
         }
     }
+    static std::uint32_t mix_rgb(
+        std::uint32_t first, std::uint32_t second, double ratio)
+    {
+        ratio = std::clamp(ratio, 0.0, 1.0);
+        const auto channel = [ratio](
+            std::uint32_t a, std::uint32_t b, unsigned shift) {
+            const double av =
+                static_cast<double>((a >> shift) & 0xffU);
+            const double bv =
+                static_cast<double>((b >> shift) & 0xffU);
+            return static_cast<std::uint32_t>(
+                std::clamp(av * (1.0 - ratio) + bv * ratio, 0.0, 255.0) +
+                0.5);
+        };
+        return (channel(first, second, 16U) << 16U) |
+               (channel(first, second, 8U) << 8U) |
+               channel(first, second, 0U);
+    }
+
+    static std::uint32_t map_cell_rgb(const Json& cell)
+    {
+        constexpr std::uint32_t free_colour = UINT32_C(0x050D1B);
+        constexpr std::uint32_t outside_colour = UINT32_C(0x020408);
+        constexpr std::uint32_t used_colour = UINT32_C(0x0585FF);
+        constexpr std::uint32_t fragmented_colour = UINT32_C(0xFF253C);
+        constexpr std::uint32_t directory_colour = UINT32_C(0x9E2BFA);
+        constexpr std::uint32_t unknown_colour = UINT32_C(0x495468);
+        constexpr std::uint32_t metadata_colour = UINT32_C(0xFF9F0A);
+
+        const std::uint64_t free = number(cell, "free");
+        const std::uint64_t outside = number(cell, "outside");
+        const std::uint64_t used = number(cell, "used");
+        const std::uint64_t free_like = free + outside;
+        const std::uint64_t known = std::max<std::uint64_t>(
+            1U, free_like + used);
+        std::uint32_t colour = mix_rgb(
+            free_colour, outside_colour,
+            free_like == 0U
+                ? 0.0
+                : static_cast<double>(outside) /
+                    static_cast<double>(free_like));
+        colour = mix_rgb(
+            colour, used_colour,
+            static_cast<double>(used) /
+                static_cast<double>(known));
+
+        const struct Overlay {
+            const char* key;
+            std::uint32_t colour;
+            double minimum;
+        } overlays[] = {
+            {"directory", directory_colour, 0.58},
+            {"fragmented", fragmented_colour, 0.70},
+            {"bad", metadata_colour, 0.58},
+        };
+        for (const auto& overlay : overlays) {
+            const std::uint64_t amount = number(cell, overlay.key);
+            if (amount == 0U) continue;
+            const double ratio = std::max(
+                overlay.minimum,
+                std::min(
+                    1.0,
+                    std::sqrt(
+                        static_cast<double>(amount) /
+                        static_cast<double>(known))));
+            colour = mix_rgb(colour, overlay.colour, ratio);
+        }
+
+        const std::uint64_t unknown = number(cell, "unknown");
+        const std::uint64_t total = free + outside + used + unknown;
+        if (unknown != 0U && total != 0U)
+            colour = mix_rgb(
+                colour, unknown_colour,
+                static_cast<double>(unknown) /
+                    static_cast<double>(total));
+        return colour;
+    }
+
     static gboolean draw_map(GtkWidget* widget, cairo_t* cr, gpointer data) {
         auto* self = static_cast<Desktop*>(data);
         GtkAllocation allocation;
         gtk_widget_get_allocation(widget, &allocation);
-        const auto* palette = self->map_palette_;
-        const auto cairo_rgb = [cr](std::uint32_t rgb) {
-            cairo_set_source_rgb(
-                cr,
-                static_cast<double>((rgb >> 16U) & 0xffU) / 255.0,
-                static_cast<double>((rgb >> 8U) & 0xffU) / 255.0,
-                static_cast<double>(rgb & 0xffU) / 255.0);
-        };
-        cairo_rgb(palette ? palette->background_rgb : 0U);
+        const int width = std::max(1, allocation.width);
+        const int height = std::max(1, allocation.height);
+        constexpr std::uint32_t background = UINT32_C(0x03050A);
+
+        cairo_set_source_rgb(
+            cr, 3.0 / 255.0, 5.0 / 255.0, 10.0 / 255.0);
         cairo_paint(cr);
-        if (self->cells_.empty() || palette == nullptr) return FALSE;
-        int columns = std::max(1, allocation.width / 8);
-        int rows = std::max(1, allocation.height / 8);
-        const std::uint64_t first = number(self->cells_.front(), "start");
-        const std::uint64_t last = number(self->cells_.back(), "end");
+        if (self->cells_.empty()) return FALSE;
+
+        const std::uint64_t first =
+            number(self->cells_.front(), "start");
+        const std::uint64_t last =
+            number(self->cells_.back(), "end");
         if (last < first) return FALSE;
-        for (int row = 0; row < rows; ++row) for (int column = 0; column < columns; ++column) {
-            const auto index = static_cast<std::uint64_t>(row) * columns + column;
-            const auto unit = first + static_cast<std::uint64_t>(
-                static_cast<long double>(index) * (static_cast<long double>(last) - first + 1.0L) /
-                (static_cast<long double>(rows) * columns));
-            const auto found = std::lower_bound(self->cells_.begin(), self->cells_.end(), unit,
-                [](const Json& cell, std::uint64_t needle) { return number(cell, "end") < needle; });
-            if (found == self->cells_.end() || number(*found, "start") > unit) continue;
-            const auto& cell = *found;
-            if (number(cell, "bad")) cairo_rgb(palette->warning_rgb);
-            else if (number(cell, "fragmented")) cairo_rgb(palette->fault_rgb);
-            else if (number(cell, "directory")) cairo_rgb(palette->operation_rgb);
-            else if (number(cell, "used")) cairo_rgb(palette->neutral_accent_rgb);
-            else if (number(cell, "free")) cairo_rgb(palette->background_rgb);
-            else if (number(cell, "outside")) cairo_rgb(palette->panel_rgb);
-            else cairo_rgb(palette->muted_rgb);
-            cairo_rectangle(cr, column * 8, row * 8, 7, 7);
-            cairo_fill(cr);
+
+        const std::size_t pixel_count =
+            static_cast<std::size_t>(width) *
+            static_cast<std::size_t>(height);
+        std::vector<std::uint32_t> pixels(
+            pixel_count, UINT32_C(0xFF000000) | background);
+        const long double span =
+            static_cast<long double>(last - first) + 1.0L;
+        std::size_t cell_index = 0U;
+        for (std::size_t pixel = 0U;
+             pixel < pixel_count; ++pixel) {
+            const std::uint64_t unit =
+                first + static_cast<std::uint64_t>(
+                    static_cast<long double>(pixel) * span /
+                    static_cast<long double>(pixel_count));
+            while (cell_index < self->cells_.size() &&
+                   number(self->cells_[cell_index], "end") < unit)
+                ++cell_index;
+            if (cell_index >= self->cells_.size()) break;
+            const Json& cell = self->cells_[cell_index];
+            if (number(cell, "start") > unit) continue;
+            pixels[pixel] =
+                UINT32_C(0xFF000000) | map_cell_rgb(cell);
         }
+
+        cairo_surface_t* surface =
+            cairo_image_surface_create_for_data(
+                reinterpret_cast<unsigned char*>(pixels.data()),
+                CAIRO_FORMAT_ARGB32,
+                width, height,
+                width * static_cast<int>(sizeof(std::uint32_t)));
+        if (cairo_surface_status(surface) == CAIRO_STATUS_SUCCESS) {
+            cairo_set_source_surface(cr, surface, 0.0, 0.0);
+            cairo_pattern_set_filter(
+                cairo_get_source(cr), CAIRO_FILTER_NEAREST);
+            cairo_paint(cr);
+        }
+        cairo_surface_destroy(surface);
         return FALSE;
     }
 };

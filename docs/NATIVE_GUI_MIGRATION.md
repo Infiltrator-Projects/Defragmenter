@@ -1,6 +1,6 @@
 # Native GUI migration status
 
-The migration is complete for the installed product. `/usr/bin/linux-defragger` launches the installed `linux-defragger-desktop` C++ GTK application, and Debian/local packaging does not install the retired Python GUI runtime.
+The migration is complete for the installed product. `/usr/bin/linux-defragger` launches the installed `linux-defragger-desktop` C++ GTK application, and Debian/local packaging does not install the retired Python GUI runtime. The native desktop is required to preserve the pre-migration polished navigation/page hierarchy and dense physical pixel map; a reduced prototype shell is not considered migration-complete.
 
 ## Current native contract
 
