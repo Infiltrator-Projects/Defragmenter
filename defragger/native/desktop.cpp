@@ -325,6 +325,12 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
     const std::string button_bg = rgb_hex(palette->button_background_rgb);
     const std::string button_fg = rgb_hex(palette->button_foreground_rgb);
     const std::string fault = rgb_hex(palette->fault_rgb);
+    const std::string warning = rgb_hex(palette->warning_rgb);
+    const std::string success = rgb_hex(palette->success_rgb);
+    const std::string info = rgb_hex(palette->info_rgb);
+    const std::string summary = rgb_hex(palette->summary_rgb);
+    const std::string note = rgb_hex(palette->note_rgb);
+    const std::string status_border = rgb_hex(palette->status_border_rgb);
     const std::string operation = rgb_hex(palette->operation_rgb);
 
     const std::string chrome_titlebar = rgb_hex(chrome->titlebar_rgb);
@@ -367,24 +373,37 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
     css += ".brand-subtitle { font-size: 10px; letter-spacing: 2px; color: " +
            chrome_summary + "; }\n";
 
-    css += ".sidebar { background: " + sidebar_background +
-           "; border-right: 1px solid " + border + "; }\n";
+    css += ".sidebar { background-image: linear-gradient(to bottom, " +
+           sidebar_background + ", " + background +
+           "); border-right: 1px solid " + status_border + "; }\n";
     css += ".sidebar-brand-title { font-family: '" +
            std::string(typography->brand_family) +
            "'; font-size: 17px; font-weight: 600; color: " + heading + "; }\n";
     css += ".sidebar-brand-subtitle { font-size: 9px; color: " + detail + "; }\n";
     css += ".nav-button { background: transparent; color: " + detail +
-           "; border: 1px solid transparent; padding: 7px 9px; }\n";
+           "; border: 1px solid transparent; padding: 4px 7px; min-height: 48px; border-radius: " +
+           std::to_string(metrics->card_radius) + "px; }\n";
     css += ".nav-button:hover { background: " +
            rgb_hex(palette->card_hover_rgb) + "; color: " + heading +
            "; border-color: " + border + "; }\n";
-    css += ".nav-selected { background: " + card_background +
-           "; color: " + heading + "; border-color: " + accent + "; }\n";
+    css += ".nav-selected { background-image: linear-gradient(90deg, alpha(" +
+           accent + ", 0.22), alpha(" + info +
+           ", 0.08)); color: " + heading +
+           "; border-color: " + accent + "; }\n";
     css += ".nav-title { font-weight: 600; color: " + heading + "; }\n";
     css += ".nav-subtitle { font-size: 9px; color: " + detail + "; }\n";
     css += ".card, .panel { background: " + card_background +
            "; border: 1px solid " + border + "; border-radius: " +
            std::to_string(metrics->card_radius) + "px; }\n";
+    css += ".summary-fragmented { border-color: " + fault + "; }\n";
+    css += ".summary-free { border-color: " + accent + "; }\n";
+    css += ".summary-capacity { border-color: " + info + "; }\n";
+    css += ".summary-files { border-color: " + success + "; }\n";
+    css += ".volume-selector-panel { border-color: " + status_border + "; }\n";
+    css += ".map-panel { border-color: " + accent +
+           "; background-image: linear-gradient(to bottom, " +
+           card_background + ", " + shell_background + "); }\n";
+    css += ".activity-panel { border-color: " + status_border + "; }\n";
     css += ".hero { background: #07101B; border: 1px solid " + border +
            "; border-radius: " + std::to_string(metrics->panel_radius) +
            "px; }\n";
@@ -393,6 +412,9 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
     css += ".version-badge { background: rgba(5, 10, 16, 0.78); border: 1px solid " +
            chrome_border + "; border-radius: 8px; padding: 6px 9px; color: " +
            chrome_summary + "; }\n";
+    css += ".hero-status { color: " + success +
+           "; background: rgba(5, 10, 16, 0.78); border: 1px solid " +
+           chrome_border + "; border-radius: 7px; padding: 5px 8px; }\n";
     css += ".hero-title { font-family: '" +
            std::string(typography->brand_family) +
            "'; font-size: 30px; font-weight: 600; color: " +
@@ -404,16 +426,30 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
     css += ".hint { color: " + detail + "; }\n";
     css += ".kicker { color: " + kicker +
            "; font-size: 11px; letter-spacing: 2px; }\n";
-    css += ".summary-value { color: " + heading + "; font-size: 19px; font-weight: 600; }\n";
+    css += ".summary-value { color: " + heading + "; font-size: 20px; font-weight: 700; }\n";
+    css += ".summary-detail { color: " + detail + "; font-size: 8px; }\n";
     css += ".panel { background: " + card_background + "; border: 1px solid " +
            border + "; border-radius: " +
            std::to_string(metrics->card_radius) + "px; }\n";
-    css += ".action-card { min-height: 66px; padding: 8px 10px; background: " +
-           card_background + "; border: 1px solid " + border + "; }\n";
+    css += ".action-card { min-height: 86px; padding: 6px; background: " +
+           card_background + "; border: 1px solid " + border + "; border-radius: " +
+           std::to_string(metrics->card_radius) + "px; }\n";
     css += ".action-card:hover { border-color: " + accent_hover + "; }\n";
+    css += ".action-analyse { border-color: " + accent + "; }\n";
+    css += ".action-defrag { border-color: " + info + "; }\n";
+    css += ".action-growth { border-color: " + success + "; }\n";
+    css += ".action-recover { border-color: #8F52FF; }\n";
+    css += ".action-arrow { font-size: 22px; font-weight: 700; padding: 0 5px; }\n";
     css += ".action-title { font-weight: 700; color: " + heading + "; }\n";
     css += ".action-subtitle { font-size: 9px; color: " + detail + "; }\n";
-    css += ".activity-primary { font-weight: 600; color: " + heading + "; }\n";
+    css += ".activity-primary { font-weight: 700; color: " + heading + "; }\n";
+    css += ".activity-secondary { color: " + detail + "; font-size: 9px; }\n";
+    css += ".status-strip { background-image: linear-gradient(90deg, " +
+           rgb_hex(palette->connection_rgb) + ", " + surface +
+           "); border-top: 1px solid " + status_border + "; }\n";
+    css += ".ready-dot { color: " + success + "; }\n";
+    css += ".footer-volume { color: " + heading + "; font-weight: 700; }\n";
+    css += ".status-text { color: " + note + "; }\n";
     css += "menubar { background: " + panel + "; color: " + text +
            "; border-bottom: 1px solid " + border + "; }\n";
     css += "menubar menuitem, menubar menuitem label, menu menuitem, menu menuitem label { color: " +
@@ -700,7 +736,10 @@ public:
         gtk_box_pack_start(GTK_BOX(selector_box), selector_title, FALSE, FALSE, 0);
         auto* selector = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
         gtk_box_pack_start(GTK_BOX(selector_box), selector, FALSE, FALSE, 0);
-        gtk_box_pack_start(GTK_BOX(base), section(nullptr, selector_box), FALSE, FALSE, 0);
+        auto* selector_panel = section(nullptr, selector_box);
+        css_class(selector_panel, "volume-selector-panel");
+        gtk_box_pack_start(
+            GTK_BOX(base), selector_panel, FALSE, FALSE, 0);
         volumes_widget_ = gtk_combo_box_text_new();
         gtk_widget_set_hexpand(volumes_widget_, TRUE);
         gtk_box_pack_start(GTK_BOX(selector), volumes_widget_, TRUE, TRUE, 0);
@@ -715,6 +754,10 @@ public:
         for (int i = 0; i < 4; ++i) {
             auto* card = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
             css_class(card, "card");
+            if (i == 0) css_class(card, "summary-fragmented");
+            else if (i == 1) css_class(card, "summary-free");
+            else if (i == 2) css_class(card, "summary-capacity");
+            else css_class(card, "summary-files");
             gtk_container_set_border_width(GTK_CONTAINER(card), 10);
 
             if (i < 3) {
@@ -760,7 +803,10 @@ public:
         summary_ = gtk_label_new("Run Analyse to inspect the allocation map.");
         gtk_label_set_xalign(GTK_LABEL(summary_), 0);
         gtk_box_pack_start(GTK_BOX(map_box), summary_, FALSE, FALSE, 0);
-        gtk_box_pack_start(GTK_BOX(base), section(nullptr, map_box), TRUE, TRUE, 0);
+        auto* map_panel = section(nullptr, map_box);
+        css_class(map_panel, "map-panel");
+        gtk_box_pack_start(
+            GTK_BOX(base), map_panel, TRUE, TRUE, 0);
 
         auto* actions = gtk_grid_new();
         gtk_grid_set_column_spacing(GTK_GRID(actions), 10);
@@ -833,8 +879,10 @@ public:
         gtk_text_view_set_left_margin(GTK_TEXT_VIEW(log_), 9);
         gtk_text_view_set_right_margin(GTK_TEXT_VIEW(log_), 9);
         gtk_container_add(GTK_CONTAINER(scroll), log_);
+        auto* activity_panel = section(nullptr, activity);
+        css_class(activity_panel, "activity-panel");
         gtk_box_pack_start(
-            GTK_BOX(base), section(nullptr, activity), FALSE, FALSE, 0);
+            GTK_BOX(base), activity_panel, FALSE, FALSE, 0);
 
         auto* status_strip = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
         css_class(status_strip, "status-strip");
@@ -1206,6 +1254,9 @@ private:
         gtk_box_pack_start(GTK_BOX(copy), primary, FALSE, FALSE, 0);
         gtk_box_pack_start(GTK_BOX(copy), secondary, FALSE, FALSE, 0);
         gtk_box_pack_start(GTK_BOX(row), copy, TRUE, TRUE, 0);
+        auto* arrow = gtk_label_new("›");
+        css_class(arrow, "action-arrow");
+        gtk_box_pack_end(GTK_BOX(row), arrow, FALSE, FALSE, 0);
         gtk_container_add(GTK_CONTAINER(button), row);
         g_object_set_data_full(
             G_OBJECT(button), "action", g_strdup(action), g_free);
@@ -1222,6 +1273,11 @@ private:
     {
         auto* button = gtk_button_new();
         css_class(button, "action-card");
+        const std::string action_id(action);
+        if (action_id == "analyse") css_class(button, "action-analyse");
+        else if (action_id == "defrag") css_class(button, "action-defrag");
+        else if (action_id == "growth-defrag") css_class(button, "action-growth");
+        else if (action_id == "recover") css_class(button, "action-recover");
         auto* row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 9);
         auto* icon = gtk_image_new_from_icon_name(
             icon_name, GTK_ICON_SIZE_DIALOG);
