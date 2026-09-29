@@ -1603,13 +1603,17 @@ private:
         const std::uint64_t units = last - first + 1U;
 
         /*
-         * A map pixel is one analyser cell, not one LCD pixel.  GTK may scale
-         * a small logical raster to fill the drawing area, but that must never
-         * imply fractional allocation units.  The analyser guarantees at most
-         * one cell per allocation unit, so this density is always >= 1.
+         * A visible map pixel is a real one-pixel sample in the GTK drawing
+         * area.  Never enlarge one allocation cell into several screen pixels.
+         * If there are fewer allocation cells than screen pixels, leave the
+         * remaining drawing area empty.  If a resize leaves fewer screen
+         * pixels than cells, combine adjacent cells so each visible pixel still
+         * represents one or more complete allocation units.
          */
         const std::uint64_t map_pixels = std::max<std::uint64_t>(
-            1U, static_cast<std::uint64_t>(cells_.size()));
+            1U, std::min<std::uint64_t>(
+                static_cast<std::uint64_t>(cells_.size()),
+                display_pixels));
         const double units_per_pixel = std::max(
             1.0,
             static_cast<double>(units) /
@@ -1643,11 +1647,8 @@ private:
 
         const std::string caption =
             "Allocation image: " + std::to_string(map_pixels) +
-            " map pixels · approximately " + density + " " +
-            unit_label + " per pixel" + suffix +
-            (display_pixels > map_pixels
-                ? " · displayed 1:1 logically, scaled to fit"
-                : "");
+            " physical pixels · approximately " + density + " " +
+            unit_label + " per pixel" + suffix;
         gtk_label_set_text(GTK_LABEL(summary_), caption.c_str());
     }
 
@@ -2532,57 +2533,68 @@ private:
         if (self->cells_.empty()) return FALSE;
 
         /*
-         * One logical map pixel is one analyser cell.  The analyser never
-         * creates more cells than allocation units, so a logical pixel always
-         * represents one or more whole units -- never a fractional block or
-         * cluster.  Scale that logical raster to the widget with nearest
-         * neighbour filtering rather than inventing extra semantic pixels.
+         * The disk map is strictly 1:1 at the display-pixel level.  A source
+         * analyser cell may occupy exactly one screen pixel, never two or more.
+         * When the widget has spare pixels they remain background.  When the
+         * widget is smaller than the analysed cell set, adjacent cells are
+         * combined into one screen pixel in physical order.
          */
-        const std::size_t logical_count = self->cells_.size();
-        const double aspect =
-            static_cast<double>(width) / static_cast<double>(height);
-        const std::size_t logical_width = std::max<std::size_t>(
-            1U, std::min<std::size_t>(
-                logical_count,
-                static_cast<std::size_t>(std::ceil(
-                    std::sqrt(
-                        static_cast<double>(logical_count) *
-                        std::max(0.01, aspect))))));
-        const std::size_t logical_height =
-            (logical_count + logical_width - 1U) / logical_width;
-        const std::size_t raster_count =
-            logical_width * logical_height;
+        const std::size_t source_count = self->cells_.size();
+        const std::size_t display_count =
+            static_cast<std::size_t>(width) *
+            static_cast<std::size_t>(height);
+        const std::size_t map_pixel_count =
+            std::max<std::size_t>(
+                1U, std::min(source_count, display_count));
 
         std::vector<std::uint32_t> pixels(
-            raster_count, UINT32_C(0xFF000000) | background);
-        for (std::size_t index = 0U;
-             index < logical_count; ++index) {
-            pixels[index] =
+            display_count, UINT32_C(0xFF000000) | background);
+
+        for (std::size_t pixel = 0U;
+             pixel < map_pixel_count; ++pixel) {
+            const std::size_t begin =
+                pixel * source_count / map_pixel_count;
+            const std::size_t end =
+                std::max<std::size_t>(
+                    begin + 1U,
+                    (pixel + 1U) * source_count /
+                        map_pixel_count);
+
+            if (end == begin + 1U) {
+                pixels[pixel] =
+                    UINT32_C(0xFF000000) |
+                    map_cell_rgb(self->cells_[begin]);
+                continue;
+            }
+
+            Json::Object combined;
+            combined["start"] = Json::unsigned_integer(
+                number(self->cells_[begin], "start"));
+            combined["end"] = Json::unsigned_integer(
+                number(self->cells_[end - 1U], "end"));
+            for (const auto* key : {
+                     "free", "outside", "used", "unknown",
+                     "fragmented", "directory", "bad"}) {
+                std::uint64_t total = 0U;
+                for (std::size_t index = begin;
+                     index < end; ++index)
+                    total += number(self->cells_[index], key);
+                combined[key] = Json::unsigned_integer(total);
+            }
+            pixels[pixel] =
                 UINT32_C(0xFF000000) |
-                map_cell_rgb(self->cells_[index]);
+                map_cell_rgb(Json(std::move(combined)));
         }
 
         cairo_surface_t* surface =
             cairo_image_surface_create_for_data(
                 reinterpret_cast<unsigned char*>(pixels.data()),
                 CAIRO_FORMAT_ARGB32,
-                static_cast<int>(logical_width),
-                static_cast<int>(logical_height),
-                static_cast<int>(
-                    logical_width * sizeof(std::uint32_t)));
+                width, height,
+                width * static_cast<int>(sizeof(std::uint32_t)));
         if (cairo_surface_status(surface) == CAIRO_STATUS_SUCCESS) {
-            cairo_save(cr);
-            cairo_scale(
-                cr,
-                static_cast<double>(width) /
-                    static_cast<double>(logical_width),
-                static_cast<double>(height) /
-                    static_cast<double>(logical_height));
             cairo_set_source_surface(cr, surface, 0.0, 0.0);
-            cairo_pattern_set_filter(
-                cairo_get_source(cr), CAIRO_FILTER_NEAREST);
             cairo_paint(cr);
-            cairo_restore(cr);
         }
         cairo_surface_destroy(surface);
         return FALSE;
