@@ -175,7 +175,22 @@ std::vector<std::string> child_environment() {
      * caller-controlled loader, executable-override, HOME, PATH or language
      * runtime state into the root process tree.
      */
-    return {"LC_ALL=C", "LANG=C"};
+    std::vector<std::string> result{"LC_ALL=C", "LANG=C"};
+#ifdef LD_PRIVILEGED_HELPER_TEST_MODE
+    /*
+     * The controlled supervisor fixture needs only these two test channels.
+     * They do not exist in production builds and are deliberately not a
+     * general environment pass-through.
+     */
+    for (const char* name : {"LD_HELPER_TEST_MARKER",
+                             "LD_HELPER_TEST_IGNORE_SIGINT"}) {
+        if (const char* value = std::getenv(name);
+            value != nullptr && *value != '\0') {
+            result.emplace_back(std::string(name) + "=" + value);
+        }
+    }
+#endif
+    return result;
 }
 
 pid_t spawn_command(const HelperCommand& allowed, int read_fd, int write_fd) {

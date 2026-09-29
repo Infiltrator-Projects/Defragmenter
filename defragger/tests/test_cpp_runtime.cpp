@@ -311,8 +311,9 @@ int main() {
 
     const HelperCommand helper = helper_command(
         "operation-engine",
-        {"defrag", "/dev/test", "--filesystem", "ext4",
-         "--journal", "/var/lib/linux-defragger/state/1000/test.journal"},
+        {"defrag", "/dev/test", "--filesystem", "ext4", "--write",
+         "--confirm", "/dev/test", "--journal",
+         "/var/lib/linux-defragger/state/1000/test.journal"},
         1000U);
     ok = check(
         helper.executable ==
@@ -322,8 +323,9 @@ int main() {
     try {
         (void)helper_command(
             "operation-engine",
-            {"defrag", "/dev/test", "--filesystem", "ext4",
-             "--journal", "/tmp/not-allowed.journal"},
+            {"defrag", "/dev/test", "--filesystem", "ext4", "--write",
+             "--confirm", "/dev/test", "--journal",
+             "/tmp/not-allowed.journal"},
             1000U);
     } catch (const std::exception&) {
         rejected_journal = true;

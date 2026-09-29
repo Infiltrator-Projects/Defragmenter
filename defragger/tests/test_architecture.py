@@ -1216,6 +1216,7 @@ def test_forensic_scalability_protocol_and_safety_contracts() -> None:
     assert "ld_device_matches_identity" in fat_relocation
     assert "flock(dev.fd, LOCK_EX | LOCK_NB)" in fat_writer
     assert "legacy FAT recovery journal lacks stable target identity" in fat_writer
+    assert "fat_relocation_recover_legacy" not in fat_relocation
 
     unmount_position = test_media.index("if (unmount_descendants(canonical) != 0)")
     destructive_recheck = test_media.index(
@@ -1238,7 +1239,8 @@ def test_forensic_scalability_protocol_and_safety_contracts() -> None:
     privileged_helper = (ROOT / "native" / "privileged_helper.cpp").read_text()
     assert "allow_environment_override" in runtime_source
     assert "resolve_program(specification->worker, false)" in operation_engine
-    assert 'return {"LC_ALL=C", "LANG=C"};' in privileged_helper
+    assert 'std::vector<std::string> result{"LC_ALL=C", "LANG=C"};' in privileged_helper
+    assert "for (char** item = environ" not in privileged_helper
 
     for ext_source in (
         GUI / "filesystems" / "ext4" / "native" / "ext_catalog.c",

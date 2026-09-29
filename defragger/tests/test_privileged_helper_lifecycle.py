@@ -83,6 +83,7 @@ def run_case(mode, program):
             arguments = ["/dev/test", "--fstype", "fat12"]
             if program == "operation-engine":
                 arguments = ["defrag", "/dev/test", "--filesystem", "fat12",
+                             "--write", "--confirm", "/dev/test",
                              "--journal", "/var/lib/linux-defragger/state/1000/test.journal"]
             send({"action": "run", "id": 1, "program": program, "argv": arguments})
             if mode == "immediate-stop":
@@ -189,7 +190,7 @@ def run_uncooperative_case():
             send({
                 "action": "run", "id": 20, "program": "operation-engine",
                 "argv": ["defrag", "/dev/test", "--filesystem", "fat12",
-                         "--journal",
+                         "--write", "--confirm", "/dev/test", "--journal",
                          "/var/lib/linux-defragger/state/1000/test.journal"],
             })
             started = read_event("started", 20)

@@ -304,60 +304,6 @@ static void free_contiguous_run(
     free(updates);
 }
 
-void fat_relocation_recover_legacy(
-    Fat32 *filesystem,
-    const char *journal_path
-) {
-    Journal journal = journal_read(journal_path);
-    if (strcmp(journal.device_path, filesystem->dev.path) != 0) {
-        ld_die("journal belongs to a different device path");
-    }
-    if (journal.volume_id != filesystem->volume_id) {
-        ld_die("journal volume ID does not match target");
-    }
-    if (journal.dest_start < 2 || journal.source.len > filesystem->cluster_count
-            || journal.dest_start
-                > filesystem->max_cluster - (uint32_t)(journal.source.len - 1)) {
-        ld_die("journal destination range is invalid");
-    }
-
-    uint32_t current = read_dirent_first_cluster(
-        filesystem,
-        journal.dirent_offset
-    );
-    fprintf(
-        stderr,
-        "Recovering interrupted move at journal stage %d...\n",
-        (int)journal.stage
-    );
-    if (current == journal.dest_start) {
-        for (size_t index = 0; index < journal.source.len; index++) {
-            uint32_t destination = journal.dest_start + (uint32_t)index;
-            uint32_t next = index + 1 == journal.source.len
-                ? fat_eoc_value(filesystem)
-                : destination + 1;
-            fat32_write_entry(filesystem, destination, next);
-        }
-        free_cluster_list(filesystem, journal.source.v, journal.source.len);
-        fat_relocation_update_fsinfo(filesystem, journal.source.v[0]);
-        fat32_sync(filesystem);
-        fprintf(stderr, "Recovery completed by keeping the new contiguous chain.\n");
-    } else if (current == journal.old_first) {
-        free_contiguous_run(
-            filesystem,
-            journal.dest_start,
-            journal.source.len
-        );
-        fat32_sync(filesystem);
-        fprintf(stderr, "Recovery completed by rolling back the destination chain.\n");
-    } else {
-        journal_free(&journal);
-        ld_die("directory entry points to neither old nor new chain; manual recovery required");
-    }
-    journal_remove(journal_path);
-    journal_free(&journal);
-}
-
 static bool fat_value_is_cluster(const Fat32 *filesystem, uint32_t value) {
     value &= fat_mask(filesystem);
     return value >= 2 && value <= filesystem->max_cluster;

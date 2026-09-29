@@ -22,10 +22,6 @@ void fat_relocation_execute(
     FatRelocationLog detail_log
 );
 
-void fat_relocation_recover_legacy(
-    Fat32 *filesystem,
-    const char *journal_path
-);
 void fat_relocation_recover_mapped(
     Fat32 *filesystem,
     const char *journal_path,
