@@ -267,7 +267,7 @@ def test_infiltratr_common_integration() -> None:
     assert "infiltratr_parse_u64_range" in fat
     assert "infiltratr_parse_binary_quantity_u64" in fat
     assert "strtoull(" not in fat
-    assert "infiltratr_path_basename" in fat
+    assert "default_journal_path" not in fat
     assert "infiltratr_size_add_checked" in fat
     assert "while (new_cap" not in fat
     fat_journal = (GUI / "filesystems" / "fat" / "native" / "fat_journal.c").read_text()
