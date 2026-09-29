@@ -395,18 +395,23 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
     css += ".nav-growth image { color: " + success + "; }\n";
     css += ".nav-recover image { color: #9B5CFF; }\n";
     css += ".nav-test-media image { color: " + success + "; }\n";
-    css += ".card, .panel { background: " + card_background +
+    css += ".card { background: " + card_background +
            "; border: 1px solid " + border + "; border-radius: " +
            std::to_string(metrics->card_radius) + "px; }\n";
+    css += "frame.panel > border { background: " + card_background +
+           "; border: 1px solid " + border + "; border-radius: " +
+           std::to_string(metrics->panel_radius) + "px; }\n";
     css += ".summary-fragmented { border-color: " + fault + "; }\n";
     css += ".summary-free { border-color: " + accent + "; }\n";
     css += ".summary-capacity { border-color: " + info + "; }\n";
     css += ".summary-files { border-color: " + success + "; }\n";
-    css += ".volume-selector-panel { border-color: " + status_border + "; }\n";
-    css += ".map-panel { border-color: " + accent +
+    css += "frame.volume-selector-panel > border { border-color: " +
+           status_border + "; }\n";
+    css += "frame.map-panel > border { border-color: " + accent +
            "; background-image: linear-gradient(to bottom, " +
            card_background + ", " + shell_background + "); }\n";
-    css += ".activity-panel { border-color: " + status_border + "; }\n";
+    css += "frame.activity-panel > border { border-color: " +
+           status_border + "; }\n";
     css += ".hero { background: #07101B; border: 1px solid " + border +
            "; border-radius: " + std::to_string(metrics->panel_radius) +
            "px; }\n";
