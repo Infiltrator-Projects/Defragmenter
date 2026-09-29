@@ -2,6 +2,14 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-225
+
+- Restore the missing semantic colour roles on the left navigation icons in the native C++ GTK shell.
+- Apply colour classes directly to each symbolic GtkImage rather than relying on incomplete descendant styling, so host theme inheritance cannot flatten Analyse, Defragment, Growth Defrag, Recover, Test Media and Settings back to the same grey.
+- Restore the matching coloured glyph/arrow treatment on the large Overview operation cards.
+- Keep Overview and the selected navigation state aligned with the Common accent while preserving the established Night and neutral Day surfaces.
+- No filesystem, planner, mutation, recovery or privileged-operation behaviour changes.
+
 ## 1.8.0-224
 
 - Restore the native C++ dashboard geometry to the last good pre-regression composition instead of the oversized migration shell.
