@@ -154,6 +154,15 @@ int main() {
                        "FAT-specific map contract accepted") && ok;
             ok = check(mapped.at("data_clusters").unsigned_value() == 4U,
                        "FAT map geometry preserved") && ok;
+            ok = check(mapped.at("map_accuracy").string() == "exact" &&
+                       mapped.at("unit_size").unsigned_value() == 512U &&
+                       mapped.at("total_units").unsigned_value() == 4U,
+                       "FAT map exposes common native desktop geometry") && ok;
+            ok = check(mapped.at("total_bytes").unsigned_value() == 2048U &&
+                       mapped.at("free_bytes").unsigned_value() == 1024U &&
+                       mapped.at("used_bytes").unsigned_value() == 1024U &&
+                       mapped.at("unknown_bytes").unsigned_value() == 0U,
+                       "FAT map exposes common native desktop totals") && ok;
         } catch (...) {
             ok = check(false, "FAT-specific map contract accepted") && ok;
         }
