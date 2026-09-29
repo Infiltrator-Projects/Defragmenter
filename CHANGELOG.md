@@ -2,6 +2,16 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-224
+
+- Restore the native C++ dashboard geometry to the last good pre-regression composition instead of the oversized migration shell.
+- Bound the Workbench-inspired sidebar raster to a fixed non-expanding surface so it can no longer stretch down the navigation rail or dominate the window.
+- Restore the dedicated SSD raster artwork in the selected-volume hero and operation pages, with the hero returned to its compact height.
+- Restore the 94-pixel radial summary gauges, coloured semantic borders, large operation cards, activity strip and footer/status surface from the established dashboard hierarchy.
+- Make the physical allocation map elastic again: it keeps the dense row-major pixel raster but yields vertical space first on shorter laptop work areas instead of forcing the whole Overview to scroll.
+- Restore work-area-bounded 1480×900 startup geometry, compact navigation, and the previous page typography/spacing while preserving the existing native filesystem and safety engines.
+- Keep Day mode neutral rather than returning to pastel operation slabs; operation identity is carried by borders, icons and hover accents while the dark hero artwork retains readable Night chrome roles.
+
 ## 1.8.0-223
 
 - Restore the full polished navigation model that existed before the native-launcher migration: Overview, Analyse, Defragment, Growth Defrag, Recover, Test Media and Settings are again first-class sidebar destinations.
