@@ -39,7 +39,7 @@ int main() {
     DesktopVolume fat = v;
     fat.filesystem = "vfat";
     fat.verified = false;
-    desktop_verify_identity(fat, "fat16");
+    desktop_verify_identity(fat, "FAT16");
     assert(fat.verified && fat.filesystem == "fat16" &&
            !fat.exact_analysis && !fat.defrag_qualified &&
            !fat.growth_qualified);
