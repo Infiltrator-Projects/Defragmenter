@@ -373,6 +373,7 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
     const std::string fault = rgb_hex(palette->fault_rgb);
     const std::string success = rgb_hex(palette->success_rgb);
     const std::string info = rgb_hex(palette->info_rgb);
+    const std::string summary = rgb_hex(palette->summary_rgb);
     const std::string note = rgb_hex(palette->note_rgb);
     const std::string status_border = rgb_hex(palette->status_border_rgb);
     const std::string operation = rgb_hex(palette->operation_rgb);
@@ -436,11 +437,13 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
            "; border-color: " + accent + "; }\n";
     css += ".nav-title { font-size: 13px; font-weight: 700; color: " + heading + "; }\n";
     css += ".nav-subtitle { font-size: 9px; color: " + detail + "; }\n";
-    css += ".nav-analyse image { color: " + accent + "; }\n";
-    css += ".nav-defrag image { color: " + info + "; }\n";
-    css += ".nav-growth image { color: " + success + "; }\n";
-    css += ".nav-recover image { color: #9B5CFF; }\n";
-    css += ".nav-test-media image { color: " + success + "; }\n";
+    css += ".nav-icon-overview { color: " + accent + "; }\n";
+    css += ".nav-icon-analyse { color: " + accent + "; }\n";
+    css += ".nav-icon-defrag { color: " + info + "; }\n";
+    css += ".nav-icon-growth { color: " + success + "; }\n";
+    css += ".nav-icon-recover { color: #9B5CFF; }\n";
+    css += ".nav-icon-test-media { color: " + success + "; }\n";
+    css += ".nav-icon-settings { color: " + summary + "; }\n";
     css += ".card { background: " + card_background +
            "; border: 1px solid " + border + "; border-radius: " +
            std::to_string(metrics->card_radius) + "px; }\n";
@@ -493,6 +496,10 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
     css += ".action-defrag { border-color: " + info + "; }\n";
     css += ".action-growth { border-color: " + success + "; }\n";
     css += ".action-recover { border-color: #8F52FF; }\n";
+    css += ".action-analyse image, .action-analyse .action-arrow { color: " + accent + "; }\n";
+    css += ".action-defrag image, .action-defrag .action-arrow { color: " + info + "; }\n";
+    css += ".action-growth image, .action-growth .action-arrow { color: " + success + "; }\n";
+    css += ".action-recover image, .action-recover .action-arrow { color: #A979FF; }\n";
     css += ".action-arrow { font-size: 22px; font-weight: 700; padding: 0 5px; }\n";
     css += ".action-title { font-size: 15px; font-weight: 700; color: " + heading + "; }\n";
     css += ".action-subtitle { font-size: 9px; color: " + detail + "; }\n";
@@ -1297,6 +1304,14 @@ private:
         auto* icon = gtk_image_new_from_icon_name(
             icon_name, GTK_ICON_SIZE_BUTTON);
         gtk_image_set_pixel_size(GTK_IMAGE(icon), 28);
+        const char* icon_class = "nav-icon-overview";
+        if (action_id == "page-analyse") icon_class = "nav-icon-analyse";
+        else if (action_id == "page-defrag") icon_class = "nav-icon-defrag";
+        else if (action_id == "page-growth") icon_class = "nav-icon-growth";
+        else if (action_id == "page-recover") icon_class = "nav-icon-recover";
+        else if (action_id == "page-test-media") icon_class = "nav-icon-test-media";
+        else if (action_id == "page-settings") icon_class = "nav-icon-settings";
+        css_class(icon, icon_class);
         gtk_box_pack_start(GTK_BOX(row), icon, FALSE, FALSE, 0);
         auto* copy = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
         auto* primary = gtk_label_new(title);
