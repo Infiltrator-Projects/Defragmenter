@@ -3,10 +3,10 @@
 Status: **complete**
 
 Completed: 2026-09-22
-Extended: 2026-09-28
+Extended: 2026-09-29
 
 Applies to: release version 1.8.0-220
-Audited source commit: b317f5bb8577aaac116adcb8a1f36faa40d0301b
+Audited source commit: 928543bd54143ddd2b29d71f7188b84fc007b872
 Audited release-governance commit: e09599f6c84b31e7f29ec5da9e5f9db23807b9d9
 
 This status records the immutable 1.8.0-220 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
@@ -17,9 +17,9 @@ This document records the current release safety case. Historical audit-developm
 
 ## Qualification evidence
 
-The current audited production-source baseline is commit `b317f5bb8577aaac116adcb8a1f36faa40d0301b` for release version 1.8.0-220. Local Linux / heavy qualification run 405 completed successfully on this exact source, including the complete native/filesystem/GUI CTest suite. The immediately preceding fully hosted-qualified head `995a26d51522ab16b39e97bcf4717623cf47c669` passed both the Project quality gate and Local Linux / heavy qualification. The only production delta after that head aligns NTFS/PFS3 capability descriptions with already-qualified writer behaviour; it does not change parsing, placement, mutation or recovery semantics.
+The current audited production-source baseline is commit `928543bd54143ddd2b29d71f7188b84fc007b872` for release version 1.8.0-220. Local Linux / heavy qualification run 36539444557 completed successfully on this exact source. Hosted Project quality run 36539445365 built the warnings-as-errors tree, passed the native GTK smoke test and completed all 46 CTests successfully; its ASan/UBSan lane also passed. The hosted quality job stopped only at the intentional stale-audit drift guard because this document still named the earlier production baseline. This refresh binds the completed safety review to the newly qualified source rather than weakening or bypassing that guard.
 
-The 1.8.0-220 capability baseline includes writer-qualification gating, run-oriented NTFS planning and alternate-data-stream relocation, range-oriented EXT/XFS work, Common 1.19.35 native theming, asynchronous discovery/probing, bounded Analyse Stop, complete local CTest execution, Xvfb native GTK smoke, end-to-end Test Media production qualification, sparse-UFS relocation, HFS Extents Overflow relocation, checksummed Btrfs data relocation, APFS checkpoint-history retention, recursive PFS3 directories plus validated hard-link preservation, soft-link relocation and rollover-file relocation, stable recovery identities, and expanded exact ZFS checksum coverage. Each write capability remains behind its filesystem-specific preflight, durable transaction/recovery contract and final verification.
+The 1.8.0-220 capability baseline includes writer-qualification gating, run-oriented NTFS planning and alternate-data-stream relocation, range-oriented EXT/XFS work, Common 1.19.35 native theming, asynchronous discovery/probing, bounded Analyse Stop, complete local CTest execution, Xvfb native GTK smoke, end-to-end Test Media production qualification, sparse-UFS relocation, HFS Extents Overflow relocation, checksummed Btrfs data relocation, APFS checkpoint-history retention, recursive PFS3 directories plus validated hard-link preservation, soft-link relocation and rollover-file relocation, stable recovery identities, FAT journal-v2 identity/capacity binding with exclusive mutation locking, hardened privileged mutation argument/environment policy, corrected PFS3/APFS native-map contracts, bounded UFS Test Media creation below makefs's 2 GiB boundary, modern feature-disabled OpenZFS Test Media creation, and expanded exact ZFS checksum coverage. Each write capability remains behind its filesystem-specific preflight, durable transaction/recovery contract and final verification.
 
 The release-governance baseline is `a3c3bf4fed0007178886d411e4172ce2b5302643`. The malformed-media matrix, transaction/recovery tests, native integration fixtures, GUI contract tests, release/package tests and architecture ownership checks remain part of the permanent **Project quality gate**. Environment-dependent destructive-media evidence remains supplementary and is not represented as hosted-CI proof.
 
