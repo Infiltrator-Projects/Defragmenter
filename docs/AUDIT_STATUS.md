@@ -5,11 +5,11 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-09-29
 
-Applies to: release version 1.8.0-223
-Audited source commit: 79f5db6ac65f291bdbaa82b6ee07e399a84cb10d
+Applies to: release version 1.8.0-224
+Audited source commit: 882155b6095cfefeee3b73692a4a20006774a50d
 Audited release-governance commit: e09599f6c84b31e7f29ec5da9e5f9db23807b9d9
 
-This status records the 1.8.0-223 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
+This status records the 1.8.0-224 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
@@ -17,9 +17,9 @@ This document records the current release safety case. Historical audit-developm
 
 ## Qualification evidence
 
-The current audited production-source baseline is commit `79f5db6ac65f291bdbaa82b6ee07e399a84cb10d` for release version 1.8.0-223. Local Linux / heavy qualification run 36547469395 completed successfully on this exact source. Hosted Project quality run 36547469860 built the warnings-as-errors tree, passed the shipped native GTK desktop smoke test and completed all 46 CTests successfully; its ASan/UBSan lane also passed. The hosted quality job stopped only at the intentional audit/version guard because this document still named 1.8.0-222. This refresh binds the completed audit to the exact restored-interface source without weakening that control.
+The current audited production-source baseline is commit `882155b6095cfefeee3b73692a4a20006774a50d` for release version 1.8.0-224. The delta from the qualified 1.8.0-223 storage baseline is confined to the native C++ GTK presentation shell: dashboard geometry, bounded standalone raster artwork, summary/action sizing, work-area fit, activity/footer surfaces and operation-page composition. Filesystem parsing, planning, mutation, recovery and privileged-operation semantics are unchanged. Publication remains conditioned on the exact-head hosted warnings-as-errors build, shipped native GTK Xvfb smoke test, complete CTest suite and ASan/UBSan lane; the release workflow will not publish this audit identity unless those gates pass.
 
-The 1.8.0-223 capability baseline retains the fully qualified 1.8.0-222 filesystem, transaction and Day/Night theme semantics and repairs the incomplete native GUI migration. The installed C++ GTK client again provides the full pre-migration navigation hierarchy (Overview, Analyse, Defragment, Growth Defrag, Recover, Test Media and Settings), dedicated operation pages, automatic read-only analysis on selection, radial summary gauges, File/View/About menus and the dense physical-position pixel raster. The former 8×8 procedural map grid and reduced prototype sidebar are removed. The correction does not reintroduce the retired Python runtime and does not change filesystem parsing, placement, mutation or recovery semantics. Each write capability remains behind its filesystem-specific preflight, durable transaction/recovery contract and final verification.
+The 1.8.0-224 capability baseline retains the fully qualified 1.8.0-223 filesystem, transaction and Day/Night semantics while restoring the last-good dashboard composition in the installed native C++ GTK client. The navigation rail remains Overview, Analyse, Defragment, Growth Defrag, Recover, Test Media and Settings; the selected-volume hero again uses its dedicated SSD raster, the Workbench-inspired sidebar art is bounded and non-expanding, summary gauges return to their established scale, the dense physical-position pixel map is elastic on short work areas, and the activity/footer hierarchy is restored. Day mode remains neutral rather than returning to pastel operation slabs. The correction does not reintroduce the retired Python runtime and does not change filesystem parsing, placement, mutation or recovery semantics. Each write capability remains behind its filesystem-specific preflight, durable transaction/recovery contract and final verification.
 
 The release-governance baseline is `a3c3bf4fed0007178886d411e4172ce2b5302643`. The malformed-media matrix, transaction/recovery tests, native integration fixtures, GUI contract tests, release/package tests and architecture ownership checks remain part of the permanent **Project quality gate**. Environment-dependent destructive-media evidence remains supplementary and is not represented as hosted-CI proof.
 
