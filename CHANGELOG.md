@@ -2,6 +2,15 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-222
+
+- Restore visual parity to the installed native C++ desktop after the first native-launcher release exposed the migration prototype instead of the polished dashboard hierarchy.
+- Constrain the suite title bar to explicit icon/control sizes so host GTK scaling cannot turn it into an oversized chrome band.
+- Replace the non-scaling hero GtkImage with a responsive native Cairo/GdkPixbuf canvas that fills the hero surface, crops proportionally and preserves readable selected-volume text.
+- Restore branded sidebar identity and navigation, visible section panels, equal-width operation cards, a contained activity/progress/log panel, responsive scrolling and compact window geometry.
+- Keep the repaired UI fully native C++; no Python runtime is reintroduced.
+- Qualify the visual-parity source with warnings-as-errors build, native GTK Xvfb smoke, all 46 CTests and ASan/UBSan before rebinding the release audit.
+
 ## 1.8.0-221
 
 - Rework Day appearance around a quiet light-grey workspace with white neutral panels instead of large tinted surfaces.

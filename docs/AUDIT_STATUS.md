@@ -5,11 +5,11 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-09-29
 
-Applies to: release version 1.8.0-221
-Audited source commit: 450c0bee085dc747a54312de755634bad288ca64
+Applies to: release version 1.8.0-222
+Audited source commit: a7f6906d5f44caeff14dc578cf73249961512df7
 Audited release-governance commit: e09599f6c84b31e7f29ec5da9e5f9db23807b9d9
 
-This status records the 1.8.0-221 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
+This status records the 1.8.0-222 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
@@ -17,9 +17,9 @@ This document records the current release safety case. Historical audit-developm
 
 ## Qualification evidence
 
-The current audited production-source baseline is commit `450c0bee085dc747a54312de755634bad288ca64` for release version 1.8.0-221. Hosted Project quality run 36541371786 built the warnings-as-errors tree, passed the shipped native GTK desktop smoke test and completed all 46 CTests successfully; its ASan/UBSan lane also passed. The self-hosted BigBedroom lane recorded that the runner was unprovisioned and therefore did not claim local execution. The hosted quality job stopped only at the intentional audit/version guard because this document still named 1.8.0-220. This refresh binds the completed audit to the exact Day-mode source without weakening that control.
+The current audited production-source baseline is commit `a7f6906d5f44caeff14dc578cf73249961512df7` for release version 1.8.0-222. Hosted Project quality run 36542545566 built the warnings-as-errors tree, passed the shipped native GTK desktop smoke test and completed all 46 CTests successfully; its ASan/UBSan lane also passed. The hosted quality job stopped only at the intentional stale-audit drift guard because this document still named the prior 1.8.0-221 production baseline. This refresh binds the completed audit to the exact native visual-parity source without weakening that control.
 
-The 1.8.0-221 capability baseline retains the fully qualified 1.8.0-220 filesystem and transaction model and changes presentation only: Day mode now uses explicit menu foregrounds, neutral light surfaces and controls, Common Night semantic roles over the permanently dark hero artwork, neutral action/summary chrome, and a dark allocation-map canvas in the native desktop. Night-mode palette mappings and filesystem parsing, placement, mutation and recovery semantics are unchanged. Each write capability remains behind its filesystem-specific preflight, durable transaction/recovery contract and final verification.
+The 1.8.0-222 capability baseline retains the fully qualified 1.8.0-221 filesystem, transaction and Day/Night theme semantics and changes native desktop presentation only. The installed C++ GTK client now uses bounded title-bar icon/control geometry, responsive full-width hero artwork, branded navigation, visible panel hierarchy, equal-width action cards, a contained activity/progress/log surface and responsive scrolling. The correction does not reintroduce the retired Python runtime and does not change filesystem parsing, placement, mutation or recovery semantics. Each write capability remains behind its filesystem-specific preflight, durable transaction/recovery contract and final verification.
 
 The release-governance baseline is `a3c3bf4fed0007178886d411e4172ce2b5302643`. The malformed-media matrix, transaction/recovery tests, native integration fixtures, GUI contract tests, release/package tests and architecture ownership checks remain part of the permanent **Project quality gate**. Environment-dependent destructive-media evidence remains supplementary and is not represented as hosted-CI proof.
 
