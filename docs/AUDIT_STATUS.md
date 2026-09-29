@@ -5,11 +5,11 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-09-29
 
-Applies to: release version 1.8.0-220
-Audited source commit: 928543bd54143ddd2b29d71f7188b84fc007b872
+Applies to: release version 1.8.0-221
+Audited source commit: 450c0bee085dc747a54312de755634bad288ca64
 Audited release-governance commit: e09599f6c84b31e7f29ec5da9e5f9db23807b9d9
 
-This status records the immutable 1.8.0-220 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
+This status records the 1.8.0-221 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
@@ -17,9 +17,9 @@ This document records the current release safety case. Historical audit-developm
 
 ## Qualification evidence
 
-The current audited production-source baseline is commit `928543bd54143ddd2b29d71f7188b84fc007b872` for release version 1.8.0-220. Local Linux / heavy qualification run 36539444557 completed successfully on this exact source. Hosted Project quality run 36539445365 built the warnings-as-errors tree, passed the native GTK smoke test and completed all 46 CTests successfully; its ASan/UBSan lane also passed. The hosted quality job stopped only at the intentional stale-audit drift guard because this document still named the earlier production baseline. This refresh binds the completed safety review to the newly qualified source rather than weakening or bypassing that guard.
+The current audited production-source baseline is commit `450c0bee085dc747a54312de755634bad288ca64` for release version 1.8.0-221. Hosted Project quality run 36541371786 built the warnings-as-errors tree, passed the shipped native GTK desktop smoke test and completed all 46 CTests successfully; its ASan/UBSan lane also passed. The self-hosted BigBedroom lane recorded that the runner was unprovisioned and therefore did not claim local execution. The hosted quality job stopped only at the intentional audit/version guard because this document still named 1.8.0-220. This refresh binds the completed audit to the exact Day-mode source without weakening that control.
 
-The 1.8.0-220 capability baseline includes writer-qualification gating, run-oriented NTFS planning and alternate-data-stream relocation, range-oriented EXT/XFS work, Common 1.19.35 native theming, asynchronous discovery/probing, bounded Analyse Stop, complete local CTest execution, Xvfb native GTK smoke, end-to-end Test Media production qualification, sparse-UFS relocation, HFS Extents Overflow relocation, checksummed Btrfs data relocation, APFS checkpoint-history retention, recursive PFS3 directories plus validated hard-link preservation, soft-link relocation and rollover-file relocation, stable recovery identities, FAT journal-v2 identity/capacity binding with exclusive mutation locking, hardened privileged mutation argument/environment policy, corrected PFS3/APFS native-map contracts, bounded UFS Test Media creation below makefs's 2 GiB boundary, modern feature-disabled OpenZFS Test Media creation, and expanded exact ZFS checksum coverage. Each write capability remains behind its filesystem-specific preflight, durable transaction/recovery contract and final verification.
+The 1.8.0-221 capability baseline retains the fully qualified 1.8.0-220 filesystem and transaction model and changes presentation only: Day mode now uses explicit menu foregrounds, neutral light surfaces and controls, Common Night semantic roles over the permanently dark hero artwork, neutral action/summary chrome, and a dark allocation-map canvas in the native desktop. Night-mode palette mappings and filesystem parsing, placement, mutation and recovery semantics are unchanged. Each write capability remains behind its filesystem-specific preflight, durable transaction/recovery contract and final verification.
 
 The release-governance baseline is `a3c3bf4fed0007178886d411e4172ce2b5302643`. The malformed-media matrix, transaction/recovery tests, native integration fixtures, GUI contract tests, release/package tests and architecture ownership checks remain part of the permanent **Project quality gate**. Environment-dependent destructive-media evidence remains supplementary and is not represented as hosted-CI proof.
 
