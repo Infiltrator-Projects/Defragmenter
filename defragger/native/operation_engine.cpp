@@ -127,7 +127,7 @@ int main(int argc, char** argv) {
 
     std::string worker;
     try {
-        worker = defragger::resolve_program(specification->worker);
+        worker = defragger::resolve_program(specification->worker, false);
     } catch (const std::exception& error) {
         std::fprintf(stderr, "linux-defragger-operation-engine: %s\n",
                      error.what());

@@ -1498,8 +1498,9 @@ cleanup:
     return result;
 }
 
-int pfs3_commit_stage(const char *stage, const char *target, uint64_t *written,
-                      char *error, size_t error_size)
+int pfs3_commit_stage(const char *stage, const char *target,
+                      const char *target_identity, uint64_t target_bytes,
+                      uint64_t *written, char *error, size_t error_size)
 {
     Pfs3Analysis analysis;
     if (pfs3_analyse(stage, &analysis, NULL, 0U, error, error_size) != 0)
@@ -1509,7 +1510,15 @@ int pfs3_commit_stage(const char *stage, const char *target, uint64_t *written,
         set_errno_error(error, error_size, "cannot open PFS3 recovery stage");
         return -1;
     }
-    int target_fd = ld_device_open_verified_fd(target, true, NULL, 0U);
+    if (target_identity == NULL || *target_identity == '\0' || target_bytes == 0U) {
+        (void)close(source_fd);
+        if (error != NULL && error_size != 0U)
+            (void)snprintf(error, error_size,
+                           "PFS3 commit requires a recorded target identity and capacity");
+        return -1;
+    }
+    int target_fd = ld_device_open_verified_fd(target, true,
+                                               target_identity, target_bytes);
     if (target_fd < 0) {
         (void)close(source_fd);
         set_errno_error(error, error_size, "cannot open verified PFS3 target");

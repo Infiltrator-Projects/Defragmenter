@@ -25,6 +25,8 @@ int main(void) {
 
     RelocationJournal source = {
         .device_path = ld_xstrdup("/dev/test-fat"),
+        .target_identity = ld_xstrdup("regular:8:1:4242"),
+        .physical_bytes = UINT64_C(2147483648),
         .volume_id = UINT32_C(0x1234ABCD),
         .stage = J_DEST_LINKED,
         .root_old = 5,
@@ -66,6 +68,8 @@ int main(void) {
     RelocationJournal loaded = relocation_journal_read(path);
     if (
         strcmp(loaded.device_path, source.device_path) != 0
+        || strcmp(loaded.target_identity, source.target_identity) != 0
+        || loaded.physical_bytes != source.physical_bytes
         || loaded.volume_id != source.volume_id
         || loaded.stage != source.stage
         || loaded.root_old != source.root_old

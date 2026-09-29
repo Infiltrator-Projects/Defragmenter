@@ -428,8 +428,15 @@ static RelocationJournal make_relocation_journal(
     const RelocationMove *moves,
     size_t move_count
 ) {
+    char target_identity[160];
+    if (ld_device_format_identity(&filesystem->dev, target_identity,
+                                  sizeof(target_identity)) != 0) {
+        ld_die_errno("capture FAT transaction target identity");
+    }
     RelocationJournal journal = {
         .device_path = ld_xstrdup(filesystem->dev.path),
+        .target_identity = ld_xstrdup(target_identity),
+        .physical_bytes = filesystem->dev.size_bytes,
         .volume_id = filesystem->volume_id,
         .stage = J_PREPARED,
         .root_old = filesystem->root_cluster,
@@ -506,6 +513,11 @@ static void complete_relocation_journal(
 ) {
     if (strcmp(journal->device_path, filesystem->dev.path) != 0) {
         ld_die("relocation journal belongs to a different device path");
+    }
+    if (!ld_device_matches_identity(&filesystem->dev,
+                                    journal->target_identity,
+                                    journal->physical_bytes)) {
+        ld_die("relocation journal target identity or capacity does not match the opened FAT target");
     }
     if (journal->volume_id != filesystem->volume_id) {
         ld_die("relocation journal volume ID does not match target");

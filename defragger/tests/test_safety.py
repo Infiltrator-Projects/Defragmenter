@@ -111,6 +111,8 @@ def test_native_privileged_helper_contract() -> None:
     assert "worker_running_" in source
     assert "kill(-child, SIGINT)" in source
     assert "stop_active_and_wait()" in source
+    assert 'return {"LC_ALL=C", "LANG=C"};' in source
+    assert "for (char** item = environ" not in source
 
     assert "ld_path_is_mounted(device.c_str())" in engine
     assert "ld_block_device_has_system_use(device.c_str(), &system_use)" in engine
@@ -118,6 +120,8 @@ def test_native_privileged_helper_contract() -> None:
     assert "execv(raw[0], raw.data())" in engine
     assert '"/var/lib/linux-defragger/state"' in policy
     assert "journal.lexically_normal().parent_path() != expected_parent" in policy
+    assert "--diagnostic-log" not in policy
+    assert "operation confirmation does not match target" in policy
 
 
 if __name__ == "__main__":

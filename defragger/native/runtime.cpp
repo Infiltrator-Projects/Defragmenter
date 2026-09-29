@@ -331,17 +331,18 @@ std::vector<std::string> without_options(
     return filtered;
 }
 
-std::string resolve_program(std::string_view program_id) {
+std::string resolve_program(std::string_view program_id,
+                            bool allow_environment_override) {
     const ProgramSpec* spec = program_spec(program_id);
     if (spec == nullptr)
         throw std::runtime_error(
             "unknown Defragmenter program: " + std::string(program_id));
 
     std::vector<fs::path> candidates;
-    // Never allow process environment to select the executable that will be
-    // elevated through pkexec. Development overrides remain available for
-    // unprivileged workers and tools only.
-    if (program_id != "helper") {
+    // Development overrides are an explicit caller capability. Privileged
+    // dispatch passes false so root worker selection can never be influenced
+    // by LINUX_DEFRAGGER_* executable environment variables.
+    if (allow_environment_override && program_id != "helper") {
         if (const char* override_path = std::getenv(spec->environment);
             override_path != nullptr && *override_path != '\0') {
             candidates.emplace_back(override_path);

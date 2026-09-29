@@ -37,5 +37,7 @@ int affs_analyse_json(const char *path, char **error);
 int affs_build_stage(const char *source, const char *stage, bool growth, unsigned growth_percent,
                      bool live_updates, uint64_t *commit_bytes, char **error);
 int affs_verify_layout(const char *path, bool growth, unsigned growth_percent, char **error);
-int affs_commit_stage(const char *stage, const char *target, uint64_t *written, char **error);
+int affs_commit_stage(const char *stage, const char *target,
+                      const char *target_identity, uint64_t target_bytes,
+                      uint64_t *written, char **error);
 #endif

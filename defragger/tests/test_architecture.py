@@ -1198,6 +1198,25 @@ def test_forensic_scalability_protocol_and_safety_contracts() -> None:
     assert "ld_regular_file_write_conflict_identity" in device_source
     assert "ld_regular_file_has_loop_mapping(target, false)" in device_source
 
+    fat_journal_header = (
+        GUI / "filesystems" / "fat" / "native" / "fat_journal.h"
+    ).read_text()
+    fat_journal_source = (
+        GUI / "filesystems" / "fat" / "native" / "fat_journal.c"
+    ).read_text()
+    fat_relocation = (
+        GUI / "filesystems" / "fat" / "native" / "fat_relocation.c"
+    ).read_text()
+    fat_writer = (
+        GUI / "filesystems" / "fat" / "native" / "writer.c"
+    ).read_text()
+    assert "LINUX-DEFRAGGER-RELOCATION-JOURNAL-2" in fat_journal_header
+    assert "target_identity" in fat_journal_source
+    assert "physical_bytes" in fat_journal_source
+    assert "ld_device_matches_identity" in fat_relocation
+    assert "flock(dev.fd, LOCK_EX | LOCK_NB)" in fat_writer
+    assert "legacy FAT recovery journal lacks stable target identity" in fat_writer
+
     unmount_position = test_media.index("if (unmount_descendants(canonical) != 0)")
     destructive_recheck = test_media.index(
         "if (ld_path_is_mounted(canonical))", unmount_position
@@ -1213,6 +1232,13 @@ def test_forensic_scalability_protocol_and_safety_contracts() -> None:
     ).read_text()
     assert "ld_bitmap_size(inventory->summary.filesystem_fragments" in ufs_native
     assert "(uint64_t)SIZE_MAX * 8U" not in ufs_native
+
+    runtime_source = (ROOT / "native" / "runtime.cpp").read_text()
+    operation_engine = (ROOT / "native" / "operation_engine.cpp").read_text()
+    privileged_helper = (ROOT / "native" / "privileged_helper.cpp").read_text()
+    assert "allow_environment_override" in runtime_source
+    assert "resolve_program(specification->worker, false)" in operation_engine
+    assert 'return {"LC_ALL=C", "LANG=C"};' in privileged_helper
 
     for ext_source in (
         GUI / "filesystems" / "ext4" / "native" / "ext_catalog.c",

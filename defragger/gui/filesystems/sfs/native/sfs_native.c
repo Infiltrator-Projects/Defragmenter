@@ -1538,13 +1538,21 @@ int sfs_verify_layout(const char *path, bool growth, unsigned growth_percent,
     return 0;
 }
 
-int sfs_commit_stage(const char *stage, const char *target, uint64_t *written,
-                     char *error, size_t error_size) {
+int sfs_commit_stage(const char *stage, const char *target,
+                     const char *target_identity, uint64_t target_bytes,
+                     uint64_t *written, char *error, size_t error_size) {
     SfsAnalysis analysis;
     if (sfs_analyse(stage, &analysis, NULL, 0U, error, error_size) != 0)
         return -1;
+    if (target_identity == NULL || *target_identity == '\0' || target_bytes == 0U) {
+        if (error != NULL && error_size != 0U)
+            (void)snprintf(error, error_size,
+                           "SFS commit requires a recorded target identity and capacity");
+        return -1;
+    }
     int source_fd = open(stage, O_RDONLY | O_CLOEXEC);
-    int target_fd = ld_device_open_verified_fd(target, true, NULL, 0U);
+    int target_fd = ld_device_open_verified_fd(target, true,
+                                               target_identity, target_bytes);
     if (source_fd < 0 || target_fd < 0) {
         if (source_fd >= 0) (void)close(source_fd);
         if (target_fd >= 0) (void)close(target_fd);

@@ -28,6 +28,7 @@ void journal_free(Journal *j) {
 
 void relocation_journal_free(RelocationJournal *j) {
     free(j->device_path);
+    free(j->target_identity);
     free(j->moves);
     free(j->dir_patches);
     memset(j, 0, sizeof(*j));
@@ -104,6 +105,8 @@ static bool relocation_journal_write_stream(FILE *file, const void *user_data) {
     const RelocationJournal *j = user_data;
     fprintf(file, "%s\n", RELOCATION_JOURNAL_MAGIC);
     fprintf(file, "device=%s\n", j->device_path);
+    fprintf(file, "target_identity=%s\n", j->target_identity);
+    fprintf(file, "physical_bytes=%" PRIu64 "\n", j->physical_bytes);
     fprintf(file, "volume_id=%08" PRIx32 "\n", j->volume_id);
     fprintf(file, "stage=%d\n", (int)j->stage);
     fprintf(file, "root_old=%" PRIu32 "\n", j->root_old);
@@ -229,6 +232,8 @@ RelocationJournal relocation_journal_read(const char *path) {
             INFILTRATR_CONFIG_LINE_ENTRY)
             continue;
         if (strcmp(key, "device") == 0) j.device_path = ld_xstrdup(eq);
+        else if (strcmp(key, "target_identity") == 0) j.target_identity = ld_xstrdup(eq);
+        else if (strcmp(key, "physical_bytes") == 0) j.physical_bytes = parse_u64_value(eq, 10U, "physical_bytes");
         else if (strcmp(key, "volume_id") == 0) j.volume_id = parse_u32_value(eq, 16U, "volume_id");
         else if (strcmp(key, "stage") == 0) j.stage = parse_stage_value(eq);
         else if (strcmp(key, "root_old") == 0) j.root_old = parse_u32_value(eq, 10U, "root_old");
@@ -268,8 +273,10 @@ RelocationJournal relocation_journal_read(const char *path) {
     }
     free(line);
     fclose(fp);
-    if (j.device_path == NULL || j.move_count == 0 || j.move_count != expected_moves ||
-        j.dir_patch_count != expected_patches || j.root_old < 2 || j.root_new < 2) {
+    if (j.device_path == NULL || j.target_identity == NULL ||
+        j.physical_bytes == 0U || j.move_count == 0 ||
+        j.move_count != expected_moves || j.dir_patch_count != expected_patches ||
+        j.root_old < 2 || j.root_new < 2) {
         relocation_journal_free(&j);
         ld_die("relocation journal is incomplete or corrupt");
     }

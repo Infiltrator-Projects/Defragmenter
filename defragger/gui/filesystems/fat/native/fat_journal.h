@@ -9,7 +9,8 @@
 #include "fat_volume.h"
 
 #define JOURNAL_MAGIC "LINUX-DEFRAGGER-JOURNAL-1"
-#define RELOCATION_JOURNAL_MAGIC "LINUX-DEFRAGGER-RELOCATION-JOURNAL-1"
+#define RELOCATION_JOURNAL_MAGIC_V1 "LINUX-DEFRAGGER-RELOCATION-JOURNAL-1"
+#define RELOCATION_JOURNAL_MAGIC "LINUX-DEFRAGGER-RELOCATION-JOURNAL-2"
 
 typedef enum {
     J_PREPARED = 0,
@@ -44,6 +45,8 @@ typedef struct {
 
 typedef struct {
     char *device_path;
+    char *target_identity;
+    uint64_t physical_bytes;
     uint32_t volume_id;
     JournalStage stage;
     uint32_t root_old;

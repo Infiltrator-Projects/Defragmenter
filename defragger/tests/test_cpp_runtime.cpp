@@ -330,6 +330,35 @@ int main() {
     }
     ok = check(rejected_journal, "privileged journal boundary") && ok;
 
+    bool rejected_diagnostic_log = false;
+    try {
+        (void)helper_command(
+            "operation-engine",
+            {"defrag", "/dev/test", "--filesystem", "fat32", "--write",
+             "--confirm", "/dev/test", "--journal",
+             "/var/lib/linux-defragger/state/1000/test.journal",
+             "--diagnostic-log", "/etc/defragger-root.log"},
+            1000U);
+    } catch (const std::exception&) {
+        rejected_diagnostic_log = true;
+    }
+    ok = check(rejected_diagnostic_log,
+               "privileged worker rejects arbitrary path options") && ok;
+
+    bool rejected_confirm = false;
+    try {
+        (void)helper_command(
+            "operation-engine",
+            {"defrag", "/dev/test", "--filesystem", "fat32", "--write",
+             "--confirm", "/dev/other", "--journal",
+             "/var/lib/linux-defragger/state/1000/test.journal"},
+            1000U);
+    } catch (const std::exception&) {
+        rejected_confirm = true;
+    }
+    ok = check(rejected_confirm,
+               "privileged confirmation must match target") && ok;
+
     const std::string manifest = registry_manifest_json();
     ok = check(manifest.find("\"schema\":3") != std::string::npos,
                "manifest schema") && ok;

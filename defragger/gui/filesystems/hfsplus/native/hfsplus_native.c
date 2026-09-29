@@ -1259,10 +1259,17 @@ int hfsplus_verify_layout(const char *path, bool growth, unsigned gp, char **err
 }
 
 int hfsplus_commit_stage(const char *stage_path, const char *target_path,
+                         const char *target_identity, uint64_t target_bytes,
                          uint64_t *written, char **error) {
     HfsPlusVolume stage;
     if (hfsplus_scan(stage_path, false, &stage, error)) return -1;
-    int target = ld_device_open_verified_fd(target_path, true, NULL, 0U);
+    if (target_identity == NULL || *target_identity == '\0' || target_bytes == 0U) {
+        hfsplus_set_error(error, "HFS+ commit requires a recorded target identity and capacity");
+        hfsplus_close(&stage);
+        return -1;
+    }
+    int target = ld_device_open_verified_fd(target_path, true,
+                                            target_identity, target_bytes);
     if (target < 0) { hfsplus_set_error(error, "cannot open HFS+ source for commit: %s", strerror(errno)); hfsplus_close(&stage); return -1; }
     unsigned char *buffer = malloc(HFS_IO_CHUNK);
     if (!buffer) { hfsplus_set_error(error, "out of memory committing HFS+ stage"); close(target); hfsplus_close(&stage); return -1; }

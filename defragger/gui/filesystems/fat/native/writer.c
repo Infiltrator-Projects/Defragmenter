@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/file.h>
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
@@ -2076,6 +2077,9 @@ int main(int argc, char **argv) {
     if (mutating && (!write_flag || confirm == NULL || strcmp(confirm, device_path) != 0)) {
         ld_die("writes require both --write and --confirm with the exact DEVICE path");
     }
+    if (mutating && (journal_arg == NULL || journal_arg[0] != '/')) {
+        ld_die("writes require an absolute --journal PATH in the protected recovery namespace");
+    }
     if (!mutating && strcmp(command, "identify") != 0
             && strcmp(command, "analyze") != 0 && strcmp(command, "map") != 0) {
         usage(stderr);
@@ -2106,6 +2110,12 @@ int main(int argc, char **argv) {
     }
     char *journal_path = journal_arg == NULL ? default_journal_path(device_path) : ld_xstrdup(journal_arg);
     Device dev = ld_device_open(device_path, mutating);
+    if (mutating && flock(dev.fd, LOCK_EX | LOCK_NB) != 0) {
+        const int failure = errno;
+        ld_device_close(&dev);
+        errno = failure;
+        ld_die_errno("lock FAT target exclusively");
+    }
     g_io.rotational = ld_device_is_rotational(&dev);
     g_io.serial_flash = ld_device_is_serial_flash(&dev);
     g_io.ram_limit = strcmp(ram_buffer_arg, "auto") == 0
@@ -2133,8 +2143,9 @@ int main(int argc, char **argv) {
             fat_relocation_recover_mapped(
                 &fs, journal_path, &g_io, detail_log
             );
-        } else if (journal_has_magic(journal_path, JOURNAL_MAGIC)) {
-            fat_relocation_recover_legacy(&fs, journal_path);
+        } else if (journal_has_magic(journal_path, RELOCATION_JOURNAL_MAGIC_V1) ||
+                   journal_has_magic(journal_path, JOURNAL_MAGIC)) {
+            ld_die("legacy FAT recovery journal lacks stable target identity and capacity; refusing automatic recovery");
         } else {
             ld_die("journal has an unrecognised format");
         }

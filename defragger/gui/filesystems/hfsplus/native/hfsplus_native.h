@@ -71,6 +71,7 @@ int hfsplus_build_stage(const char *source, const char *stage, bool growth,
 int hfsplus_verify_layout(const char *path, bool growth, unsigned growth_percent,
                           char **error);
 int hfsplus_commit_stage(const char *stage, const char *target,
+                         const char *target_identity, uint64_t target_bytes,
                          uint64_t *written, char **error);
 
 #endif

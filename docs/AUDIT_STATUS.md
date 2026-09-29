@@ -9,6 +9,8 @@ Applies to: release version 1.8.0-220
 Audited source commit: b317f5bb8577aaac116adcb8a1f36faa40d0301b
 Audited release-governance commit: e09599f6c84b31e7f29ec5da9e5f9db23807b9d9
 
+This status records the immutable 1.8.0-220 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
+
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
 This document records the current release safety case. Historical audit-development detail remains in Git history and immutable release tags rather than being repeated as a second changelog.

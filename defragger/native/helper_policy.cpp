@@ -38,29 +38,83 @@ std::uint32_t parse_uid(const char* raw) {
 
 void validate_operation_args(const std::vector<std::string>& arguments,
                              std::uint32_t invoking_uid) {
-    if (arguments.empty() ||
-        (arguments.front() != "defrag" &&
-         arguments.front() != "growth-defrag" &&
-         arguments.front() != "recover")) {
+    if (arguments.size() < 2U ||
+        (arguments[0] != "defrag" &&
+         arguments[0] != "growth-defrag" &&
+         arguments[0] != "recover")) {
         throw std::runtime_error("operation-engine command is not allowed");
     }
 
+    const std::string& operation = arguments[0];
+    const std::string& device = arguments[1];
+    if (device.empty() || device[0] != '/')
+        throw std::runtime_error("operation target must be an absolute path");
+
     bool has_filesystem = false;
+    bool has_write = false;
+    bool has_confirm = false;
+    bool has_growth = false;
     std::size_t journal_count = 0U;
     fs::path journal;
-    for (std::size_t index = 0U; index < arguments.size(); ++index) {
-        if (arguments[index] == "--filesystem") has_filesystem = true;
-        if (arguments[index] == "--journal") {
-            ++journal_count;
-            if (index + 1U >= arguments.size())
-                throw std::runtime_error(
-                    "operation-engine request has a truncated journal option");
-            journal = arguments[index + 1U];
+
+    for (std::size_t index = 2U; index < arguments.size();) {
+        const std::string& token = arguments[index];
+        if (token == "--write") {
+            if (has_write)
+                throw std::runtime_error("operation-engine request repeats --write");
+            has_write = true;
+            ++index;
+            continue;
         }
+
+        const bool takes_value =
+            token == "--filesystem" || token == "--confirm" ||
+            token == "--journal" || token == "--growth-percent" ||
+            token == "--batch-clusters" || token == "--ram-buffer" ||
+            token == "--live-map-cells";
+        if (!takes_value)
+            throw std::runtime_error(
+                "operation-engine request contains an unsupported option: " + token);
+        if (index + 1U >= arguments.size())
+            throw std::runtime_error(
+                "operation-engine request has a truncated option: " + token);
+        const std::string& value = arguments[index + 1U];
+        if (value.empty())
+            throw std::runtime_error(
+                "operation-engine request has an empty option value: " + token);
+
+        if (token == "--filesystem") {
+            if (has_filesystem)
+                throw std::runtime_error("operation-engine request repeats --filesystem");
+            static const std::regex filesystem_name(
+                R"(^[A-Za-z0-9+_.-]+$)", std::regex::ECMAScript);
+            if (!std::regex_match(value, filesystem_name))
+                throw std::runtime_error("operation filesystem identifier is not valid");
+            has_filesystem = true;
+        } else if (token == "--confirm") {
+            if (has_confirm)
+                throw std::runtime_error("operation-engine request repeats --confirm");
+            if (value != device)
+                throw std::runtime_error("operation confirmation does not match target");
+            has_confirm = true;
+        } else if (token == "--journal") {
+            ++journal_count;
+            journal = value;
+        } else if (token == "--growth-percent") {
+            if (has_growth || operation != "growth-defrag" || value != "10")
+                throw std::runtime_error(
+                    "growth percentage is permitted only once as 10 for growth-defrag");
+            has_growth = true;
+        }
+        index += 2U;
     }
-    if (!has_filesystem)
+
+    if (!has_filesystem || !has_write || !has_confirm)
         throw std::runtime_error(
-            "operation-engine request has no filesystem plugin");
+            "operation-engine request is missing required mutation authority");
+    if (operation == "growth-defrag" && !has_growth)
+        throw std::runtime_error(
+            "growth-defrag request must provide the fixed 10 percent reserve");
     if (journal_count != 1U)
         throw std::runtime_error(
             "operation-engine request must provide exactly one journal");

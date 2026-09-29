@@ -170,20 +170,12 @@ std::vector<std::string> string_array(const Json& value) {
 }
 
 std::vector<std::string> child_environment() {
-    std::vector<std::string> result;
-    if (environ != nullptr) {
-        for (char** item = environ; *item != nullptr; ++item) {
-            const std::string_view value(*item);
-            if (value.rfind("LC_ALL=", 0U) == 0U ||
-                value.rfind("LANG=", 0U) == 0U) {
-                continue;
-            }
-            result.emplace_back(*item);
-        }
-    }
-    result.emplace_back("LC_ALL=C");
-    result.emplace_back("LANG=C");
-    return result;
+    /*
+     * Privileged children execute fixed absolute binaries. Do not propagate
+     * caller-controlled loader, executable-override, HOME, PATH or language
+     * runtime state into the root process tree.
+     */
+    return {"LC_ALL=C", "LANG=C"};
 }
 
 pid_t spawn_command(const HelperCommand& allowed, int read_fd, int write_fd) {
