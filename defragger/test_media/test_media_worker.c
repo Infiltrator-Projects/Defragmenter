@@ -1950,13 +1950,29 @@ cleanup:
     return result;
 }
 
-static int zfs_exact_analysis_ok(const char *path) {
+static int zfs_exact_analysis_ok(const char *path,
+                                 char *detail, size_t detail_capacity) {
     LdZfsAnalysis analysis;
     char error[256] = {0};
-    if (zfs_analyse_exact(path, &analysis, error, sizeof(error)) != 0)
+    if (detail != NULL && detail_capacity != 0U)
+        detail[0] = '\0';
+    if (zfs_analyse_exact(path, &analysis, error, sizeof(error)) != 0) {
+        if (detail != NULL && detail_capacity != 0U)
+            (void)snprintf(
+                detail, detail_capacity,
+                "native exact ZFS analyser rejected the pool: %s",
+                error[0] != '\0' ? error : "unsupported on-disk state");
         return 0;
+    }
     const int ok = analysis.exact_allocation && analysis.exact_fragmentation &&
                    analysis.unknown_bytes == 0U;
+    if (!ok && detail != NULL && detail_capacity != 0U)
+        (void)snprintf(
+            detail, detail_capacity,
+            "native ZFS analysis was not exact (allocation=%s fragmentation=%s unknown=%llu)",
+            analysis.exact_allocation ? "yes" : "no",
+            analysis.exact_fragmentation ? "yes" : "no",
+            (unsigned long long)analysis.unknown_bytes);
     zfs_analysis_destroy(&analysis);
     return ok;
 }
@@ -1995,8 +2011,16 @@ static int create_ufs_and_populate(const LdtmFilesystemSpec *spec, const char *p
     makefs_argv[3] = "-B";
     makefs_argv[4] = "little";
     makefs_argv[5] = "-s";
+    /*
+     * Debian makefs documents a historical internal-long limitation at the
+     * 2 GiB boundary. The Test Media partition remains 2048 MiB, but build a
+     * 2047 MiB UFS2 image so qualification never depends on undefined/borderline
+     * makefs behaviour at exactly 2 GiB.
+     */
+    const uint32_t ufs_image_mib =
+        spec->size_mib >= 2048U ? 2047U : spec->size_mib;
     if (snprintf(image_size, sizeof(image_size), "%um",
-                 spec->size_mib) <= 0)
+                 ufs_image_mib) <= 0)
         return -1;
     makefs_argv[6] = image_size;
     makefs_argv[7] = "-o";
@@ -2005,9 +2029,23 @@ static int create_ufs_and_populate(const LdtmFilesystemSpec *spec, const char *p
     makefs_argv[9] = image;
     makefs_argv[10] = source;
     makefs_argv[11] = NULL;
-    if (run_process(makefs_argv, NULL, 0) != 0 || !ufs2_summary_ok(image)) {
-        emit_status(spec->key, "format-failed", "makefs did not produce a recognised UFS2 image");
-        (void)state_write_status(state, spec, "format-failed", "makefs UFS2 validation failed");
+    const int makefs_result = run_process(makefs_argv, NULL, 0);
+    if (makefs_result != 0) {
+        char detail[192];
+        (void)snprintf(
+            detail, sizeof(detail),
+            "makefs failed while building the bounded %u MiB UFS2 image",
+            ufs_image_mib);
+        emit_status(spec->key, "format-failed", detail);
+        (void)state_write_status(state, spec, "format-failed", detail);
+        return 1;
+    }
+    if (!ufs2_summary_ok(image)) {
+        emit_status(spec->key, "format-failed",
+                    "makefs completed but the native UFS2 parser rejected its image");
+        (void)state_write_status(
+            state, spec, "format-failed",
+            "makefs output failed native UFS2 geometry validation");
         return 1;
     }
     printf("+ copy verified UFS2 image %s -> %s\n", image, partition);
@@ -2078,9 +2116,18 @@ static int create_zfs_and_populate(const LdtmFilesystemSpec *spec, const char *p
         snprintf(mountpoint, sizeof(mountpoint), "%s/ldtest", altroot) <= 0) return -1;
     if (run_process(wipe_argv, NULL, 0) != 0) return -1;
     {
+        /*
+         * OpenZFS feature flags replaced the legacy numeric pool-version
+         * creation interface. -d creates a deterministic feature-flags pool
+         * with every optional feature disabled; the bounded native analyser
+         * explicitly supports that version-5000/no-feature contract.
+         */
         const char *const argv[] = {
-            "zpool", "create", "-f", "-R", altroot, "-m", "/ldtest",
-            "-o", "cachefile=none", "-o", "version=28",
+            "zpool", "create", "-d", "-f",
+            "-R", altroot, "-m", "/ldtest",
+            "-o", "cachefile=none",
+            "-O", "compression=off",
+            "-O", "checksum=fletcher4",
             pool, partition, NULL
         };
         if (run_process(argv, NULL, 0) != 0) {
@@ -2100,13 +2147,22 @@ static int create_zfs_and_populate(const LdtmFilesystemSpec *spec, const char *p
         const char *const export_argv[] = {"zpool", "export", pool, NULL};
         if (run_process(export_argv, NULL, 0) != 0) return -1;
     }
-    if (!zfs_exact_analysis_ok(partition)) {
-        emit_status(spec->key, "format-failed",
-                    "native exact analyser rejected the exported ZFS v28 pool");
-        (void)state_write_status(
-            state, spec, "format-failed",
-            "native exact analyser rejected the exported ZFS v28 pool");
-        return 1;
+    {
+        char detail[512] = {0};
+        if (!zfs_exact_analysis_ok(
+                partition, detail, sizeof(detail))) {
+            emit_status(
+                spec->key, "format-failed",
+                detail[0] != '\0'
+                    ? detail
+                    : "native exact analyser rejected the exported feature-disabled ZFS pool");
+            (void)state_write_status(
+                state, spec, "format-failed",
+                detail[0] != '\0'
+                    ? detail
+                    : "native exact analyser rejected the exported feature-disabled ZFS pool");
+            return 1;
+        }
     }
     {
         char detail[512];
@@ -2120,7 +2176,7 @@ static int create_zfs_and_populate(const LdtmFilesystemSpec *spec, const char *p
     }
     if (state_write_status(
             state, spec, "populated",
-            "deterministic ZFS v28 payload created; exact production analyser proved real fragmentation") != 0 ||
+            "deterministic feature-disabled ZFS payload created; exact production analyser proved real fragmentation") != 0 ||
         fprintf(state, "pool\t%s\t%s\n", spec->key, pool) < 0 ||
         state_flush(state) != 0 ||
         state_write_targets(state, spec, records, record_count,
@@ -2128,7 +2184,7 @@ static int create_zfs_and_populate(const LdtmFilesystemSpec *spec, const char *p
         return -1;
     emit_status(
         spec->key, "populated",
-        "deterministic ZFS v28 payload created; exact production analyser proved real fragmentation");
+        "deterministic feature-disabled ZFS payload created; exact production analyser proved real fragmentation");
     return 0;
 }
 

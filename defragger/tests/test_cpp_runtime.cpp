@@ -111,6 +111,8 @@ int main() {
     const BackendInfo* apfs = backend_by_fstype("apfs");
     ok = check(apfs != nullptr, "APFS lookup") && ok;
     if (apfs != nullptr) {
+        ok = check(apfs->map_accuracy == "exact-bounded-spaceman",
+                   "APFS registry matches native map accuracy") && ok;
         ok = check((apfs->capabilities & CAP_DEFRAG) != 0U,
                    "APFS advertises bounded defrag") && ok;
         ok = check(operation_for(*apfs, "growth-defrag") != nullptr,

@@ -1115,8 +1115,14 @@ static void fill_cells(const PfsModel *model, Pfs3MapCell *cells,
         Pfs3MapCell *cell = &cells[index];
         memset(cell, 0, sizeof(*cell));
         cell->start = (total * index) / cell_count;
-        cell->end = (total * (index + 1U)) / cell_count;
-        for (uint64_t block = cell->start; block < cell->end; ++block) {
+        const uint64_t end_exclusive =
+            (total * (index + 1U)) / cell_count;
+        /*
+         * Pfs3MapCell follows the shared native-map contract: start/end are
+         * inclusive. Keep the scan itself half-open to avoid fencepost errors.
+         */
+        cell->end = end_exclusive - 1U;
+        for (uint64_t block = cell->start; block < end_exclusive; ++block) {
             if (block >= model->root.disksize) {
                 cell->outside_count++;
             } else if (ld_bitmap_get(model->free_map, block)) {

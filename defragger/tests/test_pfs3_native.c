@@ -506,6 +506,40 @@ int main(int argc, char **argv)
         free(image);
         return 4;
     }
+    {
+        uint64_t expected_start = 0U;
+        uint64_t mapped = 0U;
+        for (size_t index = 0U; index < 16U; ++index) {
+            if (cells[index].start != expected_start ||
+                cells[index].end < cells[index].start) {
+                (void)fprintf(stderr,
+                              "PFS3 map cell boundaries are not inclusive/continuous\n");
+                (void)unlink(source);
+                free(image);
+                return 4;
+            }
+            const uint64_t span =
+                cells[index].end - cells[index].start + 1U;
+            if (cells[index].free_count + cells[index].used_count +
+                    cells[index].outside_count != span ||
+                cells[index].fragmented_count > cells[index].used_count) {
+                (void)fprintf(stderr,
+                              "PFS3 map cell accounting violates native map contract\n");
+                (void)unlink(source);
+                free(image);
+                return 4;
+            }
+            mapped += span;
+            expected_start = cells[index].end + 1U;
+        }
+        if (mapped != TEST_SECTORS || expected_start != TEST_SECTORS) {
+            (void)fprintf(stderr,
+                          "PFS3 map cells do not cover the complete physical image\n");
+            (void)unlink(source);
+            free(image);
+            return 4;
+        }
+    }
 
     char stage[64];
     uint64_t commit_bytes = 0U;
