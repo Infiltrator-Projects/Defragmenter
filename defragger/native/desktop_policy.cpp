@@ -26,21 +26,46 @@ void visit(const Json& node, std::vector<DesktopVolume>& result) {
     std::string filesystem = value(node, "fstype");
     std::transform(filesystem.begin(), filesystem.end(), filesystem.begin(),
                    [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
-    const std::string label = value(node, "partlabel");
+
+    const std::string filesystem_label = value(node, "label");
+    const std::string partition_label = value(node, "partlabel");
+    const std::string discovery_label =
+        !partition_label.empty() ? partition_label : filesystem_label;
+
     if (filesystem.empty()) {
-        if (label == "LD_OFS") filesystem = "ofs";
-        if (label == "LD_FFS") filesystem = "ffs";
-        if (label == "LD_SFS") filesystem = "sfs";
-        if (label == "LD_PFS3") filesystem = "pfs3";
-        if (label == "LD_APFS") filesystem = "apfs";
+        /*
+         * Test Media intentionally includes formats that lsblk/blkid may not
+         * identify on every host.  Its LD_* GPT labels are discovery hints
+         * only; the native analyser still has to prove the real filesystem
+         * identity before any write is enabled.
+         */
+        static const std::pair<const char*, const char*> labelled_filesystems[] = {
+            {"LD_FAT12", "fat12"}, {"LD_FAT16", "fat16"},
+            {"LD_FAT32", "fat32"}, {"LD_EXFAT", "exfat"},
+            {"LD_NTFS", "ntfs"}, {"LD_EXT2", "ext2"},
+            {"LD_EXT3", "ext3"}, {"LD_EXT4", "ext4"},
+            {"LD_XFS", "xfs"}, {"LD_BTRFS", "btrfs"},
+            {"LD_OFS", "ofs"}, {"LD_FFS", "ffs"},
+            {"LD_SFS", "sfs"}, {"LD_PFS3", "pfs3"},
+            {"LD_HFS", "hfs"}, {"LD_HFSPLUS", "hfsplus"},
+            {"LD_MINIX", "minix"}, {"LD_UFS", "ufs"},
+            {"LD_ZFS", "zfs"}, {"LD_APFS", "apfs"},
+            {"LD_SWAP", "swap"},
+        };
+        for (const auto& [label, id] : labelled_filesystems) {
+            if (discovery_label == label) {
+                filesystem = id;
+                break;
+            }
+        }
     }
     const bool generic_fat = filesystem == "fat" || filesystem == "vfat" || filesystem == "msdos";
     if ((backend_by_fstype(filesystem) || generic_fat) && !value(node, "path").empty()) {
         DesktopVolume volume;
         volume.path = value(node, "path");
         volume.filesystem = filesystem;
-        volume.label = value(node, "label");
-        if (volume.label.empty()) volume.label = label;
+        volume.label = filesystem_label;
+        if (volume.label.empty()) volume.label = partition_label;
         volume.filesystem_uuid = value(node, "uuid");
         volume.partition_uuid = value(node, "partuuid");
         volume.serial = value(node, "serial");
