@@ -1216,6 +1216,9 @@ def test_forensic_scalability_protocol_and_safety_contracts() -> None:
     assert "ld_device_matches_identity" in fat_relocation
     assert "flock(dev.fd, LOCK_EX | LOCK_NB)" in fat_writer
     assert "legacy FAT recovery journal lacks stable target identity" in fat_writer
+    assert "default_journal_path" not in fat_writer
+    assert "[--journal PATH]" not in fat_writer
+    assert "mutating && path_exists(journal_path)" in fat_writer
     assert "fat_relocation_recover_legacy" not in fat_relocation
 
     unmount_position = test_media.index("if (unmount_descendants(canonical) != 0)")

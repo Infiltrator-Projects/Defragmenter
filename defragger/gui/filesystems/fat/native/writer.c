@@ -73,16 +73,6 @@ static void detail_log(const char *format, ...) {
     va_end(args);
 }
 
-static char *default_journal_path(const char *device_path) {
-    const char *base = infiltratr_path_basename(device_path);
-    size_t n = 0U;
-    if (!infiltratr_size_add_checked(strlen(base), 40U, &n))
-        ld_die("default FAT journal path is too long");
-    char *path = ld_xmalloc(n);
-    snprintf(path, n, ".linux-defragger-fat-worker-%s.journal", base);
-    return path;
-}
-
 static void reserve_relocation_moves(RelocationMove **moves, size_t *capacity,
                                      size_t count, size_t additional) {
     size_t required = 0U;
@@ -1870,14 +1860,14 @@ static void usage(FILE *out) {
         "  %s identify DEVICE\n"
         "  %s analyze DEVICE [--list]\n"
         "  %s map DEVICE [--cells N]\n"
-        "  %s defrag DEVICE --write --confirm DEVICE [--journal PATH]\n"
+        "  %s defrag DEVICE --write --confirm DEVICE --journal PATH\n"
         "       [--batch-clusters N] [--ram-buffer auto|SIZE] [--workers auto|N]\n"
         "       [--live-map-cells N] [--diagnostic-log PATH] [--verbose]\n"
-        "  %s growth-defrag DEVICE --write --confirm DEVICE [--journal PATH]\n"
+        "  %s growth-defrag DEVICE --write --confirm DEVICE --journal PATH\n"
         "       [--growth-percent 10] [--batch-clusters N]\n"
         "       [--ram-buffer auto|SIZE] [--workers auto|N] [--live-map-cells N]\n"
         "       [--diagnostic-log PATH] [--verbose]\n"
-        "  %s recover DEVICE --write --confirm DEVICE [--journal PATH]\n"
+        "  %s recover DEVICE --write --confirm DEVICE --journal PATH\n"
         "       [--ram-buffer auto|SIZE] [--workers auto|N]\n\n"
         "DEVICE may be an unmounted block-device partition or a regular FAT12/FAT16/FAT32 image.\n"
         "Defragment and Growth Defrag call the same canonical FAT relayout engine.\n"
@@ -2108,7 +2098,7 @@ int main(int argc, char **argv) {
                (unsigned)type, (unsigned)type);
         return EXIT_SUCCESS;
     }
-    char *journal_path = journal_arg == NULL ? default_journal_path(device_path) : ld_xstrdup(journal_arg);
+    char *journal_path = mutating ? ld_xstrdup(journal_arg) : NULL;
     Device dev = ld_device_open(device_path, mutating);
     if (mutating && flock(dev.fd, LOCK_EX | LOCK_NB) != 0) {
         const int failure = errno;
@@ -2156,8 +2146,8 @@ int main(int argc, char **argv) {
         return EXIT_SUCCESS;
     }
 
-    if (path_exists(journal_path)) {
-        ld_die("an unfinished journal exists; run recover before analysis or filesystem relocation");
+    if (mutating && path_exists(journal_path)) {
+        ld_die("an unfinished journal exists; run recover before filesystem relocation");
     }
 
     DirRefList dir_refs = {0};
