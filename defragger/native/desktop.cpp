@@ -388,8 +388,13 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
            accent + ", 0.22), alpha(" + info +
            ", 0.08)); color: " + heading +
            "; border-color: " + accent + "; }\n";
-    css += ".nav-title { font-weight: 600; color: " + heading + "; }\n";
+    css += ".nav-title { font-weight: 700; color: " + heading + "; }\n";
     css += ".nav-subtitle { font-size: 9px; color: " + detail + "; }\n";
+    css += ".nav-analyse image { color: " + accent + "; }\n";
+    css += ".nav-defrag image { color: " + info + "; }\n";
+    css += ".nav-growth image { color: " + success + "; }\n";
+    css += ".nav-recover image { color: #9B5CFF; }\n";
+    css += ".nav-test-media image { color: " + success + "; }\n";
     css += ".card, .panel { background: " + card_background +
            "; border: 1px solid " + border + "; border-radius: " +
            std::to_string(metrics->card_radius) + "px; }\n";
@@ -1236,6 +1241,12 @@ private:
     {
         auto* button = gtk_button_new();
         css_class(button, "nav-button");
+        const std::string action_id(action);
+        if (action_id == "page-analyse") css_class(button, "nav-analyse");
+        else if (action_id == "page-defrag") css_class(button, "nav-defrag");
+        else if (action_id == "page-growth") css_class(button, "nav-growth");
+        else if (action_id == "page-recover") css_class(button, "nav-recover");
+        else if (action_id == "page-test-media") css_class(button, "nav-test-media");
         if (selected) css_class(button, "nav-selected");
         auto* row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 9);
         auto* icon = gtk_image_new_from_icon_name(
@@ -1274,7 +1285,8 @@ private:
         const std::string action_id(action);
         if (action_id == "analyse") css_class(button, "action-analyse");
         else if (action_id == "defrag") css_class(button, "action-defrag");
-        else if (action_id == "growth-defrag") css_class(button, "action-growth");
+        else if (action_id == "growth-defrag" || action_id == "test-media")
+            css_class(button, "action-growth");
         else if (action_id == "recover") css_class(button, "action-recover");
         auto* row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 9);
         auto* icon = gtk_image_new_from_icon_name(
