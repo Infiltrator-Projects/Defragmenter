@@ -5,11 +5,11 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-09-29
 
-Applies to: release version 1.8.0-222
-Audited source commit: a7f6906d5f44caeff14dc578cf73249961512df7
+Applies to: release version 1.8.0-223
+Audited source commit: 79f5db6ac65f291bdbaa82b6ee07e399a84cb10d
 Audited release-governance commit: e09599f6c84b31e7f29ec5da9e5f9db23807b9d9
 
-This status records the 1.8.0-222 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
+This status records the 1.8.0-223 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
@@ -17,9 +17,9 @@ This document records the current release safety case. Historical audit-developm
 
 ## Qualification evidence
 
-The current audited production-source baseline is commit `a7f6906d5f44caeff14dc578cf73249961512df7` for release version 1.8.0-222. Hosted Project quality run 36542545566 built the warnings-as-errors tree, passed the shipped native GTK desktop smoke test and completed all 46 CTests successfully; its ASan/UBSan lane also passed. The hosted quality job stopped only at the intentional stale-audit drift guard because this document still named the prior 1.8.0-221 production baseline. This refresh binds the completed audit to the exact native visual-parity source without weakening that control.
+The current audited production-source baseline is commit `79f5db6ac65f291bdbaa82b6ee07e399a84cb10d` for release version 1.8.0-223. Local Linux / heavy qualification run 36547469395 completed successfully on this exact source. Hosted Project quality run 36547469860 built the warnings-as-errors tree, passed the shipped native GTK desktop smoke test and completed all 46 CTests successfully; its ASan/UBSan lane also passed. The hosted quality job stopped only at the intentional audit/version guard because this document still named 1.8.0-222. This refresh binds the completed audit to the exact restored-interface source without weakening that control.
 
-The 1.8.0-222 capability baseline retains the fully qualified 1.8.0-221 filesystem, transaction and Day/Night theme semantics and changes native desktop presentation only. The installed C++ GTK client now uses bounded title-bar icon/control geometry, responsive full-width hero artwork, branded navigation, visible panel hierarchy, equal-width action cards, a contained activity/progress/log surface and responsive scrolling. The correction does not reintroduce the retired Python runtime and does not change filesystem parsing, placement, mutation or recovery semantics. Each write capability remains behind its filesystem-specific preflight, durable transaction/recovery contract and final verification.
+The 1.8.0-223 capability baseline retains the fully qualified 1.8.0-222 filesystem, transaction and Day/Night theme semantics and repairs the incomplete native GUI migration. The installed C++ GTK client again provides the full pre-migration navigation hierarchy (Overview, Analyse, Defragment, Growth Defrag, Recover, Test Media and Settings), dedicated operation pages, automatic read-only analysis on selection, radial summary gauges, File/View/About menus and the dense physical-position pixel raster. The former 8×8 procedural map grid and reduced prototype sidebar are removed. The correction does not reintroduce the retired Python runtime and does not change filesystem parsing, placement, mutation or recovery semantics. Each write capability remains behind its filesystem-specific preflight, durable transaction/recovery contract and final verification.
 
 The release-governance baseline is `a3c3bf4fed0007178886d411e4172ce2b5302643`. The malformed-media matrix, transaction/recovery tests, native integration fixtures, GUI contract tests, release/package tests and architecture ownership checks remain part of the permanent **Project quality gate**. Environment-dependent destructive-media evidence remains supplementary and is not represented as hosted-CI proof.
 
