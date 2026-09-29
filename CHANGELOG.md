@@ -2,6 +2,15 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-226
+
+- Match the native Defragmenter titlebar structure to System Settings by packing Minimize, Maximize and Close into one trailing control box; Close now remains the far-right control instead of being reversed by repeated GtkHeaderBar end-packing.
+- Adopt the System Settings titlebar height, spacing, hover treatment and distinct Close hover state.
+- Remove the legacy File / View / About menu bar from the production native shell. Primary actions already live in the volume controls and left navigation, so the duplicate menu strip is no longer part of the interface.
+- Preserve About access inside Settings as a dedicated About Defragmenter control.
+- Remove the obsolete menu activation callback and add regression checks that forbid the native menu bar and lock the titlebar control ordering.
+- No filesystem, planner, mutation, recovery or privileged-operation behaviour changes.
+
 ## 1.8.0-225
 
 - Restore the missing semantic colour roles on the left navigation icons in the native C++ GTK shell.
