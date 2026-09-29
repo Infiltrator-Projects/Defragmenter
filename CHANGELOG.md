@@ -2,6 +2,15 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-227
+
+- Repair native FAT12/FAT16/FAT32 analysis in the C++ desktop. The FAT mapper now preserves its native cluster contract while also publishing the common unit/totals fields consumed by the migrated desktop, fixing the repeated "Invalid allocation map: Missing or inconsistent allocation cells" failures on FAT Test Media partitions.
+- Restore discovery of Test Media partitions whose filesystem is not identified by the host's lsblk/blkid by using the exact LD_* GPT/filesystem labels only as discovery hints; native probing still has to verify the actual filesystem before any write is enabled. This restores labelled FAT12 and the other supported Test Media slots instead of silently omitting them from the volume list.
+- Make mount state explicit in the volume selector and hero. Dropdown rows now include mounted/unmounted (and read-only where applicable), while the hero uses distinct Mounted and Unmounted states instead of the misleading green "Offline" badge.
+- Restore the allocation-map density caption from the polished interface. The native raster now reports its rendered pixel count and approximate allocation units per pixel, using clusters and cluster size for FAT volumes, and updates the caption if the map is resized.
+- Add regressions for the normalized FAT desktop map contract, labelled FAT12 discovery, scalar/array mountpoint metadata and the restored native UI state/density cues.
+- No filesystem writer, placement, transaction or recovery semantics are changed.
+
 ## 1.8.0-226
 
 - Match the native Defragmenter titlebar structure to System Settings by packing Minimize, Maximize and Close into one trailing control box; Close now remains the far-right control instead of being reversed by repeated GtkHeaderBar end-packing.
