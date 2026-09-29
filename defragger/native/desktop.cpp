@@ -325,10 +325,8 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
     const std::string button_bg = rgb_hex(palette->button_background_rgb);
     const std::string button_fg = rgb_hex(palette->button_foreground_rgb);
     const std::string fault = rgb_hex(palette->fault_rgb);
-    const std::string warning = rgb_hex(palette->warning_rgb);
     const std::string success = rgb_hex(palette->success_rgb);
     const std::string info = rgb_hex(palette->info_rgb);
-    const std::string summary = rgb_hex(palette->summary_rgb);
     const std::string note = rgb_hex(palette->note_rgb);
     const std::string status_border = rgb_hex(palette->status_border_rgb);
     const std::string operation = rgb_hex(palette->operation_rgb);
