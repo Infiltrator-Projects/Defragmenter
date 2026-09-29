@@ -142,10 +142,19 @@ const char* theme_label(InfiltratrThemeMode mode) {
 const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
     const auto* palette =
         infiltratr_theme_resolve(mode, system_prefers_dark());
+    const auto* day_palette =
+        infiltratr_theme_resolve(INFILTRATR_THEME_DAY, false);
+    const auto* chrome =
+        infiltratr_theme_resolve(INFILTRATR_THEME_NIGHT, true);
     const auto* typography = infiltratr_typography();
     const auto* metrics = infiltratr_design_metrics();
-    if (palette == nullptr || typography == nullptr || metrics == nullptr)
+    if (palette == nullptr || day_palette == nullptr || chrome == nullptr ||
+        typography == nullptr || metrics == nullptr)
         throw std::runtime_error("Common design contract is unavailable");
+
+    const bool day_mode =
+        palette->background_rgb == day_palette->background_rgb &&
+        palette->text_rgb == day_palette->text_rgb;
 
     const std::string background = rgb_hex(palette->background_rgb);
     const std::string panel = rgb_hex(palette->panel_rgb);
@@ -157,7 +166,6 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
     const std::string heading = rgb_hex(palette->heading_rgb);
     const std::string detail = rgb_hex(palette->detail_label_rgb);
     const std::string kicker = rgb_hex(palette->kicker_rgb);
-    const std::string titlebar = rgb_hex(palette->titlebar_rgb);
     const std::string accent = rgb_hex(palette->neutral_accent_rgb);
     const std::string accent_hover = rgb_hex(palette->accent_hover_rgb);
     const std::string button_bg = rgb_hex(palette->button_background_rgb);
@@ -165,55 +173,92 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
     const std::string fault = rgb_hex(palette->fault_rgb);
     const std::string operation = rgb_hex(palette->operation_rgb);
 
+    const std::string chrome_titlebar = rgb_hex(chrome->titlebar_rgb);
+    const std::string chrome_heading = rgb_hex(chrome->heading_rgb);
+    const std::string chrome_summary = rgb_hex(chrome->summary_rgb);
+    const std::string chrome_detail = rgb_hex(chrome->detail_label_rgb);
+    const std::string chrome_border = rgb_hex(chrome->status_border_rgb);
+    const std::string chrome_hover = rgb_hex(chrome->surface_hover_rgb);
+    const std::string chrome_accent = rgb_hex(chrome->neutral_accent_rgb);
+
+    const std::string shell_background = day_mode ? surface : background;
+    const std::string sidebar_background = day_mode ? panel : surface;
+    const std::string card_background = day_mode ? panel : card;
+    const std::string control_border = day_mode ? border : accent;
+    const std::string text_background = day_mode ? panel : input;
+
     std::string css;
-    css.reserve(4096U);
-    css += "window, .app-shell { background: " + background +
-           "; color: " + text + "; font-family: '" +
-           typography->ui_family + "'; }\n";
-    css += "headerbar { background: " + titlebar + "; color: " + heading +
-           "; border-bottom: 1px solid " + rgb_hex(palette->status_border_rgb) +
+    css.reserve(6144U);
+    css += "window { background: " + background + "; color: " + text +
+           "; font-family: '" + typography->ui_family + "'; }\n";
+    css += ".app-shell { background: " + shell_background + "; color: " +
+           text + "; font-family: '" + typography->ui_family + "'; }\n";
+
+    /*
+     * The suite title bar and hero artwork are dark branded surfaces in both
+     * appearance modes.  Use Common's Night semantic roles for text/chrome on
+     * those dark rasters instead of placing Day's dark text on dark imagery.
+     */
+    css += "headerbar { background: " + chrome_titlebar + "; color: " +
+           chrome_heading + "; border-bottom: 1px solid " + chrome_border +
            "; min-height: 44px; }\n";
     css += "headerbar button { background: transparent; border: 0; color: " +
-           heading + "; box-shadow: none; }\n";
-    css += "headerbar button:hover { background: " +
-           rgb_hex(palette->surface_hover_rgb) + "; }\n";
-    css += ".brand-title { font-family: '" + std::string(typography->brand_family) +
-           "'; font-size: 20px; font-weight: 600; color: " + heading + "; }\n";
+           chrome_heading + "; box-shadow: none; }\n";
+    css += "headerbar button:hover { background: " + chrome_hover + "; }\n";
+    css += ".brand-title { font-family: '" +
+           std::string(typography->brand_family) +
+           "'; font-size: 20px; font-weight: 600; color: " +
+           chrome_heading + "; }\n";
     css += ".brand-subtitle { font-size: 10px; letter-spacing: 2px; color: " +
-           rgb_hex(palette->summary_rgb) + "; }\n";
-    css += ".sidebar { background: " + surface +
+           chrome_summary + "; }\n";
+
+    css += ".sidebar { background: " + sidebar_background +
            "; border-right: 1px solid " + border + "; }\n";
     css += ".sidebar button { background: transparent; color: " + detail +
            "; border: 0; }\n";
     css += ".sidebar button:hover { background: " +
            rgb_hex(palette->card_hover_rgb) + "; color: " + heading + "; }\n";
-    css += ".card, .panel { background: " + card + "; border: 1px solid " +
-           border + "; border-radius: " + std::to_string(metrics->card_radius) +
-           "px; }\n";
+    css += ".card, .panel { background: " + card_background +
+           "; border: 1px solid " + border + "; border-radius: " +
+           std::to_string(metrics->card_radius) + "px; }\n";
     css += ".hero { border: 1px solid " + border + "; border-radius: " +
            std::to_string(metrics->panel_radius) + "px; }\n";
-    css += ".hero-title { font-family: '" + std::string(typography->brand_family) +
-           "'; font-size: 30px; font-weight: 600; color: " + heading + "; }\n";
+    css += ".hero-title { font-family: '" +
+           std::string(typography->brand_family) +
+           "'; font-size: 30px; font-weight: 600; color: " +
+           chrome_heading + "; }\n";
+    css += ".hero .hint { color: " + chrome_detail + "; }\n";
+    css += ".hero .kicker { color: " +
+           (day_mode ? chrome_accent : kicker) +
+           "; font-size: 11px; letter-spacing: 2px; }\n";
     css += ".hint { color: " + detail + "; }\n";
     css += ".kicker { color: " + kicker +
            "; font-size: 11px; letter-spacing: 2px; }\n";
     css += ".summary-value { color: " + heading + "; font-size: 19px; }\n";
+
     css += "button { border-radius: " +
            std::to_string(metrics->control_radius) +
-           "px; padding: 7px 12px; background: " + card + "; color: " + text +
-           "; border: 1px solid " + accent + "; }\n";
+           "px; padding: 7px 12px; background: " + card_background +
+           "; color: " + text + "; border: 1px solid " + control_border +
+           "; box-shadow: none; }\n";
     css += "button:hover { background: " +
            rgb_hex(palette->card_hover_rgb) + "; border-color: " +
            accent_hover + "; }\n";
     css += ".primary-action { background: " + button_bg + "; color: " +
-           button_fg + "; font-weight: bold; }\n";
+           button_fg + "; border-color: " + button_bg +
+           "; font-weight: bold; }\n";
     css += ".stop-action { background: " + operation + "; color: " + text +
            "; border-color: " + fault + "; }\n";
-    css += "textview, textview text { background: " + input + "; color: " +
-           text + "; }\n";
-    css += "progressbar trough { background: " + panel +
-           "; border-radius: " + std::to_string(metrics->small_radius) +
-           "px; min-height: 8px; }\n";
+
+    css += "combobox button, entry, spinbutton { background: " +
+           text_background + "; color: " + text + "; border: 1px solid " +
+           border + "; }\n";
+    css += "textview, textview text { background: " + text_background +
+           "; color: " + text + "; }\n";
+    css += "progressbar trough { background: " +
+           (day_mode ? card : panel) +
+           "; border: 1px solid " + border + "; border-radius: " +
+           std::to_string(metrics->small_radius) + "px; min-height: 8px; }\n";
     css += "progressbar progress { background: " + accent +
            "; border-radius: " + std::to_string(metrics->small_radius) +
            "px; }\n";
@@ -245,6 +290,9 @@ public:
         helper_path_ = defragger::resolve_program("helper");
         theme_mode_ = load_theme_mode();
         palette_ = install_style(theme_mode_);
+        map_palette_ = infiltratr_theme_resolve(INFILTRATR_THEME_NIGHT, true);
+        if (map_palette_ == nullptr)
+            throw std::runtime_error("Common map palette is unavailable");
         window_ = gtk_window_new(GTK_WINDOW_TOPLEVEL);
         g_object_set_data(G_OBJECT(window_), "desktop", this);
         gtk_window_set_title(GTK_WINDOW(window_), "Defragmenter");
@@ -450,6 +498,7 @@ private:
     GtkWidget *refresh_{}, *image_{}, *theme_{}, *legend_{};
     InfiltratrThemeMode theme_mode_ = INFILTRATR_THEME_SYSTEM;
     const InfiltratrThemePalette* palette_ = nullptr;
+    const InfiltratrThemePalette* map_palette_ = nullptr;
     GtkWidget* cards_[4]{};
     std::vector<DesktopVolume> volumes_;
     std::vector<Json> cells_;
@@ -541,17 +590,17 @@ private:
         return accepted;
     }
     void update_legend() {
-        if (legend_ == nullptr || palette_ == nullptr) return;
+        if (legend_ == nullptr || map_palette_ == nullptr) return;
         const std::string markup =
-            "<span foreground='" + rgb_hex(palette_->neutral_accent_rgb) +
+            "<span foreground='" + rgb_hex(map_palette_->neutral_accent_rgb) +
             "'>■</span> Used   <span foreground='" +
-            rgb_hex(palette_->fault_rgb) +
+            rgb_hex(map_palette_->fault_rgb) +
             "'>■</span> Fragmented   <span foreground='" +
-            rgb_hex(palette_->operation_rgb) +
+            rgb_hex(map_palette_->operation_rgb) +
             "'>■</span> Directory   <span foreground='" +
-            rgb_hex(palette_->background_rgb) +
+            rgb_hex(map_palette_->background_rgb) +
             "'>■</span> Free   <span foreground='" +
-            rgb_hex(palette_->warning_rgb) +
+            rgb_hex(map_palette_->warning_rgb) +
             "'>■</span> Metadata / reserved";
         gtk_label_set_markup(GTK_LABEL(legend_), markup.c_str());
     }
@@ -1184,7 +1233,7 @@ private:
         auto* self = static_cast<Desktop*>(data);
         GtkAllocation allocation;
         gtk_widget_get_allocation(widget, &allocation);
-        const auto* palette = self->palette_;
+        const auto* palette = self->map_palette_;
         const auto cairo_rgb = [cr](std::uint32_t rgb) {
             cairo_set_source_rgb(
                 cr,

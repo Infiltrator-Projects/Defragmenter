@@ -2,6 +2,16 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-221
+
+- Rework Day appearance around a quiet light-grey workspace with white neutral panels instead of large tinted surfaces.
+- Give the File/View/About menu bar and popup menus explicit Day foreground colours so a dark host GTK theme cannot produce white-on-white menu text.
+- Keep selected-volume hero text, version badges and status overlays on Common's Night semantic roles because the hero artwork remains a dark raster in both appearance modes.
+- Replace pastel Analyse/Defragment/Growth/Recover fills with neutral Day cards; operation colour is retained in glyphs and hover borders rather than full-card washes.
+- Remove coloured Day borders from summary/map panels so live gauges and allocation pixels carry the data colour instead of the surrounding chrome.
+- Apply the same Day hierarchy to the installed native C++ GTK desktop, keep the suite title bar dark in both modes, use neutral Day control borders and retain a dark allocation-map canvas in Day mode.
+- Add GUI regressions for explicit menu contrast, dark-hero overlay contrast, neutral Day action/summary surfaces and native Day-map/chrome policy.
+
 ## 1.8.0-220
 
 - Separate exact analysis from mutation qualification so the native desktop only enables raw writes after a read-only writer preflight accepts the selected layout.

@@ -676,6 +676,22 @@ def test_theme_modes_are_persistent_and_shared_across_windows() -> None:
     assert "resolved is ThemeMode.SYSTEM and _system_prefers_dark()" in theme_source
     assert "_night_css() if effective is ThemeMode.NIGHT else _day_css()" in theme_source
 
+    # Day mode must remain visually coherent even when the host GTK theme is
+    # dark: menu text is explicit, dark hero artwork keeps light Common chrome,
+    # and action/summary cards stay neutral instead of becoming pastel slabs.
+    assert "hero = NIGHT" in theme_source
+    assert "menubar menuitem, .app-menubar menuitem" in theme_source
+    assert "menu menuitem, menu menuitem label" in theme_source
+    assert "button.action-analyse:hover" in theme_source
+    assert "frame.summary-capacity > border," in theme_source
+    assert "background-image: none;" in theme_source
+
+    native_desktop = (ROOT / "native" / "desktop.cpp").read_text()
+    assert "const bool day_mode =" in native_desktop
+    assert "infiltratr_theme_resolve(INFILTRATR_THEME_NIGHT, true)" in native_desktop
+    assert "map_palette_" in native_desktop
+    assert "const std::string control_border = day_mode ? border : accent;" in native_desktop
+
 
 def test_mb_typography_has_no_system_font_escape_hatches() -> None:
     theme_source = (GUI / "ui" / "theme.py").read_text()

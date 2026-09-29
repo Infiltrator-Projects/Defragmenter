@@ -358,38 +358,80 @@ def _night_css() -> str:
 
 def _day_css() -> str:
     p = DAY
+    hero = NIGHT
     return f"""
-    window, dialog, .background, .app-shell {{ background-color: {p["background"]}; color: {p["text"]}; }}
-    headerbar, .titlebar {{ background-image: none; background-color: {p["titlebar"]}; color: {p["heading"]}; border-bottom: 1px solid {p["status_border"]}; }}
-    menubar, .app-menubar {{ background-color: {p["connection"]}; border-bottom: 1px solid {p["connection_border"]}; }}
-    menu {{ background-color: {p["panel"]}; border: 1px solid {p["border"]}; }}
+    window, dialog, .background {{
+        background-color: {p["background"]};
+        color: {p["text"]};
+    }}
+    .app-shell, .body-scroll, .body-scroll > viewport {{
+        background-color: {p["surface"]};
+        color: {p["text"]};
+    }}
+    headerbar, .titlebar {{
+        background-image: none;
+        background-color: {p["titlebar"]};
+        color: {p["heading"]};
+        border-bottom: 1px solid {p["status_border"]};
+    }}
+    menubar, .app-menubar {{
+        background-color: {p["panel"]};
+        color: {p["text"]};
+        border-bottom: 1px solid {p["connection_border"]};
+    }}
+    menubar menuitem, .app-menubar menuitem,
+    menubar menuitem label, .app-menubar menuitem label {{
+        color: {p["text"]};
+    }}
+    menubar menuitem:hover, .app-menubar menuitem:hover {{
+        background-color: {p["card_hover"]};
+    }}
+    menu {{
+        background-color: {p["panel"]};
+        color: {p["text"]};
+        border: 1px solid {p["border"]};
+    }}
+    menu menuitem, menu menuitem label {{ color: {p["text"]}; }}
     menuitem:hover {{ background-color: {p["surface"]}; }}
+    menuitem:disabled, menuitem:disabled label {{ color: {p["subtle"]}; }}
+
     .app-title, .about-title, .summary-value {{ color: {p["heading"]}; }}
     .app-subtitle {{ color: {p["summary"]}; }}
-    .summary-title, .map-caption {{ color: {p["detail_label"]}; }}
+    .summary-title, .map-caption {{ color: {p["muted"]}; }}
     .status-text {{ color: {p["note"]}; }}
     .section-title {{ color: {p["kicker"]}; }}
-    .legend-item label, .log-expander {{ color: {p["detail_label"]}; }}
+    .legend-item label, .log-expander {{ color: {p["muted"]}; }}
+
     .version-badge, frame.section-panel > border, frame.map-panel > border,
     frame.action-panel > border, frame.summary-card > border,
     frame.hero-panel > border, frame.activity-panel > border,
     frame.preview-panel > border {{
-        background-color: {p["panel"]}; border: 1px solid {p["border"]};
+        background-color: {p["panel"]};
+        border: 1px solid {p["border"]};
     }}
     .sidebar {{
-        background-image: linear-gradient(to bottom, {p["surface"]}, {p["panel"]});
+        background-image: none;
+        background-color: {p["panel"]};
         border-right: 1px solid {p["status_border"]};
     }}
     .sidebar-brand, .nav-title {{ color: {p["heading"]}; }}
-    .sidebar-brand-subtitle, .nav-subtitle, .sidebar-footer, .hero-hint, .map-hint {{
-        color: {p["detail_label"]};
+    .sidebar-brand-subtitle, .nav-subtitle, .sidebar-footer, .map-hint {{
+        color: {p["muted"]};
     }}
-    .nav-button {{ background-image: none; background-color: transparent; border: 1px solid transparent; }}
-    .nav-button:hover {{ background-color: {p["card_hover"]}; border-color: {p["border"]}; }}
+    .nav-button {{
+        background-image: none;
+        background-color: transparent;
+        border: 1px solid transparent;
+    }}
+    .nav-button:hover {{
+        background-color: {p["card"]};
+        border-color: {p["border"]};
+    }}
     .nav-button.nav-selected {{
-        background-image: linear-gradient(90deg, alpha({p["neutral_accent"]}, 0.20), alpha({p["info"]}, 0.08));
+        background-image: none;
+        background-color: {p["card"]};
         border-color: {p["neutral_accent"]};
-        box-shadow: 0 0 10px alpha({p["neutral_accent"]}, 0.12);
+        box-shadow: 0 1px 4px alpha(#000000, 0.08);
     }}
     .nav-analyse image {{ color: {p["neutral_accent"]}; }}
     .nav-defrag image {{ color: {p["info"]}; }}
@@ -397,101 +439,183 @@ def _day_css() -> str:
     .nav-recover image {{ color: #7a3be8; }}
     .nav-test-media image {{ color: {p["success"]}; }}
     .nav-settings image {{ color: {p["summary"]}; }}
+
+    /* The hero artwork remains deliberately dark in both modes.  Keep its
+       overlay chrome on Common's Night roles so Day never puts dark text on
+       the landscape, drive badge or version/status overlays. */
     .hero-panel > border {{
-        background-image:
-            linear-gradient(110deg, alpha({p["neutral_accent"]}, 0.08), transparent),
-            linear-gradient(135deg, {p["panel"]}, {p["surface"]});
-        border-color: {p["neutral_accent"]};
+        background-color: {p["panel"]};
+        border-color: {p["border"]};
+        box-shadow: 0 2px 8px alpha(#000000, 0.10);
     }}
-    .hero-kicker {{ color: {p["neutral_accent"]}; }}
+    .hero-kicker {{ color: {hero["neutral_accent"]}; }}
+    .hero-volume-title {{ color: {hero["heading"]}; }}
+    .hero-hint {{ color: {hero["note"]}; }}
+    .hero-drive-badge > border {{
+        background-color: alpha({hero["background"]}, 0.78);
+        border: 1px solid alpha({hero["neutral_accent"]}, 0.58);
+    }}
+    .version-badge {{
+        background-color: alpha({hero["background"]}, 0.82);
+        border: 1px solid alpha({hero["status_border"]}, 0.84);
+        border-radius: {METRICS["small_radius"]}px;
+        padding: 6px 8px;
+    }}
+    .version-primary {{ color: {hero["heading"]}; }}
+    .version-secondary {{ color: {hero["summary"]}; }}
+    .hero-status {{
+        color: {hero["success"]};
+        background-color: alpha({hero["background"]}, 0.78);
+        border: 1px solid alpha({hero["success"]}, 0.48);
+    }}
+
     frame.volume-selector-panel > border {{
         background-color: {p["panel"]};
-        border: 1px solid {p["status_border"]};
+        border: 1px solid {p["border"]};
     }}
-    .volume-selector-kicker {{ color: {p["neutral_accent"]}; }}
+    .volume-selector-kicker {{ color: {p["selected_summary"]}; }}
+
     frame.summary-card > border {{
-        background-image: linear-gradient(145deg, {p["card"]}, {p["panel"]});
-        box-shadow: 0 3px 8px alpha(#000000, 0.10);
+        background-image: linear-gradient(145deg, {p["panel"]}, {p["card"]});
+        border-color: {p["border"]};
+        box-shadow: 0 2px 7px alpha(#000000, 0.08);
     }}
-    .summary-detail {{ color: {p["detail_label"]}; }}
-    .hero-volume-title {{ color: {p["heading"]}; }}
-    frame.summary-capacity > border {{ border-color: {p["info"]}; }}
-    frame.summary-free > border {{ border-color: {p["neutral_accent"]}; }}
-    frame.summary-files > border {{ border-color: {p["success"]}; }}
-    frame.summary-fragmented > border {{ border-color: {p["fault"]}; }}
+    .summary-detail {{ color: {p["muted"]}; }}
+    frame.summary-capacity > border,
+    frame.summary-free > border,
+    frame.summary-files > border,
+    frame.summary-fragmented > border {{
+        border-color: {p["border"]};
+    }}
+
     frame.map-panel > border {{
-        background-image: linear-gradient(to bottom, {p["panel"]}, {p["surface"]});
-        border-color: {p["neutral_accent"]};
-        box-shadow: 0 4px 12px alpha(#000000, 0.12);
+        background-image: none;
+        background-color: {p["panel"]};
+        border-color: {p["border"]};
+        box-shadow: 0 2px 8px alpha(#000000, 0.08);
     }}
     frame.activity-panel > border {{
-        background-image: linear-gradient(145deg, {p["panel"]}, {p["surface"]});
-        border-color: {p["status_border"]};
+        background-image: none;
+        background-color: {p["panel"]};
+        border-color: {p["border"]};
     }}
     frame.preview-panel > border {{
-        background-image: linear-gradient(145deg, {p["surface"]}, {p["panel"]});
-        border-color: {p["status_border"]};
+        background-image: none;
+        background-color: {p["panel"]};
+        border-color: {p["border"]};
     }}
     frame.operation-page-volume > border {{
-        background-image: linear-gradient(135deg, {p["panel"]}, {p["surface"]});
-        border: 1px solid {p["status_border"]};
+        background-image: none;
+        background-color: {p["panel"]};
+        border: 1px solid {p["border"]};
     }}
     .page-title, .operation-page-volume-title {{ color: {p["heading"]}; }}
-    .page-subtitle {{ color: {p["detail_label"]}; }}
+    .page-subtitle {{ color: {p["muted"]}; }}
     .activity-primary {{ color: {p["heading"]}; }}
-    .activity-secondary, .preview-note {{ color: {p["detail_label"]}; }}
+    .activity-secondary, .preview-note {{ color: {p["muted"]}; }}
+
+    /* Day actions are neutral cards with coloured glyphs.  Avoid the four
+       large pastel slabs that compete with the disk-map data. */
     button.action-card {{
         color: {p["text"]};
+        background-image: linear-gradient(145deg, {p["panel"]}, {p["card"]});
         border: 1px solid {p["border"]};
-        box-shadow: 0 3px 8px alpha(#000000, 0.14);
+        box-shadow: 0 2px 7px alpha(#000000, 0.09);
     }}
-    button.action-analyse {{
-        background-image: linear-gradient(135deg, alpha({p["neutral_accent"]}, 0.18), {p["card"]});
-        border-color: {p["neutral_accent"]};
+    button.action-card:hover {{
+        background-image: linear-gradient(145deg, {p["card"]}, {p["surface_hover"]});
+        box-shadow: 0 3px 9px alpha(#000000, 0.11);
     }}
-    button.action-defrag {{
-        background-image: linear-gradient(135deg, alpha({p["info"]}, 0.18), {p["card"]});
-        border-color: {p["info"]};
+    button.action-analyse,
+    button.action-defrag,
+    button.action-growth,
+    button.action-recover {{ border-color: {p["border"]}; }}
+    button.action-analyse:hover {{ border-color: {p["neutral_accent"]}; }}
+    button.action-defrag:hover {{ border-color: {p["info"]}; }}
+    button.action-growth:hover {{ border-color: {p["success"]}; }}
+    button.action-recover:hover {{ border-color: #7a3be8; }}
+    button.action-analyse image, button.action-analyse .action-arrow {{
+        color: {p["neutral_accent"]};
     }}
-    button.action-growth {{
-        background-image: linear-gradient(135deg, alpha({p["success"]}, 0.18), {p["card"]});
-        border-color: {p["success"]};
+    button.action-defrag image, button.action-defrag .action-arrow {{
+        color: {p["info"]};
     }}
-    button.action-recover {{
-        background-image: linear-gradient(135deg, alpha(#8f52ff, 0.18), {p["card"]});
-        border-color: #8f52ff;
+    button.action-growth image, button.action-growth .action-arrow {{
+        color: {p["success"]};
+    }}
+    button.action-recover image, button.action-recover .action-arrow {{
+        color: #7a3be8;
     }}
     .action-card-title {{ color: {p["heading"]}; }}
-    .action-card-subtitle {{ color: {p["detail_label"]}; }}
+    .action-card-subtitle {{ color: {p["muted"]}; }}
     .ready-dot {{ color: {p["success"]}; }}
+
     button, combobox button, entry, spinbutton {{
-        background-image: none; background-color: {p["card"]}; color: {p["text"]};
-        border: 1px solid {p["neutral_accent"]}; box-shadow: none;
+        background-image: none;
+        background-color: {p["panel"]};
+        color: {p["text"]};
+        border: 1px solid {p["border"]};
+        box-shadow: none;
     }}
-    button:hover {{ background-color: {p["card_hover"]}; border-color: {p["accent_hover"]}; }}
-    button:active, button:checked {{ background-color: {p["selection_background"]}; border-color: {p["neutral_accent"]}; }}
-    button:disabled {{ color: {p["subtle"]}; border-color: {p["border"]}; background-color: {p["background"]}; }}
-    button.primary-action {{ background-color: {p["button_background"]}; color: {p["button_foreground"]}; border-color: {p["button_background"]}; }}
-    button.primary-action:hover {{ background-color: {p["equals_hover"]}; color: {p["button_foreground"]}; }}
+    button:hover {{
+        background-color: {p["card_hover"]};
+        border-color: {p["neutral_accent"]};
+    }}
+    button:active, button:checked {{
+        background-color: {p["selection_background"]};
+        border-color: {p["neutral_accent"]};
+    }}
+    button:disabled {{
+        color: {p["subtle"]};
+        border-color: {p["border"]};
+        background-color: {p["card"]};
+    }}
+    button.primary-action {{
+        background-color: {p["button_background"]};
+        color: {p["button_foreground"]};
+        border-color: {p["button_background"]};
+    }}
+    button.primary-action:hover {{
+        background-color: {p["equals_hover"]};
+        color: {p["button_foreground"]};
+    }}
     button.destructive-action {{ border-color: {p["fault"]}; color: {p["fault"]}; }}
-    button.destructive-action:hover {{ background-color: {p["surface_hover"]}; border-color: {p["fault"]}; }}
-    progressbar trough {{ background-color: {p["surface"]}; border: 1px solid {p["border"]}; }}
+    button.destructive-action:hover {{
+        background-color: {p["surface_hover"]};
+        border-color: {p["fault"]};
+    }}
+
+    progressbar trough {{
+        background-color: {p["card"]};
+        border: 1px solid {p["border"]};
+    }}
     progressbar progress {{ background-color: {p["neutral_accent"]}; }}
     textview, textview text, treeview, viewport, scrolledwindow {{
-        background-color: {p["panel"]}; color: {p["text"]}; border-color: {p["border"]};
+        background-color: {p["panel"]};
+        color: {p["text"]};
+        border-color: {p["border"]};
     }}
-    textview.log-view, textview.log-view text {{ background-color: {p["panel"]}; color: {p["text"]}; }}
+    textview.log-view, textview.log-view text {{
+        background-color: {p["panel"]};
+        color: {p["text"]};
+    }}
     entry selection, textview text selection, treeview.view:selected {{
-        background-color: {p["selection_background"]}; color: {p["selection_foreground"]};
+        background-color: {p["selection_background"]};
+        color: {p["selection_foreground"]};
     }}
     .status-strip {{
-        background-image: linear-gradient(90deg, {p["connection"]}, {p["surface"]});
+        background-image: none;
+        background-color: {p["panel"]};
         border-top: 1px solid {p["status_border"]};
     }}
     .footer-volume {{ color: {p["heading"]}; }}
-    scrollbar slider {{ background-color: {p["neutral_accent"]}; }}
-    scrollbar slider:hover {{ background-color: {p["accent_hover"]}; }}
-    tooltip {{ background-color: {p["card"]}; color: {p["note"]}; border: 1px solid {p["status_border"]}; }}
+    scrollbar slider {{ background-color: {p["border"]}; }}
+    scrollbar slider:hover {{ background-color: {p["neutral_accent"]}; }}
+    tooltip {{
+        background-color: {p["card"]};
+        color: {p["note"]};
+        border: 1px solid {p["status_border"]};
+    }}
     .link-about-dialog {{ background-color: {p["background"]}; color: {p["text"]}; }}
     .link-about-dialog label {{ color: {p["text"]}; }}
     """
