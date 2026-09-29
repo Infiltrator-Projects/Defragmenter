@@ -139,6 +139,83 @@ gboolean draw_hero_art(GtkWidget* widget, cairo_t* cr, gpointer) {
     return FALSE;
 }
 
+gboolean draw_raster_cover(
+    GtkWidget* widget, cairo_t* cr, const char* asset_name,
+    const char* cache_key)
+{
+    GtkAllocation allocation;
+    gtk_widget_get_allocation(widget, &allocation);
+    const int width = std::max(1, allocation.width);
+    const int height = std::max(1, allocation.height);
+
+    auto* source = static_cast<GdkPixbuf*>(
+        g_object_get_data(G_OBJECT(widget), cache_key));
+    if (source == nullptr) {
+        const fs::path path = artwork(asset_name);
+        if (!path.empty()) {
+            GError* failure = nullptr;
+            source = gdk_pixbuf_new_from_file(path.string().c_str(), &failure);
+            if (failure != nullptr) g_error_free(failure);
+            if (source != nullptr)
+                g_object_set_data_full(
+                    G_OBJECT(widget), cache_key, source,
+                    reinterpret_cast<GDestroyNotify>(g_object_unref));
+        }
+    }
+    if (source == nullptr) return FALSE;
+
+    const int source_width = std::max(1, gdk_pixbuf_get_width(source));
+    const int source_height = std::max(1, gdk_pixbuf_get_height(source));
+    const double scale = std::max(
+        static_cast<double>(width) / source_width,
+        static_cast<double>(height) / source_height);
+    const int scaled_width =
+        std::max(1, static_cast<int>(source_width * scale + 0.5));
+    const int scaled_height =
+        std::max(1, static_cast<int>(source_height * scale + 0.5));
+    auto* scaled = gdk_pixbuf_scale_simple(
+        source, scaled_width, scaled_height, GDK_INTERP_BILINEAR);
+    if (scaled == nullptr) return FALSE;
+
+    const double x = (width - scaled_width) / 2.0;
+    const double y = (height - scaled_height) / 2.0;
+    cairo_save(cr);
+    cairo_rectangle(cr, 0, 0, width, height);
+    cairo_clip(cr);
+    gdk_cairo_set_source_pixbuf(cr, scaled, x, y);
+    cairo_paint(cr);
+    cairo_restore(cr);
+    g_object_unref(scaled);
+    return FALSE;
+}
+
+gboolean draw_drive_art(GtkWidget* widget, cairo_t* cr, gpointer)
+{
+    return draw_raster_cover(
+        widget, cr, "drive-ssd.jpg", "drive-art-source");
+}
+
+gboolean draw_sidebar_art(GtkWidget* widget, cairo_t* cr, gpointer)
+{
+    return draw_raster_cover(
+        widget, cr, "sidebar-workbench.jpg", "sidebar-art-source");
+}
+
+void fit_window_to_workarea(GtkWidget* widget, gpointer)
+{
+    auto* native = gtk_widget_get_window(widget);
+    auto* display = gdk_display_get_default();
+    if (native == nullptr || display == nullptr) return;
+    auto* monitor = gdk_display_get_monitor_at_window(display, native);
+    if (monitor == nullptr) return;
+
+    GdkRectangle workarea{};
+    gdk_monitor_get_workarea(monitor, &workarea);
+    const int width = std::min(1480, std::max(900, workarea.width - 48));
+    const int height = std::min(900, std::max(620, workarea.height - 64));
+    gtk_window_resize(GTK_WINDOW(widget), width, height);
+}
+
 GtkCssProvider* style_provider = nullptr;
 
 std::string rgb_hex(std::uint32_t rgb) {
@@ -411,9 +488,11 @@ public:
         window_ = gtk_window_new(GTK_WINDOW_TOPLEVEL);
         g_object_set_data(G_OBJECT(window_), "desktop", this);
         gtk_window_set_title(GTK_WINDOW(window_), "Defragmenter");
-        gtk_window_set_default_size(GTK_WINDOW(window_), 1320, 840);
+        gtk_window_set_default_size(GTK_WINDOW(window_), 1480, 900);
         gtk_window_set_position(GTK_WINDOW(window_), GTK_WIN_POS_CENTER);
         gtk_widget_set_size_request(window_, 900, 620);
+        g_signal_connect(
+            window_, "realize", G_CALLBACK(fit_window_to_workarea), nullptr);
         gtk_window_set_icon_name(GTK_WINDOW(window_), "io.github.linuxdefragger");
         g_signal_connect(window_, "delete-event", G_CALLBACK(close_requested), this);
         g_signal_connect(window_, "destroy", G_CALLBACK(+[](GtkWidget*, gpointer) {
@@ -519,11 +598,16 @@ public:
             sidebar, "preferences-system-symbolic", "Settings",
             "Appearance and preferences", "page-settings", false);
 
-        auto* sidebar_footer = gtk_label_new("Native C++ desktop");
-        css_class(sidebar_footer, "nav-subtitle");
-        gtk_label_set_xalign(GTK_LABEL(sidebar_footer), 0);
+        auto* sidebar_art = gtk_drawing_area_new();
+        gtk_widget_set_size_request(sidebar_art, 210, 250);
+        gtk_widget_set_halign(sidebar_art, GTK_ALIGN_CENTER);
+        gtk_widget_set_valign(sidebar_art, GTK_ALIGN_END);
+        gtk_widget_set_hexpand(sidebar_art, FALSE);
+        gtk_widget_set_vexpand(sidebar_art, FALSE);
+        g_signal_connect(
+            sidebar_art, "draw", G_CALLBACK(draw_sidebar_art), nullptr);
         gtk_box_pack_end(
-            GTK_BOX(sidebar), sidebar_footer, FALSE, FALSE, 3);
+            GTK_BOX(sidebar), sidebar_art, FALSE, FALSE, 4);
 
         pages_ = gtk_stack_new();
         gtk_stack_set_transition_type(
@@ -537,16 +621,16 @@ public:
             GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
         gtk_stack_add_named(GTK_STACK(pages_), outer_scroll, "overview");
 
-        auto* base = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
+        auto* base = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
         css_class(base, "app-shell");
-        gtk_container_set_border_width(GTK_CONTAINER(base), 16);
+        gtk_container_set_border_width(GTK_CONTAINER(base), 12);
         gtk_container_add(GTK_CONTAINER(outer_scroll), base);
 
         auto* hero = gtk_overlay_new();
         css_class(hero, "hero");
         auto* hero_art = gtk_drawing_area_new();
         gtk_widget_set_hexpand(hero_art, TRUE);
-        gtk_widget_set_size_request(hero_art, -1, 154);
+        gtk_widget_set_size_request(hero_art, -1, 136);
         g_signal_connect(
             hero_art, "draw", G_CALLBACK(draw_hero_art), nullptr);
         gtk_container_add(GTK_CONTAINER(hero), hero_art);
@@ -557,11 +641,14 @@ public:
 
         auto* drive_badge = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
         css_class(drive_badge, "hero-drive");
-        auto* drive_icon = gtk_image_new_from_icon_name(
-            "drive-harddisk-symbolic", GTK_ICON_SIZE_DIALOG);
-        gtk_image_set_pixel_size(GTK_IMAGE(drive_icon), 38);
+        auto* drive_art = gtk_drawing_area_new();
+        gtk_widget_set_size_request(drive_art, 84, 74);
+        gtk_widget_set_hexpand(drive_art, FALSE);
+        gtk_widget_set_vexpand(drive_art, FALSE);
+        g_signal_connect(
+            drive_art, "draw", G_CALLBACK(draw_drive_art), nullptr);
         gtk_box_pack_start(
-            GTK_BOX(drive_badge), drive_icon, FALSE, FALSE, 0);
+            GTK_BOX(drive_badge), drive_art, FALSE, FALSE, 0);
         gtk_box_pack_start(
             GTK_BOX(hero_content), drive_badge, FALSE, FALSE, 0);
 
@@ -584,6 +671,11 @@ public:
         gtk_box_pack_start(GTK_BOX(hero_text), detail_, FALSE, FALSE, 0);
         gtk_box_pack_start(
             GTK_BOX(hero_content), hero_text, TRUE, TRUE, 0);
+
+        hero_status_ = gtk_label_new("Ready");
+        css_class(hero_status_, "hero-status");
+        gtk_box_pack_end(
+            GTK_BOX(hero_content), hero_status_, FALSE, FALSE, 0);
 
         auto* version_badge = gtk_box_new(GTK_ORIENTATION_VERTICAL, 1);
         css_class(version_badge, "version-badge");
@@ -627,7 +719,7 @@ public:
 
             if (i < 3) {
                 gauges_[i] = gtk_drawing_area_new();
-                gtk_widget_set_size_request(gauges_[i], 72, 72);
+                gtk_widget_set_size_request(gauges_[i], 94, 94);
                 g_object_set_data(
                     G_OBJECT(gauges_[i]), "gauge-index", GINT_TO_POINTER(i));
                 g_signal_connect(
@@ -658,7 +750,7 @@ public:
         gtk_label_set_xalign(GTK_LABEL(map_hint), 0);
         gtk_box_pack_start(GTK_BOX(map_box), map_hint, FALSE, FALSE, 0);
         map_ = gtk_drawing_area_new();
-        gtk_widget_set_size_request(map_, -1, 200);
+        gtk_widget_set_size_request(map_, -1, 64);
         gtk_box_pack_start(GTK_BOX(map_box), map_, TRUE, TRUE, 0);
         g_signal_connect(map_, "draw", G_CALLBACK(draw_map), this);
         legend_ = gtk_label_new(nullptr);
@@ -691,13 +783,28 @@ public:
         gtk_grid_attach(GTK_GRID(actions), recover_, 3, 0, 1, 1);
         gtk_box_pack_start(GTK_BOX(base), actions, FALSE, FALSE, 0);
 
-        auto* activity = gtk_box_new(GTK_ORIENTATION_VERTICAL, 7);
-        auto* activity_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 9);
-        status_ = gtk_label_new("Ready");
+        auto* activity = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+        auto* activity_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+        auto* activity_icon = gtk_image_new_from_icon_name(
+            "media-playback-start-symbolic", GTK_ICON_SIZE_BUTTON);
+        gtk_image_set_pixel_size(GTK_IMAGE(activity_icon), 18);
+        gtk_box_pack_start(
+            GTK_BOX(activity_row), activity_icon, FALSE, FALSE, 0);
+
+        status_ = gtk_label_new("Ready for analysis");
         gtk_label_set_xalign(GTK_LABEL(status_), 0);
         css_class(status_, "activity-primary");
         gtk_box_pack_start(
             GTK_BOX(activity_row), status_, FALSE, FALSE, 0);
+
+        activity_secondary_ = gtk_label_new(
+            "Choose a volume; analysis and safe operations appear here.");
+        gtk_label_set_xalign(GTK_LABEL(activity_secondary_), 0);
+        gtk_label_set_ellipsize(
+            GTK_LABEL(activity_secondary_), PANGO_ELLIPSIZE_END);
+        css_class(activity_secondary_, "activity-secondary");
+        gtk_box_pack_start(
+            GTK_BOX(activity_row), activity_secondary_, TRUE, TRUE, 0);
 
         progress_ = gtk_progress_bar_new();
         gtk_progress_bar_set_show_text(GTK_PROGRESS_BAR(progress_), TRUE);
@@ -728,6 +835,29 @@ public:
         gtk_container_add(GTK_CONTAINER(scroll), log_);
         gtk_box_pack_start(
             GTK_BOX(base), section(nullptr, activity), FALSE, FALSE, 0);
+
+        auto* status_strip = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+        css_class(status_strip, "status-strip");
+        gtk_container_set_border_width(GTK_CONTAINER(status_strip), 8);
+        auto* ready_dot = gtk_label_new("●");
+        css_class(ready_dot, "ready-dot");
+        gtk_box_pack_start(
+            GTK_BOX(status_strip), ready_dot, FALSE, FALSE, 0);
+        footer_volume_ = gtk_label_new("No volume selected");
+        css_class(footer_volume_, "footer-volume");
+        gtk_label_set_xalign(GTK_LABEL(footer_volume_), 0);
+        gtk_box_pack_start(
+            GTK_BOX(status_strip), footer_volume_, FALSE, FALSE, 0);
+        auto* status_separator = gtk_separator_new(GTK_ORIENTATION_VERTICAL);
+        gtk_box_pack_start(
+            GTK_BOX(status_strip), status_separator, FALSE, FALSE, 8);
+        footer_status_ = gtk_label_new("Ready");
+        css_class(footer_status_, "status-text");
+        gtk_label_set_xalign(GTK_LABEL(footer_status_), 0);
+        gtk_box_pack_start(
+            GTK_BOX(status_strip), footer_status_, TRUE, TRUE, 0);
+        gtk_box_pack_start(
+            GTK_BOX(base), status_strip, FALSE, FALSE, 0);
 
         gtk_stack_add_named(
             GTK_STACK(pages_),
@@ -767,7 +897,7 @@ public:
                 "edit-undo-symbolic",
                 "Recover selected volume",
                 "recover",
-                true),
+                false),
             "recover");
         gtk_stack_add_named(
             GTK_STACK(pages_), build_test_media_page(), "test-media");
@@ -815,6 +945,7 @@ public:
 private:
     GtkWidget *window_{}, *pages_{}, *volumes_widget_{}, *detail_{}, *volume_title_{};
     GtkWidget *progress_{}, *status_{}, *map_{}, *summary_{}, *log_{};
+    GtkWidget *hero_status_{}, *activity_secondary_{}, *footer_volume_{}, *footer_status_{};
     GtkWidget *analyse_{}, *unmount_{}, *defrag_{}, *growth_{}, *recover_{}, *stop_{};
     GtkWidget *refresh_{}, *image_{}, *legend_{}, *theme_combo_{};
     GtkWidget *nav_overview_{}, *nav_analyse_{}, *nav_defrag_{}, *nav_growth_{};
@@ -1372,6 +1503,14 @@ private:
             gtk_label_set_text(
                 GTK_LABEL(volume_title_),
                 v->label.empty() ? v->path.c_str() : v->label.c_str());
+            if (hero_status_ != nullptr)
+                gtk_label_set_text(
+                    GTK_LABEL(hero_status_),
+                    v->mounted ? "● Mounted" : "● Offline");
+            if (footer_volume_ != nullptr)
+                gtk_label_set_text(
+                    GTK_LABEL(footer_volume_),
+                    v->label.empty() ? v->path.c_str() : v->label.c_str());
             std::string details =
                 v->path + " · " + v->filesystem + " · " + bytes(v->size)
                 + (v->mounted ? " · mounted" : " · unmounted")
@@ -1386,7 +1525,16 @@ private:
             gtk_label_set_text(
                 GTK_LABEL(detail_),
                 "Choose a volume or open a filesystem image.");
+            if (hero_status_ != nullptr)
+                gtk_label_set_text(GTK_LABEL(hero_status_), "Ready");
+            if (footer_volume_ != nullptr)
+                gtk_label_set_text(
+                    GTK_LABEL(footer_volume_), "No volume selected");
         }
+        if (footer_status_ != nullptr && status_ != nullptr)
+            gtk_label_set_text(
+                GTK_LABEL(footer_status_),
+                gtk_label_get_text(GTK_LABEL(status_)));
         for (auto* label : page_volume_labels_)
             gtk_label_set_text(
                 GTK_LABEL(label), page_identity.c_str());
