@@ -153,11 +153,25 @@ std::string desktop_journal(const DesktopVolume& v, unsigned uid) {
 void desktop_verify_identity(DesktopVolume& v, std::string_view detected) {
     const auto* candidate = backend_by_fstype(v.filesystem);
     const auto* actual = backend_by_fstype(detected);
-    const bool generic_fat = v.filesystem == "fat" || v.filesystem == "vfat" || v.filesystem == "msdos";
-    const bool fat_variant = detected == "fat12" || detected == "fat16" || detected == "fat32";
-    if (!actual || (!generic_fat && candidate != actual) || (generic_fat && !fat_variant))
-        throw std::runtime_error("Native filesystem identity conflicts with discovery metadata");
-    v.filesystem = std::string(detected);
+    const bool generic_fat =
+        v.filesystem == "fat" || v.filesystem == "vfat" ||
+        v.filesystem == "msdos";
+    const bool fat_variant =
+        actual != nullptr &&
+        (actual->id == "fat12" || actual->id == "fat16" ||
+         actual->id == "fat32");
+    if (!actual || (!generic_fat && candidate != actual) ||
+        (generic_fat && !fat_variant))
+        throw std::runtime_error(
+            "Native filesystem identity conflicts with discovery metadata");
+
+    /*
+     * Store the registry's canonical lower-case identity rather than the
+     * worker's display spelling (for example FAT16).  Discovery aliases such
+     * as vfat are allowed to resolve to the exact FAT width proven by the
+     * native analyser.
+     */
+    v.filesystem = actual->id;
     // Identity verification alone never authorises a raw write.  A fresh
     // exact allocation analysis must establish that separately.
     v.exact_analysis = false;
