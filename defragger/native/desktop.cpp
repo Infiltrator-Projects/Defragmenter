@@ -1592,7 +1592,7 @@ private:
             static_cast<std::uint64_t>(std::max(1, allocation.width));
         const std::uint64_t height =
             static_cast<std::uint64_t>(std::max(1, allocation.height));
-        const std::uint64_t pixels = std::max<std::uint64_t>(
+        const std::uint64_t display_pixels = std::max<std::uint64_t>(
             1U, width * height);
 
         const std::uint64_t first =
@@ -1601,8 +1601,19 @@ private:
             number(cells_.back(), "end");
         if (last < first) return;
         const std::uint64_t units = last - first + 1U;
-        const double units_per_pixel =
-            static_cast<double>(units) / static_cast<double>(pixels);
+
+        /*
+         * A map pixel is one analyser cell, not one LCD pixel.  GTK may scale
+         * a small logical raster to fill the drawing area, but that must never
+         * imply fractional allocation units.  The analyser guarantees at most
+         * one cell per allocation unit, so this density is always >= 1.
+         */
+        const std::uint64_t map_pixels = std::max<std::uint64_t>(
+            1U, static_cast<std::uint64_t>(cells_.size()));
+        const double units_per_pixel = std::max(
+            1.0,
+            static_cast<double>(units) /
+                static_cast<double>(map_pixels));
 
         std::string unit_label = "allocation units";
         std::string suffix;
@@ -1631,9 +1642,12 @@ private:
             g_snprintf(density, sizeof(density), "%.3f", units_per_pixel);
 
         const std::string caption =
-            "Allocation image: " + std::to_string(pixels) +
-            " pixels · approximately " + density + " " +
-            unit_label + " per pixel" + suffix;
+            "Allocation image: " + std::to_string(map_pixels) +
+            " map pixels · approximately " + density + " " +
+            unit_label + " per pixel" + suffix +
+            (display_pixels > map_pixels
+                ? " · displayed 1:1 logically, scaled to fit"
+                : "");
         gtk_label_set_text(GTK_LABEL(summary_), caption.c_str());
     }
 
