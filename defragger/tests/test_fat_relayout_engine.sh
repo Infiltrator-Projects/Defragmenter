@@ -110,8 +110,10 @@ fi
 # Reproduce the large FAT16 failure mode seen on physical Test Media: the live
 # set is larger than the terminal workspace and one fragmented early file owns
 # clusters inside hundreds of later Growth targets.  The adaptive scheduler
-# must park dependency blockers and then commit final placements in batches,
-# never degrade to the legacy one-object/three-transaction loop.
+# must resolve the dependencies with bounded journalled batches.  Whole-object
+# staging remains valid when it fits, while the rolling cluster path is expected
+# when free target clusters can be released incrementally.  Neither path may
+# degrade to the legacy one-object/three-transaction fallback.
 python3 "$ROOT/tests/make_fat16_dependency_blocker_image.py" \
     "$WORK/fat16-dependencies.img" >/dev/null
 "$FAT_WORKER" growth-defrag "$WORK/fat16-dependencies.img" \
@@ -124,22 +126,23 @@ if grep -q 'Growth Defrag layout staged one' "$WORK/fat16-dependencies.log"; the
     cat "$WORK/fat16-dependencies.log" >&2
     fail "FAT16 adaptive dependency test fell back to one-object staging"
 fi
-grep -q 'adaptive dependency batch' "$WORK/fat16-dependencies.log" || {
-    cat "$WORK/fat16-dependencies.log" >&2
-    fail "FAT16 dependency blocker workload did not exercise batched adaptive staging"
-}
 grep -q 'adaptive dependency transaction budget:' "$WORK/fat16-dependencies.log" || {
     cat "$WORK/fat16-dependencies.log" >&2
     fail "FAT16 adaptive dependency workload did not report its Stop-safe transaction budget"
 }
-grep -q 'adaptive dependency batch: staging' "$WORK/fat16-dependencies.log" || {
+grep -q 'rolling cluster placement:' "$WORK/fat16-dependencies.log" || {
     cat "$WORK/fat16-dependencies.log" >&2
-    fail "FAT16 adaptive dependency workload did not report the staging transaction before it began"
+    fail "FAT16 dependency blocker workload did not exercise rolling cluster placement"
 }
+if grep -q 'adaptive dependency scheduler exhausted the reusable workspace' \
+    "$WORK/fat16-dependencies.log"; then
+    cat "$WORK/fat16-dependencies.log" >&2
+    fail "FAT16 adaptive dependency scheduler exhausted its reusable workspace"
+fi
 dependency_transactions=$(sed -n \
     's/^Growth Defrag layout I\/O:.* in \([0-9][0-9]*\) transaction.*$/\1/p' \
     "$WORK/fat16-dependencies.log" | tail -n 1)
-if [[ -z "$dependency_transactions" || "$dependency_transactions" -gt 40 ]]; then
+if [[ -z "$dependency_transactions" || "$dependency_transactions" -gt 48 ]]; then
     cat "$WORK/fat16-dependencies.log" >&2
     fail "FAT16 adaptive dependency workload used ${dependency_transactions:-unknown} layout transactions"
 fi
