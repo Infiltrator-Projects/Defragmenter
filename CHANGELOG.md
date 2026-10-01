@@ -2,6 +2,15 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-233
+
+- Fix FAT12/FAT16/FAT32 relayout on very full volumes when the largest allocated file is larger than the available staging space.
+- Remove the obsolete whole-object free-space gate and size the durable terminal workspace from actual tail slack instead of forcing it to the largest file.
+- Extend the adaptive FAT scheduler with journalled cluster-level placement and dependency-cycle staging, so free clusters act as a rolling recoverable workspace without weakening power-loss recovery or final byte/layout verification.
+- Preserve whole-object and unified-workspace fast paths when they fit; the rolling cluster path is used only when those faster dependency strategies cannot fit the live layout.
+- Add a native C FAT12 regression fixture with two interlocked 400-cluster files and only 200 free clusters, then qualify both packed Defragment and exact 10% Growth Defrag against byte-for-byte payload verification.
+- Keep the existing fail-closed rule that a rewrite still needs at least one genuinely free cluster; no unsafe in-place overwrite or RAM-only staging path is introduced.
+
 ## 1.8.0-232
 
 - Fix ZFS/OpenZFS analysis so a recognised committed member no longer turns the entire GUI analysis into an opaque `Exit status 1` when the bounded exact MOS/metaslab/file-tree reader cannot complete.
