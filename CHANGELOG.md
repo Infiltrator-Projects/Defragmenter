@@ -2,6 +2,18 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-234
+
+- Complete Test Media result accounting across all 21 filesystem slots. Qualify and Verify no longer silently skip a filesystem whose Build Test Disk stage failed to produce a populated image; the saved build status and diagnostic are surfaced as an explicit per-filesystem failure instead of leaving rows stuck at `Waiting`.
+- Correct the UFS2 independent raw verifier to include the eight retained boundary-sized files in its regular-file total, removing a false build-time rejection of an otherwise valid payload.
+- Repair sacrificial Classic HFS test volumes after host-side population by reconciling the primary and present alternate MDB free-block counters with the allocation bitmap before the strict production writer preflight. The production HFS analyser/writer remains fail-closed on genuinely inconsistent user media.
+- Keep XFS live Test Media inside the currently qualified raw-writer contract: retain the full heterogeneous 200 MiB fragmented-file corpus while no longer manufacturing an intentionally fragmented directory that the production XFS writer deliberately treats as protected metadata.
+- Keep Btrfs live Test Media inside the bounded single-device CRC32C, level-0 mixed-group writer contract. The creator now requests portable 4 KiB mixed block groups explicitly, populates new files NODATACOW/NODATASUM, and produces two durable separated extents per retained target file so the 200 MiB corpus is genuinely fragmented without forcing mutable trees above level 0. Broader checksum-tree and unsupported-topology cases remain covered by native white-box/fail-closed tests rather than being smuggled into the live-media writer contract.
+- Keep the ZFS analysis-only Test Media pool inside the bounded exact-reader topology by retaining the complete 200 MiB fragmented-file workload while dropping the unrelated thousands-of-directory-entry stress case.
+- Decode Test Media worker wait status in the GUI, so a normal worker exit of 1 is reported as `exit status 1` rather than the raw POSIX wait value `256`.
+- Add regression coverage for the bounded XFS/Btrfs/ZFS live-media profiles, complete 21-slot result accounting, UFS boundary-file counting, HFS MDB reconciliation and the Btrfs fixture contract.
+- No production writer safety boundary is widened by these fixture changes.
+
 ## 1.8.0-233
 
 - Fix FAT12/FAT16/FAT32 relayout on very full volumes when the largest allocated file is larger than the available staging space.
