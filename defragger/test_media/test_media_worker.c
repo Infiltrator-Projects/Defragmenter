@@ -1246,7 +1246,17 @@ static int format_regular(const LdtmFilesystemSpec *spec, const char *partition)
             return run_process(argv, NULL, 0);
         }
         case LDTM_CREATOR_BTRFS: {
-            const char *const argv[] = {program, "-f", "-L", spec->label, partition, NULL};
+            /*
+             * Build the sacrificial filesystem inside the production writer's
+             * deliberately bounded contract rather than relying on changing
+             * mkfs.btrfs defaults. Mixed block groups and large leaves keep
+             * the mutable roots level 0 on this 2 GiB qualification volume.
+             */
+            const char *const argv[] = {
+                program, "-f", "-M", "-n", "65536", "-s", "4096",
+                "-O", "skinny-metadata,no-holes",
+                "-L", spec->label, partition, NULL
+            };
             return run_process(argv, NULL, 0);
         }
         case LDTM_CREATOR_AFFS: {
@@ -1282,9 +1292,25 @@ static int format_regular(const LdtmFilesystemSpec *spec, const char *partition)
     return -1;
 }
 
-static int mount_regular(const char *partition, const char *mountpoint, int readonly) {
+static int mount_regular(const LdtmFilesystemSpec *spec,
+                         const char *partition, const char *mountpoint,
+                         int readonly) {
     if (readonly) {
-        const char *const argv[] = {"mount", "-o", "ro", partition, mountpoint, NULL};
+        const char *const argv[] = {
+            "mount", "-o", "ro", partition, mountpoint, NULL
+        };
+        return run_process(argv, NULL, 0);
+    }
+    if (spec != NULL && spec->creator == LDTM_CREATOR_BTRFS) {
+        /*
+         * The 200 MiB live-media corpus tests extent relocation, not checksum
+         * tree depth. NODATACOW/NODATASUM keeps the disposable filesystem in
+         * the writer's level-0 bounded contract; checksum-tree-protected data
+         * remains covered by the native white-box writer fixtures.
+         */
+        const char *const argv[] = {
+            "mount", "-o", "nodatacow", partition, mountpoint, NULL
+        };
         return run_process(argv, NULL, 0);
     }
     {
@@ -1505,7 +1531,7 @@ static int create_regular_and_populate(const LdtmFilesystemSpec *spec, const cha
     }
     if (snprintf(mountpoint, sizeof(mountpoint), "%s/%s", work, spec->key) <= 0 ||
         ensure_directory(mountpoint, 0755) != 0) return -1;
-    if (mount_regular(partition, mountpoint, 0) != 0) {
+    if (mount_regular(spec, partition, mountpoint, 0) != 0) {
         emit_status(spec->key, "formatted-unpopulated", "formatted successfully but host could not mount it read/write");
         (void)state_write_status(state, spec, "formatted-unpopulated", "host mount failed");
         return 1;
@@ -2944,7 +2970,7 @@ int ldtm_worker_verify(const char *device) {
             failures++;
             continue;
         }
-        if (mount_regular(partition, mountpoint, 1) != 0) {
+        if (mount_regular(spec, partition, mountpoint, 1) != 0) {
             emit_status(
                 spec->key, "verify-failed",
                 "host kernel could not mount this qualified filesystem read-only for independent payload verification");
