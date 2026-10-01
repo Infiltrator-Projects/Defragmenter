@@ -366,6 +366,9 @@ void fat_analysis_print_map_json(Fat32 *fs, const FileList *files, size_t reques
     printf("  \"bytes_per_sector\": %u,\n", fs->bytes_per_sector);
     printf("  \"sectors_per_cluster\": %u,\n", fs->sectors_per_cluster);
     printf("  \"cluster_size\": %" PRIu64 ",\n", fs->cluster_size);
+    printf("  \"total_sectors\": %" PRIu32 ",\n", fs->total_sectors);
+    printf("  \"data_start_sector\": %" PRIu64 ",\n",
+           fs->data_offset / fs->bytes_per_sector);
     printf("  \"data_clusters\": %" PRIu32 ",\n", fs->cluster_count);
     printf("  \"free_clusters\": %" PRIu64 ",\n", free_clusters);
     printf("  \"used_clusters\": %" PRIu64 ",\n", (uint64_t)fs->cluster_count - free_clusters);
