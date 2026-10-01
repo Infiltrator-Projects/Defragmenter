@@ -694,9 +694,17 @@ Json map_native(const BackendInfo& backend, const std::string& path,
                map_capture_limit(cells));
     Json payload = parse_worker_json(result, "native filesystem mapper");
     validate_native_map(backend, payload);
-    const std::string warning = concise_child_detail(result);
+    std::string warning = result.standard_error;
+    while (!warning.empty() &&
+           (warning.back() == '\n' || warning.back() == '\r'))
+        warning.pop_back();
+    constexpr std::size_t kMaxAnalysisWarning = 2048U;
+    if (warning.size() > kMaxAnalysisWarning) {
+        warning.resize(kMaxAnalysisWarning);
+        warning += "...";
+    }
     if (!warning.empty())
-        set(payload, "analysis_warning", Json(warning));
+        set(payload, "analysis_warning", Json(std::move(warning)));
     return payload;
 }
 
