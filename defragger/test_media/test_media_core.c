@@ -111,6 +111,15 @@ LdtmFragmentProfile ldtm_fragment_profile(const LdtmFilesystemSpec *spec) {
          */
         profile.directory_initial = 0U;
         profile.directory_second = 0U;
+    } else if (spec != NULL && strcmp(spec->key, "zfs") == 0) {
+        /*
+         * ZFS is analysis-only and the exact reader intentionally has a
+         * bounded topology contract. Keep the full 200 MiB fragmented-file
+         * corpus but avoid manufacturing thousands of directory entries that
+         * only force the disposable pool outside that exact-reader contract.
+         */
+        profile.directory_initial = 0U;
+        profile.directory_second = 0U;
     } else if (spec != NULL &&
                (strcmp(spec->key, "sfs") == 0 ||
                 strcmp(spec->key, "pfs3") == 0)) {
