@@ -459,6 +459,16 @@ def test_infiltratr_common_integration() -> None:
     assert "ld_block_device_has_system_use" in test_media_worker
     assert "infiltratr_path_join" in test_media_worker
     assert "static int join_path(" not in test_media_worker
+    assert "Build Test Disk did not produce a populated filesystem" in test_media_worker
+    assert "build_status[64]" in test_media_worker
+    assert "build_detail[512]" in test_media_worker
+    assert "expected_directory_entries +\n            (uint64_t)LDTM_EDGE_CASE_COUNT" in test_media_worker
+    assert "reconcile_hfs_test_media_free_count" in test_media_worker
+    assert 'program, "-f", "-M", "-n", "4096", "-s", "4096"' in test_media_worker
+    assert '"mount", "-o", "nodatacow"' in test_media_worker
+    assert "two allocation phases" in test_media_worker
+    assert "WEXITSTATUS(status)" in test_media_gui
+    assert "WTERMSIG(status)" in test_media_gui
     test_media_cmake = (ROOT / "cmake" / "test_media.cmake").read_text()
     assert "InfiltratrCommon::Common" in test_media_cmake
     assert "infiltratr_array_reserve" in test_media_amiga
