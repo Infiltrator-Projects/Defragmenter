@@ -1930,7 +1930,8 @@ static int verify_ufs2_raw_payload(
     }
     if (regular_files !=
         (uint64_t)target_count +
-            expected_directory_entries)
+            expected_directory_entries +
+            (uint64_t)LDTM_EDGE_CASE_COUNT)
         goto cleanup;
 
     if (detail != NULL && detail_capacity > 0U)
