@@ -2788,8 +2788,26 @@ int ldtm_worker_verify(const char *device) {
         const LdtmFilesystemSpec *spec = &ldtm_specs()[index];
         const char *partition;
         char mountpoint[PATH_MAX];
-        if (!expected[index].populated)
+        if (!expected[index].populated) {
+            char detail[768];
+            (void)snprintf(
+                detail, sizeof(detail),
+                "Build Test Disk did not produce a populated filesystem%s%s%s",
+                expected[index].build_status[0] != '\0' ? " (" : "",
+                expected[index].build_status[0] != '\0'
+                    ? expected[index].build_status : "",
+                expected[index].build_status[0] != '\0' ? ")" : "");
+            if (expected[index].build_detail[0] != '\0') {
+                const size_t used = strlen(detail);
+                if (used < sizeof(detail))
+                    (void)snprintf(
+                        detail + used, sizeof(detail) - used,
+                        ": %s", expected[index].build_detail);
+            }
+            emit_status(spec->key, "verify-failed", detail);
+            failures++;
             continue;
+        }
         printf("\n=== verify %s ===\n", spec->key);
         fflush(stdout);
 
@@ -3032,8 +3050,25 @@ int ldtm_worker_qualify(const char *device)
         char journal[PATH_MAX];
         char detail[512] = {0};
 
-        if (!expected[index].populated)
+        if (!expected[index].populated) {
+            (void)snprintf(
+                detail, sizeof(detail),
+                "Build Test Disk did not produce a populated filesystem%s%s%s",
+                expected[index].build_status[0] != '\0' ? " (" : "",
+                expected[index].build_status[0] != '\0'
+                    ? expected[index].build_status : "",
+                expected[index].build_status[0] != '\0' ? ")" : "");
+            if (expected[index].build_detail[0] != '\0') {
+                const size_t used = strlen(detail);
+                if (used < sizeof(detail))
+                    (void)snprintf(
+                        detail + used, sizeof(detail) - used,
+                        ": %s", expected[index].build_detail);
+            }
+            emit_status(spec->key, "qualification-failed", detail);
+            failures++;
             continue;
+        }
         partition = partition_for_label(&map, spec->label);
         if (partition == NULL) {
             emit_status(spec->key, "qualification-failed",
