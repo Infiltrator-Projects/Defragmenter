@@ -469,6 +469,8 @@ def test_infiltratr_common_integration() -> None:
     assert "two allocation phases" in test_media_worker
     assert "WEXITSTATUS(status)" in test_media_gui
     assert "WTERMSIG(status)" in test_media_gui
+    assert 'strcmp(status, "verified") == 0' in test_media_gui
+    assert 'strcmp(status, "verify-failed") == 0' in test_media_gui
     test_media_cmake = (ROOT / "cmake" / "test_media.cmake").read_text()
     assert "InfiltratrCommon::Common" in test_media_cmake
     assert "infiltratr_array_reserve" in test_media_amiga
