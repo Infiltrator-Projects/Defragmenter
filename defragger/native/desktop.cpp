@@ -1584,46 +1584,143 @@ private:
                 "Run Analyse to inspect the allocation map.");
     }
 
+    struct MapDisplayGeometry {
+        std::uint64_t first_unit = 0U;
+        std::uint64_t last_unit = 0U;
+        std::uint64_t allocation_units = 0U;
+        std::uint64_t display_units_per_allocation_unit = 1U;
+        std::uint64_t prefix_display_units = 0U;
+        std::uint64_t suffix_display_units = 0U;
+        std::uint64_t total_display_units = 0U;
+        std::uint64_t display_unit_size = 0U;
+        std::string display_unit_name;
+        bool exact_subunits = false;
+    };
+
+    MapDisplayGeometry map_display_geometry() const {
+        MapDisplayGeometry geometry;
+        if (cells_.empty()) return geometry;
+
+        geometry.first_unit = number(cells_.front(), "start");
+        geometry.last_unit = number(cells_.back(), "end");
+        if (geometry.last_unit < geometry.first_unit) return geometry;
+        geometry.allocation_units =
+            geometry.last_unit - geometry.first_unit + 1U;
+        geometry.total_display_units = geometry.allocation_units;
+
+        const std::uint64_t per_unit =
+            number(map_data_, "display_units_per_allocation_unit");
+        const std::uint64_t prefix =
+            number(map_data_, "display_prefix_units");
+        const std::uint64_t suffix =
+            number(map_data_, "display_suffix_units");
+        const std::uint64_t display_total =
+            number(map_data_, "display_total_units");
+        const std::uint64_t display_size =
+            number(map_data_, "display_unit_size");
+        const char* display_name = field(map_data_, "display_unit_name");
+
+        bool one_cell_per_allocation_unit =
+            static_cast<std::uint64_t>(cells_.size()) ==
+            geometry.allocation_units;
+        if (one_cell_per_allocation_unit) {
+            std::uint64_t expected = geometry.first_unit;
+            for (const auto& cell : cells_) {
+                const std::uint64_t start = number(cell, "start");
+                const std::uint64_t end = number(cell, "end");
+                if (start != expected || end != start) {
+                    one_cell_per_allocation_unit = false;
+                    break;
+                }
+                ++expected;
+            }
+        }
+
+        if (!one_cell_per_allocation_unit || per_unit == 0U ||
+            display_total == 0U || display_size == 0U ||
+            display_name == nullptr || *display_name == '\0' ||
+            geometry.allocation_units >
+                std::numeric_limits<std::uint64_t>::max() / per_unit) {
+            return geometry;
+        }
+
+        const std::uint64_t data_display_units =
+            geometry.allocation_units * per_unit;
+        if (prefix >
+                std::numeric_limits<std::uint64_t>::max() -
+                    data_display_units) {
+            return geometry;
+        }
+        const std::uint64_t prefix_and_data =
+            prefix + data_display_units;
+        if (suffix >
+                std::numeric_limits<std::uint64_t>::max() -
+                    prefix_and_data ||
+            prefix_and_data + suffix != display_total) {
+            return geometry;
+        }
+
+        geometry.display_units_per_allocation_unit = per_unit;
+        geometry.prefix_display_units = prefix;
+        geometry.suffix_display_units = suffix;
+        geometry.total_display_units = display_total;
+        geometry.display_unit_size = display_size;
+        geometry.display_unit_name = display_name;
+        geometry.exact_subunits = true;
+        return geometry;
+    }
+
     void update_map_caption() {
         if (summary_ == nullptr || map_ == nullptr || cells_.empty()) return;
 
         GtkAllocation allocation;
         gtk_widget_get_allocation(map_, &allocation);
+        const std::uint64_t scale = static_cast<std::uint64_t>(
+            std::max(1, gtk_widget_get_scale_factor(map_)));
         const std::uint64_t width =
-            static_cast<std::uint64_t>(std::max(1, allocation.width));
+            static_cast<std::uint64_t>(std::max(1, allocation.width)) * scale;
         const std::uint64_t height =
-            static_cast<std::uint64_t>(std::max(1, allocation.height));
+            static_cast<std::uint64_t>(std::max(1, allocation.height)) * scale;
         const std::uint64_t display_pixels = std::max<std::uint64_t>(
             1U, width * height);
 
-        const std::uint64_t first =
-            number(cells_.front(), "start");
-        const std::uint64_t last =
-            number(cells_.back(), "end");
-        if (last < first) return;
-        const std::uint64_t units = last - first + 1U;
+        const MapDisplayGeometry geometry = map_display_geometry();
+        if (geometry.allocation_units == 0U) return;
 
         /*
-         * A visible map pixel is a real one-pixel sample in the GTK drawing
-         * area.  Never enlarge one allocation cell into several screen pixels.
-         * If there are fewer allocation cells than screen pixels, leave the
-         * remaining drawing area empty.  If a resize leaves fewer screen
-         * pixels than cells, combine adjacent cells so each visible pixel still
-         * represents one or more complete allocation units.
+         * The map is resolved against real device pixels, not GTK logical
+         * pixels.  A visible pixel always represents at least one complete
+         * physical display unit.  FAT can therefore use sectors when the
+         * analyser has returned one exact cell per cluster; we do not invent
+         * fractional clusters or stretch a logical cell merely to fill space.
          */
+        const std::uint64_t source_units = geometry.exact_subunits
+            ? geometry.total_display_units
+            : static_cast<std::uint64_t>(cells_.size());
+        const std::uint64_t measured_units = geometry.exact_subunits
+            ? geometry.total_display_units
+            : geometry.allocation_units;
         const std::uint64_t map_pixels = std::max<std::uint64_t>(
-            1U, std::min<std::uint64_t>(
-                static_cast<std::uint64_t>(cells_.size()),
-                display_pixels));
+            1U, std::min(source_units, display_pixels));
         const double units_per_pixel = std::max(
             1.0,
-            static_cast<double>(units) /
+            static_cast<double>(measured_units) /
                 static_cast<double>(map_pixels));
 
         std::string unit_label = "allocation units";
         std::string suffix;
-        if (map_data_.find("cluster_size") != nullptr &&
-            map_data_.find("data_clusters") != nullptr) {
+        if (geometry.exact_subunits) {
+            unit_label = geometry.display_unit_name;
+            if (geometry.display_unit_size != 0U) {
+                suffix = " · " + bytes(geometry.display_unit_size) +
+                    (unit_label == "sectors" ? "/sector" : "/unit");
+            }
+            const std::uint64_t cluster_size =
+                number(map_data_, "cluster_size");
+            if (cluster_size != 0U)
+                suffix += " · " + bytes(cluster_size) + "/cluster";
+        } else if (map_data_.find("cluster_size") != nullptr &&
+                   map_data_.find("data_clusters") != nullptr) {
             unit_label = "clusters";
             const std::uint64_t cluster_size =
                 number(map_data_, "cluster_size");
@@ -1641,10 +1738,8 @@ private:
             g_snprintf(density, sizeof(density), "%.0f", units_per_pixel);
         else if (units_per_pixel >= 10.0)
             g_snprintf(density, sizeof(density), "%.1f", units_per_pixel);
-        else if (units_per_pixel >= 1.0)
-            g_snprintf(density, sizeof(density), "%.2f", units_per_pixel);
         else
-            g_snprintf(density, sizeof(density), "%.3f", units_per_pixel);
+            g_snprintf(density, sizeof(density), "%.2f", units_per_pixel);
 
         const std::string caption =
             "Allocation image: " + std::to_string(map_pixels) +
@@ -1657,10 +1752,12 @@ private:
         if (map_ == nullptr) return 4096U;
         GtkAllocation allocation;
         gtk_widget_get_allocation(map_, &allocation);
+        const std::uint64_t scale = static_cast<std::uint64_t>(
+            std::max(1, gtk_widget_get_scale_factor(map_)));
         const std::uint64_t width =
-            static_cast<std::uint64_t>(std::max(1, allocation.width));
+            static_cast<std::uint64_t>(std::max(1, allocation.width)) * scale;
         const std::uint64_t height =
-            static_cast<std::uint64_t>(std::max(1, allocation.height));
+            static_cast<std::uint64_t>(std::max(1, allocation.height)) * scale;
         const std::uint64_t pixels = width * height;
         return std::clamp<std::uint64_t>(
             pixels, 256U, 1048576U);
