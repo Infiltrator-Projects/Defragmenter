@@ -814,6 +814,13 @@ if(BUILD_TESTING)
         linux-defragger-core)
     add_test(NAME linux-defragger-fat-relayout-model
         COMMAND linux-defragger-fat-relayout-model-test)
+    add_executable(linux-defragger-fat12-small-workspace-fixture
+        tests/fat12_small_workspace_fixture.c)
+    target_compile_options(linux-defragger-fat12-small-workspace-fixture PRIVATE
+        ${LD_WARNING_FLAGS})
+    target_compile_definitions(linux-defragger-fat12-small-workspace-fixture PRIVATE
+        _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+
     add_test(NAME linux-defragger-tests
              COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_tests.sh
                      $<TARGET_FILE:linux-defragger-fat-worker>)
