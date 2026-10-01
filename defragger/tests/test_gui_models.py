@@ -697,7 +697,8 @@ def test_theme_modes_are_persistent_and_shared_across_windows() -> None:
         'std::vector<std::uint32_t> pixels(',
         'const std::size_t source_count = self->cells_.size();',
         'const std::size_t display_count',
-        'const std::size_t map_pixel_count',
+        'source_count < display_count',
+        'pixel * source_count / display_count',
         'map_cell_rgb(self->cells_[begin])',
         'CAIRO_FORMAT_ARGB32',
         'gtk_widget_get_scale_factor',
@@ -711,11 +712,10 @@ def test_theme_modes_are_persistent_and_shared_across_windows() -> None:
         'volume_combo_text(volume)',
         'v->mounted ? "● Mounted" : "● Unmounted"',
         'update_map_caption()',
-        'const std::uint64_t map_pixels',
-        'std::max(\n            1.0,',
-        '" physical pixels · approximately "',
+        '"Physical allocation raster · "',
+        '" per display pixel"',
+        '" display pixels per "',
         '"clusters"',
-        '" per pixel"',
         '0x0585FF',
         '0xFF253C',
         '0x9E2BFA',
@@ -729,6 +729,8 @@ def test_theme_modes_are_persistent_and_shared_across_windows() -> None:
     assert "allocation.height / 8" not in native_desktop
     assert "cairo_scale(" not in native_desktop
     assert "CAIRO_FILTER_NEAREST" not in native_desktop
+    assert "std::min(source_count, display_count)" not in native_desktop
+    assert "leave spare device pixels empty" not in native_desktop
     assert "gtk_menu_bar_new()" not in native_desktop
     assert 'gtk_menu_item_new_with_label("File")' not in native_desktop
     assert 'gtk_menu_item_new_with_label("View")' not in native_desktop
