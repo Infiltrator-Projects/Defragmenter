@@ -1319,6 +1319,91 @@ static int mount_regular(const LdtmFilesystemSpec *spec,
     }
 }
 
+#define LDTM_HFS_MDB_OFFSET UINT64_C(1024)
+#define LDTM_HFS_SECTOR_SIZE UINT64_C(512)
+#define LDTM_HFS_SIGNATURE UINT16_C(0x4244)
+
+static int reconcile_hfs_test_media_free_count(const char *partition)
+{
+    int fd = -1;
+    uint8_t mdb[162];
+    uint8_t alternate[162];
+    uint8_t *bitmap = NULL;
+    uint64_t bytes = 0U;
+    int result = -1;
+
+    fd = open(partition, O_RDWR | O_CLOEXEC);
+    if (fd < 0 ||
+        ld_fd_size_bytes(fd, &bytes) != 0 ||
+        bytes < UINT64_C(2048) ||
+        infiltratr_pread_full(
+            fd, mdb, sizeof(mdb), LDTM_HFS_MDB_OFFSET) != 0 ||
+        infiltratr_load_be16(mdb) != LDTM_HFS_SIGNATURE)
+        goto cleanup;
+
+    const uint16_t bitmap_start = infiltratr_load_be16(mdb + 14U);
+    const uint16_t total_blocks = infiltratr_load_be16(mdb + 18U);
+    if (total_blocks == 0U)
+        goto cleanup;
+
+    const size_t bitmap_length =
+        ((size_t)total_blocks + 7U) / 8U;
+    const uint64_t bitmap_offset =
+        (uint64_t)bitmap_start * LDTM_HFS_SECTOR_SIZE;
+    if (bitmap_offset > bytes ||
+        (uint64_t)bitmap_length > bytes - bitmap_offset)
+        goto cleanup;
+
+    bitmap = malloc(bitmap_length);
+    if (bitmap == NULL ||
+        infiltratr_pread_full(
+            fd, bitmap, bitmap_length, bitmap_offset) != 0)
+        goto cleanup;
+
+    uint32_t free_blocks = 0U;
+    for (uint32_t block = 0U; block < total_blocks; ++block) {
+        const uint8_t mask =
+            (uint8_t)(UINT8_C(0x80) >> (block & 7U));
+        if ((bitmap[block >> 3U] & mask) == 0U)
+            ++free_blocks;
+    }
+    if (free_blocks > UINT16_MAX)
+        goto cleanup;
+
+    infiltratr_store_be16(mdb + 34U, (uint16_t)free_blocks);
+    if (infiltratr_pwrite_full(
+            fd, mdb, sizeof(mdb), LDTM_HFS_MDB_OFFSET) != 0)
+        goto cleanup;
+
+    /*
+     * Classic HFS keeps an alternate MDB in the second-to-last logical
+     * sector. Update it only when it is present and recognisably HFS; the
+     * primary MDB remains authoritative for the production preflight.
+     */
+    const uint64_t alternate_offset = bytes - UINT64_C(1024);
+    if (infiltratr_pread_full(
+            fd, alternate, sizeof(alternate),
+            alternate_offset) == 0 &&
+        infiltratr_load_be16(alternate) == LDTM_HFS_SIGNATURE) {
+        infiltratr_store_be16(
+            alternate + 34U, (uint16_t)free_blocks);
+        if (infiltratr_pwrite_full(
+                fd, alternate, sizeof(alternate),
+                alternate_offset) != 0)
+            goto cleanup;
+    }
+
+    if (fsync(fd) != 0)
+        goto cleanup;
+    result = 0;
+
+cleanup:
+    free(bitmap);
+    if (fd >= 0)
+        (void)close(fd);
+    return result;
+}
+
 static void sanitize_tsv(char *text) {
     if (text == NULL) return;
     while (*text != '\0') {
@@ -1546,6 +1631,16 @@ static int create_regular_and_populate(const LdtmFilesystemSpec *spec, const cha
     {
         const char *const umount_argv[] = {"umount", mountpoint, NULL};
         if (run_process(umount_argv, NULL, 0) != 0) return -1;
+    }
+    if (spec->creator == LDTM_CREATOR_HFS &&
+        reconcile_hfs_test_media_free_count(partition) != 0) {
+        emit_status(
+            spec->key, "qualification-failed",
+            "could not reconcile the sacrificial HFS MDB free-block count with its allocation bitmap");
+        (void)state_write_status(
+            state, spec, "qualification-failed",
+            "HFS Test Media MDB free-block reconciliation failed");
+        return 1;
     }
     {
         char detail[512];
