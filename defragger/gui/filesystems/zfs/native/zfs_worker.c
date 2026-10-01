@@ -334,14 +334,20 @@ static int analyse_exact_or_summary(const char *path,
         zfs_analysis_destroy(&analysis);
         return 0;
     }
-    if (errno == ENOTSUP) {
-        if (json_only != 0)
-            print_summary_json(summary, 1);
-        return 0;
-    }
-    (void)fprintf(stderr, "%s: %s\n", PROG,
-                  error[0] != '\0' ? error : strerror(errno));
-    return 1;
+    /*
+     * A committed ZFS label/uberblock already proves that this is a ZFS
+     * member. Exact MOS/metaslab/file-tree decoding is deliberately bounded.
+     * Any failure below that summary boundary must therefore degrade to a
+     * truthful unknown-allocation summary rather than turning read-only
+     * analysis into an application error. The reason remains visible to the
+     * caller so an exact-parser defect is not hidden.
+     */
+    (void)fprintf(
+        stderr, "%s: exact analysis unavailable: %s; showing verified summary\n",
+        PROG, error[0] != '\0' ? error : strerror(errno));
+    if (json_only != 0)
+        print_summary_json(summary, 1);
+    return 0;
 }
 
 int main(int argc, char **argv)
@@ -372,13 +378,12 @@ int main(int argc, char **argv)
             zfs_analysis_destroy(&analysis);
             return 0;
         }
-        if (errno == ENOTSUP) {
-            print_summary_map(&summary, requested_cells);
-            return 0;
-        }
-        (void)fprintf(stderr, "%s: %s\n", PROG,
-                      error[0] != '\0' ? error : strerror(errno));
-        return 1;
+        (void)fprintf(
+            stderr,
+            "%s: exact analysis unavailable: %s; showing verified summary\n",
+            PROG, error[0] != '\0' ? error : strerror(errno));
+        print_summary_map(&summary, requested_cells);
+        return 0;
     }
 
     if (argc != 3) {
