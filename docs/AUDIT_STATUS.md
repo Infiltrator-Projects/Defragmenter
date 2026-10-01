@@ -6,18 +6,18 @@ Completed: 2026-09-22
 Extended: 2026-10-01
 
 Applies to: release version 1.8.0-234
-Audited source commit: e8901915edffb09db79ed29c79c8866980205202
+Audited source commit: d6e83fa776761e1f6315402ad66c19f323b08659
 Audited release-governance commit: e09599f6c84b31e7f29ec5da9e5f9db23807b9d9
 
 This status records the 1.8.0-234 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
-This document records the completed 1.8.0-234 release safety case and the explicit release decision. Re-running the release gate does not change the audited source baseline. Historical audit-development detail remains in Git history and immutable release tags rather than being repeated as a second changelog.
+This document records the completed 1.8.0-234 release safety case and the explicit release decision. Re-running the release gate after the warnings-clean diagnostic fix uses the audited source baseline named above. Historical audit-development detail remains in Git history and immutable release tags rather than being repeated as a second changelog.
 
 ## Qualification evidence
 
-The current audited production/build/Test-Media source baseline is commit `e8901915edffb09db79ed29c79c8866980205202` for release version 1.8.0-234. The storage writers themselves are unchanged from the qualified 1.8.0-233 production baseline; this release corrects the destructive qualification fixtures and result accounting exposed by the 21-slot physical Test Media run.
+The current audited production/build/Test-Media source baseline is commit `d6e83fa776761e1f6315402ad66c19f323b08659` for release version 1.8.0-234. The storage writers themselves are unchanged from the qualified 1.8.0-233 production baseline; this release corrects the destructive qualification fixtures and result accounting exposed by the 21-slot physical Test Media run.
 
 Test Media now carries the saved Build Test Disk state and diagnostic for every registered filesystem into later stages. Qualify and Verify emit a terminal status for every one of the 21 slots instead of silently skipping a filesystem that never reached the populated state. This makes UFS/ZFS build failures visible rather than leaving their rows at `Waiting`, while ZFS and swap retain their intentional analysis-only/no-Defragment qualification states when successfully built.
 
