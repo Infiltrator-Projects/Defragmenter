@@ -275,11 +275,25 @@ static void worker_finished(GPid pid, gint status, gpointer user_data) {
         gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(app->progress), 0.0);
         gtk_progress_bar_set_text(GTK_PROGRESS_BAR(app->progress), "Operation failed");
         gtk_label_set_text(GTK_LABEL(app->operation_summary), "Operation failed — see live log");
-        (void)snprintf(message, sizeof(message), "\nWorker failed (status %d).\n", status);
+        if (WIFEXITED(status)) {
+            (void)snprintf(
+                message, sizeof(message),
+                "\nWorker failed (exit status %d).\n",
+                WEXITSTATUS(status));
+        } else if (WIFSIGNALED(status)) {
+            (void)snprintf(
+                message, sizeof(message),
+                "\nWorker terminated by signal %d.\n",
+                WTERMSIG(status));
+        } else {
+            (void)snprintf(
+                message, sizeof(message),
+                "\nWorker failed (wait status %d).\n", status);
+        }
         append_log(app, message);
         show_message(GTK_WINDOW(app->window), GTK_MESSAGE_ERROR,
                      "Test-media operation failed",
-                     "See the live log for the command that failed.");
+                     "See the live log for the filesystem-specific failure.");
     }
 }
 
