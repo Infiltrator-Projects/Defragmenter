@@ -2345,7 +2345,19 @@ private:
             gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(progress_),
                 std::clamp(message.at("percent").real_value() / 100.0, 0.0, 1.0));
         } else if (type == "finished") {
-            completed(static_cast<int>(number(message, "returncode")), "");
+            const int code =
+                static_cast<int>(number(message, "returncode"));
+            std::string detail;
+            if (code != 0 && purpose_ == "analysis") {
+                detail = output_;
+                while (!detail.empty() &&
+                       (detail.back() == '\n' || detail.back() == '\r'))
+                    detail.pop_back();
+                constexpr std::size_t kMaxFailureDetail = 4096U;
+                if (detail.size() > kMaxFailureDetail)
+                    detail.erase(0, detail.size() - kMaxFailureDetail);
+            }
+            completed(code, detail);
         }
     }
     void request_stop() {
@@ -2450,6 +2462,11 @@ private:
                  v->growth_reason);
         map_data_ = map;
         cells_ = raw->array();
+        if (const Json* warning = map.find("analysis_warning");
+            warning != nullptr && warning->is_string() &&
+            !warning->string().empty()) {
+            note("Analysis warning: " + warning->string());
+        }
         queue_maps();
         const bool complete_allocation = number(map, "unknown_bytes") == 0U;
         const bool complete_fragmentation =
