@@ -1038,6 +1038,9 @@ def test_sfs_and_pfs3_maps_expose_complete_fragmentation_summary() -> None:
 
 def test_cpp_mapper_reuses_common_arithmetic_and_has_no_legacy_apfs_adapter() -> None:
     mapper = (ROOT / "native" / "map.cpp").read_text()
+    zfs_worker = (
+        GUI / "filesystems" / "zfs" / "native" / "zfs_worker.c"
+    ).read_text()
     runtime_header = (ROOT / "native" / "runtime.hpp").read_text()
     runtime = (ROOT / "native" / "runtime.cpp").read_text()
 
@@ -1045,6 +1048,16 @@ def test_cpp_mapper_reuses_common_arithmetic_and_has_no_legacy_apfs_adapter() ->
     assert "infiltratr_u64_multiply_checked" in mapper
     assert "std::numeric_limits<std::uint64_t>::max() / left" not in mapper
     assert "checked_multiply(" not in mapper
+    assert 'set(payload, "analysis_warning"' in mapper
+    assert "result.standard_error" in mapper
+
+    # A recognised committed ZFS member must remain analyzable even when the
+    # bounded exact reader encounters an unsupported or structurally unfamiliar
+    # MOS form. The worker degrades to a truthful all-unknown summary map and
+    # emits the exact-reader reason instead of failing the whole GUI operation.
+    assert "exact analysis unavailable:" in zfs_worker
+    assert "showing verified summary" in zfs_worker
+    assert zfs_worker.count("print_summary_map(&summary, requested_cells);") >= 1
 
     assert "MapAdapter::Apfs" not in mapper
     assert "\n    Apfs,\n" not in runtime_header
