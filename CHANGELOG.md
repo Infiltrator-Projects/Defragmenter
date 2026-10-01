@@ -2,6 +2,15 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-232
+
+- Fix ZFS/OpenZFS analysis so a recognised committed member no longer turns the entire GUI analysis into an opaque `Exit status 1` when the bounded exact MOS/metaslab/file-tree reader cannot complete.
+- Preserve the safe product boundary: exact ZFS analysis is still used whenever the bounded reader succeeds; otherwise the worker returns a verified summary map with all unresolved allocation marked unknown instead of inventing free/used data.
+- Preserve the exact-reader failure reason as an analysis warning so the technical log explains why the result is summary-only.
+- Fix privileged read-only analysis error reporting generally. When a mapper genuinely exits non-zero, the native desktop now surfaces the captured child output instead of discarding it and showing only the numeric exit status.
+- Keep ZFS analysis-only; no raw ZFS mutation, writer, placement, transaction or recovery behaviour is added.
+- No filesystem writer semantics are changed.
+
 ## 1.8.0-231
 
 - Replace the sparse one-source-cell/one-screen-pixel map with a full-canvas continuous physical raster for every filesystem.
