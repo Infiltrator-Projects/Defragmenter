@@ -5,23 +5,23 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-10-01
 
-Applies to: release version 1.8.0-232
-Audited source commit: 8f71166d90d32156263c58215b1af43f5eb232a2
+Applies to: release version 1.8.0-233
+Audited source commit: 636c038ba9cfa131889660dd8e9e21d749a1dd3e
 Audited release-governance commit: e09599f6c84b31e7f29ec5da9e5f9db23807b9d9
 
-This status records the 1.8.0-232 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
+This status records the 1.8.0-233 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
-This document records the completed 1.8.0-232 release safety case. Historical audit-development detail remains in Git history and immutable release tags rather than being repeated as a second changelog.
+This document records the completed 1.8.0-233 release safety case. Historical audit-development detail remains in Git history and immutable release tags rather than being repeated as a second changelog.
 
 ## Qualification evidence
 
-The current audited production-source baseline is commit `8f71166d90d32156263c58215b1af43f5eb232a2` for release version 1.8.0-232. The delta from the qualified 1.8.0-231 storage baseline is confined to read-only ZFS analysis fallback and native desktop error presentation. A ZFS member with a recognised committed label/uberblock remains positively identified even when the bounded exact MOS/metaslab/file-tree reader cannot complete. In that case the ZFS worker now returns the existing summary map contract, with unresolved allocation represented as unknown, rather than terminating the whole GUI analysis. No exact free/used or fragmentation claim is made in the fallback result.
+The current audited production-source baseline is commit `636c038ba9cfa131889660dd8e9e21d749a1dd3e` for release version 1.8.0-233. Relative to 1.8.0-232, FAT12/FAT16/FAT32 canonical relayout no longer requires all free space to exceed the largest allocated object. The durable mapped-relocation journal already supports arbitrary cluster subsets; the scheduler now uses that capability when a whole-object workspace cannot fit, filling already-free final targets and breaking dependency cycles by parking only the blocking clusters in recoverable scratch space. The existing whole-object, forward and unified-workspace paths remain the preferred fast paths when their dependency sets fit.
 
-The exact-reader failure text is preserved as an analysis warning and surfaced in the technical activity log. Privileged read-only mapper failures also retain their captured child output, so a genuine non-zero mapper exit no longer collapses into an uninformative numeric `Exit status 1` dialog. Exact ZFS results are unchanged when the bounded reader succeeds, and ZFS remains analysis-only with no Defragment, Growth Defrag or Recover operation.
+The FAT rewrite still fails closed when no free cluster exists, and Growth Defrag still requires enough geometric slack to leave a durable staging cluster while preserving its exact 10% post-file reserve. No RAM-only overwrite path is introduced. Every rolling relocation remains a normal journalled transaction with target identity binding, durable metadata switching, old-cluster release and reopened final verification.
 
-The 1.8.0-232 capability baseline otherwise retains the fully qualified 1.8.0-231 filesystem, transaction, raster, titlebar, icon-colour, volume-state, FAT identity/sector geometry and Day/Night semantics. Filesystem writers, placement policy, journalling, target binding and recovery paths are unchanged. Publication remains conditioned on the exact-head hosted warnings-as-errors build, shipped native GTK Xvfb smoke test, complete CTest suite and ASan/UBSan lane; the release workflow will not publish this audit identity unless those gates pass.
+A native C FAT12 regression fixture now constructs two interlocked 400-cluster files with only 200 free clusters, proving that the largest object can exceed the terminal workspace. The aggregate qualification runs production Defragment followed by exact 10% Growth Defrag and verifies the retained payload byte-for-byte after each operation. Existing ZFS summary fallback, native error presentation, raster, titlebar, volume-state and filesystem safety contracts from 1.8.0-232 remain unchanged. Publication remains conditioned on the exact-head hosted warnings-as-errors build, shipped native GTK Xvfb smoke test, complete CTest suite and ASan/UBSan lane; the release workflow will not publish this audit identity unless those gates pass.
 
 The release-governance baseline is `a3c3bf4fed0007178886d411e4172ce2b5302643`. The malformed-media matrix, transaction/recovery tests, native integration fixtures, GUI contract tests, release/package tests and architecture ownership checks remain part of the permanent **Project quality gate**. Environment-dependent destructive-media evidence remains supplementary and is not represented as hosted-CI proof.
 
