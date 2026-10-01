@@ -2,6 +2,16 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-230
+
+- Correct the physical allocation raster after the 1.8.0-229 map became artificially sparse on FAT volumes with large clusters.
+- Treat FAT sectors as the finest truthful display unit when the native analyser has returned one exact cell per cluster. A 64 KiB FAT12 cluster therefore exposes its constituent physical sectors to the raster instead of limiting the entire map to one pixel for that cluster.
+- Include FAT reserved/data-boundary geometry in the native map contract so boot/FAT/root-directory and trailing non-data sectors retain their real physical positions rather than disappearing from the picture.
+- Resolve map capacity against GTK device pixels rather than logical toolkit pixels, including HiDPI scale factors, while preserving the invariant that a visible data pixel represents one or more complete physical display units and never a fractional sector/block.
+- Keep aggregation fail-safe: when an analyser has already combined multiple allocation units into one cell, the desktop does not fabricate finer state than the analyser actually supplied.
+- Add native mapper and GUI contract regressions for sector geometry, physical-device-pixel rendering and Cairo device scaling.
+- No filesystem writer, placement, transaction or recovery semantics are changed.
+
 ## 1.8.0-229
 
 - Make the physical allocation raster strictly one-to-one with actual GTK screen pixels. An analyser cell may occupy exactly one visible pixel, never be enlarged into multiple visible pixels.
