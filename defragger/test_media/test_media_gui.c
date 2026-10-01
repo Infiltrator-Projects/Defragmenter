@@ -115,9 +115,14 @@ static const char *display_result(const char *status) {
     if (strcmp(status, "formatted-unpopulated") == 0) return "⚠ Formatted only";
     if (strcmp(status, "skipped") == 0) return "— Skipped";
     if (strcmp(status, "format-failed") == 0) return "✕ Format failed";
-    if (strcmp(status, "verify-ok") == 0) return "✓ Verified";
-    if (strcmp(status, "verify-fail") == 0) return "✕ Verification failed";
-    if (strcmp(status, "verify-skip") == 0) return "— Verification skipped";
+    if (strcmp(status, "verified") == 0 ||
+        strcmp(status, "verify-ok") == 0)
+        return "✓ Verified";
+    if (strcmp(status, "verify-failed") == 0 ||
+        strcmp(status, "verify-fail") == 0)
+        return "✕ Verification failed";
+    if (strcmp(status, "verify-skip") == 0)
+        return "— Verification skipped";
     if (strcmp(status, "qualified") == 0) return "✓ Production qualified";
     if (strcmp(status, "qualification-skipped") == 0) return "— Analysis-only";
     if (strcmp(status, "qualification-failed") == 0) return "✕ Qualification failed";
