@@ -18,6 +18,7 @@ extern "C" {
 #include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
