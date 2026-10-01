@@ -1088,29 +1088,98 @@ static int generate_fragmented_data(const LdtmFilesystemSpec *spec, const char *
         contexts[file_index] = EVP_MD_CTX_new();
         if (contexts[file_index] == NULL || EVP_DigestInit_ex(contexts[file_index], EVP_sha256(), NULL) != 1) goto cleanup;
     }
-    printf("Writing %u heterogeneous target files round-robin (up to %u x %u KiB chunks; %llu MiB total)...\n",
-           profile.files, profile.chunks, profile.chunk_kib,
-           (unsigned long long)(ldtm_profile_payload_bytes(&profile) / LDTM_MIB));
-    fflush(stdout);
-    for (index = 0U; index < profile.chunks; ++index) {
-        for (file_index = 0U; file_index < profile.files && file_index < LDTM_MAX_TARGET_FILES; ++file_index) {
-            const uint32_t target_chunks =
-                ldtm_profile_file_chunks(&profile, file_index);
-            if (index >= target_chunks) continue;
-            const size_t chunk_bytes = (size_t)profile.chunk_kib * 1024U;
-            const uint64_t seed = ((uint64_t)file_index << 48) ^ ((uint64_t)index << 16) ^ UINT64_C(0x4c44544d);
-            deterministic_fill(chunk_buffer, chunk_bytes, seed);
-            if (infiltratr_write_full(fds[file_index], chunk_buffer, chunk_bytes) != 0 ||
-                EVP_DigestUpdate(contexts[file_index], chunk_buffer, chunk_bytes) != 1 ||
-                fsync(fds[file_index]) != 0) goto cleanup;
+    if (spec->creator == LDTM_CREATOR_BTRFS) {
+        /*
+         * The bounded production writer intentionally requires level-0 mutable
+         * trees. Manufacture two durable extents per retained file instead of
+         * hundreds of tiny extent-data items: all first halves are forced to
+         * disk before any second half is written, so the eight files remain
+         * genuinely fragmented while the filesystem tree stays within one
+         * 4 KiB leaf. File sizes and the retained 200 MiB corpus are unchanged.
+         */
+        printf("Writing %u heterogeneous Btrfs target files in two allocation phases (%llu MiB total)...\n",
+               profile.files,
+               (unsigned long long)(ldtm_profile_payload_bytes(&profile) / LDTM_MIB));
+        fflush(stdout);
+        for (unsigned phase = 0U; phase < 2U; ++phase) {
+            for (file_index = 0U;
+                 file_index < profile.files &&
+                 file_index < LDTM_MAX_TARGET_FILES;
+                 ++file_index) {
+                const uint32_t target_chunks =
+                    ldtm_profile_file_chunks(&profile, file_index);
+                const uint32_t split = (target_chunks + 1U) / 2U;
+                const uint32_t begin = phase == 0U ? 0U : split;
+                const uint32_t end =
+                    phase == 0U ? split : target_chunks;
+                for (index = begin; index < end; ++index) {
+                    const size_t chunk_bytes =
+                        (size_t)profile.chunk_kib * 1024U;
+                    const uint64_t seed =
+                        ((uint64_t)file_index << 48) ^
+                        ((uint64_t)index << 16) ^
+                        UINT64_C(0x4c44544d);
+                    deterministic_fill(
+                        chunk_buffer, chunk_bytes, seed);
+                    if (infiltratr_write_full(
+                            fds[file_index], chunk_buffer,
+                            chunk_bytes) != 0 ||
+                        EVP_DigestUpdate(
+                            contexts[file_index], chunk_buffer,
+                            chunk_bytes) != 1)
+                        goto cleanup;
+                }
+                if (fsync(fds[file_index]) != 0)
+                    goto cleanup;
+            }
+            if (sync_path_filesystem(root) != 0)
+                goto cleanup;
         }
-        if (index < profile.anchors / 2U) {
-            char path[PATH_MAX];
-            char name[64];
-            (void)snprintf(name, sizeof(name), "interleave-%04u.bin", index);
-            if (!infiltratr_path_join(path, sizeof(path), anchors, name) ||
-                write_pattern_file(path, ((uint64_t)profile.anchor_kib * UINT64_C(1024)) / 2U,
-                                   UINT64_C(0x8000) + index) != 0) goto cleanup;
+    } else {
+        printf("Writing %u heterogeneous target files round-robin (up to %u x %u KiB chunks; %llu MiB total)...\n",
+               profile.files, profile.chunks, profile.chunk_kib,
+               (unsigned long long)(ldtm_profile_payload_bytes(&profile) / LDTM_MIB));
+        fflush(stdout);
+        for (index = 0U; index < profile.chunks; ++index) {
+            for (file_index = 0U;
+                 file_index < profile.files &&
+                 file_index < LDTM_MAX_TARGET_FILES;
+                 ++file_index) {
+                const uint32_t target_chunks =
+                    ldtm_profile_file_chunks(&profile, file_index);
+                if (index >= target_chunks)
+                    continue;
+                const size_t chunk_bytes =
+                    (size_t)profile.chunk_kib * 1024U;
+                const uint64_t seed =
+                    ((uint64_t)file_index << 48) ^
+                    ((uint64_t)index << 16) ^
+                    UINT64_C(0x4c44544d);
+                deterministic_fill(chunk_buffer, chunk_bytes, seed);
+                if (infiltratr_write_full(
+                        fds[file_index], chunk_buffer,
+                        chunk_bytes) != 0 ||
+                    EVP_DigestUpdate(
+                        contexts[file_index], chunk_buffer,
+                        chunk_bytes) != 1 ||
+                    fsync(fds[file_index]) != 0)
+                    goto cleanup;
+            }
+            if (index < profile.anchors / 2U) {
+                char path[PATH_MAX];
+                char name[64];
+                (void)snprintf(
+                    name, sizeof(name),
+                    "interleave-%04u.bin", index);
+                if (!infiltratr_path_join(
+                        path, sizeof(path), anchors, name) ||
+                    write_pattern_file(
+                        path,
+                        ((uint64_t)profile.anchor_kib *
+                         UINT64_C(1024)) / 2U,
+                        UINT64_C(0x8000) + index) != 0)
+                    goto cleanup;
+            }
         }
     }
     for (file_index = 0U; file_index < profile.files && file_index < LDTM_MAX_TARGET_FILES; ++file_index) {
@@ -1182,7 +1251,9 @@ static int generate_fragmented_data(const LdtmFilesystemSpec *spec, const char *
      * deliberately stress allocation and tail-length boundaries that a uniform
      * 256 KiB chunk workload cannot exercise.
      */
-    if (generate_edge_case_data(root) != 0) goto cleanup;
+    if (spec->creator != LDTM_CREATOR_BTRFS &&
+        generate_edge_case_data(root) != 0)
+        goto cleanup;
     if (sync_path_filesystem(root) != 0) goto cleanup;
     result = 0;
 
@@ -1249,11 +1320,12 @@ static int format_regular(const LdtmFilesystemSpec *spec, const char *partition)
             /*
              * Build the sacrificial filesystem inside the production writer's
              * deliberately bounded contract rather than relying on changing
-             * mkfs.btrfs defaults. Mixed block groups and large leaves keep
-             * the mutable roots level 0 on this 2 GiB qualification volume.
+             * mkfs.btrfs defaults. Mixed block groups require equal node and
+             * sector sizes; the deliberately compact live-media corpus below
+             * keeps the mutable roots level 0 at the portable 4 KiB geometry.
              */
             const char *const argv[] = {
-                program, "-f", "-M", "-n", "65536", "-s", "4096",
+                program, "-f", "-M", "-n", "4096", "-s", "4096",
                 "-O", "skinny-metadata,no-holes",
                 "-L", spec->label, partition, NULL
             };
@@ -2825,7 +2897,8 @@ static int verify_mounted_payload(const LdtmFilesystemSpec *spec, const char *mo
                     "retained directory payload content changed");
         return -1;
     }
-    if (verify_edge_case_data(root) != 0) {
+    if (spec->creator != LDTM_CREATOR_BTRFS &&
+        verify_edge_case_data(root) != 0) {
         emit_status(spec->key, "verify-failed",
                     "boundary-sized payload files changed");
         return -1;
