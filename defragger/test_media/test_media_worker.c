@@ -2772,6 +2772,44 @@ static int verify_edge_case_data(const char *root) {
     return 0;
 }
 
+static void append_bounded_text(char *destination, size_t capacity,
+                                const char *source)
+{
+    if (destination == NULL || capacity == 0U || source == NULL)
+        return;
+    size_t used = strnlen(destination, capacity);
+    if (used >= capacity - 1U)
+        return;
+    const size_t available = capacity - used - 1U;
+    const size_t amount = strnlen(source, available);
+    if (amount != 0U)
+        memcpy(destination + used, source, amount);
+    destination[used + amount] = '\0';
+}
+
+static void describe_unpopulated_filesystem(
+    const LdtmVerifyFilesystem *expected,
+    char *detail, size_t detail_capacity)
+{
+    if (detail == NULL || detail_capacity == 0U)
+        return;
+    detail[0] = '\0';
+    append_bounded_text(
+        detail, detail_capacity,
+        "Build Test Disk did not produce a populated filesystem");
+    if (expected != NULL && expected->build_status[0] != '\0') {
+        append_bounded_text(detail, detail_capacity, " (");
+        append_bounded_text(
+            detail, detail_capacity, expected->build_status);
+        append_bounded_text(detail, detail_capacity, ")");
+    }
+    if (expected != NULL && expected->build_detail[0] != '\0') {
+        append_bounded_text(detail, detail_capacity, ": ");
+        append_bounded_text(
+            detail, detail_capacity, expected->build_detail);
+    }
+}
+
 static int load_verify_state(const char *state_path, const char *device,
                              LdtmVerifyFilesystem state[LDTM_SPEC_COUNT]) {
     FILE *stream = open_state_stream(state_path, 0);
@@ -2985,20 +3023,8 @@ int ldtm_worker_verify(const char *device) {
         char mountpoint[PATH_MAX];
         if (!expected[index].populated) {
             char detail[768];
-            (void)snprintf(
-                detail, sizeof(detail),
-                "Build Test Disk did not produce a populated filesystem%s%s%s",
-                expected[index].build_status[0] != '\0' ? " (" : "",
-                expected[index].build_status[0] != '\0'
-                    ? expected[index].build_status : "",
-                expected[index].build_status[0] != '\0' ? ")" : "");
-            if (expected[index].build_detail[0] != '\0') {
-                const size_t used = strlen(detail);
-                if (used < sizeof(detail))
-                    (void)snprintf(
-                        detail + used, sizeof(detail) - used,
-                        ": %s", expected[index].build_detail);
-            }
+            describe_unpopulated_filesystem(
+                &expected[index], detail, sizeof(detail));
             emit_status(spec->key, "verify-failed", detail);
             failures++;
             continue;
@@ -3246,20 +3272,8 @@ int ldtm_worker_qualify(const char *device)
         char detail[512] = {0};
 
         if (!expected[index].populated) {
-            (void)snprintf(
-                detail, sizeof(detail),
-                "Build Test Disk did not produce a populated filesystem%s%s%s",
-                expected[index].build_status[0] != '\0' ? " (" : "",
-                expected[index].build_status[0] != '\0'
-                    ? expected[index].build_status : "",
-                expected[index].build_status[0] != '\0' ? ")" : "");
-            if (expected[index].build_detail[0] != '\0') {
-                const size_t used = strlen(detail);
-                if (used < sizeof(detail))
-                    (void)snprintf(
-                        detail + used, sizeof(detail) - used,
-                        ": %s", expected[index].build_detail);
-            }
+            describe_unpopulated_filesystem(
+                &expected[index], detail, sizeof(detail));
             emit_status(spec->key, "qualification-failed", detail);
             failures++;
             continue;
