@@ -2667,133 +2667,178 @@ private:
         const MapDisplayGeometry geometry = self->map_display_geometry();
         if (geometry.exact_subunits) {
             /*
-             * FAT allocation state is cluster-based, but a cluster is made of
-             * real on-disk sectors.  Once analysis has returned one exact cell
-             * per cluster, those sectors are safe to expose as distinct map
-             * pixels without inventing fractional allocation units.  Reserved
-             * sectors before/after the data area remain explicit metadata.
+             * FAT can expose its validated physical sectors while allocation
+             * state remains cluster-derived.  The complete physical address
+             * span is proportionally rasterised across the complete drawing
+             * surface.  If there are more sectors than pixels, a pixel blends
+             * the complete sectors it covers.  If there are fewer sectors than
+             * pixels, adjacent device pixels repeat the same sector colour.
              */
             const std::uint64_t total = geometry.total_display_units;
-            const std::uint64_t map_pixel_count =
-                std::max<std::uint64_t>(
-                    1U, std::min<std::uint64_t>(
-                        total,
-                        static_cast<std::uint64_t>(display_count)));
             const std::uint64_t data_start =
                 geometry.prefix_display_units;
             const std::uint64_t data_end =
                 total - geometry.suffix_display_units;
             const std::uint64_t per_allocation =
                 geometry.display_units_per_allocation_unit;
-            const std::uint64_t quotient = total / map_pixel_count;
-            const std::uint64_t remainder = total % map_pixel_count;
-            const auto boundary =
-                [quotient, remainder, map_pixel_count](std::uint64_t index) {
-                    return index * quotient +
-                        (index * remainder) / map_pixel_count;
-                };
-            const auto overlap = [](
-                std::uint64_t first_start,
-                std::uint64_t first_end,
-                std::uint64_t second_start,
-                std::uint64_t second_end) {
-                    const std::uint64_t start =
-                        std::max(first_start, second_start);
-                    const std::uint64_t end =
-                        std::min(first_end, second_end);
-                    return end > start ? end - start : 0U;
-                };
+            const std::uint64_t output_count =
+                static_cast<std::uint64_t>(display_count);
 
-            for (std::uint64_t pixel = 0U;
-                 pixel < map_pixel_count; ++pixel) {
-                const std::uint64_t begin = boundary(pixel);
-                const std::uint64_t end = boundary(pixel + 1U);
-                double red = 0.0;
-                double green = 0.0;
-                double blue = 0.0;
-                double weight = 0.0;
-                const auto add_colour =
-                    [&red, &green, &blue, &weight](
-                        std::uint32_t rgb, std::uint64_t amount) {
-                        if (amount == 0U) return;
-                        const double w = static_cast<double>(amount);
-                        red += static_cast<double>((rgb >> 16U) & 0xffU) * w;
-                        green += static_cast<double>((rgb >> 8U) & 0xffU) * w;
-                        blue += static_cast<double>(rgb & 0xffU) * w;
-                        weight += w;
-                    };
-
-                add_colour(
-                    metadata_colour,
-                    overlap(begin, end, 0U, data_start));
-
-                const std::uint64_t physical_data_begin =
-                    std::max(begin, data_start);
-                const std::uint64_t physical_data_end =
-                    std::min(end, data_end);
-                if (physical_data_end > physical_data_begin) {
-                    std::uint64_t cursor =
-                        physical_data_begin - data_start;
-                    const std::uint64_t local_end =
-                        physical_data_end - data_start;
-                    while (cursor < local_end) {
-                        const std::uint64_t cell_index =
-                            cursor / per_allocation;
-                        if (cell_index >=
-                            static_cast<std::uint64_t>(source_count)) {
-                            break;
-                        }
-                        const std::uint64_t next =
-                            std::min(
-                                local_end,
-                                (cell_index + 1U) * per_allocation);
-                        add_colour(
-                            map_cell_rgb(
-                                self->cells_[
-                                    static_cast<std::size_t>(cell_index)]),
-                            next - cursor);
-                        cursor = next;
+            const auto colour_for_unit =
+                [self, data_start, data_end, per_allocation,
+                 source_count](std::uint64_t unit) {
+                    if (unit < data_start || unit >= data_end)
+                        return metadata_colour;
+                    const std::uint64_t local = unit - data_start;
+                    const std::uint64_t cell_index =
+                        local / per_allocation;
+                    if (cell_index >=
+                        static_cast<std::uint64_t>(source_count)) {
+                        return background;
                     }
-                }
+                    return map_cell_rgb(
+                        self->cells_[
+                            static_cast<std::size_t>(cell_index)]);
+                };
 
-                add_colour(
-                    metadata_colour,
-                    overlap(begin, end, data_end, total));
-
-                if (weight != 0.0) {
-                    const auto channel = [weight](double value) {
-                        return static_cast<std::uint32_t>(
-                            std::clamp(
-                                std::lround(value / weight),
-                                0L, 255L));
-                    };
+            if (total < output_count) {
+                for (std::uint64_t pixel = 0U;
+                     pixel < output_count; ++pixel) {
+                    const std::uint64_t unit =
+                        (pixel * total) / output_count;
                     pixels[static_cast<std::size_t>(pixel)] =
                         UINT32_C(0xFF000000) |
-                        (channel(red) << 16U) |
-                        (channel(green) << 8U) |
-                        channel(blue);
+                        colour_for_unit(unit);
                 }
+            } else {
+                const std::uint64_t quotient = total / output_count;
+                const std::uint64_t remainder = total % output_count;
+                const auto boundary =
+                    [quotient, remainder,
+                     output_count](std::uint64_t index) {
+                        return index * quotient +
+                            (index * remainder) / output_count;
+                    };
+                const auto overlap = [](
+                    std::uint64_t first_start,
+                    std::uint64_t first_end,
+                    std::uint64_t second_start,
+                    std::uint64_t second_end) {
+                        const std::uint64_t start =
+                            std::max(first_start, second_start);
+                        const std::uint64_t end =
+                            std::min(first_end, second_end);
+                        return end > start ? end - start : 0U;
+                    };
+
+                for (std::uint64_t pixel = 0U;
+                     pixel < output_count; ++pixel) {
+                    const std::uint64_t begin = boundary(pixel);
+                    const std::uint64_t end = boundary(pixel + 1U);
+                    double red = 0.0;
+                    double green = 0.0;
+                    double blue = 0.0;
+                    double weight = 0.0;
+                    const auto add_colour =
+                        [&red, &green, &blue, &weight](
+                            std::uint32_t rgb, std::uint64_t amount) {
+                            if (amount == 0U) return;
+                            const double w =
+                                static_cast<double>(amount);
+                            red += static_cast<double>(
+                                       (rgb >> 16U) & 0xffU) * w;
+                            green += static_cast<double>(
+                                         (rgb >> 8U) & 0xffU) * w;
+                            blue += static_cast<double>(
+                                        rgb & 0xffU) * w;
+                            weight += w;
+                        };
+
+                    add_colour(
+                        metadata_colour,
+                        overlap(begin, end, 0U, data_start));
+
+                    const std::uint64_t physical_data_begin =
+                        std::max(begin, data_start);
+                    const std::uint64_t physical_data_end =
+                        std::min(end, data_end);
+                    if (physical_data_end > physical_data_begin) {
+                        std::uint64_t cursor =
+                            physical_data_begin - data_start;
+                        const std::uint64_t local_end =
+                            physical_data_end - data_start;
+                        while (cursor < local_end) {
+                            const std::uint64_t cell_index =
+                                cursor / per_allocation;
+                            if (cell_index >=
+                                static_cast<std::uint64_t>(
+                                    source_count)) {
+                                break;
+                            }
+                            const std::uint64_t next =
+                                std::min(
+                                    local_end,
+                                    (cell_index + 1U) *
+                                        per_allocation);
+                            add_colour(
+                                map_cell_rgb(
+                                    self->cells_[
+                                        static_cast<std::size_t>(
+                                            cell_index)]),
+                                next - cursor);
+                            cursor = next;
+                        }
+                    }
+
+                    add_colour(
+                        metadata_colour,
+                        overlap(begin, end, data_end, total));
+
+                    if (weight != 0.0) {
+                        const auto channel = [weight](double value) {
+                            return static_cast<std::uint32_t>(
+                                std::clamp(
+                                    std::lround(value / weight),
+                                    0L, 255L));
+                        };
+                        pixels[static_cast<std::size_t>(pixel)] =
+                            UINT32_C(0xFF000000) |
+                            (channel(red) << 16U) |
+                            (channel(green) << 8U) |
+                            channel(blue);
+                    }
+                }
+            }
+        } else if (source_count < display_count) {
+            /*
+             * Magnify the ordered analyser raster across the full canvas.
+             * Repeating a source cell's colour does not claim extra filesystem
+             * resolution; it gives that physical range a larger continuous
+             * pixel footprint, exactly as the original Amiga-style raster did.
+             * No cell borders or square grid are introduced.
+             */
+            for (std::size_t pixel = 0U;
+                 pixel < display_count; ++pixel) {
+                const std::size_t source =
+                    pixel * source_count / display_count;
+                pixels[pixel] =
+                    UINT32_C(0xFF000000) |
+                    map_cell_rgb(self->cells_[source]);
             }
         } else {
             /*
-             * When a mapper cell already aggregates several allocation units,
-             * it is the finest truthful colour sample available.  Keep one or
-             * more complete source cells per physical screen pixel and leave
-             * spare device pixels empty rather than fabricating detail.
+             * More analyser cells than device pixels: combine adjacent cells
+             * in physical order so the complete volume still fills the raster.
              */
-            const std::size_t map_pixel_count =
-                std::max<std::size_t>(
-                    1U, std::min(source_count, display_count));
-
             for (std::size_t pixel = 0U;
-                 pixel < map_pixel_count; ++pixel) {
+                 pixel < display_count; ++pixel) {
                 const std::size_t begin =
-                    pixel * source_count / map_pixel_count;
+                    pixel * source_count / display_count;
                 const std::size_t end =
                     std::max<std::size_t>(
                         begin + 1U,
                         (pixel + 1U) * source_count /
-                            map_pixel_count);
+                            display_count);
 
                 if (end == begin + 1U) {
                     pixels[pixel] =
@@ -2813,7 +2858,8 @@ private:
                     std::uint64_t total_value = 0U;
                     for (std::size_t index = begin;
                          index < end; ++index)
-                        total_value += number(self->cells_[index], key);
+                        total_value += number(
+                            self->cells_[index], key);
                     combined[key] =
                         Json::unsigned_integer(total_value);
                 }
