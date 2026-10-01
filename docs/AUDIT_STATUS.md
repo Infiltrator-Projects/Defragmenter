@@ -6,7 +6,7 @@ Completed: 2026-09-22
 Extended: 2026-10-01
 
 Applies to: release version 1.8.0-234
-Audited source commit: 22942d10d10404395768fc78b800772b7d31301f
+Audited source commit: e8901915edffb09db79ed29c79c8866980205202
 Audited release-governance commit: e09599f6c84b31e7f29ec5da9e5f9db23807b9d9
 
 This status records the 1.8.0-234 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
@@ -17,13 +17,13 @@ This document records the completed 1.8.0-234 release safety case. Historical au
 
 ## Qualification evidence
 
-The current audited production/build/Test-Media source baseline is commit `22942d10d10404395768fc78b800772b7d31301f` for release version 1.8.0-234. The storage writers themselves are unchanged from the qualified 1.8.0-233 production baseline; this release corrects the destructive qualification fixtures and result accounting exposed by the 21-slot physical Test Media run.
+The current audited production/build/Test-Media source baseline is commit `e8901915edffb09db79ed29c79c8866980205202` for release version 1.8.0-234. The storage writers themselves are unchanged from the qualified 1.8.0-233 production baseline; this release corrects the destructive qualification fixtures and result accounting exposed by the 21-slot physical Test Media run.
 
 Test Media now carries the saved Build Test Disk state and diagnostic for every registered filesystem into later stages. Qualify and Verify emit a terminal status for every one of the 21 slots instead of silently skipping a filesystem that never reached the populated state. This makes UFS/ZFS build failures visible rather than leaving their rows at `Waiting`, while ZFS and swap retain their intentional analysis-only/no-Defragment qualification states when successfully built.
 
 The four writable failures observed in the supplied 1.8.0-231 physical-media qualification are addressed at their actual boundaries. FAT12's insufficient-whole-object staging condition was already removed by 1.8.0-233's journalled rolling-cluster scheduler. XFS live media no longer manufactures fragmented directory metadata that the qualified writer deliberately protects, while retaining the full heterogeneous 200 MiB fragmented regular-file corpus. Btrfs live media is now explicitly created inside the documented single-device CRC32C level-0 mixed-group contract, with portable 4 KiB mixed geometry, NODATACOW/NODATASUM retained files and two durable separated extents per target file; broader checksum-tree and deeper-tree behaviour remains covered by native fixture tests and fail-closed cases. Classic HFS sacrificial media reconciles the MDB free-block counters to the allocation bitmap after host-side population and before invoking the unchanged strict production preflight, so the fixture itself is internally consistent without weakening rejection of inconsistent user volumes.
 
-The previously unreported UFS slot also had an independent Test Media oracle defect: its raw payload verifier counted the eight manifest targets and directory-stress files but omitted the eight retained boundary-sized files. The oracle now includes those files. The ZFS analysis-only live profile retains the complete 200 MiB fragmented-file corpus while avoiding thousands of unrelated directory records that could push the disposable pool outside the bounded exact-reader topology. The native GUI also decodes the POSIX child wait status so an ordinary exit code 1 is reported as 1 rather than raw wait value 256.
+The previously unreported UFS slot also had an independent Test Media oracle defect: its raw payload verifier counted the eight manifest targets and directory-stress files but omitted the eight retained boundary-sized files. The oracle now includes those files. The ZFS analysis-only live profile retains the complete 200 MiB fragmented-file corpus while avoiding thousands of unrelated directory records that could push the disposable pool outside the bounded exact-reader topology. The native GUI also decodes the POSIX child wait status so an ordinary exit code 1 is reported as 1 rather than raw wait value 256, and its Result column now recognises the worker's actual `verified` / `verify-failed` protocol statuses.
 
 Hosted and self-hosted regression coverage locks the 21-slot accounting, XFS/Btrfs/ZFS bounded live profiles, UFS boundary-file count, HFS MDB reconciliation and decoded worker status. The destructive physical-media rerun remains environment-dependent evidence: this audit does not represent the hosted suite as proof that a particular MMC/USB device has completed the corrected 21-slot run. Publication remains conditioned on the exact-head warnings-as-errors build, shipped native GTK Xvfb smoke test, complete CTest suite and ASan/UBSan lane.
 
