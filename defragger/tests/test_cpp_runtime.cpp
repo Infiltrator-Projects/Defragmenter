@@ -138,7 +138,9 @@ int main() {
     ok = check(fat12 != nullptr, "FAT12 lookup") && ok;
     if (fat12 != nullptr) {
         const std::string fat_worker = fake_map_worker(
-            "{\"filesystem\":\"FAT12\",\"cluster_size\":512,"
+            "{\"filesystem\":\"FAT12\",\"bytes_per_sector\":512,"
+            "\"sectors_per_cluster\":1,\"cluster_size\":512,"
+            "\"total_sectors\":8,\"data_start_sector\":4,"
             "\"data_clusters\":4,\"free_clusters\":2,\"used_clusters\":2,"
             "\"regular_files\":1,\"fragmented_files\":1,\"directories\":1,"
             "\"fragmented_directories\":0,\"free_gaps_below_highest\":1,"
