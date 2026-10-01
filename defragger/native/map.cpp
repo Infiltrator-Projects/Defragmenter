@@ -688,12 +688,15 @@ void validate_native_map(const BackendInfo& backend, const Json& payload) {
 
 Json map_native(const BackendInfo& backend, const std::string& path,
                 std::size_t cells) {
-    Json payload = parse_worker_json(
+    const CommandResult result =
         worker(backend, "map", path,
                {"--cells", std::to_string(std::max<std::size_t>(1U, cells))},
-               map_capture_limit(cells)),
-        "native filesystem mapper");
+               map_capture_limit(cells));
+    Json payload = parse_worker_json(result, "native filesystem mapper");
     validate_native_map(backend, payload);
+    const std::string warning = concise_child_detail(result);
+    if (!warning.empty())
+        set(payload, "analysis_warning", Json(warning));
     return payload;
 }
 
