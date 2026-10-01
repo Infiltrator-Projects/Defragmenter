@@ -850,6 +850,210 @@ static size_t adaptive_transaction_cluster_limit(const Fat32 *fs,
     return limit;
 }
 
+
+/* The mapped relocation journal can safely move individual clusters from a
+   chain; a whole file does not have to fit in the staging area.  Use that
+   capability to fill final targets that are already free before consuming
+   workspace.  This is the key path for very full FAT12/FAT16 volumes where
+   the largest file can be larger than all currently free space. */
+static bool adaptive_place_free_target_clusters(
+    Fat32 *fs,
+    const DirRefList *current_refs,
+    FileList *current_files,
+    const char *journal_path,
+    FatRelayoutObjectList *objects,
+    const uint8_t *nonexact,
+    size_t transaction_cluster_limit,
+    const char *layout_name,
+    FatRelayoutStats *stats
+) {
+    uint8_t *source_seen = ld_xcalloc((size_t)fs->max_cluster + 1, 1);
+    uint8_t *destination_seen = ld_xcalloc((size_t)fs->max_cluster + 1, 1);
+    RelocationMove *moves = NULL;
+    size_t move_count = 0;
+    size_t move_cap = 0;
+    size_t touched_objects = 0;
+
+    for (size_t index = 0;
+         index < objects->len && move_count < transaction_cluster_limit;
+         index++) {
+        if (!nonexact[index]) continue;
+        FatRelayoutObject *object = &objects->v[index];
+        const FileRecord *current_file = NULL;
+        U32Vec local_root = {0};
+        const U32Vec *chain = find_relayout_object_chain(
+            fs, object, current_files, &local_root, &current_file);
+        (void)current_file;
+        if (chain->len != object->clusters) {
+            u32vec_free(&local_root);
+            free(moves);
+            free(destination_seen);
+            free(source_seen);
+            ld_die("layout object changed size during rolling cluster placement");
+        }
+
+        bool touched = false;
+        for (size_t position = 0;
+             position < chain->len && move_count < transaction_cluster_limit;
+             position++) {
+            uint32_t source = chain->v[position];
+            uint32_t destination = object->target + (uint32_t)position;
+            if (source == destination || !fat_is_free(fs, destination)) continue;
+            if (source_seen[source] || destination_seen[source] ||
+                source_seen[destination] || destination_seen[destination]) {
+                continue;
+            }
+
+            reserve_relocation_moves(
+                &moves, &move_cap, move_count, 1);
+            moves[move_count++] = (RelocationMove){
+                .source = source,
+                .destination = destination,
+            };
+            source_seen[source] = 1;
+            destination_seen[destination] = 1;
+            touched = true;
+        }
+        if (touched) touched_objects++;
+        u32vec_free(&local_root);
+    }
+
+    free(destination_seen);
+    free(source_seen);
+    if (move_count == 0) {
+        free(moves);
+        return false;
+    }
+
+    fprintf(stderr,
+            "%s rolling cluster placement: committing %zu cluster%s across "
+            "%zu object%s whose final targets are already free.\n",
+            layout_name, move_count, move_count == 1 ? "" : "s",
+            touched_objects, touched_objects == 1 ? "" : "s");
+    fflush(stderr);
+    relocation_execute_moves(
+        fs, current_refs, journal_path, moves, move_count);
+    stats->transactions++;
+    stats->clusters_copied += move_count;
+    free(moves);
+    return true;
+}
+
+/* When every outstanding final target is occupied, break dependency cycles by
+   parking only the blocking clusters, rather than requiring an entire file to
+   fit in one contiguous workspace.  Prefer the terminal workspace, then any
+   other currently-free non-target cluster.  Each move is still protected by
+   the normal durable relocation journal, so a power loss never depends on RAM
+   retaining the staged data. */
+static bool adaptive_stage_blocking_clusters(
+    Fat32 *fs,
+    const DirRefList *current_refs,
+    FileList *current_files,
+    const char *journal_path,
+    FatRelayoutObjectList *objects,
+    const uint8_t *nonexact,
+    const uint8_t *target_needed,
+    uint32_t workspace_start,
+    size_t workspace_clusters,
+    size_t transaction_cluster_limit,
+    const char *layout_name,
+    FatRelayoutStats *stats
+) {
+    uint32_t *scratch = ld_xmalloc(
+        ((size_t)fs->max_cluster + 1) * sizeof(*scratch));
+    size_t scratch_count = 0;
+
+    for (size_t offset = 0; offset < workspace_clusters; offset++) {
+        uint32_t cluster = workspace_start + (uint32_t)offset;
+        if (fat_is_free(fs, cluster) && !target_needed[cluster]) {
+            scratch[scratch_count++] = cluster;
+        }
+    }
+    for (uint32_t cluster = 2; cluster <= fs->max_cluster; cluster++) {
+        if (cluster >= workspace_start &&
+            (uint64_t)cluster < (uint64_t)workspace_start + workspace_clusters) {
+            if (cluster == UINT32_MAX) break;
+            continue;
+        }
+        if (fat_is_free(fs, cluster) && !target_needed[cluster]) {
+            scratch[scratch_count++] = cluster;
+        }
+        if (cluster == UINT32_MAX) break;
+    }
+    if (scratch_count == 0) {
+        free(scratch);
+        return false;
+    }
+
+    size_t move_limit = scratch_count;
+    if (move_limit > transaction_cluster_limit)
+        move_limit = transaction_cluster_limit;
+    RelocationMove *moves = ld_xmalloc(move_limit * sizeof(*moves));
+    uint8_t *source_seen = ld_xcalloc((size_t)fs->max_cluster + 1, 1);
+    size_t move_count = 0;
+    size_t touched_objects = 0;
+
+    for (size_t index = 0;
+         index < objects->len && move_count < move_limit;
+         index++) {
+        if (!nonexact[index]) continue;
+        FatRelayoutObject *object = &objects->v[index];
+        const FileRecord *current_file = NULL;
+        U32Vec local_root = {0};
+        const U32Vec *chain = find_relayout_object_chain(
+            fs, object, current_files, &local_root, &current_file);
+        (void)current_file;
+        if (chain->len != object->clusters) {
+            u32vec_free(&local_root);
+            free(source_seen);
+            free(moves);
+            free(scratch);
+            ld_die("layout object changed size during rolling dependency staging");
+        }
+
+        bool touched = false;
+        for (size_t position = 0;
+             position < chain->len && move_count < move_limit;
+             position++) {
+            uint32_t source = chain->v[position];
+            uint32_t own_target = object->target + (uint32_t)position;
+            if (source == own_target || !target_needed[source] ||
+                source_seen[source]) {
+                continue;
+            }
+            moves[move_count] = (RelocationMove){
+                .source = source,
+                .destination = scratch[move_count],
+            };
+            source_seen[source] = 1;
+            move_count++;
+            touched = true;
+        }
+        if (touched) touched_objects++;
+        u32vec_free(&local_root);
+    }
+
+    free(source_seen);
+    free(scratch);
+    if (move_count == 0) {
+        free(moves);
+        return false;
+    }
+
+    fprintf(stderr,
+            "%s rolling dependency staging: parking %zu blocking cluster%s "
+            "from %zu object%s to release occupied final targets.\n",
+            layout_name, move_count, move_count == 1 ? "" : "s",
+            touched_objects, touched_objects == 1 ? "" : "s");
+    fflush(stderr);
+    relocation_execute_moves(
+        fs, current_refs, journal_path, moves, move_count);
+    stats->transactions++;
+    stats->clusters_copied += move_count;
+    free(moves);
+    return true;
+}
+
 static bool execute_adaptive_dependency_layout(
     Fat32 *fs,
     const char *journal_path,
@@ -1056,6 +1260,18 @@ static bool execute_adaptive_dependency_layout(
         }
         free(moves);
 
+        if (adaptive_place_free_target_clusters(
+                fs, &current_refs, &current_files, journal_path,
+                objects, nonexact, transaction_cluster_limit,
+                layout_name, stats)) {
+            free(target_needed);
+            free(staged);
+            free(nonexact);
+            filelist_free(&current_files);
+            dirreflist_free(&current_refs);
+            continue;
+        }
+
         if (ld_stop_requested()) {
             free(target_needed);
             free(staged);
@@ -1070,11 +1286,17 @@ static bool execute_adaptive_dependency_layout(
         uint32_t first_workspace_cluster = find_free_workspace_run(
             fs, workspace_start, workspace_clusters, 1);
         if (max_workspace_run == 0 || first_workspace_cluster == 0) {
+            bool progressed = adaptive_stage_blocking_clusters(
+                fs, &current_refs, &current_files, journal_path,
+                objects, nonexact, target_needed, workspace_start,
+                workspace_clusters, transaction_cluster_limit,
+                layout_name, stats);
             free(target_needed);
             free(staged);
             free(nonexact);
             filelist_free(&current_files);
             dirreflist_free(&current_refs);
+            if (progressed) continue;
             return false;
         }
 
@@ -1227,11 +1449,17 @@ static bool execute_adaptive_dependency_layout(
         free(workspace_available);
         if (stage_move_count == 0) {
             free(stage_moves);
+            bool progressed = adaptive_stage_blocking_clusters(
+                fs, &current_refs, &current_files, journal_path,
+                objects, nonexact, target_needed, workspace_start,
+                workspace_clusters, transaction_cluster_limit,
+                layout_name, stats);
             free(target_needed);
             free(staged);
             free(nonexact);
             filelist_free(&current_files);
             dirreflist_free(&current_refs);
+            if (progressed) continue;
             return false;
         }
 
@@ -1369,11 +1597,11 @@ static FatRelayoutStats fat_relayout_volume(Fat32 *fs, const char *journal_path,
         fprintf(stderr, "%s: no allocated regular files require a layout rewrite\n", layout_name);
         return stats;
     }
-    if (free_before <= initial_largest || regular_clusters == 0) {
+    if (free_before == 0 || regular_clusters == 0) {
         fat_relayout_object_list_free(&initial_objects);
         filelist_free(&initial_files);
         dirreflist_free(&initial_refs);
-        ld_die("layout rewrite needs free space larger than the largest allocated object for safe staging");
+        ld_die("layout rewrite needs at least one free cluster for recoverable staging");
     }
 
     uint64_t requested_reserve = 0;
@@ -1383,11 +1611,11 @@ static FatRelayoutStats fat_relayout_volume(Fat32 *fs, const char *journal_path,
         uint64_t reserve = ((uint64_t)object->clusters * requested_percent + 99) / 100;
         requested_reserve += reserve;
     }
-    if (requested_reserve > free_before - initial_largest) {
+    if (requested_reserve >= free_before) {
         fat_relayout_object_list_free(&initial_objects);
         filelist_free(&initial_files);
         dirreflist_free(&initial_refs);
-        ld_die("layout rewrite does not have enough free clusters for the requested reserve plus a safe staging workspace");
+        ld_die("layout rewrite requested reserve leaves no free cluster for recoverable staging");
     }
 
     size_t preliminary_reserve = 0;
@@ -1411,12 +1639,20 @@ static FatRelayoutStats fat_relayout_volume(Fat32 *fs, const char *journal_path,
     if (workspace_clusters > ram_cluster_limit) workspace_clusters = ram_cluster_limit;
     if (workspace_clusters > tail_slack) workspace_clusters = tail_slack;
     if (workspace_clusters > terminal_capacity) workspace_clusters = terminal_capacity;
-    if (workspace_clusters < initial_largest) workspace_clusters = initial_largest;
-    if (workspace_clusters > tail_slack || workspace_clusters > terminal_capacity) {
+    if (workspace_clusters == 0 ||
+        workspace_clusters > tail_slack ||
+        workspace_clusters > terminal_capacity) {
         fat_relayout_object_list_free(&initial_objects);
         filelist_free(&initial_files);
         dirreflist_free(&initial_refs);
-        ld_die("layout rewrite cannot create a durable terminal workspace large enough for the largest object");
+        ld_die("layout rewrite cannot create a durable terminal staging workspace");
+    }
+    if (workspace_clusters < initial_largest) {
+        fprintf(stderr,
+                "%s staging workspace is %zu clusters while the largest object "
+                "is %zu clusters; rolling cluster dependency staging will be used "
+                "when whole-object staging cannot fit.\n",
+                layout_name, workspace_clusters, initial_largest);
     }
 
     filelist_free(&initial_files);
