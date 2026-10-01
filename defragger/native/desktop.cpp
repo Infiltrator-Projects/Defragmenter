@@ -2621,67 +2621,187 @@ private:
         auto* self = static_cast<Desktop*>(data);
         GtkAllocation allocation;
         gtk_widget_get_allocation(widget, &allocation);
-        const int width = std::max(1, allocation.width);
-        const int height = std::max(1, allocation.height);
+        const int logical_width = std::max(1, allocation.width);
+        const int logical_height = std::max(1, allocation.height);
+        const int scale = std::max(1, gtk_widget_get_scale_factor(widget));
+        if (logical_width > std::numeric_limits<int>::max() / scale ||
+            logical_height > std::numeric_limits<int>::max() / scale) {
+            return FALSE;
+        }
+        const int width = logical_width * scale;
+        const int height = logical_height * scale;
         constexpr std::uint32_t background = UINT32_C(0x03050A);
+        constexpr std::uint32_t metadata_colour = UINT32_C(0xFF9F0A);
 
         cairo_set_source_rgb(
             cr, 3.0 / 255.0, 5.0 / 255.0, 10.0 / 255.0);
         cairo_paint(cr);
         if (self->cells_.empty()) return FALSE;
 
-        /*
-         * The disk map is strictly 1:1 at the display-pixel level.  A source
-         * analyser cell may occupy exactly one screen pixel, never two or more.
-         * When the widget has spare pixels they remain background.  When the
-         * widget is smaller than the analysed cell set, adjacent cells are
-         * combined into one screen pixel in physical order.
-         */
         const std::size_t source_count = self->cells_.size();
         const std::size_t display_count =
             static_cast<std::size_t>(width) *
             static_cast<std::size_t>(height);
-        const std::size_t map_pixel_count =
-            std::max<std::size_t>(
-                1U, std::min(source_count, display_count));
-
         std::vector<std::uint32_t> pixels(
             display_count, UINT32_C(0xFF000000) | background);
 
-        for (std::size_t pixel = 0U;
-             pixel < map_pixel_count; ++pixel) {
-            const std::size_t begin =
-                pixel * source_count / map_pixel_count;
-            const std::size_t end =
-                std::max<std::size_t>(
-                    begin + 1U,
-                    (pixel + 1U) * source_count /
-                        map_pixel_count);
+        const MapDisplayGeometry geometry = self->map_display_geometry();
+        if (geometry.exact_subunits) {
+            /*
+             * FAT allocation state is cluster-based, but a cluster is made of
+             * real on-disk sectors.  Once analysis has returned one exact cell
+             * per cluster, those sectors are safe to expose as distinct map
+             * pixels without inventing fractional allocation units.  Reserved
+             * sectors before/after the data area remain explicit metadata.
+             */
+            const std::uint64_t total = geometry.total_display_units;
+            const std::uint64_t map_pixel_count =
+                std::max<std::uint64_t>(
+                    1U, std::min<std::uint64_t>(
+                        total,
+                        static_cast<std::uint64_t>(display_count)));
+            const std::uint64_t data_start =
+                geometry.prefix_display_units;
+            const std::uint64_t data_end =
+                total - geometry.suffix_display_units;
+            const std::uint64_t per_allocation =
+                geometry.display_units_per_allocation_unit;
+            const std::uint64_t quotient = total / map_pixel_count;
+            const std::uint64_t remainder = total % map_pixel_count;
+            const auto boundary =
+                [quotient, remainder, map_pixel_count](std::uint64_t index) {
+                    return index * quotient +
+                        (index * remainder) / map_pixel_count;
+                };
+            const auto overlap = [](
+                std::uint64_t first_start,
+                std::uint64_t first_end,
+                std::uint64_t second_start,
+                std::uint64_t second_end) {
+                    const std::uint64_t start =
+                        std::max(first_start, second_start);
+                    const std::uint64_t end =
+                        std::min(first_end, second_end);
+                    return end > start ? end - start : 0U;
+                };
 
-            if (end == begin + 1U) {
+            for (std::uint64_t pixel = 0U;
+                 pixel < map_pixel_count; ++pixel) {
+                const std::uint64_t begin = boundary(pixel);
+                const std::uint64_t end = boundary(pixel + 1U);
+                double red = 0.0;
+                double green = 0.0;
+                double blue = 0.0;
+                double weight = 0.0;
+                const auto add_colour =
+                    [&red, &green, &blue, &weight](
+                        std::uint32_t rgb, std::uint64_t amount) {
+                        if (amount == 0U) return;
+                        const double w = static_cast<double>(amount);
+                        red += static_cast<double>((rgb >> 16U) & 0xffU) * w;
+                        green += static_cast<double>((rgb >> 8U) & 0xffU) * w;
+                        blue += static_cast<double>(rgb & 0xffU) * w;
+                        weight += w;
+                    };
+
+                add_colour(
+                    metadata_colour,
+                    overlap(begin, end, 0U, data_start));
+
+                const std::uint64_t physical_data_begin =
+                    std::max(begin, data_start);
+                const std::uint64_t physical_data_end =
+                    std::min(end, data_end);
+                if (physical_data_end > physical_data_begin) {
+                    std::uint64_t cursor =
+                        physical_data_begin - data_start;
+                    const std::uint64_t local_end =
+                        physical_data_end - data_start;
+                    while (cursor < local_end) {
+                        const std::uint64_t cell_index =
+                            cursor / per_allocation;
+                        if (cell_index >=
+                            static_cast<std::uint64_t>(source_count)) {
+                            break;
+                        }
+                        const std::uint64_t next =
+                            std::min(
+                                local_end,
+                                (cell_index + 1U) * per_allocation);
+                        add_colour(
+                            map_cell_rgb(
+                                self->cells_[
+                                    static_cast<std::size_t>(cell_index)]),
+                            next - cursor);
+                        cursor = next;
+                    }
+                }
+
+                add_colour(
+                    metadata_colour,
+                    overlap(begin, end, data_end, total));
+
+                if (weight != 0.0) {
+                    const auto channel = [weight](double value) {
+                        return static_cast<std::uint32_t>(
+                            std::clamp(
+                                std::lround(value / weight),
+                                0L, 255L));
+                    };
+                    pixels[static_cast<std::size_t>(pixel)] =
+                        UINT32_C(0xFF000000) |
+                        (channel(red) << 16U) |
+                        (channel(green) << 8U) |
+                        channel(blue);
+                }
+            }
+        } else {
+            /*
+             * When a mapper cell already aggregates several allocation units,
+             * it is the finest truthful colour sample available.  Keep one or
+             * more complete source cells per physical screen pixel and leave
+             * spare device pixels empty rather than fabricating detail.
+             */
+            const std::size_t map_pixel_count =
+                std::max<std::size_t>(
+                    1U, std::min(source_count, display_count));
+
+            for (std::size_t pixel = 0U;
+                 pixel < map_pixel_count; ++pixel) {
+                const std::size_t begin =
+                    pixel * source_count / map_pixel_count;
+                const std::size_t end =
+                    std::max<std::size_t>(
+                        begin + 1U,
+                        (pixel + 1U) * source_count /
+                            map_pixel_count);
+
+                if (end == begin + 1U) {
+                    pixels[pixel] =
+                        UINT32_C(0xFF000000) |
+                        map_cell_rgb(self->cells_[begin]);
+                    continue;
+                }
+
+                Json::Object combined;
+                combined["start"] = Json::unsigned_integer(
+                    number(self->cells_[begin], "start"));
+                combined["end"] = Json::unsigned_integer(
+                    number(self->cells_[end - 1U], "end"));
+                for (const auto* key : {
+                         "free", "outside", "used", "unknown",
+                         "fragmented", "directory", "bad"}) {
+                    std::uint64_t total_value = 0U;
+                    for (std::size_t index = begin;
+                         index < end; ++index)
+                        total_value += number(self->cells_[index], key);
+                    combined[key] =
+                        Json::unsigned_integer(total_value);
+                }
                 pixels[pixel] =
                     UINT32_C(0xFF000000) |
-                    map_cell_rgb(self->cells_[begin]);
-                continue;
+                    map_cell_rgb(Json(std::move(combined)));
             }
-
-            Json::Object combined;
-            combined["start"] = Json::unsigned_integer(
-                number(self->cells_[begin], "start"));
-            combined["end"] = Json::unsigned_integer(
-                number(self->cells_[end - 1U], "end"));
-            for (const auto* key : {
-                     "free", "outside", "used", "unknown",
-                     "fragmented", "directory", "bad"}) {
-                std::uint64_t total = 0U;
-                for (std::size_t index = begin;
-                     index < end; ++index)
-                    total += number(self->cells_[index], key);
-                combined[key] = Json::unsigned_integer(total);
-            }
-            pixels[pixel] =
-                UINT32_C(0xFF000000) |
-                map_cell_rgb(Json(std::move(combined)));
         }
 
         cairo_surface_t* surface =
@@ -2691,6 +2811,10 @@ private:
                 width, height,
                 width * static_cast<int>(sizeof(std::uint32_t)));
         if (cairo_surface_status(surface) == CAIRO_STATUS_SUCCESS) {
+            cairo_surface_set_device_scale(
+                surface,
+                static_cast<double>(scale),
+                static_cast<double>(scale));
             cairo_set_source_surface(cr, surface, 0.0, 0.0);
             cairo_paint(cr);
         }
