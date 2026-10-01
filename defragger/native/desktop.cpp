@@ -2465,7 +2465,7 @@ private:
         if (const Json* warning = map.find("analysis_warning");
             warning != nullptr && warning->is_string() &&
             !warning->string().empty()) {
-            note("Analysis warning: " + warning->string());
+            note("Analysis warning: " + std::string(warning->string()));
         }
         queue_maps();
         const bool complete_allocation = number(map, "unknown_bytes") == 0U;
