@@ -572,6 +572,8 @@ int main(void) {
     const LdtmFilesystemSpec *ffs = ldtm_find_spec("ffs");
     const LdtmFilesystemSpec *sfs = ldtm_find_spec("sfs");
     const LdtmFilesystemSpec *pfs3 = ldtm_find_spec("pfs3");
+    const LdtmFilesystemSpec *xfs = ldtm_find_spec("xfs");
+    const LdtmFilesystemSpec *btrfs = ldtm_find_spec("btrfs");
     const LdtmFilesystemSpec *ufs = ldtm_find_spec("ufs");
     const LdtmFilesystemSpec *zfs = ldtm_find_spec("zfs");
     const LdtmFilesystemSpec *apfs = ldtm_find_spec("apfs");
@@ -579,6 +581,9 @@ int main(void) {
     LdtmFragmentProfile normal;
     LdtmFragmentProfile sfs_profile;
     LdtmFragmentProfile pfs3_profile;
+    LdtmFragmentProfile xfs_profile;
+    LdtmFragmentProfile btrfs_profile;
+    LdtmFragmentProfile zfs_profile;
     size_t count = 0U;
     const char *cursor;
 
@@ -586,12 +591,15 @@ int main(void) {
     CHECK(ldtm_allocated_capacity_bytes() == UINT64_C(41215) * LDTM_MIB);
     CHECK(ldtm_required_capacity_bytes() == (UINT64_C(41215) * LDTM_MIB) + LDTM_GIB);
     CHECK(fat12 != NULL && fat16 != NULL && ofs != NULL && ffs != NULL && sfs != NULL && pfs3 != NULL);
-    CHECK(ufs != NULL && zfs != NULL && apfs != NULL);
+    CHECK(xfs != NULL && btrfs != NULL && ufs != NULL && zfs != NULL && apfs != NULL);
 
     small = ldtm_fragment_profile(fat12);
     normal = ldtm_fragment_profile(fat16);
     sfs_profile = ldtm_fragment_profile(sfs);
     pfs3_profile = ldtm_fragment_profile(pfs3);
+    xfs_profile = ldtm_fragment_profile(xfs);
+    btrfs_profile = ldtm_fragment_profile(btrfs);
+    zfs_profile = ldtm_fragment_profile(zfs);
     CHECK(ldtm_target_payload_bytes(fat12) == UINT64_C(200) * LDTM_MIB);
     CHECK(ldtm_target_payload_bytes(fat16) == UINT64_C(200) * LDTM_MIB);
     CHECK(ldtm_target_payload_bytes(ofs) == UINT64_C(200) * LDTM_MIB);
@@ -613,6 +621,18 @@ int main(void) {
     CHECK(pfs3_profile.files == LDTM_TARGET_FILE_COUNT &&
           pfs3_profile.chunks == 30U && pfs3_profile.chunk_kib == 2048U);
     CHECK(pfs3_profile.directory_initial == 0U && pfs3_profile.directory_second == 0U);
+    CHECK(xfs_profile.files == LDTM_TARGET_FILE_COUNT &&
+          xfs_profile.directory_initial == 0U &&
+          xfs_profile.directory_second == 0U &&
+          ldtm_profile_payload_bytes(&xfs_profile) == UINT64_C(200) * LDTM_MIB);
+    CHECK(btrfs_profile.files == LDTM_TARGET_FILE_COUNT &&
+          btrfs_profile.directory_initial == 0U &&
+          btrfs_profile.directory_second == 0U &&
+          ldtm_profile_payload_bytes(&btrfs_profile) == UINT64_C(200) * LDTM_MIB);
+    CHECK(zfs_profile.files == LDTM_TARGET_FILE_COUNT &&
+          zfs_profile.directory_initial == 0U &&
+          zfs_profile.directory_second == 0U &&
+          ldtm_profile_payload_bytes(&zfs_profile) == UINT64_C(200) * LDTM_MIB);
 
     CHECK(ofs->creator == LDTM_CREATOR_AFFS);
     CHECK(ffs->creator == LDTM_CREATOR_AFFS);
