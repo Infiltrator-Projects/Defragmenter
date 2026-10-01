@@ -17,12 +17,15 @@ is contemporary GTK rather than a retro imitation.
 ## Visual direction
 
 - The disk map is a **continuous pixel raster**, not a visible square-cell grid.
-  Every display pixel is positional: left-to-right and then top-to-bottom must
-  advance monotonically through the real on-disk allocation-unit address space.
-  The renderer must never use Hilbert, Morton/Z-order or another aesthetic
-  remapping that moves a physical allocation unit to a different apparent disk
-  position. Higher drawing resolution requests more source cells from the analyser
-  but never changes their physical ordering.
+  Every device pixel is positional: left-to-right and then top-to-bottom must
+  advance monotonically through the finest validated on-disk display units
+  available for that filesystem. A pixel represents one or more complete units,
+  never a fraction. FAT may resolve an exact cluster cell into its constituent
+  physical sectors because those sectors are real storage units; an analyser
+  cell that already aggregates multiple allocation units must never be split
+  into invented detail. The renderer must never use Hilbert, Morton/Z-order or
+  another aesthetic remapping, and GTK logical scaling must never be mistaken
+  for additional storage resolution.
 - The main window uses a graphical navigation rail, a selected-volume hero card,
   visual summary cards, a dominant disk-map canvas and large operation cards.
 - Detailed logs remain available, but are secondary and collapsed by default.
