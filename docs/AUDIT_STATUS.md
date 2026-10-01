@@ -3,13 +3,13 @@
 Status: **complete**
 
 Completed: 2026-09-22
-Extended: 2026-09-29
+Extended: 2026-10-01
 
-Applies to: release version 1.8.0-229
-Audited source commit: 4d14205bee98eaf3ec85ffa9ae81cb1d1b5a9dad
+Applies to: release version 1.8.0-230
+Audited source commit: fcb3c4edcd1e64d0238a04cfe4c506d2c4e9ff96
 Audited release-governance commit: e09599f6c84b31e7f29ec5da9e5f9db23807b9d9
 
-This status records the 1.8.0-229 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
+This status records the 1.8.0-230 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
@@ -17,9 +17,11 @@ This document records the current release safety case. Historical audit-developm
 
 ## Qualification evidence
 
-The current audited production-source baseline is commit `4d14205bee98eaf3ec85ffa9ae81cb1d1b5a9dad` for release version 1.8.0-229. The delta from the qualified 1.8.0-228 storage baseline is confined to read-only allocation-map rendering in the native desktop. The renderer no longer scales a logical allocation cell across multiple GTK pixels: each analyser cell occupies at most one real display pixel; spare display pixels remain background; and if a smaller window cannot display every analyser cell individually, adjacent cells are combined in physical order. The map density therefore remains one or more complete allocation units per visible pixel and can never imply fractional blocks/clusters. Filesystem parsing, writer placement, transaction, recovery and privileged-operation semantics are unchanged. Publication remains conditioned on the exact-head hosted warnings-as-errors build, shipped native GTK Xvfb smoke test, complete CTest suite and ASan/UBSan lane; the release workflow will not publish this audit identity unless those gates pass.
+The current audited production-source baseline is commit `fcb3c4edcd1e64d0238a04cfe4c506d2c4e9ff96` for release version 1.8.0-230. The delta from the qualified 1.8.0-229 storage baseline is confined to read-only allocation-map geometry and rendering. FAT now publishes validated sector geometry alongside its existing cluster allocation map. When the analyser has returned one exact cell per cluster, the desktop may resolve that cluster into its constituent complete on-disk sectors for display; reserved sectors before the data area and any trailing non-data sectors remain explicitly positioned. If the analyser has already aggregated multiple allocation units, the renderer keeps that coarser result and does not fabricate finer state. Filesystem parsing for mutation, writer placement, transaction, recovery and privileged-operation semantics are unchanged.
 
-The 1.8.0-229 capability baseline retains the fully qualified 1.8.0-228 filesystem, transaction, titlebar, icon-colour, volume-state, FAT identity and Day/Night semantics while tightening the physical map contract. A filesystem map pixel is now an actual visible GTK pixel, not an abstract logical pixel later enlarged by Cairo. One analyser cell maps to at most one visible pixel; excess screen area is intentionally unused, while constrained windows aggregate adjacent analyser cells without reordering them. This keeps the physical raster truthful at all sizes: every visible data pixel represents at least one complete allocation unit. Identity verification remains fail-closed for conflicting filesystems, and every write capability remains behind its filesystem-specific preflight, durable transaction/recovery contract and final verification.
+The raster is sized in actual GTK device pixels, including the widget scale factor, rather than incorrectly treating logical toolkit coordinates as physical pixels. Each visible data pixel therefore represents one or more complete physical display units: FAT sector-level views never go below one sector per pixel, and other formats retain their validated allocation-unit granularity. A large FAT cluster can legitimately contribute multiple independently positioned sector pixels because those sectors are real on-disk units, not interpolated copies of one logical pixel. When there are more display units than device pixels, adjacent units are combined monotonically in physical order; when there are fewer, unused pixels remain background. The map never uses Hilbert/Morton remapping or interpolation to invent storage positions.
+
+The 1.8.0-230 capability baseline otherwise retains the fully qualified 1.8.0-229 filesystem, transaction, titlebar, icon-colour, volume-state, FAT identity and Day/Night semantics. Identity verification remains fail-closed for conflicting filesystems, and every write capability remains behind its filesystem-specific preflight, durable transaction/recovery contract and final verification. Publication remains conditioned on the exact-head hosted warnings-as-errors build, shipped native GTK Xvfb smoke test, complete CTest suite and ASan/UBSan lane; the release workflow will not publish this audit identity unless those gates pass.
 
 The release-governance baseline is `a3c3bf4fed0007178886d411e4172ce2b5302643`. The malformed-media matrix, transaction/recovery tests, native integration fixtures, GUI contract tests, release/package tests and architecture ownership checks remain part of the permanent **Project quality gate**. Environment-dependent destructive-media evidence remains supplementary and is not represented as hosted-CI proof.
 
