@@ -1688,24 +1688,15 @@ private:
         if (geometry.allocation_units == 0U) return;
 
         /*
-         * The map is resolved against real device pixels, not GTK logical
-         * pixels.  A visible pixel always represents at least one complete
-         * physical display unit.  FAT can therefore use sectors when the
-         * analyser has returned one exact cell per cluster; we do not invent
-         * fractional clusters or stretch a logical cell merely to fill space.
+         * The allocation address space always spans the complete raster.
+         * When storage units outnumber device pixels, adjacent units are
+         * summarised into one pixel.  When device pixels outnumber units, a
+         * unit simply occupies several adjacent pixels.  That is magnification
+         * of the same physical position, not invented filesystem detail.
          */
-        const std::uint64_t source_units = geometry.exact_subunits
-            ? geometry.total_display_units
-            : static_cast<std::uint64_t>(cells_.size());
         const std::uint64_t measured_units = geometry.exact_subunits
             ? geometry.total_display_units
             : geometry.allocation_units;
-        const std::uint64_t map_pixels = std::max<std::uint64_t>(
-            1U, std::min(source_units, display_pixels));
-        const double units_per_pixel = std::max(
-            1.0,
-            static_cast<double>(measured_units) /
-                static_cast<double>(map_pixels));
 
         std::string unit_label = "allocation units";
         std::string suffix;
@@ -1727,24 +1718,52 @@ private:
             if (cluster_size != 0U)
                 suffix = " · " + bytes(cluster_size) + "/cluster";
         } else {
+            const std::string filesystem = field(map_data_, "filesystem");
             const std::uint64_t unit = number(map_data_, "unit_size");
-            if (unit == 512U) unit_label = "sectors";
-            else if (unit == 4096U) unit_label = "4 KiB units";
-            else if (unit != 0U) unit_label = bytes(unit) + " units";
+            if (filesystem == "exfat" || filesystem == "ntfs")
+                unit_label = "clusters";
+            else if (unit == 512U)
+                unit_label = "sectors";
+            else if (unit == 4096U)
+                unit_label = "4 KiB units";
+            else if (unit != 0U)
+                unit_label = bytes(unit) + " units";
         }
 
         char density[64];
-        if (units_per_pixel >= 100.0)
-            g_snprintf(density, sizeof(density), "%.0f", units_per_pixel);
-        else if (units_per_pixel >= 10.0)
-            g_snprintf(density, sizeof(density), "%.1f", units_per_pixel);
-        else
-            g_snprintf(density, sizeof(density), "%.2f", units_per_pixel);
+        std::string relationship;
+        if (measured_units >= display_pixels) {
+            const double units_per_pixel =
+                static_cast<double>(measured_units) /
+                static_cast<double>(display_pixels);
+            if (units_per_pixel >= 100.0)
+                g_snprintf(density, sizeof(density), "%.0f", units_per_pixel);
+            else if (units_per_pixel >= 10.0)
+                g_snprintf(density, sizeof(density), "%.1f", units_per_pixel);
+            else
+                g_snprintf(density, sizeof(density), "%.2f", units_per_pixel);
+            relationship = std::string(density) + " " +
+                unit_label + " per display pixel";
+        } else {
+            const double pixels_per_unit =
+                static_cast<double>(display_pixels) /
+                static_cast<double>(measured_units);
+            if (pixels_per_unit >= 100.0)
+                g_snprintf(density, sizeof(density), "%.0f", pixels_per_unit);
+            else if (pixels_per_unit >= 10.0)
+                g_snprintf(density, sizeof(density), "%.1f", pixels_per_unit);
+            else
+                g_snprintf(density, sizeof(density), "%.2f", pixels_per_unit);
+            relationship = std::string(density) +
+                " display pixels per " +
+                (unit_label == "clusters" ? "cluster" :
+                 unit_label == "sectors" ? "sector" :
+                 unit_label == "allocation units" ? "allocation unit" :
+                 unit_label);
+        }
 
         const std::string caption =
-            "Allocation image: " + std::to_string(map_pixels) +
-            " physical pixels · approximately " + density + " " +
-            unit_label + " per pixel" + suffix;
+            "Physical allocation raster · " + relationship + suffix;
         gtk_label_set_text(GTK_LABEL(summary_), caption.c_str());
     }
 
