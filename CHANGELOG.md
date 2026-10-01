@@ -2,6 +2,16 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-231
+
+- Replace the sparse one-source-cell/one-screen-pixel map with a full-canvas continuous physical raster for every filesystem.
+- Preserve row-major on-disk order while proportionally mapping the complete analysed address space across the complete drawing surface. When the analyser has fewer cells than the screen has pixels, the physical range is magnified across adjacent pixels instead of leaving most of the map black; when it has more cells, adjacent cells are combined in order.
+- Keep the Amiga-style pixel presentation continuous: no DOS-style square grid, no cell borders, no Hilbert/Morton remapping and no bilinear blur.
+- Keep FAT's validated sector geometry from 1.8.0-230, including reserved/data-boundary sectors, but allow a sector or allocation unit to occupy several adjacent display pixels when the canvas has more pixels than physical units. Repeated colour is visual magnification only and does not claim additional filesystem detail.
+- Replace the confusing "physical pixel count" caption with an explicit raster scale. Compressed views report storage units per display pixel; magnified views report display pixels per storage unit, so the interface never needs misleading fractional-cluster wording.
+- Add regressions preventing the sparse-map behaviour from returning.
+- No filesystem writer, placement, transaction or recovery semantics are changed.
+
 ## 1.8.0-230
 
 - Correct the physical allocation raster after the 1.8.0-229 map became artificially sparse on FAT volumes with large clusters.
