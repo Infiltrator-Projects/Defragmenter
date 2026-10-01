@@ -365,18 +365,39 @@ Json map_fat(const BackendInfo& backend, const std::string& path,
             "native FAT mapper returned wrong filesystem identity");
     }
 
+    const std::uint64_t bytes_per_sector =
+        required_u64(payload, "bytes_per_sector");
+    const std::uint64_t sectors_per_cluster =
+        required_u64(payload, "sectors_per_cluster");
     const std::uint64_t cluster_size = required_u64(payload, "cluster_size");
+    const std::uint64_t total_sectors =
+        required_u64(payload, "total_sectors");
+    const std::uint64_t data_start_sector =
+        required_u64(payload, "data_start_sector");
     const std::uint64_t total = required_u64(payload, "data_clusters");
     const std::uint64_t declared_free = required_u64(payload, "free_clusters");
     const std::uint64_t cell_count = required_u64(payload, "cell_count");
     const Json* raw_cells = payload.find("cells");
-    if (cluster_size == 0U || total == 0U || declared_free > total ||
+    if (bytes_per_sector == 0U || sectors_per_cluster == 0U ||
+        cluster_size == 0U || total_sectors == 0U || total == 0U ||
+        declared_free > total ||
+        multiply_or_throw(bytes_per_sector, sectors_per_cluster,
+                          "FAT cluster geometry") != cluster_size ||
         cell_count == 0U || raw_cells == nullptr || !raw_cells->is_array() ||
         cell_count != raw_cells->array().size() ||
         total > std::numeric_limits<std::uint64_t>::max() - 2U) {
         throw std::runtime_error(
             "native FAT mapper returned invalid map geometry");
     }
+    const std::uint64_t data_sectors =
+        multiply_or_throw(total, sectors_per_cluster, "FAT data sectors");
+    if (data_start_sector > total_sectors ||
+        data_sectors > total_sectors - data_start_sector) {
+        throw std::runtime_error(
+            "native FAT mapper returned invalid physical sector geometry");
+    }
+    const std::uint64_t trailing_sectors =
+        total_sectors - data_start_sector - data_sectors;
 
     std::uint64_t expected_start = 2U;
     std::uint64_t free_total = 0U;
@@ -428,6 +449,17 @@ Json map_fat(const BackendInfo& backend, const std::string& path,
     set(payload, "map_accuracy", Json(backend.map_accuracy));
     set(payload, "unit_size", Json::unsigned_integer(cluster_size));
     set(payload, "total_units", Json::unsigned_integer(total));
+    set(payload, "display_unit_size",
+        Json::unsigned_integer(bytes_per_sector));
+    set(payload, "display_units_per_allocation_unit",
+        Json::unsigned_integer(sectors_per_cluster));
+    set(payload, "display_prefix_units",
+        Json::unsigned_integer(data_start_sector));
+    set(payload, "display_suffix_units",
+        Json::unsigned_integer(trailing_sectors));
+    set(payload, "display_total_units",
+        Json::unsigned_integer(total_sectors));
+    set(payload, "display_unit_name", Json("sectors"));
     set(payload, "total_bytes", Json::unsigned_integer(
         multiply_or_throw(total, cluster_size, "FAT capacity")));
     set(payload, "free_bytes", Json::unsigned_integer(
@@ -451,7 +483,14 @@ Json map_fat(const BackendInfo& backend, const std::string& path,
                   static_cast<double>(regular_files)));
 
     Json::Object details;
+    details["bytes_per_sector"] =
+        Json::unsigned_integer(bytes_per_sector);
+    details["sectors_per_cluster"] =
+        Json::unsigned_integer(sectors_per_cluster);
     details["cluster_size"] = Json::unsigned_integer(cluster_size);
+    details["total_sectors"] = Json::unsigned_integer(total_sectors);
+    details["data_start_sector"] =
+        Json::unsigned_integer(data_start_sector);
     details["data_clusters"] = Json::unsigned_integer(total);
     details["free_clusters"] = Json::unsigned_integer(declared_free);
     details["fragmentation_available"] = Json(true);
