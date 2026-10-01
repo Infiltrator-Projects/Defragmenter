@@ -91,6 +91,26 @@ LdtmFragmentProfile ldtm_fragment_profile(const LdtmFilesystemSpec *spec) {
         profile.anchor_kib = 512U;
         profile.directory_initial = 128U;
         profile.directory_second = 128U;
+    } else if (spec != NULL && strcmp(spec->key, "xfs") == 0) {
+        /*
+         * The qualified XFS writer relocates regular-file data extents while
+         * directory blocks remain protected metadata. Keep the full 200 MiB
+         * heterogeneous fragmented-file corpus, but do not manufacture an
+         * intentionally fragmented directory that is outside that writer
+         * contract.
+         */
+        profile.directory_initial = 0U;
+        profile.directory_second = 0U;
+    } else if (spec != NULL && strcmp(spec->key, "btrfs") == 0) {
+        /*
+         * The bounded Btrfs writer is deliberately a level-0 mixed-group
+         * contract. Large directory churn would force the filesystem tree
+         * above level 0 before mutation is even tested, so Test Media keeps
+         * the 200 MiB fragmented-file workload while leaving directory-stress
+         * coverage to the analyser/unit fixtures.
+         */
+        profile.directory_initial = 0U;
+        profile.directory_second = 0U;
     } else if (spec != NULL &&
                (strcmp(spec->key, "sfs") == 0 ||
                 strcmp(spec->key, "pfs3") == 0)) {
