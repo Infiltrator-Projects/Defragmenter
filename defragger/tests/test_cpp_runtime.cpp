@@ -160,6 +160,14 @@ int main() {
                        mapped.at("unit_size").unsigned_value() == 512U &&
                        mapped.at("total_units").unsigned_value() == 4U,
                        "FAT map exposes common native desktop geometry") && ok;
+            ok = check(
+                       mapped.at("display_unit_size").unsigned_value() == 512U &&
+                       mapped.at("display_units_per_allocation_unit").unsigned_value() == 1U &&
+                       mapped.at("display_prefix_units").unsigned_value() == 4U &&
+                       mapped.at("display_suffix_units").unsigned_value() == 0U &&
+                       mapped.at("display_total_units").unsigned_value() == 8U &&
+                       mapped.at("display_unit_name").string() == "sectors",
+                       "FAT map exposes exact physical-sector display geometry") && ok;
             ok = check(mapped.at("total_bytes").unsigned_value() == 2048U &&
                        mapped.at("free_bytes").unsigned_value() == 1024U &&
                        mapped.at("used_bytes").unsigned_value() == 1024U &&
