@@ -65,6 +65,8 @@ static int load_partition_map(const char *device, LdtmPartitionMap *map);
 
 typedef struct {
     int populated;
+    char build_status[64];
+    char build_detail[512];
     char pool[96];
     LdtmTargetRecord targets[LDTM_MAX_TARGET_FILES];
     size_t target_count;
@@ -2613,9 +2615,18 @@ static int load_verify_state(const char *state_path, const char *device,
         } else if (strcmp(fields[0], "fs") == 0 && field_count >= 3U) {
             size_t index;
             for (index = 0U; index < LDTM_SPEC_COUNT; ++index) {
-                if (strcmp(ldtm_specs()[index].key, fields[1]) == 0 && strcmp(fields[2], "populated") == 0) {
+                if (strcmp(ldtm_specs()[index].key, fields[1]) != 0)
+                    continue;
+                (void)snprintf(
+                    state[index].build_status,
+                    sizeof(state[index].build_status),
+                    "%s", fields[2]);
+                (void)snprintf(
+                    state[index].build_detail,
+                    sizeof(state[index].build_detail),
+                    "%s", field_count >= 4U ? fields[3] : "");
+                if (strcmp(fields[2], "populated") == 0)
                     state[index].populated = 1;
-                }
             }
         } else if (strcmp(fields[0], "pool") == 0 && field_count >= 3U) {
             size_t index;
