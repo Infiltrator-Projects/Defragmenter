@@ -11,6 +11,7 @@ This changelog records user-visible, compatibility, architecture and validation 
 - Keep Btrfs live Test Media inside the bounded single-device CRC32C, level-0 mixed-group writer contract. The creator now requests portable 4 KiB mixed block groups explicitly, populates new files NODATACOW/NODATASUM, and produces two durable separated extents per retained target file so the 200 MiB corpus is genuinely fragmented without forcing mutable trees above level 0. Broader checksum-tree and unsupported-topology cases remain covered by native white-box/fail-closed tests rather than being smuggled into the live-media writer contract.
 - Keep the ZFS analysis-only Test Media pool inside the bounded exact-reader topology by retaining the complete 200 MiB fragmented-file workload while dropping the unrelated thousands-of-directory-entry stress case.
 - Decode Test Media worker wait status in the GUI, so a normal worker exit of 1 is reported as `exit status 1` rather than the raw POSIX wait value `256`.
+- Align the Test Media Result column with the worker's actual `verified` / `verify-failed` protocol statuses so independent payload verification renders as a proper success/failure instead of exposing the raw status token.
 - Add regression coverage for the bounded XFS/Btrfs/ZFS live-media profiles, complete 21-slot result accounting, UFS boundary-file counting, HFS MDB reconciliation and the Btrfs fixture contract.
 - No production writer safety boundary is widened by these fixture changes.
 
