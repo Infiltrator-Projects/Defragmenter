@@ -5,25 +5,23 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-10-01
 
-Applies to: release version 1.8.0-231
-Audited source commit: 6171970c712ef15cc879e832909138fb36d74f11
+Applies to: release version 1.8.0-232
+Audited source commit: f0e9ce8b7f6d89f29e42e70df89bebe681730e61
 Audited release-governance commit: e09599f6c84b31e7f29ec5da9e5f9db23807b9d9
 
-This status records the 1.8.0-231 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
+This status records the 1.8.0-232 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
-This document records the completed 1.8.0-231 release safety case. Historical audit-development detail remains in Git history and immutable release tags rather than being repeated as a second changelog.
+This document records the 1.8.0-232 release safety case. Historical audit-development detail remains in Git history and immutable release tags rather than being repeated as a second changelog.
 
 ## Qualification evidence
 
-The current audited production-source baseline is commit `6171970c712ef15cc879e832909138fb36d74f11` for release version 1.8.0-231. The delta from the qualified 1.8.0-230 storage baseline is confined to read-only allocation-map presentation in the native desktop. The previous one-source-cell/one-screen-pixel rule left most of the drawing surface black whenever the analyser returned fewer cells than the canvas contained pixels. The desktop now proportionally rasterises the complete analysed address span across the complete drawing surface for every filesystem. Physical order remains strictly row-major and monotonic.
+The current audited production-source baseline is commit `f0e9ce8b7f6d89f29e42e70df89bebe681730e61` for release version 1.8.0-232. The delta from the qualified 1.8.0-231 storage baseline is confined to read-only ZFS analysis fallback and native desktop error presentation. A ZFS member with a recognised committed label/uberblock remains positively identified even when the bounded exact MOS/metaslab/file-tree reader cannot complete. In that case the ZFS worker now returns the existing summary map contract, with unresolved allocation represented as unknown, rather than terminating the whole GUI analysis. No exact free/used or fragmentation claim is made in the fallback result.
 
-When analyser cells outnumber display pixels, adjacent cells are combined in order. When display pixels outnumber analyser cells or physical units, the same validated physical range is magnified across adjacent pixels. That repeated colour is visual scaling only: it does not claim additional filesystem state, does not split an already-aggregated cell into invented categories and does not alter any on-disk interpretation. FAT retains the validated sector geometry introduced in 1.8.0-230, including reserved/data-boundary positions. No Hilbert/Morton remapping, square-cell grid, bilinear category blur or storage-position reordering is used.
+The exact-reader failure text is preserved as an analysis warning and surfaced in the technical activity log. Privileged read-only mapper failures also retain their captured child output, so a genuine non-zero mapper exit no longer collapses into an uninformative numeric `Exit status 1` dialog. Exact ZFS results are unchanged when the bounded reader succeeds, and ZFS remains analysis-only with no Defragment, Growth Defrag or Recover operation.
 
-The map caption now reports the direction of scaling rather than a misleading count of "physical pixels": compressed views report storage units per display pixel, while magnified views report display pixels per storage unit. This avoids fractional-cluster wording while accurately describing a full-canvas raster. Filesystem parsing for mutation, writer placement, transaction, recovery and privileged-operation semantics are unchanged.
-
-The 1.8.0-231 capability baseline otherwise retains the fully qualified 1.8.0-230 filesystem, transaction, titlebar, icon-colour, volume-state, FAT identity, sector geometry and Day/Night semantics. Identity verification remains fail-closed for conflicting filesystems, and every write capability remains behind its filesystem-specific preflight, durable transaction/recovery contract and final verification. Publication remains conditioned on the exact-head hosted warnings-as-errors build, shipped native GTK Xvfb smoke test, complete CTest suite and ASan/UBSan lane; the release workflow will not publish this audit identity unless those gates pass.
+The 1.8.0-232 capability baseline otherwise retains the fully qualified 1.8.0-231 filesystem, transaction, raster, titlebar, icon-colour, volume-state, FAT identity/sector geometry and Day/Night semantics. Filesystem writers, placement policy, journalling, target binding and recovery paths are unchanged. Publication remains conditioned on the exact-head hosted warnings-as-errors build, shipped native GTK Xvfb smoke test, complete CTest suite and ASan/UBSan lane; the release workflow will not publish this audit identity unless those gates pass.
 
 The release-governance baseline is `a3c3bf4fed0007178886d411e4172ce2b5302643`. The malformed-media matrix, transaction/recovery tests, native integration fixtures, GUI contract tests, release/package tests and architecture ownership checks remain part of the permanent **Project quality gate**. Environment-dependent destructive-media evidence remains supplementary and is not represented as hosted-CI proof.
 
