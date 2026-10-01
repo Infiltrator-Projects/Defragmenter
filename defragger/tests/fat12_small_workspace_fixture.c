@@ -68,8 +68,10 @@ static void fat12_set(uint8_t *fat, uint16_t cluster, uint16_t value) {
         fat[offset + 1] =
             (uint8_t)((fat[offset + 1] & 0xf0U) | ((value >> 8U) & 0x0fU));
     } else {
+        uint8_t high_nibble =
+            (uint8_t)((value & UINT16_C(0x000f)) << 4U);
         fat[offset] =
-            (uint8_t)((fat[offset] & 0x0fU) | ((value << 4U) & 0xf0U));
+            (uint8_t)((uint8_t)(fat[offset] & UINT8_C(0x0f)) | high_nibble);
         fat[offset + 1] = (uint8_t)(value >> 4U);
     }
 }
