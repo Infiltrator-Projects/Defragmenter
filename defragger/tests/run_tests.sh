@@ -9,6 +9,7 @@ HFS_ANALYSER="$BUILD_DIR/hfs_analyser"
 XFS_WORKER="$BUILD_DIR/linux-defragger-xfs-worker"
 XFS_NATIVE_TEST="$BUILD_DIR/linux-defragger-xfs-native-test"
 XFS_METADATA_TEST="$BUILD_DIR/linux-defragger-xfs-metadata-test"
+FAT12_SMALL_WORKSPACE_FIXTURE="$BUILD_DIR/linux-defragger-fat12-small-workspace-fixture"
 EXPECTED_VERSION=$(tr -d '\r\n' <"$ROOT/VERSION")
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/linux-defragger-tests.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT
@@ -26,6 +27,7 @@ fail() {
 [[ -x "$FAT_WORKER" ]] || fail "FAT worker is not executable: $FAT_WORKER"
 [[ -x "$HFS_ANALYSER" ]] || fail "HFS analyser is not executable: $HFS_ANALYSER"
 [[ -x "$XFS_WORKER" ]] || fail "XFS worker is not executable: $XFS_WORKER"
+[[ -x "$FAT12_SMALL_WORKSPACE_FIXTURE" ]] || fail "FAT12 small-workspace fixture is not executable: $FAT12_SMALL_WORKSPACE_FIXTURE"
 export LINUX_DEFRAGGER_XFS_WORKER="$XFS_WORKER"
 
 version=$($FAT_WORKER --version)
@@ -128,6 +130,36 @@ for kind in fat12 fat16; do
     [[ -n "$growth_transactions" && "$growth_transactions" -le 8 ]] || \
         fail "$kind Growth Defrag exceeded eight layout transactions: ${growth_transactions:-missing}"
 done
+
+# FAT12: the largest file is deliberately 400 clusters while only 200 free
+# clusters exist.  Defragment and Growth Defrag must use rolling cluster-level
+# dependency staging instead of requiring a whole file to fit the workspace.
+"$FAT12_SMALL_WORKSPACE_FIXTURE" create "$WORK/fat12-small-workspace.img"
+"$FAT_WORKER" defrag "$WORK/fat12-small-workspace.img" \
+    --write --confirm "$WORK/fat12-small-workspace.img" \
+    --journal "$WORK/fat12-small-workspace-defrag.journal" \
+    >"$WORK/fat12-small-workspace-defrag.log" 2>&1
+"$FAT12_SMALL_WORKSPACE_FIXTURE" verify-defrag "$WORK/fat12-small-workspace.img"
+grep -q 'staging workspace is 200 clusters while the largest object is 400 clusters' \
+    "$WORK/fat12-small-workspace-defrag.log" || \
+    fail "FAT12 small-workspace Defragment did not exercise the undersized-workspace path"
+grep -q 'rolling dependency staging:' "$WORK/fat12-small-workspace-defrag.log" || \
+    fail "FAT12 small-workspace Defragment did not break dependencies at cluster granularity"
+grep -q 'rolling cluster placement:' "$WORK/fat12-small-workspace-defrag.log" || \
+    fail "FAT12 small-workspace Defragment did not place released target clusters"
+
+"$FAT_WORKER" growth-defrag "$WORK/fat12-small-workspace.img" \
+    --write --confirm "$WORK/fat12-small-workspace.img" \
+    --journal "$WORK/fat12-small-workspace-growth.journal" --growth-percent 10 \
+    >"$WORK/fat12-small-workspace-growth.log" 2>&1
+"$FAT12_SMALL_WORKSPACE_FIXTURE" verify-growth "$WORK/fat12-small-workspace.img"
+grep -q 'staging workspace is 100 clusters while the largest object is 400 clusters' \
+    "$WORK/fat12-small-workspace-growth.log" || \
+    fail "FAT12 small-workspace Growth Defrag did not preserve a bounded workspace"
+if grep -q 'free space larger than the largest allocated object' \
+    "$WORK/fat12-small-workspace-defrag.log" "$WORK/fat12-small-workspace-growth.log"; then
+    fail "obsolete largest-object staging rejection returned"
+fi
 
 # FAT16: terminal safety-workspace preparation may expand beyond the largest
 # single object when RAM and spare tail capacity permit it, but the whole
