@@ -131,6 +131,23 @@ typedef struct {
     ZfsDnode meta_dnode;
 } ZfsContext;
 
+/*
+ * OpenZFS records the physical top-vdev asize separately from the metaslab
+ * space that is actually allocatable.  The final partial metaslab-sized tail
+ * is deliberately not part of the metaslab group (OpenZFS accounts group
+ * space as metaslab_size * metaslab_count), so exact analysis must round the
+ * vdev asize down instead of rejecting a perfectly valid non-aligned vdev.
+ */
+static uint64_t zfs_allocatable_asize(const ZfsContext *context)
+{
+    if (context->summary.metaslab_shift >= 63U)
+        return 0U;
+    const uint64_t metaslab_size =
+        UINT64_C(1) << context->summary.metaslab_shift;
+    return context->summary.top_vdev_asize -
+           (context->summary.top_vdev_asize % metaslab_size);
+}
+
 static void set_error(char *error, size_t error_size, const char *message)
 {
     if (error != NULL && error_size != 0U)
@@ -661,9 +678,11 @@ static int read_block_pointer_data(ZfsContext *context,
             last_errno = ENOTSUP;
             continue;
         }
+        const uint64_t allocatable_asize =
+            zfs_allocatable_asize(context);
         if (dva->asize < bp->psize ||
-            dva->offset > context->summary.top_vdev_asize ||
-            bp->psize > context->summary.top_vdev_asize - dva->offset) {
+            dva->offset > allocatable_asize ||
+            bp->psize > allocatable_asize - dva->offset) {
             last_errno = EINVAL;
             continue;
         }
@@ -1206,17 +1225,10 @@ static int context_open(const char *path, ZfsContext *context,
         return -1;
     }
     if (context->summary.top_vdev_asize == 0U ||
-        context->summary.metaslab_shift >= 63U) {
+        context->summary.metaslab_shift >= 63U ||
+        zfs_allocatable_asize(context) == 0U) {
         errno = EINVAL;
         set_error(error, error_size, "invalid ZFS vdev allocation geometry");
-        return -1;
-    }
-    const uint64_t metaslab_size =
-        UINT64_C(1) << context->summary.metaslab_shift;
-    if ((context->summary.top_vdev_asize % metaslab_size) != 0U) {
-        errno = EINVAL;
-        set_error(error, error_size,
-                  "ZFS top-vdev size is not aligned to metaslab geometry");
         return -1;
     }
 
@@ -1491,7 +1503,7 @@ static int load_exact_allocation(ZfsContext *context, ZfsRangeSet *allocated,
     const uint64_t metaslab_size =
         UINT64_C(1) << context->summary.metaslab_shift;
     const uint64_t metaslab_count =
-        context->summary.top_vdev_asize / metaslab_size;
+        zfs_allocatable_asize(context) / metaslab_size;
     if (metaslab_count == 0U || metaslab_count > ZFS_MAX_METASLABS) {
         errno = EINVAL;
         set_error(error, error_size, "invalid ZFS metaslab count");
@@ -1593,11 +1605,13 @@ static int collect_file_tree(ZfsContext *context,
                       "ZFS file extent uses unsupported gang/encrypted/foreign-vdev storage");
             return -1;
         }
-        if (dva.offset > context->summary.top_vdev_asize ||
-            dva.asize > context->summary.top_vdev_asize - dva.offset) {
+        const uint64_t allocatable_asize =
+            zfs_allocatable_asize(context);
+        if (dva.offset > allocatable_asize ||
+            dva.asize > allocatable_asize - dva.offset) {
             errno = EINVAL;
             set_error(error, error_size,
-                      "ZFS file extent escapes the qualified top vdev");
+                      "ZFS file extent escapes the allocatable metaslab region");
             return -1;
         }
         return file_extent_append(extents, base_block,
@@ -2041,19 +2055,20 @@ int zfs_analyse_exact(const char *path, LdZfsAnalysis *analysis,
     }
 
     const uint64_t allocated_bytes = range_total(&allocated);
-    if (allocated_bytes > context.summary.top_vdev_asize) {
+    const uint64_t allocatable_asize = zfs_allocatable_asize(&context);
+    if (allocated_bytes > allocatable_asize) {
         range_destroy(&allocated);
         range_destroy(&fragmented);
         context_close(&context);
         errno = EINVAL;
         set_error(error, error_size,
-                  "ZFS allocated bytes exceed top-vdev capacity");
+                  "ZFS allocated bytes exceed metaslab-managed capacity");
         return -1;
     }
 
     analysis->size_bytes = context.summary.size_bytes;
     analysis->free_bytes =
-        context.summary.top_vdev_asize - allocated_bytes;
+        allocatable_asize - allocated_bytes;
     analysis->exact_allocation = true;
     analysis->exact_fragmentation = true;
     analysis->fragmented_bytes = range_total(&fragmented);
@@ -2076,7 +2091,7 @@ int zfs_analyse_exact(const char *path, LdZfsAnalysis *analysis,
     }
 
     const uint64_t allocatable_end =
-        ZFS_VDEV_LABEL_START_SIZE + context.summary.top_vdev_asize;
+        ZFS_VDEV_LABEL_START_SIZE + allocatable_asize;
     if (context.summary.size_bytes < ZFS_VDEV_LABEL_END_SIZE ||
         allocatable_end >
         context.summary.size_bytes - ZFS_VDEV_LABEL_END_SIZE) {
