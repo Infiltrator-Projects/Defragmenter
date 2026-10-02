@@ -164,8 +164,9 @@ static void xw_string_pair(XdrWriter *writer, const char *name, const char *valu
     xw_pair_end(writer, start);
 }
 
-static void write_label_config(int fd, unsigned label,
-                               const char *mos_feature)
+static void write_label_config_asize(int fd, unsigned label,
+                                     const char *mos_feature,
+                                     uint64_t top_vdev_asize)
 {
     uint8_t config[VDEV_PHYS_SIZE];
     memset(config, 0, sizeof(config));
@@ -201,7 +202,7 @@ static void write_label_config(int fd, unsigned label,
     xw_uint64_pair(&writer, "ashift", 12U);
     xw_uint64_pair(&writer, "metaslab_array", 2U);
     xw_uint64_pair(&writer, "metaslab_shift", 22U);
-    xw_uint64_pair(&writer, "asize", UINT64_C(8) * 1024U * 1024U);
+    xw_uint64_pair(&writer, "asize", top_vdev_asize);
     xw_nvlist_end(&writer);
     xw_pair_end(&writer, children);
     xw_nvlist_end(&writer);
@@ -210,6 +211,13 @@ static void write_label_config(int fd, unsigned label,
 
     write_all(fd, config, sizeof(config),
               label_base(label) + VDEV_PHYS_OFFSET);
+}
+
+static void write_label_config(int fd, unsigned label,
+                               const char *mos_feature)
+{
+    write_label_config_asize(
+        fd, label, mos_feature, UINT64_C(8) * 1024U * 1024U);
 }
 
 static off_t label_base(unsigned label)
@@ -616,6 +624,31 @@ int main(void)
     CHECK(analysis.fragmented_files == 1U);
     CHECK(analysis.fragmented_bytes == 8192U);
     CHECK(analysis.range_count == 7U);
+    zfs_analysis_destroy(&analysis);
+
+    /*
+     * OpenZFS does not require the physical top-vdev asize to be an exact
+     * multiple of metaslab size.  Only complete metaslabs contribute to the
+     * metaslab group; a trailing partial-metaslab tail is unallocatable
+     * reserved space.  Exact analysis must accept that ordinary geometry and
+     * must not count the tail as free.
+     */
+    reset_image(fd);
+    write_label_config_asize(
+        fd, 0U, NULL, UINT64_C(9) * 1024U * 1024U);
+    write_exact_fixture(fd, 0);
+    (void)write_uber(fd, 0U, 4U, 0, 28U, 11U, 78U, 1001U);
+    CHECK(zfs_read_summary(path, &summary, error, sizeof(error)) == 0);
+    CHECK(summary.top_vdev_asize == UINT64_C(9) * 1024U * 1024U);
+    CHECK(summary.metaslab_shift == 22U);
+    CHECK(zfs_analyse_exact(path, &analysis, error, sizeof(error)) == 0);
+    CHECK(analysis.exact_allocation);
+    CHECK(analysis.exact_fragmentation);
+    CHECK(analysis.free_bytes ==
+          UINT64_C(8) * 1024U * 1024U - UINT64_C(12) * 4096U);
+    CHECK(analysis.used_bytes == analysis.size_bytes - analysis.free_bytes);
+    CHECK(analysis.unknown_bytes == 0U);
+    CHECK(analysis.fragmented_files == 1U);
     zfs_analysis_destroy(&analysis);
 
 
