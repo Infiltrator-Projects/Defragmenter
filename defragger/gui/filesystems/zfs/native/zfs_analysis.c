@@ -1086,55 +1086,6 @@ static const uint8_t *dnode_bonus(const ZfsDnode *dnode)
 }
 
 
-static int zap_leaf_array_copy_bounded(const uint8_t *block,
-                                       size_t block_size,
-                                       size_t chunks_offset,
-                                       size_t chunk_count,
-                                       uint16_t first_chunk,
-                                       size_t bytes_needed,
-                                       uint8_t *output,
-                                       char *error,
-                                       size_t error_size)
-{
-    size_t copied = 0U;
-    uint16_t chunk = first_chunk;
-    size_t visited = 0U;
-
-    while (copied < bytes_needed) {
-        if (chunk == ZFS_ZAP_CHAIN_END || chunk >= chunk_count ||
-            visited++ >= chunk_count) {
-            errno = EINVAL;
-            set_error(error, error_size,
-                      "invalid ZFS fat-ZAP array chunk chain");
-            return -1;
-        }
-        const size_t offset =
-            chunks_offset + (size_t)chunk * ZFS_ZAP_LEAF_CHUNK_SIZE;
-        if (offset > block_size ||
-            ZFS_ZAP_LEAF_CHUNK_SIZE > block_size - offset ||
-            block[offset] != ZFS_ZAP_CHUNK_ARRAY) {
-            errno = EINVAL;
-            set_error(error, error_size,
-                      "invalid ZFS fat-ZAP array chunk");
-            return -1;
-        }
-
-        size_t piece = bytes_needed - copied;
-        if (piece > ZFS_ZAP_LEAF_ARRAY_BYTES)
-            piece = ZFS_ZAP_LEAF_ARRAY_BYTES;
-        memcpy(output + copied, block + offset + 1U, piece);
-        copied += piece;
-        chunk = load_u16(block + offset + 22U,
-                         LD_ZFS_BYTE_ORDER_BIG);
-        /*
-         * Array payload bytes are stored in network/integer byte order, but
-         * the chain pointer itself follows the leaf's byteswap order.  The
-         * caller rewrites this value when necessary below.
-         */
-    }
-    return 0;
-}
-
 static int fatzap_leaf_lookup_uint64(const uint8_t *block,
                                      size_t block_size,
                                      LdZfsByteOrder order,
@@ -1309,7 +1260,7 @@ static int zap_lookup_uint64(ZfsContext *context, uint64_t object,
         goto cleanup;
     }
     const size_t block_size = (size_t)block_size_u64;
-    if (zap.maxblkid > UINT64_MAX / block_size_u64 ||
+    if (zap.maxblkid >= UINT64_MAX / block_size_u64 ||
         (zap.maxblkid + 1U) * block_size_u64 > ZFS_ZAP_MAX_SCAN_BYTES) {
         errno = ENOTSUP;
         set_error(error, error_size,
