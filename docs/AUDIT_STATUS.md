@@ -5,23 +5,23 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-10-02
 
-Applies to: release version 1.8.0-235
-Audited source commit: d764d0d42f81499834119a144f3753d020a96fbb
+Applies to: release version 1.8.0-236
+Audited source commit: 8a1601729c5f4c719d2210e256d0e30921e71011
 Audited release-governance commit: e09599f6c84b31e7f29ec5da9e5f9db23807b9d9
 
-This status records the 1.8.0-235 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
+This status records the 1.8.0-236 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
-This document records the completed 1.8.0-235 release safety case and the explicit release decision after warnings-clean qualification. Re-running the release gate uses the audited source baseline named above. Historical audit-development detail remains in Git history and immutable release tags rather than being repeated as a second changelog.
+This document records the completed 1.8.0-236 release safety case and the explicit release decision after warnings-clean qualification. Re-running the release gate uses the audited source baseline named above. Historical audit-development detail remains in Git history and immutable release tags rather than being repeated as a second changelog.
 
 ## Qualification evidence
 
-The current audited production/build/Test-Media source baseline is commit `d764d0d42f81499834119a144f3753d020a96fbb` for release version 1.8.0-235. Write-capable filesystem engines remain unchanged from the qualified 1.8.0-234 storage baseline. This release corrects two additional physical Test Media failures exposed by the full 21-slot MMC run, fixes Test Media action-button theme ownership, and corrects read-only ZFS exact-allocation geometry for a valid OpenZFS partial-metaslab tail.
+The current audited production/build/Test-Media source baseline is commit `8a1601729c5f4c719d2210e256d0e30921e71011` for release version 1.8.0-236. Write-capable filesystem engines remain unchanged from the qualified 1.8.0-235 storage baseline. This release corrects the remaining Test Media action-button colour regression exposed by the physical Night-mode screenshot; UFS/ZFS and storage-engine behaviour are otherwise unchanged from 1.8.0-235.
 
 The supplied physical-media log proves that UFS failed before native qualification because Debian/Ubuntu `makefs` rejected the unsupported `maxbpg` option, while ZFS was successfully created and populated but the native exact analyser then rejected its non-metaslab-aligned top-vdev `asize`. The UFS live creator now uses the same portable option subset as the existing makefs integration test. The ZFS reader now follows OpenZFS metaslab accounting: only complete metaslabs contribute allocatable space and any trailing partial-metaslab bytes remain reserved, with DVA bounds checked against that aligned allocatable region.
 
-Test Media's bottom-right Qualify, Verify and Build controls no longer carry toolkit-owned `suggested-action` / `destructive-action` classes. Their normal, hover and disabled states are now explicitly owned by Test Media through Common palette roles, preventing the host GTK/Mint theme from replacing Night-mode controls with pale unreadable disabled buttons.
+Test Media's bottom-right Qualify, Verify and Build controls no longer carry toolkit-owned `suggested-action` / `destructive-action` classes. Their normal, hover and disabled states are explicitly owned by Test Media. The 1.8.0-236 correction also stops using Common's light filled `button_background_rgb` action role for this dark shell: the controls now use the same dark card/background surfaces as the rest of Defragmenter, with accent/fault confined to borders and hover semantics. Background images, shadows, text shadows and inherited opacity are explicitly cleared for these states so host GTK styling cannot wash them back to pale slabs.
 
 Test Media now carries the saved Build Test Disk state and diagnostic for every registered filesystem into later stages. Qualify and Verify emit a terminal status for every one of the 21 slots instead of silently skipping a filesystem that never reached the populated state. This makes UFS/ZFS build failures visible rather than leaving their rows at `Waiting`, while ZFS and swap retain their intentional analysis-only/no-Defragment qualification states when successfully built.
 
