@@ -6,7 +6,7 @@ Completed: 2026-09-22
 Extended: 2026-10-02
 
 Applies to: release version 1.8.0-236
-Audited source commit: 8a1601729c5f4c719d2210e256d0e30921e71011
+Audited source commit: b4b97555986c81123072bbc097fe15864b50733a
 Audited release-governance commit: e09599f6c84b31e7f29ec5da9e5f9db23807b9d9
 
 This status records the 1.8.0-236 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
@@ -17,7 +17,7 @@ This document records the completed 1.8.0-236 release safety case and the explic
 
 ## Qualification evidence
 
-The current audited production/build/Test-Media source baseline is commit `8a1601729c5f4c719d2210e256d0e30921e71011` for release version 1.8.0-236. Write-capable filesystem engines remain unchanged from the qualified 1.8.0-235 storage baseline. This release corrects the remaining Test Media action-button colour regression exposed by the physical Night-mode screenshot; UFS/ZFS and storage-engine behaviour are otherwise unchanged from 1.8.0-235.
+The current audited production/build/Test-Media source baseline is commit `b4b97555986c81123072bbc097fe15864b50733a` for release version 1.8.0-236. Write-capable filesystem engines remain unchanged from the qualified 1.8.0-235 storage baseline. This release corrects the remaining Test Media action-button colour regression exposed by the physical Night-mode screenshot; UFS/ZFS and storage-engine behaviour are otherwise unchanged from 1.8.0-235.
 
 The supplied physical-media log proves that UFS failed before native qualification because Debian/Ubuntu `makefs` rejected the unsupported `maxbpg` option, while ZFS was successfully created and populated but the native exact analyser then rejected its non-metaslab-aligned top-vdev `asize`. The UFS live creator now uses the same portable option subset as the existing makefs integration test. The ZFS reader now follows OpenZFS metaslab accounting: only complete metaslabs contribute allocatable space and any trailing partial-metaslab bytes remain reserved, with DVA bounds checked against that aligned allocatable region.
 
