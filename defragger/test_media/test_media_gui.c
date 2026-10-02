@@ -410,7 +410,7 @@ static gboolean confirmation_dialog(LdtmApp *app, const char *device) {
     accept_button = gtk_dialog_get_widget_for_response(GTK_DIALOG(dialog), GTK_RESPONSE_ACCEPT);
     if (accept_button != NULL) {
         GtkStyleContext *context = gtk_widget_get_style_context(accept_button);
-        gtk_style_context_add_class(context, "destructive-action");
+        gtk_style_context_add_class(context, "ldtm-destructive-action");
     }
     gtk_widget_show_all(dialog);
     gtk_dialog_set_default_response(GTK_DIALOG(dialog), GTK_RESPONSE_CANCEL);
@@ -955,7 +955,7 @@ int ldtm_gui_main(int argc, char **argv) {
 
     app.qualify_button = gtk_button_new_with_label("Qualify Production Engines");
     style = gtk_widget_get_style_context(app.qualify_button);
-    gtk_style_context_add_class(style, "suggested-action");
+    gtk_style_context_add_class(style, "ldtm-primary-action");
     gtk_widget_set_sensitive(app.qualify_button, FALSE);
     gtk_box_pack_start(GTK_BOX(action_row), app.qualify_button, FALSE, FALSE, 0U);
     g_signal_connect(app.qualify_button, "clicked",
@@ -963,14 +963,14 @@ int ldtm_gui_main(int argc, char **argv) {
 
     app.verify_button = gtk_button_new_with_label("Verify After Defrag");
     style = gtk_widget_get_style_context(app.verify_button);
-    gtk_style_context_add_class(style, "suggested-action");
+    gtk_style_context_add_class(style, "ldtm-primary-action");
     gtk_widget_set_sensitive(app.verify_button, FALSE);
     gtk_box_pack_start(GTK_BOX(action_row), app.verify_button, FALSE, FALSE, 0U);
     g_signal_connect(app.verify_button, "clicked", G_CALLBACK(verify_clicked), &app);
 
     app.build_button = gtk_button_new_with_label("Build Test Disk");
     style = gtk_widget_get_style_context(app.build_button);
-    gtk_style_context_add_class(style, "destructive-action");
+    gtk_style_context_add_class(style, "ldtm-destructive-action");
     gtk_widget_set_sensitive(app.build_button, FALSE);
     gtk_box_pack_start(GTK_BOX(action_row), app.build_button, FALSE, FALSE, 0U);
     g_signal_connect(app.build_button, "clicked", G_CALLBACK(build_clicked), &app);
