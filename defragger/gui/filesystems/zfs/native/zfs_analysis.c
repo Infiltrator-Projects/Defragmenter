@@ -58,7 +58,18 @@
 #define ZFS_COMPRESS_LZ4 15U
 #define ZFS_POOL_VERSION_LAST_LEGACY 28U
 #define ZFS_POOL_VERSION_FEATURES 5000U
+#define ZFS_ZBT_LEAF (UINT64_C(1) << 63U)
+#define ZFS_ZBT_HEADER (UINT64_C(1) << 63U | UINT64_C(1))
 #define ZFS_ZBT_MICRO (UINT64_C(1) << 63U | UINT64_C(3))
+#define ZFS_ZAP_MAGIC UINT64_C(0x2f52ab2ab)
+#define ZFS_ZAP_LEAF_MAGIC UINT32_C(0x02ab1eaf)
+#define ZFS_ZAP_CHUNK_ENTRY 252U
+#define ZFS_ZAP_CHUNK_ARRAY 251U
+#define ZFS_ZAP_CHAIN_END UINT16_C(0xffff)
+#define ZFS_ZAP_LEAF_HEADER_SIZE 48U
+#define ZFS_ZAP_LEAF_CHUNK_SIZE 24U
+#define ZFS_ZAP_LEAF_ARRAY_BYTES 21U
+#define ZFS_ZAP_MAX_SCAN_BYTES (UINT64_C(64) << 20)
 #define ZFS_MZAP_HEADER_SIZE 64U
 #define ZFS_MZAP_ENTRY_SIZE 64U
 #define ZFS_MZAP_NAME_OFFSET 14U
@@ -1074,10 +1085,203 @@ static const uint8_t *dnode_bonus(const ZfsDnode *dnode)
     return dnode->raw + offset;
 }
 
-static int microzap_lookup_uint64(ZfsContext *context, uint64_t object,
-                                  const char *name, bool *found,
-                                  uint64_t *value,
-                                  char *error, size_t error_size)
+
+static int zap_leaf_array_copy_bounded(const uint8_t *block,
+                                       size_t block_size,
+                                       size_t chunks_offset,
+                                       size_t chunk_count,
+                                       uint16_t first_chunk,
+                                       size_t bytes_needed,
+                                       uint8_t *output,
+                                       char *error,
+                                       size_t error_size)
+{
+    size_t copied = 0U;
+    uint16_t chunk = first_chunk;
+    size_t visited = 0U;
+
+    while (copied < bytes_needed) {
+        if (chunk == ZFS_ZAP_CHAIN_END || chunk >= chunk_count ||
+            visited++ >= chunk_count) {
+            errno = EINVAL;
+            set_error(error, error_size,
+                      "invalid ZFS fat-ZAP array chunk chain");
+            return -1;
+        }
+        const size_t offset =
+            chunks_offset + (size_t)chunk * ZFS_ZAP_LEAF_CHUNK_SIZE;
+        if (offset > block_size ||
+            ZFS_ZAP_LEAF_CHUNK_SIZE > block_size - offset ||
+            block[offset] != ZFS_ZAP_CHUNK_ARRAY) {
+            errno = EINVAL;
+            set_error(error, error_size,
+                      "invalid ZFS fat-ZAP array chunk");
+            return -1;
+        }
+
+        size_t piece = bytes_needed - copied;
+        if (piece > ZFS_ZAP_LEAF_ARRAY_BYTES)
+            piece = ZFS_ZAP_LEAF_ARRAY_BYTES;
+        memcpy(output + copied, block + offset + 1U, piece);
+        copied += piece;
+        chunk = load_u16(block + offset + 22U,
+                         LD_ZFS_BYTE_ORDER_BIG);
+        /*
+         * Array payload bytes are stored in network/integer byte order, but
+         * the chain pointer itself follows the leaf's byteswap order.  The
+         * caller rewrites this value when necessary below.
+         */
+    }
+    return 0;
+}
+
+static int fatzap_leaf_lookup_uint64(const uint8_t *block,
+                                     size_t block_size,
+                                     LdZfsByteOrder order,
+                                     const char *name,
+                                     bool *found,
+                                     uint64_t *value,
+                                     char *error,
+                                     size_t error_size)
+{
+    if (block_size < ZFS_ZAP_LEAF_HEADER_SIZE ||
+        load_u64_order(block, order) != ZFS_ZBT_LEAF ||
+        load_u32(block + 24U, order) != ZFS_ZAP_LEAF_MAGIC)
+        return 0;
+
+    if ((block_size & (block_size - 1U)) != 0U || block_size < 512U) {
+        errno = EINVAL;
+        set_error(error, error_size, "invalid ZFS fat-ZAP leaf block size");
+        return -1;
+    }
+
+    const size_t hash_entries = block_size >> 5U;
+    if (hash_entries > (SIZE_MAX - ZFS_ZAP_LEAF_HEADER_SIZE) / 2U) {
+        errno = EOVERFLOW;
+        return -1;
+    }
+    const size_t chunks_offset =
+        ZFS_ZAP_LEAF_HEADER_SIZE + hash_entries * 2U;
+    if (chunks_offset > block_size) {
+        errno = EINVAL;
+        set_error(error, error_size, "invalid ZFS fat-ZAP leaf geometry");
+        return -1;
+    }
+    const size_t chunk_count =
+        (block_size - chunks_offset) / ZFS_ZAP_LEAF_CHUNK_SIZE;
+    if (chunk_count == 0U) {
+        errno = EINVAL;
+        set_error(error, error_size, "empty ZFS fat-ZAP leaf");
+        return -1;
+    }
+
+    const size_t wanted_name_bytes = strlen(name) + 1U;
+    for (size_t index = 0U; index < chunk_count; ++index) {
+        const size_t offset =
+            chunks_offset + index * ZFS_ZAP_LEAF_CHUNK_SIZE;
+        if (block[offset] != ZFS_ZAP_CHUNK_ENTRY)
+            continue;
+
+        const uint8_t value_intlen = block[offset + 1U];
+        const uint16_t name_chunk = load_u16(block + offset + 4U, order);
+        const uint16_t name_numints = load_u16(block + offset + 6U, order);
+        const uint16_t value_chunk = load_u16(block + offset + 8U, order);
+        const uint16_t value_numints = load_u16(block + offset + 10U, order);
+
+        if ((size_t)name_numints != wanted_name_bytes)
+            continue;
+        if (name_numints == 0U || name_numints > 4096U) {
+            errno = EINVAL;
+            set_error(error, error_size,
+                      "invalid ZFS fat-ZAP entry name length");
+            return -1;
+        }
+
+        uint8_t *entry_name = malloc(name_numints);
+        if (entry_name == NULL)
+            return -1;
+
+        /*
+         * Read the name chain defensively.  The 21 payload bytes are raw;
+         * only the 16-bit next pointer is leaf-endian.
+         */
+        size_t copied = 0U;
+        uint16_t chunk = name_chunk;
+        size_t visited = 0U;
+        while (copied < name_numints) {
+            if (chunk == ZFS_ZAP_CHAIN_END || chunk >= chunk_count ||
+                visited++ >= chunk_count) {
+                free(entry_name);
+                errno = EINVAL;
+                set_error(error, error_size,
+                          "invalid ZFS fat-ZAP name chunk chain");
+                return -1;
+            }
+            const size_t chunk_offset =
+                chunks_offset + (size_t)chunk * ZFS_ZAP_LEAF_CHUNK_SIZE;
+            if (block[chunk_offset] != ZFS_ZAP_CHUNK_ARRAY) {
+                free(entry_name);
+                errno = EINVAL;
+                set_error(error, error_size,
+                          "invalid ZFS fat-ZAP name chunk");
+                return -1;
+            }
+            size_t piece = (size_t)name_numints - copied;
+            if (piece > ZFS_ZAP_LEAF_ARRAY_BYTES)
+                piece = ZFS_ZAP_LEAF_ARRAY_BYTES;
+            memcpy(entry_name + copied, block + chunk_offset + 1U, piece);
+            copied += piece;
+            chunk = load_u16(block + chunk_offset + 22U, order);
+        }
+
+        const bool matches =
+            entry_name[name_numints - 1U] == '\0' &&
+            memcmp(entry_name, name, wanted_name_bytes) == 0;
+        free(entry_name);
+        if (!matches)
+            continue;
+
+        if (value_intlen != 8U || value_numints != 1U) {
+            errno = ENOTSUP;
+            set_error(error, error_size,
+                      "ZFS fat-ZAP feature value is not one uint64");
+            return -1;
+        }
+        if (value_chunk == ZFS_ZAP_CHAIN_END ||
+            value_chunk >= chunk_count) {
+            errno = EINVAL;
+            set_error(error, error_size,
+                      "invalid ZFS fat-ZAP value chunk");
+            return -1;
+        }
+        const size_t value_offset =
+            chunks_offset + (size_t)value_chunk * ZFS_ZAP_LEAF_CHUNK_SIZE;
+        if (block[value_offset] != ZFS_ZAP_CHUNK_ARRAY) {
+            errno = EINVAL;
+            set_error(error, error_size,
+                      "invalid ZFS fat-ZAP value array");
+            return -1;
+        }
+
+        const uint8_t *bytes = block + value_offset + 1U;
+        *value = ((uint64_t)bytes[0] << 56U) |
+                 ((uint64_t)bytes[1] << 48U) |
+                 ((uint64_t)bytes[2] << 40U) |
+                 ((uint64_t)bytes[3] << 32U) |
+                 ((uint64_t)bytes[4] << 24U) |
+                 ((uint64_t)bytes[5] << 16U) |
+                 ((uint64_t)bytes[6] << 8U) |
+                 (uint64_t)bytes[7];
+        *found = true;
+        return 0;
+    }
+    return 0;
+}
+
+static int zap_lookup_uint64(ZfsContext *context, uint64_t object,
+                             const char *name, bool *found,
+                             uint64_t *value,
+                             char *error, size_t error_size)
 {
     *found = false;
     *value = 0U;
@@ -1089,65 +1293,116 @@ static int microzap_lookup_uint64(ZfsContext *context, uint64_t object,
 
     int result = -1;
     if (zap.type != ZFS_DMU_OT_OBJECT_DIRECTORY ||
-        zap.maxblkid != 0U || zap.datablkszsec == 0U) {
+        zap.datablkszsec == 0U) {
         errno = ENOTSUP;
         set_error(error, error_size,
-                  "ZFS feature/pool directory uses unsupported fat or multi-block ZAP");
+                  "ZFS feature/pool directory has unsupported object type");
         goto cleanup;
     }
 
-    const uint64_t block_size = (uint64_t)zap.datablkszsec << 9U;
-    if (block_size < ZFS_MZAP_HEADER_SIZE + ZFS_MZAP_ENTRY_SIZE ||
-        block_size > ZFS_MAX_BLOCK_SIZE ||
-        block_size > SIZE_MAX ||
-        (block_size % ZFS_MZAP_ENTRY_SIZE) != 0U) {
+    const uint64_t block_size_u64 = (uint64_t)zap.datablkszsec << 9U;
+    if (block_size_u64 < ZFS_MZAP_HEADER_SIZE + ZFS_MZAP_ENTRY_SIZE ||
+        block_size_u64 > ZFS_MAX_BLOCK_SIZE ||
+        block_size_u64 > SIZE_MAX) {
         errno = EINVAL;
-        set_error(error, error_size, "invalid ZFS micro-ZAP block size");
+        set_error(error, error_size, "invalid ZFS ZAP block size");
+        goto cleanup;
+    }
+    const size_t block_size = (size_t)block_size_u64;
+    if (zap.maxblkid > UINT64_MAX / block_size_u64 ||
+        (zap.maxblkid + 1U) * block_size_u64 > ZFS_ZAP_MAX_SCAN_BYTES) {
+        errno = ENOTSUP;
+        set_error(error, error_size,
+                  "ZFS feature/pool ZAP exceeds bounded exact-reader scan limit");
         goto cleanup;
     }
 
-    uint8_t *block = malloc((size_t)block_size);
+    uint8_t *block = malloc(block_size);
     if (block == NULL)
         goto cleanup;
     LdZfsByteOrder order = zap.order;
-    if (object_read_bytes(context, &zap, 0U, block, (size_t)block_size,
+    if (object_read_bytes(context, &zap, 0U, block, block_size,
                           &order, error, error_size) != 0) {
         free(block);
         goto cleanup;
     }
 
-    if (load_u64_order(block, order) != ZFS_ZBT_MICRO) {
+    const uint64_t first_type = load_u64_order(block, order);
+    if (first_type == ZFS_ZBT_MICRO) {
+        const size_t entries =
+            (block_size - ZFS_MZAP_HEADER_SIZE) / ZFS_MZAP_ENTRY_SIZE;
+        for (size_t index = 0U; index < entries; ++index) {
+            const uint8_t *entry =
+                block + ZFS_MZAP_HEADER_SIZE +
+                index * ZFS_MZAP_ENTRY_SIZE;
+            const char *entry_name =
+                (const char *)(entry + ZFS_MZAP_NAME_OFFSET);
+            if (entry_name[0] == '\0')
+                continue;
+            const void *terminator =
+                memchr(entry_name, '\0', ZFS_MZAP_NAME_SIZE);
+            if (terminator == NULL) {
+                free(block);
+                errno = EINVAL;
+                set_error(error, error_size,
+                          "unterminated ZFS micro-ZAP name");
+                goto cleanup;
+            }
+            if (strcmp(entry_name, name) == 0) {
+                *value = load_u64_order(entry, order);
+                *found = true;
+                break;
+            }
+        }
         free(block);
-        errno = ENOTSUP;
-        set_error(error, error_size,
-                  "ZFS feature/pool directory is a fat ZAP outside the bounded exact reader");
+        result = 0;
         goto cleanup;
     }
 
-    const size_t entries =
-        ((size_t)block_size - ZFS_MZAP_HEADER_SIZE) / ZFS_MZAP_ENTRY_SIZE;
-    for (size_t index = 0U; index < entries; ++index) {
-        const uint8_t *entry =
-            block + ZFS_MZAP_HEADER_SIZE + index * ZFS_MZAP_ENTRY_SIZE;
-        const char *entry_name =
-            (const char *)(entry + ZFS_MZAP_NAME_OFFSET);
-        if (entry_name[0] == '\0')
-            continue;
-        const void *terminator =
-            memchr(entry_name, '\0', ZFS_MZAP_NAME_SIZE);
-        if (terminator == NULL) {
-            free(block);
-            errno = EINVAL;
-            set_error(error, error_size, "unterminated ZFS micro-ZAP name");
-            goto cleanup;
-        }
-        if (strcmp(entry_name, name) == 0) {
-            *value = load_u64_order(entry, order);
-            *found = true;
-            break;
-        }
+    if (first_type != ZFS_ZBT_HEADER ||
+        block_size < 16U ||
+        load_u64_order(block + 8U, order) != ZFS_ZAP_MAGIC) {
+        free(block);
+        errno = ENOTSUP;
+        set_error(error, error_size,
+                  "ZFS feature/pool directory is neither micro nor supported fat ZAP");
+        goto cleanup;
     }
     free(block);
+
+    /*
+     * A fat ZAP's pointer-table blocks are only an index.  Exact lookup does
+     * not need to trust or reproduce the hash function: scan each bounded
+     * object block, accept only validated leaf blocks, then inspect validated
+     * entry/name/value chunk chains.  This naturally supports embedded and
+     * external pointer tables and multi-leaf directories while remaining
+     * bounded by ZFS_ZAP_MAX_SCAN_BYTES.
+     */
+    for (uint64_t block_id = 1U; block_id <= zap.maxblkid; ++block_id) {
+        block = malloc(block_size);
+        if (block == NULL)
+            goto cleanup;
+        order = zap.order;
+        if (object_read_bytes(context, &zap,
+                              block_id * block_size_u64,
+                              block, block_size,
+                              &order, error, error_size) != 0) {
+            free(block);
+            goto cleanup;
+        }
+        if (fatzap_leaf_lookup_uint64(block, block_size, order,
+                                      name, found, value,
+                                      error, error_size) != 0) {
+            free(block);
+            goto cleanup;
+        }
+        free(block);
+        if (*found) {
+            result = 0;
+            goto cleanup;
+        }
+    }
+
     result = 0;
 
 cleanup:
@@ -1164,7 +1419,7 @@ static int validate_modern_allocation_features(ZfsContext *context,
 
     bool found = false;
     uint64_t feature_object = 0U;
-    if (microzap_lookup_uint64(context, ZFS_POOL_DIRECTORY_OBJECT,
+    if (zap_lookup_uint64(context, ZFS_POOL_DIRECTORY_OBJECT,
                                "features_for_write", &found,
                                &feature_object, error, error_size) != 0)
         return -1;
@@ -1176,7 +1431,7 @@ static int validate_modern_allocation_features(ZfsContext *context,
     }
 
     uint64_t refcount = 0U;
-    if (microzap_lookup_uint64(context, feature_object,
+    if (zap_lookup_uint64(context, feature_object,
                                "com.delphix:log_spacemap", &found,
                                &refcount, error, error_size) != 0)
         return -1;
