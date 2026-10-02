@@ -9,6 +9,8 @@ void ldtm_apply_mb_theme(void) {
     GdkScreen *screen = gdk_screen_get_default();
     GtkCssProvider *provider;
     char *css;
+    char *action_css;
+    char *combined_css;
     GError *error = NULL;
     const InfiltratrTypography *typography = infiltratr_typography();
     const InfiltratrDesignMetrics *metrics = infiltratr_design_metrics();
@@ -45,12 +47,6 @@ void ldtm_apply_mb_theme(void) {
         "button:hover { background-color: #%06x; border-color: #%06x; }"
         "button:active, button:checked { background-color: #%06x; border-color: #%06x; }"
         "button:disabled { color: #%06x; border-color: #%06x; background-color: #%06x; }"
-        "button.ldtm-primary-action { background-image: none; background-color: #%06x; color: #%06x; border-color: #%06x; font-weight: bold; box-shadow: none; text-shadow: none; opacity: 1; }"
-        "button.ldtm-primary-action:hover { background-image: none; background-color: #%06x; border-color: #%06x; }"
-        "button.ldtm-primary-action:disabled { background-image: none; background-color: #%06x; color: #%06x; border-color: #%06x; box-shadow: none; text-shadow: none; opacity: 1; }"
-        "button.ldtm-destructive-action { background-image: none; background-color: #%06x; color: #%06x; border-color: #%06x; font-weight: bold; box-shadow: none; text-shadow: none; opacity: 1; }"
-        "button.ldtm-destructive-action:hover { background-image: none; background-color: #%06x; border-color: #%06x; }"
-        "button.ldtm-destructive-action:disabled { background-image: none; background-color: #%06x; color: #%06x; border-color: #%06x; box-shadow: none; text-shadow: none; opacity: 1; }"
         "entry, combobox button, spinbutton { background-image: none; background-color: #%06x; color: #%06x; border: 1px solid #%06x; border-radius: %upx; box-shadow: none; min-height: 28px; }"
         "entry:focus, spinbutton:focus { border-color: #%06x; background-color: #%06x; }"
         "textview, textview text, treeview, viewport, scrolledwindow { background-color: #%06x; color: #%06x; border-color: #%06x; }"
@@ -80,13 +76,6 @@ void ldtm_apply_mb_theme(void) {
         (unsigned)palette->surface_hover_rgb, (unsigned)palette->accent_hover_rgb,
         (unsigned)palette->operation_hover_rgb, (unsigned)palette->accent_hover_rgb,
         (unsigned)palette->subtle_rgb, (unsigned)palette->border_rgb, (unsigned)palette->background_rgb,
-        (unsigned)palette->card_rgb, (unsigned)palette->text_rgb,
-        (unsigned)palette->neutral_accent_rgb,
-        (unsigned)palette->surface_hover_rgb, (unsigned)palette->accent_hover_rgb,
-        (unsigned)palette->background_rgb, (unsigned)palette->subtle_rgb, (unsigned)palette->border_rgb,
-        (unsigned)palette->card_rgb, (unsigned)palette->text_rgb, (unsigned)palette->fault_rgb,
-        (unsigned)palette->card_hover_rgb, (unsigned)palette->fault_rgb,
-        (unsigned)palette->background_rgb, (unsigned)palette->subtle_rgb, (unsigned)palette->border_rgb,
         (unsigned)palette->input_rgb, (unsigned)palette->text_rgb, (unsigned)palette->border_rgb,
         metrics->small_radius,
         (unsigned)palette->subtle_rgb, (unsigned)palette->surface_hover_rgb,
@@ -102,6 +91,28 @@ void ldtm_apply_mb_theme(void) {
         (unsigned)palette->text_rgb,
         (unsigned)palette->status_border_rgb,
         (unsigned)palette->card_rgb, (unsigned)palette->note_rgb, (unsigned)palette->status_border_rgb);
+
+    action_css = g_strdup_printf(
+        "button.ldtm-primary-action { background-image: none; background-color: #%06x; color: #%06x; border-color: #%06x; font-weight: bold; box-shadow: none; text-shadow: none; opacity: 1; }"
+        "button.ldtm-primary-action:hover { background-image: none; background-color: #%06x; border-color: #%06x; }"
+        "button.ldtm-primary-action:disabled { background-image: none; background-color: #%06x; color: #%06x; border-color: #%06x; box-shadow: none; text-shadow: none; opacity: 1; }"
+        "button.ldtm-destructive-action { background-image: none; background-color: #%06x; color: #%06x; border-color: #%06x; font-weight: bold; box-shadow: none; text-shadow: none; opacity: 1; }"
+        "button.ldtm-destructive-action:hover { background-image: none; background-color: #%06x; border-color: #%06x; }"
+        "button.ldtm-destructive-action:disabled { background-image: none; background-color: #%06x; color: #%06x; border-color: #%06x; box-shadow: none; text-shadow: none; opacity: 1; }",
+        (unsigned)palette->card_rgb, (unsigned)palette->text_rgb,
+        (unsigned)palette->neutral_accent_rgb,
+        (unsigned)palette->surface_hover_rgb, (unsigned)palette->accent_hover_rgb,
+        (unsigned)palette->background_rgb, (unsigned)palette->subtle_rgb,
+        (unsigned)palette->border_rgb,
+        (unsigned)palette->card_rgb, (unsigned)palette->text_rgb,
+        (unsigned)palette->fault_rgb,
+        (unsigned)palette->card_hover_rgb, (unsigned)palette->fault_rgb,
+        (unsigned)palette->background_rgb, (unsigned)palette->subtle_rgb,
+        (unsigned)palette->border_rgb);
+    combined_css = g_strconcat(css, action_css, NULL);
+    g_free(action_css);
+    g_free(css);
+    css = combined_css;
 
     provider = gtk_css_provider_new();
     if (gtk_css_provider_load_from_data(provider, css, -1, &error)) {
