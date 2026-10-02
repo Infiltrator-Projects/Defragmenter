@@ -29,7 +29,14 @@
 #define DATASET_DNODE_LOGICAL_OFFSET (7U * 1024U * 1024U)
 #define POOL_DIRECTORY_LOGICAL_OFFSET (1U * 1024U * 1024U)
 #define FEATURES_WRITE_LOGICAL_OFFSET (1536U * 1024U)
+#define ZBT_LEAF (UINT64_C(1) << 63U)
+#define ZBT_HEADER (UINT64_C(1) << 63U | UINT64_C(1))
 #define ZBT_MICRO (UINT64_C(1) << 63U | UINT64_C(3))
+#define ZAP_MAGIC UINT64_C(0x2f52ab2ab)
+#define ZAP_LEAF_MAGIC UINT32_C(0x02ab1eaf)
+#define ZAP_CHUNK_ENTRY 252U
+#define ZAP_CHUNK_ARRAY 251U
+#define ZAP_CHAIN_END UINT16_C(0xffff)
 
 #define CHECK(expr)                                                           \
     do {                                                                      \
@@ -399,7 +406,56 @@ static void make_microzap(uint8_t block[4096],
     }
 }
 
-static void write_exact_fixture(int fd, int log_spacemap)
+
+static void make_fatzap_header(uint8_t block[4096])
+{
+    memset(block, 0, 4096U);
+    put_le64(block + 0U, ZBT_HEADER);
+    put_le64(block + 8U, ZAP_MAGIC);
+    /* One embedded pointer-table entry pointing at leaf block 1. */
+    put_le64(block + 2048U, 1U);
+}
+
+static void make_fatzap_leaf_uint64(uint8_t block[4096],
+                                    const char *name,
+                                    uint64_t value)
+{
+    memset(block, 0, 4096U);
+    put_le64(block + 0U, ZBT_LEAF);
+    put_le64(block + 16U, 0U);
+    block[24U] = (uint8_t)ZAP_LEAF_MAGIC;
+    block[25U] = (uint8_t)(ZAP_LEAF_MAGIC >> 8U);
+    block[26U] = (uint8_t)(ZAP_LEAF_MAGIC >> 16U);
+    block[27U] = (uint8_t)(ZAP_LEAF_MAGIC >> 24U);
+
+    const size_t chunk_base = 48U + (4096U >> 5U) * 2U;
+    const size_t entry = chunk_base;
+    const size_t name_array = chunk_base + 24U;
+    const size_t value_array = chunk_base + 48U;
+    const size_t name_len = strlen(name) + 1U;
+    CHECK(name_len <= 21U);
+
+    block[entry + 0U] = ZAP_CHUNK_ENTRY;
+    block[entry + 1U] = 8U;
+    put16(block + entry + 2U, ZAP_CHAIN_END, 0);
+    put16(block + entry + 4U, 1U, 0);
+    put16(block + entry + 6U, (uint16_t)name_len, 0);
+    put16(block + entry + 8U, 2U, 0);
+    put16(block + entry + 10U, 1U, 0);
+    put_le64(block + entry + 16U, UINT64_C(0x123456789abcdef0));
+
+    block[name_array + 0U] = ZAP_CHUNK_ARRAY;
+    memcpy(block + name_array + 1U, name, name_len);
+    put16(block + name_array + 22U, ZAP_CHAIN_END, 0);
+
+    block[value_array + 0U] = ZAP_CHUNK_ARRAY;
+    for (unsigned int index = 0U; index < 8U; ++index)
+        block[value_array + 1U + index] =
+            (uint8_t)(value >> ((7U - index) * 8U));
+    put16(block + value_array + 22U, ZAP_CHAIN_END, 0);
+}
+
+static void write_exact_fixture(int fd, int log_spacemap, int fat_pool_directory)
 {
     uint8_t space_map_data[4096];
     memset(space_map_data, 0, sizeof(space_map_data));
@@ -461,12 +517,31 @@ static void write_exact_fixture(int fd, int log_spacemap)
               dataset_objset, sizeof(dataset_objset));
 
     uint8_t pool_directory[4096];
-    make_microzap(pool_directory, "features_for_write", 5U, NULL, 0U);
-    write_all(fd, pool_directory, sizeof(pool_directory),
-              (off_t)(VDEV_DATA_START + POOL_DIRECTORY_LOGICAL_OFFSET));
+    uint8_t pool_directory_leaf[4096];
     uint8_t pool_directory_bp[128];
-    encode_bp(pool_directory_bp, 0, POOL_DIRECTORY_LOGICAL_OFFSET, 1U,
-              pool_directory, sizeof(pool_directory));
+    uint8_t pool_directory_leaf_bp[128];
+    if (fat_pool_directory) {
+        make_fatzap_header(pool_directory);
+        make_fatzap_leaf_uint64(
+            pool_directory_leaf, "features_for_write", 5U);
+        write_all(fd, pool_directory, sizeof(pool_directory),
+                  (off_t)(VDEV_DATA_START + POOL_DIRECTORY_LOGICAL_OFFSET));
+        write_all(fd, pool_directory_leaf, sizeof(pool_directory_leaf),
+                  (off_t)(VDEV_DATA_START +
+                          POOL_DIRECTORY_LOGICAL_OFFSET + 4096U));
+        encode_bp(pool_directory_bp, 0, POOL_DIRECTORY_LOGICAL_OFFSET, 1U,
+                  pool_directory, sizeof(pool_directory));
+        encode_bp(pool_directory_leaf_bp, 0,
+                  POOL_DIRECTORY_LOGICAL_OFFSET + 4096U, 1U,
+                  pool_directory_leaf, sizeof(pool_directory_leaf));
+    } else {
+        make_microzap(pool_directory, "features_for_write", 5U, NULL, 0U);
+        write_all(fd, pool_directory, sizeof(pool_directory),
+                  (off_t)(VDEV_DATA_START + POOL_DIRECTORY_LOGICAL_OFFSET));
+        encode_bp(pool_directory_bp, 0, POOL_DIRECTORY_LOGICAL_OFFSET, 1U,
+                  pool_directory, sizeof(pool_directory));
+        memset(pool_directory_leaf_bp, 0, sizeof(pool_directory_leaf_bp));
+    }
 
     uint8_t feature_directory[4096];
     make_microzap(feature_directory,
@@ -481,8 +556,13 @@ static void write_exact_fixture(int fd, int log_spacemap)
 
     uint8_t dnode_block[16384];
     memset(dnode_block, 0, sizeof(dnode_block));
-    make_dnode(dnode_block + 1U * 512U, 0, 1U, 0U, 8U, 0U, 0U,
-               pool_directory_bp);
+    make_dnode(dnode_block + 1U * 512U, 0, 1U, 0U, 8U, 0U,
+               fat_pool_directory ? 1U : 0U, pool_directory_bp);
+    if (fat_pool_directory) {
+        dnode_block[1U * 512U + 3U] = 2U;
+        memcpy(dnode_block + 1U * 512U + 192U,
+               pool_directory_leaf_bp, sizeof(pool_directory_leaf_bp));
+    }
     make_dnode(dnode_block + 2U * 512U, 0, 2U, 0U, 8U, 0U, 0U,
                metaslab_array_bp);
     make_dnode(dnode_block + 3U * 512U, 0, 8U, 7U, 8U, 24U, 0U,
@@ -571,7 +651,7 @@ int main(void)
 
     reset_image(fd);
     write_label_config(fd, 0U, NULL);
-    write_exact_fixture(fd, 0);
+    write_exact_fixture(fd, 0, 0);
     const off_t first = write_uber(fd, 0U, 3U, 0, 28U, 10U, 77U, 1000U);
     CHECK(zfs_read_summary(path, &summary, error, sizeof(error)) == 0);
     CHECK(summary.size_bytes == IMAGE_BYTES);
@@ -636,7 +716,7 @@ int main(void)
     reset_image(fd);
     write_label_config_asize(
         fd, 0U, NULL, UINT64_C(9) * 1024U * 1024U);
-    write_exact_fixture(fd, 0);
+    write_exact_fixture(fd, 0, 0);
     (void)write_uber(fd, 0U, 4U, 0, 28U, 11U, 78U, 1001U);
     CHECK(zfs_read_summary(path, &summary, error, sizeof(error)) == 0);
     CHECK(summary.top_vdev_asize == UINT64_C(9) * 1024U * 1024U);
@@ -658,7 +738,7 @@ int main(void)
      */
     reset_image(fd);
     write_label_config(fd, 0U, "com.delphix:hole_birth");
-    write_exact_fixture(fd, 0);
+    write_exact_fixture(fd, 0, 0);
     (void)write_uber(fd, 0U, 11U, 0, 5000U, 50U, 123U, 4000U);
     CHECK(zfs_read_summary(path, &summary, error, sizeof(error)) == 0);
     CHECK(summary.uberblock_version == 5000U);
@@ -673,12 +753,31 @@ int main(void)
     zfs_analysis_destroy(&analysis);
 
     /*
+     * Real OpenZFS pools commonly upgrade the MOS pool directory from
+     * micro-ZAP to fat/multi-block ZAP as more administrative keys are added.
+     * The bounded exact reader must still resolve features_for_write without
+     * depending on the pointer-table hash implementation.
+     */
+    reset_image(fd);
+    write_label_config(fd, 0U, "com.delphix:hole_birth");
+    write_exact_fixture(fd, 0, 1);
+    (void)write_uber(fd, 0U, 13U, 0, 5000U, 52U, 125U, 4002U);
+    CHECK(zfs_read_summary(path, &summary, error, sizeof(error)) == 0);
+    CHECK(summary.uberblock_version == 5000U);
+    CHECK(summary.mos_features_supported);
+    CHECK(zfs_analyse_exact(path, &analysis, error, sizeof(error)) == 0);
+    CHECK(analysis.exact_allocation);
+    CHECK(analysis.exact_fragmentation);
+    CHECK(analysis.fragmented_files == 1U);
+    zfs_analysis_destroy(&analysis);
+
+    /*
      * Unknown MOS-format features must not be guessed. Identification remains
      * available, but exact traversal is refused.
      */
     reset_image(fd);
     write_label_config(fd, 0U, "com.example:future_mos");
-    write_exact_fixture(fd, 0);
+    write_exact_fixture(fd, 0, 0);
     (void)write_uber(fd, 0U, 12U, 0, 5000U, 51U, 124U, 4001U);
     CHECK(zfs_read_summary(path, &summary, error, sizeof(error)) == 0);
     CHECK(summary.mos_features_present);
@@ -695,7 +794,7 @@ int main(void)
      */
     reset_image(fd);
     write_label_config(fd, 0U, "com.delphix:hole_birth");
-    write_exact_fixture(fd, 1);
+    write_exact_fixture(fd, 1, 0);
     (void)write_uber(fd, 0U, 13U, 0, 5000U, 52U, 125U, 4002U);
     CHECK(zfs_read_summary(path, &summary, error, sizeof(error)) == 0);
     CHECK(summary.single_leaf_supported);
@@ -704,7 +803,7 @@ int main(void)
 
     reset_image(fd);
     write_label_config(fd, 0U, NULL);
-    write_exact_fixture(fd, 0);
+    write_exact_fixture(fd, 0, 0);
     /* Exercise selection across three committed candidates before the
        same-TXG timestamp tie-breaker below adds a fourth. */
     (void)write_uber(fd, 0U, 2U, 0, 28U, 9U, 77U, 1000U);
