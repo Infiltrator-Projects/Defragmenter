@@ -2,6 +2,12 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-236
+
+- Correct the Test Media action-button palette after the first GTK theme-isolation fix. Qualify, Verify and Build now use Defragmenter's dark card/background surfaces in Night mode, with accent/fault carried by borders and hover states instead of a light filled button.
+- Explicitly clear background images, shadows, text shadows and inherited opacity on the action-button normal/hover/disabled states so host GTK themes cannot wash the controls back to pale slabs.
+- Disabled action buttons remain dark with subdued readable text rather than switching to a high-luminance fill.
+
 ## 1.8.0-235
 
 - Fix Defragmenter Test Media action-button theming. The bottom-right Qualify, Verify and Build controls no longer inherit GTK/Mint `suggested-action` / `destructive-action` colours; Test Media now owns their normal, hover and disabled states through Infiltrator/Common palette roles, preventing pale unreadable disabled buttons in Night mode.
