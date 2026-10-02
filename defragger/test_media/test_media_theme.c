@@ -45,12 +45,12 @@ void ldtm_apply_mb_theme(void) {
         "button:hover { background-color: #%06x; border-color: #%06x; }"
         "button:active, button:checked { background-color: #%06x; border-color: #%06x; }"
         "button:disabled { color: #%06x; border-color: #%06x; background-color: #%06x; }"
-        "button.ldtm-primary-action { background-color: #%06x; color: #%06x; border-color: #%06x; font-weight: bold; }"
-        "button.ldtm-primary-action:hover { background-color: #%06x; border-color: #%06x; }"
-        "button.ldtm-primary-action:disabled { background-color: #%06x; color: #%06x; border-color: #%06x; }"
-        "button.ldtm-destructive-action { background-color: #%06x; color: #%06x; border-color: #%06x; font-weight: bold; }"
-        "button.ldtm-destructive-action:hover { background-color: #%06x; border-color: #%06x; }"
-        "button.ldtm-destructive-action:disabled { background-color: #%06x; color: #%06x; border-color: #%06x; }"
+        "button.ldtm-primary-action { background-image: none; background-color: #%06x; color: #%06x; border-color: #%06x; font-weight: bold; box-shadow: none; text-shadow: none; opacity: 1; }"
+        "button.ldtm-primary-action:hover { background-image: none; background-color: #%06x; border-color: #%06x; }"
+        "button.ldtm-primary-action:disabled { background-image: none; background-color: #%06x; color: #%06x; border-color: #%06x; box-shadow: none; text-shadow: none; opacity: 1; }"
+        "button.ldtm-destructive-action { background-image: none; background-color: #%06x; color: #%06x; border-color: #%06x; font-weight: bold; box-shadow: none; text-shadow: none; opacity: 1; }"
+        "button.ldtm-destructive-action:hover { background-image: none; background-color: #%06x; border-color: #%06x; }"
+        "button.ldtm-destructive-action:disabled { background-image: none; background-color: #%06x; color: #%06x; border-color: #%06x; box-shadow: none; text-shadow: none; opacity: 1; }"
         "entry, combobox button, spinbutton { background-image: none; background-color: #%06x; color: #%06x; border: 1px solid #%06x; border-radius: %upx; box-shadow: none; min-height: 28px; }"
         "entry:focus, spinbutton:focus { border-color: #%06x; background-color: #%06x; }"
         "textview, textview text, treeview, viewport, scrolledwindow { background-color: #%06x; color: #%06x; border-color: #%06x; }"
@@ -80,12 +80,12 @@ void ldtm_apply_mb_theme(void) {
         (unsigned)palette->surface_hover_rgb, (unsigned)palette->accent_hover_rgb,
         (unsigned)palette->operation_hover_rgb, (unsigned)palette->accent_hover_rgb,
         (unsigned)palette->subtle_rgb, (unsigned)palette->border_rgb, (unsigned)palette->background_rgb,
-        (unsigned)palette->button_background_rgb, (unsigned)palette->button_foreground_rgb,
-        (unsigned)palette->button_background_rgb,
-        (unsigned)palette->accent_hover_rgb, (unsigned)palette->accent_hover_rgb,
+        (unsigned)palette->card_rgb, (unsigned)palette->text_rgb,
+        (unsigned)palette->neutral_accent_rgb,
+        (unsigned)palette->surface_hover_rgb, (unsigned)palette->accent_hover_rgb,
         (unsigned)palette->background_rgb, (unsigned)palette->subtle_rgb, (unsigned)palette->border_rgb,
-        (unsigned)palette->operation_rgb, (unsigned)palette->text_rgb, (unsigned)palette->fault_rgb,
-        (unsigned)palette->fault_rgb, (unsigned)palette->fault_rgb,
+        (unsigned)palette->card_rgb, (unsigned)palette->text_rgb, (unsigned)palette->fault_rgb,
+        (unsigned)palette->card_hover_rgb, (unsigned)palette->fault_rgb,
         (unsigned)palette->background_rgb, (unsigned)palette->subtle_rgb, (unsigned)palette->border_rgb,
         (unsigned)palette->input_rgb, (unsigned)palette->text_rgb, (unsigned)palette->border_rgb,
         metrics->small_radius,
