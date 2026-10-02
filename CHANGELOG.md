@@ -2,6 +2,14 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-237
+
+- Extend the bounded native ZFS exact reader to resolve ordinary fat and multi-block ZAP pool/feature directories instead of failing after the micro-ZAP-only path.
+- Validate fat-ZAP header/leaf geometry and chunk types, walk name/value chunk chains defensively, and read only bounded object data; malformed or oversized directories still fail closed.
+- Avoid reproducing or trusting the ZAP pointer-table hash path for exact feature lookup: the reader scans the bounded object blocks, accepts only validated ZAP leaf blocks, and resolves the requested key from validated entry chains.
+- Add a native regression fixture with a fat two-block pool directory containing `features_for_write`, proving feature-flag exact analysis succeeds through the same path reached by current OpenZFS-created Test Media.
+- UFS Test Media and the corrected dark Test Media action-button styling from 1.8.0-236 are unchanged.
+
 ## 1.8.0-236
 
 - Correct the Test Media action-button palette after the first GTK theme-isolation fix. Qualify, Verify and Build now use Defragmenter's dark card/background surfaces in Night mode, with accent/fault carried by borders and hover states instead of a light filled button.
