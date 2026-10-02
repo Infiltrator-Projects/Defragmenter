@@ -2220,8 +2220,14 @@ static int create_ufs_and_populate(const LdtmFilesystemSpec *spec, const char *p
         return -1;
     makefs_argv[6] = image_size;
     makefs_argv[7] = "-o";
+    /*
+     * Keep the live creator on the same portable makefs option subset as the
+     * native UFS integration qualification.  Debian/Ubuntu makefs does not
+     * implement NetBSD's maxbpg option, so passing it makes an otherwise valid
+     * UFS2 build fail before our own parser ever sees the image.
+     */
     makefs_argv[8] =
-        "version=2,bsize=8192,fsize=1024,minfree=5,maxbpg=256,optimization=space";
+        "version=2,bsize=8192,fsize=1024,minfree=5";
     makefs_argv[9] = image;
     makefs_argv[10] = source;
     makefs_argv[11] = NULL;
