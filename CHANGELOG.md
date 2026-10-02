@@ -2,6 +2,14 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-235
+
+- Fix Defragmenter Test Media action-button theming. The bottom-right Qualify, Verify and Build controls no longer inherit GTK/Mint `suggested-action` / `destructive-action` colours; Test Media now owns their normal, hover and disabled states through Infiltrator/Common palette roles, preventing pale unreadable disabled buttons in Night mode.
+- Fix UFS2 physical Test Media creation on Debian/Ubuntu `makefs`. The live creator now uses the same portable UFS2 option subset already exercised by the native integration test and no longer passes the unsupported `maxbpg` option that caused an immediate format failure.
+- Correct bounded exact ZFS allocation analysis for ordinary OpenZFS top-vdev geometry whose physical `asize` is not an exact multiple of metaslab size. Exact analysis now accounts only complete metaslabs as allocatable and treats the trailing partial-metaslab bytes as reserved instead of rejecting the pool.
+- Tighten ZFS DVA/file-extent bounds to the metaslab-managed allocatable region and add a native regression proving a non-aligned top-vdev tail is accepted without being counted as free.
+- No write-capable filesystem safety boundary is widened by the ZFS change; ZFS remains analysis-only.
+
 ## 1.8.0-234
 
 - Complete Test Media result accounting across all 21 filesystem slots. Qualify and Verify no longer silently skip a filesystem whose Build Test Disk stage failed to produce a populated image; the saved build status and diagnostic are surfaced as an explicit per-filesystem failure instead of leaving rows stuck at `Waiting`.
