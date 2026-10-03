@@ -531,17 +531,31 @@ static int refresh_group_descriptor(ExtFs *fs, uint32_t group, char **error)
 {
     uint8_t *block = ld_xmalloc(fs->block_size);
     const uint64_t location = descriptor_block_location(fs, group / fs->desc_per_block);
-    if (location == UINT64_MAX || read_block(fs, location, block, error) != 0) {
+    if (location == UINT64_MAX) {
         free(block);
         return -1;
     }
     uint8_t *old = ld_xmalloc(fs->desc_size);
     memcpy(old, group_desc(fs, group), fs->desc_size);
-    memcpy(group_desc(fs, group),
-           block + (size_t)(group % fs->desc_per_block) * fs->desc_size, fs->desc_size);
+    int result = -1;
+    for (unsigned attempt = 0U; attempt < 3U; ++attempt) {
+        if (read_block(fs, location, block, error) != 0) break;
+        memcpy(group_desc(fs, group),
+               block + (size_t)(group % fs->desc_per_block) * fs->desc_size,
+               fs->desc_size);
+        char *detail = NULL;
+        result = verify_group_checksum(fs, group, &detail);
+        if (result == 0) {
+            free(detail);
+            break;
+        }
+        /* A live update can change the descriptor itself between reads.
+         * Keep the original verified snapshot until a complete refresh passes. */
+        memcpy(group_desc(fs, group), old, fs->desc_size);
+        if (attempt == 2U) set_error(error, detail);
+        free(detail);
+    }
     free(block);
-    const int result = verify_group_checksum(fs, group, error);
-    if (result != 0) memcpy(group_desc(fs, group), old, fs->desc_size);
     free(old);
     return result;
 }

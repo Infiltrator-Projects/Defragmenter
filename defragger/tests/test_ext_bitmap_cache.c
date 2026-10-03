@@ -1,8 +1,29 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 /* Exercise changing descriptor/bitmap pairs and failed cache fills directly.
  * The test owns a temporary byte fixture; no physical device is opened. */
+#include "ld_io.h"
+static ssize_t changing_descriptor_read(int fd, void *buffer, size_t length,
+                                       uint64_t offset);
+#define ld_pread_full changing_descriptor_read
 #include "../gui/filesystems/ext4/native/ext_disk.c"
+#undef ld_pread_full
 #define CHECK(v) do { if (!(v)) { fprintf(stderr, "line %d: %s\n", __LINE__, #v); exit(1); } } while (0)
+
+static const uint8_t *next_descriptor;
+static unsigned descriptor_reads;
+static ssize_t changing_descriptor_read(int fd, void *buffer, size_t length,
+                                       uint64_t offset)
+{
+    ssize_t result = ld_pread_full(fd, buffer, length, offset);
+    if (offset == 1024U && length == 1024U) {
+        ++descriptor_reads;
+        if (next_descriptor != NULL) {
+            CHECK(pwrite(fd, next_descriptor, 64U, 1024) == 64);
+            next_descriptor = NULL;
+        }
+    }
+    return result;
+}
 
 int main(void) {
     char path[] = "/tmp/defragger-ext-bitmap-XXXXXX";
@@ -39,6 +60,22 @@ int main(void) {
     CHECK(load_inode_bitmap(&fs, 0U, &error) == 0 && error == NULL);
     CHECK(fs.inode_bitmap_valid && fs.inode_bitmap[0] == 0x03U);
 
+    /* A live descriptor update can fail its checksum on the first refresh.
+     * Only the next fully verified descriptor/bitmap pair may fill the cache. */
+    uint8_t current[64], changing[64];
+    memcpy(current, desc, sizeof(current));
+    memcpy(changing, current, sizeof(changing)); changing[30] ^= 1U;
+    for (unsigned kind = 0U; kind < 2U; ++kind) {
+        CHECK(pwrite(fd, changing, sizeof(changing), 1024) == (ssize_t)sizeof(changing));
+        memcpy(desc, old, sizeof(old));
+        fs.block_bitmap_valid = false; fs.inode_bitmap_valid = false;
+        next_descriptor = current; descriptor_reads = 0U;
+        CHECK((kind == 0U ? load_block_bitmap(&fs, 0U, &error) :
+                           load_inode_bitmap(&fs, 0U, &error)) == 0);
+        CHECK(error == NULL && descriptor_reads == 2U);
+        CHECK(memcmp(desc, current, sizeof(current)) == 0);
+    }
+
     /* Writable readers never refresh the locked descriptor snapshot. */
     fs.writable = true; fs.block_bitmap_valid = false;
     memcpy(desc, old, sizeof(old));
@@ -58,9 +95,12 @@ int main(void) {
         CHECK(error != NULL); free(error); error = NULL;
     }
     /* A malformed refreshed descriptor cannot authorize a new bitmap. */
-    desc[30] ^= 1U;
-    CHECK(pwrite(fd, desc, sizeof(desc), 1024) == (ssize_t)sizeof(desc));
+    memcpy(changing, desc, sizeof(changing)); changing[30] ^= 1U;
+    CHECK(pwrite(fd, changing, sizeof(changing), 1024) == (ssize_t)sizeof(changing));
+    descriptor_reads = 0U;
     CHECK(load_block_bitmap(&fs, 0U, &error) != 0 && !fs.block_bitmap_valid);
+    CHECK(descriptor_reads == 3U);
+    CHECK(memcmp(desc, current, sizeof(current)) == 0);
     CHECK(strstr(error, "descriptor checksum") != NULL); free(error);
     free(fs.block_bitmap); free(fs.inode_bitmap); CHECK(close(fd) == 0);
     puts("EXT refreshed checksum pairs, write snapshot and rejected cache fills verified");
