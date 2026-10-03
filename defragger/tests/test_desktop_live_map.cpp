@@ -25,6 +25,14 @@ int main() {
         desktop_live_ranges(map, cells, Json::parse(R"({"source_start_byte":18446744073709551615,"destination_start_byte":0,"length_bytes":2})"), false);
         assert(false);
     } catch (const std::runtime_error&) { assert(Json(cells).dump() == Json(before).dump()); }
+    before = cells;
+    try {
+        desktop_live_ranges(
+            map, cells,
+            Json::parse(R"({"ranges":[[0,4096,4096],[18446744073709551615,0,2]]})"),
+            true);
+        assert(false);
+    } catch (const std::runtime_error&) { assert(Json(cells).dump() == Json(before).dump()); }
     desktop_live_reset(map, cells, Json::parse(R"({"filesystem_units":8,"block_size":4096,"free_ranges":[[0,2],[4,6]]})"));
     assert(cells[0].at("used").unsigned_or() == 2);
     assert(cells[1].at("used").unsigned_or() == 2);
