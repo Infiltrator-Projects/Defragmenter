@@ -41,16 +41,21 @@ typedef struct {
     GtkWidget *build_button;
     GtkWidget *qualify_button;
     GtkWidget *verify_button;
+    GtkWidget *refresh_button;
     GtkWidget *progress;
     GtkTextBuffer *log_buffer;
     GPid child_pid;
     GIOChannel *stdout_channel;
     GIOChannel *stderr_channel;
+    GSubprocess *device_discovery;
+    GCancellable *device_discovery_cancel;
     guint stdout_watch;
     guint stderr_watch;
     guint child_watch;
     guint completed_rows;
     gboolean worker_running;
+    gboolean discovering_devices;
+    gboolean shutting_down;
 } LdtmApp;
 
 static char *pair_value(const char *line, const char *key) {
@@ -219,18 +224,25 @@ static gboolean channel_watch(GIOChannel *channel, GIOCondition condition, gpoin
     return (condition & (G_IO_ERR | G_IO_NVAL | G_IO_HUP)) == 0;
 }
 
-static void set_worker_controls(LdtmApp *app, gboolean running) {
+static void update_interaction_controls(LdtmApp *app) {
     GtkTreeIter iter;
     gboolean safe = FALSE;
-    app->worker_running = running;
+    const gboolean idle = !app->worker_running && !app->discovering_devices;
     if (gtk_combo_box_get_active_iter(app->device_combo, &iter)) {
         gtk_tree_model_get(GTK_TREE_MODEL(app->device_store), &iter,
                            LDTM_DEVICE_COL_SAFE, &safe, -1);
     }
-    gtk_widget_set_sensitive(app->build_button, !running && safe);
-    gtk_widget_set_sensitive(app->qualify_button, !running && safe);
-    gtk_widget_set_sensitive(app->verify_button, !running && safe);
-    gtk_widget_set_sensitive(GTK_WIDGET(app->device_combo), !running);
+    gtk_widget_set_sensitive(app->build_button, idle && safe);
+    gtk_widget_set_sensitive(app->qualify_button, idle && safe);
+    gtk_widget_set_sensitive(app->verify_button, idle && safe);
+    gtk_widget_set_sensitive(GTK_WIDGET(app->device_combo), idle);
+    if (app->refresh_button != NULL)
+        gtk_widget_set_sensitive(app->refresh_button, idle);
+}
+
+static void set_worker_controls(LdtmApp *app, gboolean running) {
+    app->worker_running = running;
+    update_interaction_controls(app);
     if (running) {
         app->completed_rows = 0U;
         gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(app->progress), 0.0);
@@ -240,7 +252,7 @@ static void set_worker_controls(LdtmApp *app, gboolean running) {
         gtk_progress_bar_set_text(GTK_PROGRESS_BAR(app->progress),
                                   progress_text);
         gtk_label_set_text(GTK_LABEL(app->operation_summary), "Privileged worker starting…");
-    } else {
+    } else if (!app->discovering_devices) {
         gtk_label_set_text(GTK_LABEL(app->operation_summary), "Idle");
     }
 }
@@ -498,57 +510,32 @@ static void device_changed(GtkComboBox *combo, gpointer user_data) {
     LdtmApp *app = (LdtmApp *)user_data;
     GtkTreeIter iter;
     char *summary = NULL;
-    gboolean safe = FALSE;
     (void)combo;
     if (gtk_combo_box_get_active_iter(app->device_combo, &iter)) {
         gtk_tree_model_get(GTK_TREE_MODEL(app->device_store), &iter,
-                           LDTM_DEVICE_COL_SUMMARY, &summary,
-                           LDTM_DEVICE_COL_SAFE, &safe, -1);
+                           LDTM_DEVICE_COL_SUMMARY, &summary, -1);
     }
     gtk_label_set_text(GTK_LABEL(app->device_summary), summary != NULL ? summary : "No disk selected.");
     g_free(summary);
-    if (!app->worker_running) {
-        gtk_widget_set_sensitive(app->build_button, safe);
-        gtk_widget_set_sensitive(app->qualify_button, safe);
-        gtk_widget_set_sensitive(app->verify_button, safe);
-    }
+    update_interaction_controls(app);
     reset_filesystem_rows(app);
 }
 
-static void refresh_devices(LdtmApp *app) {
-    gchar *stdout_text = NULL;
-    gchar *stderr_text = NULL;
-    gint exit_status = 0;
-    GError *error = NULL;
-    gchar *argv[] = {
-        (gchar *)"lsblk", (gchar *)"-d", (gchar *)"-b", (gchar *)"-n", (gchar *)"-P",
-        (gchar *)"-o", (gchar *)"PATH,SIZE,MODEL,SERIAL,WWN,TRAN,RM,RO", NULL
-    };
+static void populate_devices(LdtmApp *app, const gchar *stdout_text) {
     gchar **lines;
     gint first_safe = -1;
     gint row = 0;
     gtk_list_store_clear(app->device_store);
-    if (!g_spawn_sync(NULL, argv, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL,
-                      &stdout_text, &stderr_text, &exit_status, &error) ||
-        !g_spawn_check_wait_status(exit_status, &error)) {
-        show_message(GTK_WINDOW(app->window), GTK_MESSAGE_ERROR,
-                     "Could not enumerate physical disks",
-                     error != NULL ? error->message : stderr_text);
-        g_clear_error(&error);
-        g_free(stdout_text);
-        g_free(stderr_text);
-        return;
-    }
-    lines = g_strsplit(stdout_text, "\n", -1);
+    lines = g_strsplit(stdout_text != NULL ? stdout_text : "", "\n", -1);
     for (guint index = 0U; lines[index] != NULL; ++index) {
-        char *path;
-        char *size_text;
-        char *model;
-        char *serial;
-        char *wwn;
-        char *transport;
-        char *rm_text;
-        char *ro_text;
+        char *path = NULL;
+        char *size_text = NULL;
+        char *model = NULL;
+        char *serial = NULL;
+        char *wwn = NULL;
+        char *transport = NULL;
+        char *rm_text = NULL;
+        char *ro_text = NULL;
         uint64_t bytes = 0U;
         uint64_t removable_value = 0U;
         uint64_t readonly_value = 0U;
@@ -559,8 +546,8 @@ static void refresh_devices(LdtmApp *app) {
         gboolean enough;
         gboolean stable_identity;
         gboolean safe;
-        char *display;
-        char *summary;
+        char *display = NULL;
+        char *summary = NULL;
         GtkTreeIter iter;
         if (*lines[index] == '\0') continue;
         path = pair_value(lines[index], "PATH");
@@ -574,7 +561,7 @@ static void refresh_devices(LdtmApp *app) {
         if (!infiltratr_parse_u64(size_text, 10U, &bytes) ||
             !infiltratr_parse_u64_range(rm_text, 10U, 0U, 1U, &removable_value) ||
             !infiltratr_parse_u64_range(ro_text, 10U, 0U, 1U, &readonly_value))
-            continue;
+            goto cleanup_line;
         removable = (int)removable_value;
         readonly = (int)readonly_value;
         system_disk = ldtm_is_system_disk(path) != 0;
@@ -610,6 +597,7 @@ static void refresh_devices(LdtmApp *app) {
                            -1);
         if (safe && first_safe < 0) first_safe = row;
         ++row;
+cleanup_line:
         g_free(summary);
         g_free(display);
         g_free(ro_text);
@@ -622,10 +610,82 @@ static void refresh_devices(LdtmApp *app) {
         g_free(path);
     }
     g_strfreev(lines);
-    g_free(stdout_text);
-    g_free(stderr_text);
     if (first_safe >= 0) gtk_combo_box_set_active(app->device_combo, first_safe);
     else if (row > 0) gtk_combo_box_set_active(app->device_combo, 0);
+    else gtk_label_set_text(GTK_LABEL(app->device_summary), "No physical disks found.");
+}
+
+static void refresh_devices_finished(GObject *source, GAsyncResult *result,
+                                     gpointer user_data) {
+    LdtmApp *app = (LdtmApp *)user_data;
+    gchar *stdout_text = NULL;
+    gchar *stderr_text = NULL;
+    GError *error = NULL;
+    const gboolean received = g_subprocess_communicate_utf8_finish(
+        G_SUBPROCESS(source), result, &stdout_text, &stderr_text, &error);
+    const gboolean exited = received && g_subprocess_get_if_exited(G_SUBPROCESS(source));
+    const gint exit_status = exited ? g_subprocess_get_exit_status(G_SUBPROCESS(source)) : 127;
+
+    if (!app->shutting_down) {
+        if (!received || exit_status != 0) {
+            const char *detail = error != NULL ? error->message :
+                                 (stderr_text != NULL && *stderr_text != '\0' ? stderr_text :
+                                  "lsblk did not complete successfully");
+            show_message(GTK_WINDOW(app->window), GTK_MESSAGE_ERROR,
+                         "Could not enumerate physical disks", detail);
+        } else {
+            populate_devices(app, stdout_text);
+        }
+    }
+
+    g_clear_error(&error);
+    g_free(stdout_text);
+    g_free(stderr_text);
+    if (app->device_discovery != NULL) {
+        g_object_unref(app->device_discovery);
+        app->device_discovery = NULL;
+    }
+    if (app->device_discovery_cancel != NULL) {
+        g_object_unref(app->device_discovery_cancel);
+        app->device_discovery_cancel = NULL;
+    }
+    app->discovering_devices = FALSE;
+    if (!app->shutting_down) {
+        gtk_label_set_text(GTK_LABEL(app->operation_summary), "Idle");
+        update_interaction_controls(app);
+    }
+}
+
+static void refresh_devices(LdtmApp *app) {
+    const gchar *argv[] = {
+        "lsblk", "-d", "-b", "-n", "-P",
+        "-o", "PATH,SIZE,MODEL,SERIAL,WWN,TRAN,RM,RO", NULL
+    };
+    GError *error = NULL;
+    if (app->worker_running || app->discovering_devices || app->shutting_down) return;
+
+    app->device_discovery = g_subprocess_newv(
+        argv,
+        (GSubprocessFlags)(G_SUBPROCESS_FLAGS_STDOUT_PIPE |
+                           G_SUBPROCESS_FLAGS_STDERR_PIPE),
+        &error);
+    if (app->device_discovery == NULL) {
+        show_message(GTK_WINDOW(app->window), GTK_MESSAGE_ERROR,
+                     "Could not enumerate physical disks",
+                     error != NULL ? error->message : "Could not start lsblk");
+        g_clear_error(&error);
+        return;
+    }
+
+    app->device_discovery_cancel = g_cancellable_new();
+    app->discovering_devices = TRUE;
+    gtk_list_store_clear(app->device_store);
+    gtk_label_set_text(GTK_LABEL(app->device_summary), "Discovering physical disks…");
+    gtk_label_set_text(GTK_LABEL(app->operation_summary), "Refreshing physical disk list…");
+    update_interaction_controls(app);
+    g_subprocess_communicate_utf8_async(
+        app->device_discovery, NULL, app->device_discovery_cancel,
+        refresh_devices_finished, app);
 }
 
 static void refresh_clicked(GtkButton *button, gpointer user_data) {
@@ -734,6 +794,11 @@ static GtkWidget *make_device_combo(LdtmApp *app) {
 static void window_destroyed(GtkWidget *widget, gpointer user_data) {
     LdtmApp *app = (LdtmApp *)user_data;
     (void)widget;
+    app->shutting_down = TRUE;
+    if (app->device_discovery_cancel != NULL)
+        g_cancellable_cancel(app->device_discovery_cancel);
+    if (app->device_discovery != NULL)
+        g_subprocess_force_exit(app->device_discovery);
     if (app->child_pid != 0) (void)kill(app->child_pid, SIGTERM);
     gtk_main_quit();
 }
@@ -822,6 +887,7 @@ static GtkWidget *ldtm_suite_header(LdtmApp *app, GtkWidget **refresh_out) {
     gtk_style_context_add_class(
         gtk_widget_get_style_context(refresh), "ldtm-window-control");
     gtk_widget_set_tooltip_text(refresh, "Refresh physical disk list");
+    app->refresh_button = refresh;
     g_signal_connect(refresh, "clicked", G_CALLBACK(refresh_clicked), app);
     g_signal_connect(minimize, "clicked", G_CALLBACK(ldtm_minimize_window), app->window);
     g_signal_connect(maximize, "clicked", G_CALLBACK(ldtm_toggle_maximize_window), app->window);
@@ -1000,11 +1066,19 @@ int ldtm_gui_main(int argc, char **argv) {
     gtk_box_pack_start(GTK_BOX(lower_box), log_scroll, TRUE, TRUE, 0U);
     gtk_paned_pack2(GTK_PANED(content_paned), lower_box, TRUE, FALSE);
 
-    refresh_devices(&app);
     gtk_widget_show_all(app.window);
+    refresh_devices(&app);
     gtk_main();
 
     cleanup_channels(&app);
+    if (app.device_discovery_cancel != NULL) {
+        g_cancellable_cancel(app.device_discovery_cancel);
+        g_object_unref(app.device_discovery_cancel);
+    }
+    if (app.device_discovery != NULL) {
+        g_subprocess_force_exit(app.device_discovery);
+        g_object_unref(app.device_discovery);
+    }
     g_object_unref(app.filesystem_store);
     g_object_unref(app.device_store);
     return 0;
