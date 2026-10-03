@@ -93,12 +93,24 @@ void ldtm_apply_mb_theme(void) {
         (unsigned)palette->card_rgb, (unsigned)palette->note_rgb, (unsigned)palette->status_border_rgb);
 
     action_css = g_strdup_printf(
+        "dialog button { background-image: none; background-color: #%06x; color: #%06x; border-color: #%06x; box-shadow: none; text-shadow: none; opacity: 1; }"
+        "dialog button:hover { background-image: none; background-color: #%06x; color: #%06x; border-color: #%06x; box-shadow: none; text-shadow: none; opacity: 1; }"
+        "dialog button:focus, dialog button:default { background-image: none; background-color: #%06x; color: #%06x; border-color: #%06x; box-shadow: none; text-shadow: none; opacity: 1; }"
+        "dialog button:disabled { background-image: none; background-color: #%06x; color: #%06x; border-color: #%06x; box-shadow: none; text-shadow: none; opacity: 1; }"
         "button.ldtm-primary-action { background-image: none; background-color: #%06x; color: #%06x; border-color: #%06x; font-weight: bold; box-shadow: none; text-shadow: none; opacity: 1; }"
         "button.ldtm-primary-action:hover { background-image: none; background-color: #%06x; border-color: #%06x; }"
         "button.ldtm-primary-action:disabled { background-image: none; background-color: #%06x; color: #%06x; border-color: #%06x; box-shadow: none; text-shadow: none; opacity: 1; }"
         "button.ldtm-destructive-action { background-image: none; background-color: #%06x; color: #%06x; border-color: #%06x; font-weight: bold; box-shadow: none; text-shadow: none; opacity: 1; }"
         "button.ldtm-destructive-action:hover { background-image: none; background-color: #%06x; border-color: #%06x; }"
         "button.ldtm-destructive-action:disabled { background-image: none; background-color: #%06x; color: #%06x; border-color: #%06x; box-shadow: none; text-shadow: none; opacity: 1; }",
+        (unsigned)palette->card_rgb, (unsigned)palette->text_rgb,
+        (unsigned)palette->border_rgb,
+        (unsigned)palette->surface_hover_rgb, (unsigned)palette->text_rgb,
+        (unsigned)palette->neutral_accent_rgb,
+        (unsigned)palette->card_rgb, (unsigned)palette->text_rgb,
+        (unsigned)palette->neutral_accent_rgb,
+        (unsigned)palette->background_rgb, (unsigned)palette->subtle_rgb,
+        (unsigned)palette->border_rgb,
         (unsigned)palette->card_rgb, (unsigned)palette->text_rgb,
         (unsigned)palette->neutral_accent_rgb,
         (unsigned)palette->surface_hover_rgb, (unsigned)palette->accent_hover_rgb,
