@@ -912,6 +912,11 @@ static GtkWidget *make_operation_button(const char *icon_name, const char *title
     gtk_style_context_add_class(gtk_widget_get_style_context(subtitle_label), "ldtm-operation-subtitle");
     gtk_box_pack_start(GTK_BOX(copy), title_label, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(copy), subtitle_label, FALSE, FALSE, 0);
+    gtk_label_set_line_wrap(GTK_LABEL(title_label), TRUE);
+    gtk_label_set_max_width_chars(GTK_LABEL(title_label), 28);
+    gtk_label_set_max_width_chars(GTK_LABEL(subtitle_label), 34);
+    gtk_label_set_xalign(GTK_LABEL(title_label), 0.0F);
+    gtk_label_set_xalign(GTK_LABEL(subtitle_label), 0.0F);
     gtk_box_pack_start(GTK_BOX(row), copy, TRUE, TRUE, 0);
     return button;
 }
@@ -933,6 +938,7 @@ static GtkWidget *make_filesystem_tile(LdtmApp *app, size_t index)
     gtk_container_add(GTK_CONTAINER(frame), box);
     gtk_label_set_markup(GTK_LABEL(name), markup); g_free(markup);
     gtk_widget_set_halign(name, GTK_ALIGN_START);
+    gtk_style_context_add_class(gtk_widget_get_style_context(name), "ldtm-fs-name");
     gtk_box_pack_start(GTK_BOX(top), name, TRUE, TRUE, 0);
     (void)snprintf(size_text, sizeof(size_text), "%u MiB", spec->size_mib);
     gtk_label_set_text(GTK_LABEL(size), size_text);
@@ -941,6 +947,9 @@ static GtkWidget *make_filesystem_tile(LdtmApp *app, size_t index)
     gtk_box_pack_end(GTK_BOX(top), size, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(box), top, FALSE, FALSE, 0);
     gtk_widget_set_halign(status, GTK_ALIGN_START);
+    gtk_label_set_line_wrap(GTK_LABEL(status), TRUE);
+    gtk_label_set_max_width_chars(GTK_LABEL(status), 18);
+    gtk_label_set_xalign(GTK_LABEL(status), 0.0F);
     gtk_style_context_add_class(gtk_widget_get_style_context(status), "ldtm-fs-status");
     gtk_box_pack_start(GTK_BOX(box), status, FALSE, FALSE, 0);
     app->filesystem_tiles[index] = frame;
@@ -1026,7 +1035,7 @@ int ldtm_gui_main(int argc, char **argv)
     GtkWidget *page_scroll, *outer, *hero, *hero_box, *hero_copy, *hero_title, *hero_subtitle, *hero_badge;
     GtkWidget *device_card, *device_box, *device_heading, *device_copy, *device_title, *device_subtitle;
     GtkWidget *stats_row, *dummy_value, *matrix_card, *matrix_box, *matrix_title, *matrix_subtitle;
-    GtkWidget *flow_scroll, *flow, *detail_expander, *detail_scroll, *detail_tree, *actions_row;
+    GtkWidget *flow, *detail_expander, *detail_scroll, *detail_tree, *actions_row;
     GtkWidget *operation_card, *operation_box, *operation_header, *operation_title, *view_log_button;
     GtkWidget *log_scroll, *log_view;
     GdkGeometry geometry;
@@ -1044,12 +1053,18 @@ int ldtm_gui_main(int argc, char **argv)
     GdkMonitor *monitor = gdk_display_get_primary_monitor(display);
     if (monitor == NULL) monitor = gdk_display_get_monitor(display, 0);
     if (monitor != NULL) gdk_monitor_get_workarea(monitor, &workarea);
-    gtk_window_set_default_size(GTK_WINDOW(app.window), MIN(1280, workarea.width), MIN(860, workarea.height));
+    GtkWidget *header = make_suite_header(&app);
+    gtk_window_set_titlebar(GTK_WINDOW(app.window), header);
+    gtk_widget_show_all(header);
+    gint header_height = 0;
+    gtk_widget_get_preferred_height(header, NULL, &header_height);
+    const gint available_width = MAX(1, workarea.width - 16);
+    const gint available_height = MAX(1, workarea.height - header_height - 16);
+    gtk_window_set_default_size(GTK_WINDOW(app.window), MIN(1280, available_width), MIN(960, available_height));
     gtk_window_set_position(GTK_WINDOW(app.window), GTK_WIN_POS_CENTER);
-    geometry.min_width = MIN(900, workarea.width); geometry.min_height = MIN(680, workarea.height);
+    geometry.min_width = MIN(900, available_width); geometry.min_height = MIN(680, available_height);
     gtk_window_set_geometry_hints(GTK_WINDOW(app.window), app.window, &geometry, GDK_HINT_MIN_SIZE);
     g_signal_connect(app.window, "destroy", G_CALLBACK(window_destroyed), &app);
-    gtk_window_set_titlebar(GTK_WINDOW(app.window), make_suite_header(&app));
 
     outer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
     gtk_container_set_border_width(GTK_CONTAINER(outer), 12U);
@@ -1069,6 +1084,9 @@ int ldtm_gui_main(int argc, char **argv)
     hero_title = gtk_label_new("Test Media Builder"); gtk_widget_set_name(hero_title, "ldtm-hero-title"); gtk_widget_set_halign(hero_title, GTK_ALIGN_START);
     hero_subtitle = gtk_label_new("Create, verify and production-qualify 21 sacrificial filesystem layouts");
     gtk_widget_set_name(hero_subtitle, "ldtm-hero-subtitle"); gtk_widget_set_halign(hero_subtitle, GTK_ALIGN_START);
+    gtk_label_set_line_wrap(GTK_LABEL(hero_subtitle), TRUE);
+    gtk_label_set_max_width_chars(GTK_LABEL(hero_subtitle), 62);
+    gtk_label_set_xalign(GTK_LABEL(hero_subtitle), 0.0F);
     gtk_box_pack_start(GTK_BOX(hero_copy), hero_title, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(hero_copy), hero_subtitle, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(hero_box), hero_copy, TRUE, TRUE, 0);
@@ -1088,6 +1106,8 @@ int ldtm_gui_main(int argc, char **argv)
     device_title = gtk_label_new("Physical test disk"); gtk_widget_set_name(device_title, "ldtm-section-title"); gtk_widget_set_halign(device_title, GTK_ALIGN_START);
     device_subtitle = gtk_label_new("Identity-bound target for destructive filesystem qualification");
     gtk_widget_set_name(device_subtitle, "ldtm-section-subtitle"); gtk_widget_set_halign(device_subtitle, GTK_ALIGN_START);
+    gtk_label_set_line_wrap(GTK_LABEL(device_subtitle), TRUE);
+    gtk_label_set_max_width_chars(GTK_LABEL(device_subtitle), 62);
     gtk_box_pack_start(GTK_BOX(device_copy), device_title, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(device_copy), device_subtitle, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(device_heading), device_copy, TRUE, TRUE, 0);
@@ -1121,20 +1141,17 @@ int ldtm_gui_main(int argc, char **argv)
     matrix_title = gtk_label_new("Filesystem matrix"); gtk_widget_set_name(matrix_title, "ldtm-section-title"); gtk_widget_set_halign(matrix_title, GTK_ALIGN_START);
     matrix_subtitle = gtk_label_new("Each tile is one physical qualification slot; hover for creator and safety detail");
     gtk_widget_set_name(matrix_subtitle, "ldtm-section-subtitle"); gtk_widget_set_halign(matrix_subtitle, GTK_ALIGN_START);
+    gtk_label_set_line_wrap(GTK_LABEL(matrix_subtitle), TRUE);
     gtk_box_pack_start(GTK_BOX(matrix_box), matrix_title, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(matrix_box), matrix_subtitle, FALSE, FALSE, 0);
     flow = gtk_flow_box_new(); gtk_flow_box_set_selection_mode(GTK_FLOW_BOX(flow), GTK_SELECTION_NONE);
+    gtk_widget_set_name(flow, "ldtm-filesystem-grid");
+    gtk_flow_box_set_homogeneous(GTK_FLOW_BOX(flow), TRUE);
     gtk_flow_box_set_row_spacing(GTK_FLOW_BOX(flow), 7U); gtk_flow_box_set_column_spacing(GTK_FLOW_BOX(flow), 7U);
     gtk_flow_box_set_min_children_per_line(GTK_FLOW_BOX(flow), 3U); gtk_flow_box_set_max_children_per_line(GTK_FLOW_BOX(flow), 7U);
     for (size_t index = 0U; index < ldtm_spec_count(); ++index)
         gtk_flow_box_insert(GTK_FLOW_BOX(flow), make_filesystem_tile(&app, index), -1);
-    flow_scroll = gtk_scrolled_window_new(NULL, NULL);
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(flow_scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
-    gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(flow_scroll), 120);
-    gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(flow_scroll), 205);
-    gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(flow_scroll), TRUE);
-    gtk_container_add(GTK_CONTAINER(flow_scroll), flow);
-    gtk_box_pack_start(GTK_BOX(matrix_box), flow_scroll, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(matrix_box), flow, FALSE, FALSE, 0);
     detail_tree = make_tree_view(&app); detail_scroll = gtk_scrolled_window_new(NULL, NULL);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(detail_scroll), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
     gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(detail_scroll), 120);
@@ -1145,21 +1162,24 @@ int ldtm_gui_main(int argc, char **argv)
     gtk_style_context_add_class(gtk_widget_get_style_context(detail_expander), "ldtm-detail-expander");
     gtk_container_add(GTK_CONTAINER(detail_expander), detail_scroll);
     gtk_box_pack_start(GTK_BOX(matrix_box), detail_expander, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(outer), matrix_card, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(outer), matrix_card, FALSE, FALSE, 0);
 
     actions_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8); gtk_box_set_homogeneous(GTK_BOX(actions_row), TRUE);
     app.qualify_button = make_operation_button("applications-engineering-symbolic", "Qualify production engines",
         "Defragment + Growth Defrag every writable slot, then verify bytes", "ldtm-operation-cyan");
+    gtk_widget_set_name(app.qualify_button, "ldtm-qualify");
     gtk_style_context_add_class(gtk_widget_get_style_context(app.qualify_button), "ldtm-primary-action");
     gtk_widget_set_sensitive(app.qualify_button, FALSE); g_signal_connect(app.qualify_button, "clicked", G_CALLBACK(qualify_clicked), &app);
     gtk_box_pack_start(GTK_BOX(actions_row), app.qualify_button, TRUE, TRUE, 0);
     app.verify_button = make_operation_button("emblem-ok-symbolic", "Verify after defrag",
         "Read retained payloads and prove the operation preserved every byte", "ldtm-operation-purple");
+    gtk_widget_set_name(app.verify_button, "ldtm-verify");
     gtk_style_context_add_class(gtk_widget_get_style_context(app.verify_button), "ldtm-primary-action");
     gtk_widget_set_sensitive(app.verify_button, FALSE); g_signal_connect(app.verify_button, "clicked", G_CALLBACK(verify_clicked), &app);
     gtk_box_pack_start(GTK_BOX(actions_row), app.verify_button, TRUE, TRUE, 0);
     app.build_button = make_operation_button("edit-delete-symbolic", "Destroy and build test disk",
         "Erase the selected device and create the complete qualification layout", "ldtm-operation-red");
+    gtk_widget_set_name(app.build_button, "ldtm-build");
     gtk_style_context_add_class(gtk_widget_get_style_context(app.build_button), "ldtm-destructive-action");
     gtk_widget_set_sensitive(app.build_button, FALSE); g_signal_connect(app.build_button, "clicked", G_CALLBACK(build_clicked), &app);
     gtk_box_pack_start(GTK_BOX(actions_row), app.build_button, TRUE, TRUE, 0);

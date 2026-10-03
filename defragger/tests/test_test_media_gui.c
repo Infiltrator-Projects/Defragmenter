@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "../test_media/test_media_gui.c"
+#include <infiltratr/design.h>
 
 #define CHECK(condition) do { \
     if (!(condition)) { \
@@ -31,6 +32,67 @@ static void expand_details(GtkWidget *widget)
     g_list_free(children);
 }
 
+static void check_font(GtkWidget *widget, const char *family, int minimum_pixels)
+{
+    PangoFontDescription *requested = NULL;
+    CHECK(widget != NULL);
+    gtk_style_context_get(gtk_widget_get_style_context(widget), GTK_STATE_FLAG_NORMAL,
+                          "font", &requested, NULL);
+    CHECK(requested != NULL);
+    CHECK(g_strcmp0(pango_font_description_get_family(requested), family) == 0);
+    double pixels = (double)pango_font_description_get_size(requested) / PANGO_SCALE;
+    if (!pango_font_description_get_size_is_absolute(requested)) {
+        double resolution = gdk_screen_get_resolution(gtk_widget_get_screen(widget));
+        if (resolution <= 0.0) resolution = 96.0;
+        pixels *= resolution / 72.0;
+    }
+    CHECK(pixels >= (double)minimum_pixels - 0.1);
+    if (g_getenv("LDTM_GUI_REQUIRE_MB_FONTS") != NULL) {
+        PangoFont *font = pango_context_load_font(gtk_widget_get_pango_context(widget), requested);
+        CHECK(font != NULL);
+        PangoFontDescription *resolved = pango_font_describe(font);
+        CHECK(g_strcmp0(pango_font_description_get_family(resolved), family) == 0);
+        CHECK(pango_font_description_get_weight(resolved) == pango_font_description_get_weight(requested));
+        pango_font_description_free(resolved);
+        g_object_unref(font);
+    }
+    pango_font_description_free(requested);
+}
+
+static void capture_window(GtkWidget *window, const char *environment_key)
+{
+    const char *screenshot = g_getenv(environment_key);
+    if (screenshot == NULL) return;
+    GdkWindow *surface = gtk_widget_get_window(window);
+    GdkPixbuf *pixels = gdk_pixbuf_get_from_window(surface, 0, 0,
+        gdk_window_get_width(surface), gdk_window_get_height(surface));
+    CHECK(pixels != NULL);
+    CHECK(gdk_pixbuf_save(pixels, screenshot, "png", NULL, NULL));
+    g_object_unref(pixels);
+}
+
+static void check_operation_colours(void)
+{
+    const char *classes[] = { "ldtm-operation-cyan", "ldtm-operation-purple", "ldtm-operation-red" };
+    const double expected[][3] = { {49.0/255.0, 200.0/255.0, 244.0/255.0},
+        {179.0/255.0, 108.0/255.0, 1.0}, {1.0, 107.0/255.0, 107.0/255.0} };
+    for (size_t index = 0U; index < G_N_ELEMENTS(classes); ++index) {
+        GtkWidget *well = make_icon_well("emblem-ok-symbolic", classes[index], 24);
+        g_object_ref_sink(well);
+        GList *children = gtk_container_get_children(GTK_CONTAINER(well));
+        CHECK(children != NULL);
+        GtkWidget *image = GTK_WIDGET(children->data);
+        g_list_free(children);
+        GdkRGBA colour;
+        gtk_style_context_get_color(gtk_widget_get_style_context(image), GTK_STATE_FLAG_NORMAL, &colour);
+        CHECK(colour.red >= expected[index][0] - 0.01 && colour.red <= expected[index][0] + 0.01);
+        CHECK(colour.green >= expected[index][1] - 0.01 && colour.green <= expected[index][1] + 0.01);
+        CHECK(colour.blue >= expected[index][2] - 0.01 && colour.blue <= expected[index][2] + 0.01);
+        gtk_widget_destroy(well);
+        g_object_unref(well);
+    }
+}
+
 static gboolean layout_probe(gpointer user_data)
 {
     unsigned int *phase = user_data;
@@ -45,6 +107,26 @@ static gboolean layout_probe(gpointer user_data)
     CHECK(GTK_IS_SCROLLED_WINDOW(page));
     CHECK(find_named(window, "ldtm-view-log") != NULL);
     if (*phase == 0U) {
+        const InfiltratrTypography *typography = infiltratr_typography();
+        check_font(find_named(window, "ldtm-header-brand-title"), typography->brand_family, 22);
+        check_font(find_named(window, "ldtm-hero-title"), typography->brand_family, 30);
+        check_font(find_named(window, "ldtm-hero-subtitle"), typography->ui_family, 12);
+        check_font(find_named(window, "ldtm-section-title"), typography->ui_family, 16);
+        GdkRectangle workarea;
+        GdkWindow *surface = gtk_widget_get_window(window);
+        GdkMonitor *monitor = gdk_display_get_monitor_at_window(gtk_widget_get_display(window), surface);
+        gdk_monitor_get_workarea(monitor, &workarea);
+        CHECK(gdk_window_get_width(surface) <= workarea.width);
+        CHECK(gdk_window_get_height(surface) <= workarea.height);
+        GtkWidget *grid = find_named(window, "ldtm-filesystem-grid");
+        CHECK(GTK_IS_FLOW_BOX(grid));
+        CHECK(!GTK_IS_SCROLLED_WINDOW(gtk_widget_get_parent(grid)));
+        GList *tiles = gtk_container_get_children(GTK_CONTAINER(grid));
+        CHECK(g_list_length(tiles) == LDTM_SPEC_COUNT);
+        for (GList *item = tiles; item != NULL; item = item->next)
+            CHECK(gtk_widget_get_allocated_height(GTK_WIDGET(item->data)) >= 48);
+        g_list_free(tiles);
+        capture_window(window, "LDTM_GUI_TEST_DESKTOP_SCREENSHOT");
         expand_details(window);
         gtk_window_resize(GTK_WINDOW(window), 900, 680);
         ++*phase;
@@ -56,15 +138,11 @@ static gboolean layout_probe(gpointer user_data)
     GtkAdjustment *vertical = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(page));
     CHECK(gtk_adjustment_get_upper(vertical) > gtk_adjustment_get_page_size(vertical));
     gtk_adjustment_set_value(vertical, gtk_adjustment_get_upper(vertical));
-    const char *screenshot = g_getenv("LDTM_GUI_TEST_SCREENSHOT");
-    if (screenshot != NULL) {
-        GdkWindow *surface = gtk_widget_get_window(window);
-        GdkPixbuf *pixels = gdk_pixbuf_get_from_window(surface, 0, 0,
-            gdk_window_get_width(surface), gdk_window_get_height(surface));
-        CHECK(pixels != NULL);
-        CHECK(gdk_pixbuf_save(pixels, screenshot, "png", NULL, NULL));
-        g_object_unref(pixels);
+    if (*phase == 1U) {
+        ++*phase;
+        return G_SOURCE_CONTINUE;
     }
+    capture_window(window, "LDTM_GUI_TEST_SCREENSHOT");
     gtk_widget_destroy(window);
     return G_SOURCE_REMOVE;
 }
@@ -169,10 +247,11 @@ int main(int argc, char **argv)
 {
     gtk_init(&argc, &argv);
     ldtm_apply_mb_theme();
+    check_operation_colours();
     test_final_worker_output();
     unsigned int phase = 0U;
     g_timeout_add(100U, layout_probe, &phase);
     CHECK(ldtm_gui_main(argc, argv) == 0);
-    CHECK(phase == 1U);
+    CHECK(phase == 2U);
     return 0;
 }
