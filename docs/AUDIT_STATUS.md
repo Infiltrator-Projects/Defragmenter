@@ -3,19 +3,23 @@
 Status: **complete**
 
 Completed: 2026-09-22
-Extended: 2026-10-03
+Extended: 2026-10-04
 
-Applies to: release version 1.8.0-247
-Audited source commit: 5d55686476b0a42091a2599193244258e4352227
+Applies to: release version 1.8.0-248
+Audited source commit: 941154d7b85725d69ce179bdba3ef0bc59f4e9ad
 Audited release-governance commit: 628eb90439a3e2653033bdab7acfe4cca0716fd0
 
-This status records the 1.8.0-247 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
+This status records the 1.8.0-248 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
-This document records the completed 1.8.0-247 release safety case and the explicit release decision after warnings-clean qualification. Re-running the release gate uses the audited source baseline named above. Historical audit-development detail remains in Git history and immutable release tags rather than being repeated as a second changelog.
+This document records the completed 1.8.0-248 release safety case and the explicit release decision after warnings-clean qualification. Re-running the release gate uses the audited source baseline named above. Historical audit-development detail remains in Git history and immutable release tags rather than being repeated as a second changelog.
 
 ## Qualification evidence
+
+The 1.8.0-248 extension changes only the EXT descriptor-refresh function. A native C fixture reproduced a read-only scan failing when the first refreshed descriptor fails its checksum but the next descriptor/bitmap pair is valid. Descriptor refresh now permits at most three reads, retains the previous descriptor after rejection, and accepts a replacement only after checksum verification. Real I/O errors still stop the read; persistently invalid descriptors and bitmaps remain rejected. Writable scans still never refresh their locked descriptor snapshot.
+
+The regression covers transient refresh failure for both block and inode bitmaps, exactly three reads for persistent descriptor rejection, retained descriptor bytes, rejected cache fills and writable snapshot behavior. It passed normally and under ASan/UBSan. Native allocation/metadata-map and malformed-input checks passed locally. The complete local rebuild encountered missing extracted test-library links; exact-head hosted warnings-as-errors and full/sanitizer gates remain mandatory before publication. The user's physical group 1062 remains unverified. The Common pin, desktop, Test Media, filesystem writers and release governance are unchanged from 1.8.0-247.
 
 The 1.8.0-247 extension addresses the remaining NTFS qualification cost and EXT read-only cache behavior observed in the user's logs. An address-ordered maximum tree preserves the exact canonical earliest-fitting free-run policy and Growth reserves while eliminating the per-stream full free-run search. Native C tests compare both modes against an independent linear reference and check 100,000 exact placements in 100,000 isolated free runs (about 0.04 CPU seconds locally). These timings cover planning, not the user's physical drive.
 
