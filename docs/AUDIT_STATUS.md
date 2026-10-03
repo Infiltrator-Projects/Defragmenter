@@ -3,21 +3,25 @@
 Status: **complete**
 
 Completed: 2026-09-22
-Extended: 2026-10-02
+Extended: 2026-10-03
 
-Applies to: release version 1.8.0-237
-Audited source commit: 2288eb46c50aa3bb13aaf1b5fb41bcd1e54c7ff2
+Applies to: release version 1.8.0-238
+Audited source commit: 51520cb73964c923e6d9b0df8f1d4f35c51784e8
 Audited release-governance commit: e09599f6c84b31e7f29ec5da9e5f9db23807b9d9
 
-This status records the 1.8.0-237 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
+This status records the 1.8.0-238 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
-This document records the completed 1.8.0-237 release safety case and the explicit release decision after warnings-clean qualification. Re-running the release gate uses the audited source baseline named above. Historical audit-development detail remains in Git history and immutable release tags rather than being repeated as a second changelog.
+This document records the completed 1.8.0-238 release safety case and the explicit release decision after warnings-clean qualification. Re-running the release gate uses the audited source baseline named above. Historical audit-development detail remains in Git history and immutable release tags rather than being repeated as a second changelog.
 
 ## Qualification evidence
 
-The current audited production/build/Test-Media source baseline is commit `2288eb46c50aa3bb13aaf1b5fb41bcd1e54c7ff2` for release version 1.8.0-237. Write-capable filesystem engines remain unchanged from the qualified 1.8.0-236 storage baseline. This release extends the read-only bounded ZFS exact reader after the physical Test Media rerun proved that current OpenZFS pool/feature directories can be fat, multi-block ZAP objects rather than the micro-ZAP form covered by the earlier native fixture.
+The current audited production/build/Test-Media source baseline is commit `51520cb73964c923e6d9b0df8f1d4f35c51784e8` for release version 1.8.0-238. Write-capable filesystem engines remain unchanged from the qualified 1.8.0-237 storage baseline. This release corrects the unreadable neutral/default buttons in Test Media modal dialogs and extends the read-only bounded ZFS exact reader to accept valid modern unencrypted ZAP dnode type encodings used by current OpenZFS metadata directories.
+
+The supplied 1.8.0-237 physical-media rerun proves that the previous UFS creator and main Test Media action-button corrections are active on the target system, while ZFS still stops during exact native qualification. The 1.8.0-237 reader already supports bounded fat/multi-block ZAP block structures, but its dnode admission check still required the historical `DMU_OT_OBJECT_DIRECTORY` value. Current OpenZFS can encode MOS ZAP metadata through the newer `DMU_OTN_ZAP_*` object-type form. The 1.8.0-238 reader recognises the ZAP byteswap class in that modern unencrypted encoding while continuing to reject encrypted or non-ZAP metadata, preserving the same bounded read-only safety contract.
+
+The Test Media modal button correction is independent of filesystem behaviour. Dialog buttons now receive explicit application-priority normal, hover, focus/default and disabled styling from the dark Infiltrator palette, with background images, shadows, text shadows and inherited opacity cleared. This prevents GTK/Mint's default-button state from rendering the safe Cancel/Close action as a pale surface with unreadable near-white text while retaining the more-specific blue/red primary and destructive button semantics.
 
 The 1.8.0-236 physical-media rerun proves the UFS and visual fixes are effective: UFS2 now formats and reaches the populated state, and the Test Media action controls use the intended dark shell treatment. The same rerun advances ZFS beyond the corrected metaslab-tail geometry and exposes the next bounded-reader gap: `features_for_write` resides in a fat/multi-block ZAP directory. The 1.8.0-237 reader validates the fat-ZAP header and leaf geometry, scans only a bounded amount of object data, validates entry/name/value chunk chains, and resolves the requested uint64 key without depending on the ZAP pointer-table hash. Malformed chains, unsupported value forms and oversized directories remain fail-closed.
 
