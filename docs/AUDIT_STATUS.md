@@ -5,19 +5,19 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-10-03
 
-Applies to: release version 1.8.0-240
-Audited source commit: 54803a734c88501f9f1578b803e00a5f085da254
+Applies to: release version 1.8.0-241
+Audited source commit: 0050a8267aa72caa52d06d5f5791403d952b939a
 Audited release-governance commit: 54803a734c88501f9f1578b803e00a5f085da254
 
-This status records the 1.8.0-240 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
+This status records the 1.8.0-241 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
-This document records the completed 1.8.0-240 release safety case and the explicit release decision after warnings-clean qualification. Re-running the release gate uses the audited source baseline named above. Historical audit-development detail remains in Git history and immutable release tags rather than being repeated as a second changelog.
+This document records the completed 1.8.0-241 release safety case and the explicit release decision after warnings-clean qualification. Re-running the release gate uses the audited source baseline named above. Historical audit-development detail remains in Git history and immutable release tags rather than being repeated as a second changelog.
 
 ## Qualification evidence
 
-The current audited production/build/Test-Media source baseline is commit `54803a734c88501f9f1578b803e00a5f085da254` for release version 1.8.0-240. Write-capable filesystem engines are unchanged from the qualified 1.8.0-239 storage baseline. This pass removes the remaining UI-thread redraw waste after the allocation-map cache: static hero/drive/sidebar imagery is geometry-cached, Test Media bounds child-output work per GTK dispatch, and the 58 px header / 210 px sidebar-art holdovers are aligned to the 44 px titlebar and 195 px Infiltrator OS navigation rail. The production dependency remains current Infiltratr Common 1.19.38 at exact commit `7070c5812b50821fd7580101cb2289a3184f6b2c`; current Common main is the same commit.
+The current audited production/build/Test-Media source baseline is commit `0050a8267aa72caa52d06d5f5791403d952b939a` for release version 1.8.0-241. Write-capable filesystem engines are unchanged from the qualified 1.8.0-240 storage baseline. This pass removes two remaining GTK-thread responsiveness costs: live allocation range/cell updates now stage and validate sparse touched-cell patches instead of cloning the complete allocation-cell vector on every event, and Test Media physical-disk discovery now uses asynchronous `GSubprocess` I/O instead of synchronous `lsblk` execution on the GTK thread. The async discovery path also closes the malformed-row allocation leak and preserves worker/device-control exclusion while discovery is active. The current Infiltrator OS shell geometry remains the 44 px titlebar and 195 px navigation rail established in 1.8.0-240; product-specific hero/map/navigation artwork remains intentional. The production dependency remains current Infiltratr Common 1.19.38 at exact commit `7070c5812b50821fd7580101cb2289a3184f6b2c`; current Common main is the same commit. The exact source baseline passed warnings-as-errors compilation, the shipped native GTK Xvfb smoke test, all 46 CTest cases, and the ASan/UBSan lane; only the pre-audit quality-gate run failed because this audit baseline still named the previous release, which this record now corrects.
 
 The supplied 1.8.0-237 physical-media rerun proves that the previous UFS creator and main Test Media action-button corrections are active on the target system, while ZFS still stops during exact native qualification. The 1.8.0-237 reader already supports bounded fat/multi-block ZAP block structures, but its dnode admission check still required the historical `DMU_OT_OBJECT_DIRECTORY` value. Current OpenZFS can encode MOS ZAP metadata through the newer `DMU_OTN_ZAP_*` object-type form. The 1.8.0-238 reader recognises the ZAP byteswap class in that modern unencrypted encoding while continuing to reject encrypted or non-ZAP metadata, preserving the same bounded read-only safety contract.
 
