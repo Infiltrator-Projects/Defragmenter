@@ -5,17 +5,21 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-10-04
 
-Applies to: release version 1.8.0-248
-Audited source commit: 941154d7b85725d69ce179bdba3ef0bc59f4e9ad
+Applies to: release version 1.8.0-249
+Audited source commit: 3f3cb831a72c7bb093c0e321f17b17882525026c
 Audited release-governance commit: 628eb90439a3e2653033bdab7acfe4cca0716fd0
 
-This status records the 1.8.0-248 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
+This status records the 1.8.0-249 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
-This document records the completed 1.8.0-248 release safety case and the explicit release decision after warnings-clean qualification. Re-running the release gate uses the audited source baseline named above. Historical audit-development detail remains in Git history and immutable release tags rather than being repeated as a second changelog.
+This document records the completed 1.8.0-249 release safety case and the explicit release decision after warnings-clean qualification. Re-running the release gate uses the audited source baseline named above. Historical audit-development detail remains in Git history and immutable release tags rather than being repeated as a second changelog.
 
 ## Qualification evidence
+
+The 1.8.0-249 extension retires the uninstalled Python GUI launcher, its Gtk.Application lifecycle and two startup-only artwork helpers, removing 89 net application-code lines. The installed launcher still executes the native C++17 GTK desktop. Remaining Python modules are retained source/test fixtures; authoritative native engines under gui/filesystems remain intact.
+
+The real native GTK desktop regression now saves an isolated Night preference before construction, checks the loaded Common palette and verifies the approved 96-pixel window icon. It passed normally and under ASan/UBSan, alongside its existing progress, administrator transport and bounded Stop checks. Retained GUI model/About checks, architecture checks and Python type-checking passed. The exact-head hosted full-suite and sanitizer gates remain mandatory before publication. Production native desktop code, artwork, MB font assets, Common pin, filesystem analysis/writers, Test Media and release governance are unchanged from 1.8.0-248.
 
 The 1.8.0-248 extension changes only the EXT descriptor-refresh function. A native C fixture reproduced a read-only scan failing when the first refreshed descriptor fails its checksum but the next descriptor/bitmap pair is valid. Descriptor refresh now permits at most three reads, retains the previous descriptor after rejection, and accepts a replacement only after checksum verification. Real I/O errors still stop the read; persistently invalid descriptors and bitmaps remain rejected. Writable scans still never refresh their locked descriptor snapshot.
 
