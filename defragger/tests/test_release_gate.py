@@ -63,14 +63,20 @@ def main() -> None:
     for required in (
         "runs-on: [self-hosted, Linux, X64, linux-native, bigbedroom]",
         "Probe local qualification dependencies",
-        "Record unprovisioned BigBedroom runner",
-        "BigBedroom qualification skipped because this runner is not provisioned.",
-        "hosted mandatory qualification still runs for this commit.",
+        "Local qualification cannot run because this runner is missing dependencies.",
+        "xvfb-run Xvfb xauth npx",
+        "actions/setup-node@v4",
         "workflow_dispatch:",
     ):
         assert required in local_quality, f"local qualification lost required check: {required}"
     assert "if: steps.local-deps.outputs.available == 'true'" in local_quality, (
-        "optional BigBedroom build/test steps must remain dependency-gated"
+        "local build/test steps must verify dependencies before execution"
+    )
+    assert "Record unprovisioned BigBedroom runner" not in local_quality, (
+        "missing local dependencies must fail rather than silently skip qualification"
+    )
+    assert "          exit 1" in local_quality, (
+        "the local dependency probe must report missing prerequisites as a failure"
     )
     assert "run: ctest --test-dir build --output-on-failure" in gate, (
         "primary quality gate must run the complete aggregate project suite"

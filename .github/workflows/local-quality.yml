@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   local-quality:
-    runs-on: [self-hosted, Linux, X64, linux-native]
+    runs-on: [self-hosted, Linux, X64, linux-native, bigbedroom]
     timeout-minutes: 45
     defaults:
       run:
@@ -41,12 +41,17 @@ jobs:
           fetch-depth: 1
           submodules: false
 
+      - name: Provide Node.js for the pinned Python type checker
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Probe local qualification dependencies
         id: local-deps
         shell: bash
         run: |
           set -u
-          commands=(cmake cc c++ make dpkg-deb pkg-config zip unzip python3 makefs udisksctl pkexec xvfb-run Xvfb xauth)
+          commands=(cmake cc c++ make dpkg-deb pkg-config zip unzip python3 makefs udisksctl pkexec xvfb-run Xvfb xauth npx)
           missing=()
           for command_name in "${commands[@]}"; do
             command -v "$command_name" >/dev/null 2>&1 || missing+=("$command_name")
@@ -112,4 +117,3 @@ jobs:
           python3 tests/test_architecture.py
           python3 tests/test_btrfs_architecture.py
           python3 tests/test_release_gate.py
-
