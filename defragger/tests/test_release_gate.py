@@ -203,6 +203,14 @@ def main() -> None:
         r'INFILTRATR_COMMON_EXPECTED_COMMIT\s+"([0-9a-f]{40})"', cmake
     )
     assert expected_common is not None, "CMake lost the exact Common commit"
+    local_common = re.search(
+        r"- name: Check out pinned Infiltratr Common.*?ref:\s*([0-9a-f]{40})",
+        local_quality, re.DOTALL,
+    )
+    assert local_common is not None, "local qualification lost the exact Common checkout"
+    assert local_common.group(1) == expected_common.group(1), (
+        "local qualification must check out the same Common commit as CMake and the submodule"
+    )
     assert gitlinks == {
         "defragger/shared/infiltratr-common": expected_common.group(1)
     }, f"committed Common layout disagrees with the build: {gitlinks}"

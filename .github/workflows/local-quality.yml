@@ -36,7 +36,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: Infiltrator-Projects/Infiltrator-Libraries
-          ref: 7cc5de3de0e94ed2cfcff0840bbb5346eb5c9c9f
+          ref: 7070c5812b50821fd7580101cb2289a3184f6b2c
           path: defragger/shared/infiltratr-common
           fetch-depth: 1
           submodules: false
