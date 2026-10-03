@@ -11,6 +11,8 @@ struct DesktopAnalysisTest {
     Desktop desktop{false};
     unsigned int phase = 0U;
     unsigned int ticks = 0U;
+    bool stop_requested = false;
+    gint64 stop_deadline = 0;
     static constexpr const char* map =
         "{\"filesystem\":\"ntfs\",\"map_accuracy\":\"exact\",\"cell_count\":1,"
         "\"total_units\":8,\"unit_size\":512,\"total_bytes\":4096,\"unknown_bytes\":0,"
@@ -38,7 +40,7 @@ struct DesktopAnalysisTest {
 
     static gboolean probe(gpointer data) {
         auto* self = static_cast<DesktopAnalysisTest*>(data);
-        if (++self->ticks >= 100U) {
+        if (++self->ticks >= 250U) {
             std::fprintf(stderr, "analysis test timed out: phase=%u busy=%d progress=%s result=%s\n",
                 self->phase, self->desktop.busy_, self->desktop.analysis_phase_.c_str(),
                 self->desktop.result_status_.c_str());
@@ -69,11 +71,24 @@ struct DesktopAnalysisTest {
             CHECK(app.output_.empty());
             CHECK(app.analysis_phase_ == "Checking availability");
             app.busy_ = false; app.active_id_ = 0;
-            app.start({"/bin/sh", "-c", "printf '%s\\n' '@@ANALYSIS {\"phase\":\"Reading metadata\"}' >&2; sleep 10"}, "mapper", "analysis");
-            app.request_stop();
+            app.start({"/bin/sh", "-c",
+                "trap '' INT; sleep 10 & child=$!; "
+                "printf '%s\\n' '@@ANALYSIS {\"phase\":\"Reading metadata\"}' >&2; wait $child"},
+                "mapper", "analysis");
             ++self->phase;
             return G_SOURCE_CONTINUE;
         }
+        if (!self->stop_requested) {
+            if (app.analysis_phase_ != "Reading metadata") return G_SOURCE_CONTINUE;
+            self->stop_requested = true;
+            self->stop_deadline = g_get_monotonic_time() + 8 * G_USEC_PER_SEC;
+            app.request_stop();
+            return G_SOURCE_CONTINUE;
+        }
+        /* The documented five-second fallback can fire near the next seconds
+         * boundary. Eight seconds includes that allowance but rejects a child
+         * holding the pipe until its ten-second sleep ends naturally. */
+        CHECK(g_get_monotonic_time() < self->stop_deadline);
         if (app.busy_) return G_SOURCE_CONTINUE;
         CHECK(app.local_ == nullptr && app.analysis_timer_ == 0U);
         CHECK(app.result_status_ == "stopped");
