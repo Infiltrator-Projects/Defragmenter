@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <limits>
 #include <stdexcept>
 #include <utility>
@@ -86,7 +87,19 @@ CommandResult worker(
     std::vector<std::string> command{
         resolve_program(backend.worker), mode, path};
     command.insert(command.end(), options.begin(), options.end());
-    return run_capture(command, output_limit, timeout);
+    return run_capture(command, output_limit, timeout,
+        [](const std::string& line) {
+            if (line.rfind("@@ANALYSIS ", 0U) == 0U) {
+                std::fprintf(stderr, "%s\n", line.c_str());
+                std::fflush(stderr);
+            }
+        });
+}
+
+void analysis_phase(const char* phase) {
+    const Json event(Json::Object{{"phase", Json(phase)}});
+    std::fprintf(stderr, "@@ANALYSIS %s\n", event.dump().c_str());
+    std::fflush(stderr);
 }
 
 struct MutationQualification {
@@ -931,6 +944,7 @@ bool backend_probe(const BackendInfo& backend, const std::string& path) {
 Json map_backend(const BackendInfo& backend, const std::string& path,
                  std::size_t cells) {
     (void)map_capture_limit(cells);
+    analysis_phase("Scanning filesystem allocation and file metadata");
     Json result;
     switch (backend.map_adapter) {
     case MapAdapter::NativeMap:
@@ -965,8 +979,10 @@ Json map_backend(const BackendInfo& backend, const std::string& path,
         MutationQualification defrag{true, {}};
         MutationQualification growth{true, {}};
         if (backend_has_writer_preflight(backend)) {
+            analysis_phase("Checking Defragment availability (up to 60 seconds)");
             defrag = mutation_qualification(
                 backend, path, "preflight-defrag");
+            analysis_phase("Checking Growth Defrag availability (up to 60 seconds)");
             growth = mutation_qualification(
                 backend, path, "preflight-growth");
         }
@@ -977,6 +993,7 @@ Json map_backend(const BackendInfo& backend, const std::string& path,
         if (!growth.reason.empty())
             set(result, "growth_reason", Json(std::move(growth.reason)));
     }
+    analysis_phase("Preparing allocation map");
     return result;
 }
 

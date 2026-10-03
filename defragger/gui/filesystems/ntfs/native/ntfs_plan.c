@@ -42,30 +42,14 @@ static uint64_t stream_span(const NtfsStream *s,bool growth){uint64_t reserve=gr
 static void set_stream_free(NtfsLayout *layout,const NtfsStream *s){for(size_t r=0;r<s->runs.count;++r){NtfsRun run=s->runs.items[r];if(run.sparse)continue;for(uint64_t c=0;c<run.length;++c)ntfs_bitmap_set(layout,run.lcn+c,false);}}
 static void collect_free(const NtfsLayout *layout,uint64_t total,FreeVec *free_runs){uint64_t upper=total>0?total-1U:0U;bool active=false;uint64_t start=0;for(uint64_t c=1;c<upper;++c){bool free=!ntfs_bitmap_bit(layout,c);if(free&&!active){active=true;start=c;}else if(!free&&active){free_push(free_runs,start,c-start);active=false;}}if(active)free_push(free_runs,start,upper-start);}
 
-static uint64_t stream_owner(const NtfsStream *stream) {
-    return stream->base_record != 0 ? stream->base_record : stream->record_number;
-}
-
 static bool primary_object_stream(const NtfsStream *stream) {
     if (stream->directory) return stream->attribute_type == NTFS_ATTR_INDEX_ALLOCATION;
     return stream->attribute_type == NTFS_ATTR_DATA && stream->attribute_name[0] == '\0';
 }
 
-static size_t logical_stream_parts(const NtfsCatalogue *catalogue, const NtfsStream *stream) {
-    size_t count = 0;
-    uint64_t owner = stream_owner(stream);
-    for (size_t i = 0; i < catalogue->count; ++i) {
-        const NtfsStream *candidate = &catalogue->items[i];
-        if (stream_owner(candidate) != owner || candidate->attribute_type != stream->attribute_type) continue;
-        if (strcmp(candidate->attribute_name, stream->attribute_name) != 0) continue;
-        count++;
-    }
-    return count;
-}
-
-static bool preserved_primary_is_contiguous(const NtfsCatalogue *catalogue, const NtfsStream *stream) {
+static bool preserved_primary_is_contiguous(const NtfsStream *stream, size_t parts) {
     if (!primary_object_stream(stream) || stream->lowest_vcn != 0) return false;
-    if (logical_stream_parts(catalogue, stream) != 1U) return false;
+    if (parts != 1U) return false;
     return ntfs_fragment_count(&stream->runs) <= 1U;
 }
 
@@ -105,6 +89,7 @@ static int reserve_fixed_growth_stream(NtfsLayout *layout, const NtfsStream *str
 int ntfs_plan_layout(NtfsLayout *layout,NtfsCatalogue *catalogue,uint64_t total_clusters,bool growth,NtfsPlacementVec *placements,char **error){
     memset(placements,0,sizeof(*placements));
     if(catalogue->hibernation_active){ntfs_set_error(error,"NTFS hibernation image is active; resume and shut down Windows fully before raw mutation");return -1;}
+    size_t *parts = ntfs_logical_stream_counts(catalogue);
     size_t movable=0;
     for(size_t i=0;i<catalogue->count;++i){
         NtfsStream *s=&catalogue->items[i];
@@ -119,14 +104,16 @@ int ntfs_plan_layout(NtfsLayout *layout,NtfsCatalogue *catalogue,uint64_t total_
          * qualified primary file/directory layout.
          */
         if(!primary_object_stream(s)){placements->fixed_streams++;continue;}
-        if(!preserved_primary_is_contiguous(catalogue,s)){
+        if(!preserved_primary_is_contiguous(s,parts[i])){
             ntfs_set_error(error,
                            "NTFS primary stream in MFT record %llu is split or fragmented in an unsupported layout; it cannot be safely preserved in place",
                            (unsigned long long)s->record_number);
+            free(parts);
             return -1;
         }
         placements->fixed_streams++;
     }
+    free(parts);
     if(movable==0){ntfs_set_error(error,"NTFS has no supported movable user streams");return -1;}
     PlanItem *all=ld_xmalloc(movable*sizeof(*all));size_t w=0;
     for(size_t i=0;i<catalogue->count;++i)if(catalogue->items[i].movable&&catalogue->items[i].clusters){all[w].stream=&catalogue->items[i];all[w].span=stream_span(all[w].stream,growth);set_stream_free(layout,all[w].stream);w++;}

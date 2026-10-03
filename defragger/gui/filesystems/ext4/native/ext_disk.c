@@ -382,7 +382,11 @@ static int verify_block_bitmap_checksum(const ExtFs *fs, uint32_t group,
     if (fs->desc_size < 58U)
         actual &= UINT32_C(0xffff);
     if (actual != expected) {
-        set_error(error, "EXT block bitmap checksum verification failed");
+        char detail[256];
+        (void)snprintf(detail, sizeof(detail), "EXT block bitmap checksum verification failed "
+            "(group %u, bitmap block %llu, expected %08x, actual %08x)",
+            group, (unsigned long long)block_bitmap_block(fs, group), expected, actual);
+        set_error(error, detail);
         return -1;
     }
     return 0;

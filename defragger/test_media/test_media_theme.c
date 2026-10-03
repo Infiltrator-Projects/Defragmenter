@@ -61,16 +61,16 @@ void ldtm_apply_mb_theme(void)
         " background-image:linear-gradient(110deg,#083f73 0%%,#143d86 38%%,#35206f 72%%,#4a164d 100%%);"
         " border:1px solid #%06x; border-radius:14px;"
         " box-shadow:0 5px 20px alpha(#000000,0.42),inset 0 1px alpha(#ffffff,0.08); }"
-        "#ldtm-hero-title { font-family:\"%s\"; color:#ffffff; font-size:30px; font-weight:%u; }"
+        "#ldtm-hero-title { font-family:\"%s\"; color:#ffffff; font-size:26px; font-weight:%u; }"
         "#ldtm-hero-subtitle { color:#%06x; font-size:12px; }"
         "#ldtm-hero-badge { color:#dff7ff; background-color:alpha(#071525,0.62);"
         " border:1px solid alpha(#59d7ff,0.55); border-radius:16px; padding:7px 12px;"
         " font-size:12px; font-weight:bold; }"
-        ".ldtm-icon-well { min-width:36px; min-height:36px; padding:7px;"
+        ".ldtm-icon-well { min-width:28px; min-height:28px; padding:5px;"
         " background-image:linear-gradient(to bottom right,#111d29,#0a1118);"
         " border:1px solid #%06x; border-radius:12px;"
         " box-shadow:inset 0 1px alpha(#ffffff,0.06),0 2px 8px alpha(#000000,0.35); }"
-        ".ldtm-hero-icon { min-width:58px; min-height:58px; padding:10px; border-color:#36c9ff;"
+        ".ldtm-hero-icon { min-width:32px; min-height:32px; padding:6px; border-color:#36c9ff;"
         " background-image:linear-gradient(to bottom right,#0a4770,#11162c);"
         " box-shadow:0 0 22px alpha(#00bdf2,0.28),inset 0 1px alpha(#ffffff,0.12); }"
         ".ldtm-accent-cyan image,.ldtm-operation-cyan image { color:#31c8f4; }"
@@ -115,32 +115,20 @@ void ldtm_apply_mb_theme(void)
         (unsigned)palette->accent_hover_rgb,
         (unsigned)palette->surface_hover_rgb);
 
-    /* Visual summary cards. */
-    g_string_append(
-        css,
-        ".ldtm-stat-card > border { background-image:linear-gradient(120deg,#101820,#0d1319);"
-        " border:1px solid #263644; border-radius:11px; box-shadow:inset 0 1px alpha(#ffffff,0.035); }"
-        ".ldtm-stat-card.ldtm-accent-green > border { border-color:alpha(#54db79,0.48); }"
-        ".ldtm-stat-card.ldtm-accent-cyan > border { border-color:alpha(#31c8f4,0.48); }"
-        ".ldtm-stat-card.ldtm-accent-purple > border { border-color:alpha(#b36cff,0.48); }"
-        ".ldtm-stat-card.ldtm-accent-amber > border { border-color:alpha(#ffb52f,0.48); }"
-        ".ldtm-stat-title { color:#b1c5d3; font-size:12px; }"
-        ".ldtm-stat-value { color:#f3f8fb; font-size:20px; font-weight:bold; }");
-
     /* The filesystem list is a visual matrix first; the spreadsheet is secondary. */
     g_string_append(
         css,
-        ".ldtm-fs-tile > border { background-image:linear-gradient(135deg,#10171e,#0b1117);"
+        ".ldtm-fs-tile { background-image:linear-gradient(135deg,#10171e,#0b1117);"
         " border:1px solid #293945; border-left-width:3px; border-radius:9px;"
         " box-shadow:inset 0 1px alpha(#ffffff,0.025); }"
-        ".ldtm-fs-tile:hover > border { background-image:linear-gradient(135deg,#14212b,#0e171e); }"
-        ".ldtm-fs-family-cyan > border { border-left-color:#27c4ef; }"
-        ".ldtm-fs-family-green > border { border-left-color:#50d66f; }"
-        ".ldtm-fs-family-purple > border { border-left-color:#9b62f2; }"
-        ".ldtm-fs-family-magenta > border { border-left-color:#e05ad7; }"
-        ".ldtm-fs-family-amber > border { border-left-color:#f5a524; }"
-        ".ldtm-fs-family-neutral > border { border-left-color:#78a8c4; }"
-        ".ldtm-fs-name { font-size:14px; }"
+        ".ldtm-fs-tile:hover { background-image:linear-gradient(135deg,#14212b,#0e171e); }"
+        ".ldtm-fs-family-cyan { border-left-color:#27c4ef; }"
+        ".ldtm-fs-family-green { border-left-color:#50d66f; }"
+        ".ldtm-fs-family-purple { border-left-color:#9b62f2; }"
+        ".ldtm-fs-family-magenta { border-left-color:#e05ad7; }"
+        ".ldtm-fs-family-amber { border-left-color:#f5a524; }"
+        ".ldtm-fs-family-neutral { border-left-color:#78a8c4; }"
+        ".ldtm-fs-name { font-size:16px; font-weight:bold; }"
         ".ldtm-fs-size { color:#a6bdcc; font-size:11px; }"
         ".ldtm-fs-status { padding:2px 6px; border-radius:8px; font-size:12px; }"
         ".ldtm-fs-waiting .ldtm-fs-status { color:#b1c5d3; background-color:alpha(#8ea2b0,0.08); }"
@@ -153,7 +141,7 @@ void ldtm_apply_mb_theme(void)
     /* Large icon-led operations restore semantic colour and hierarchy. */
     g_string_append(
         css,
-        ".ldtm-operation-button { min-height:86px; padding:0; border-radius:11px; color:#eef6fb;"
+        ".ldtm-operation-button { min-height:68px; padding:0; border-radius:11px; color:#eef6fb;"
         " box-shadow:0 3px 10px alpha(#000000,0.28),inset 0 1px alpha(#ffffff,0.04); }"
         ".ldtm-operation-cyan { background-image:linear-gradient(120deg,#0b2633,#101a24); border:1px solid #168ab2; }"
         ".ldtm-operation-cyan:hover { background-image:linear-gradient(120deg,#104057,#142635); border-color:#32c7f3; }"
@@ -177,8 +165,7 @@ void ldtm_apply_mb_theme(void)
     /* Technical table and raw log deliberately sit behind disclosure controls. */
     g_string_append_printf(
         css,
-        ".ldtm-detail-expander,.ldtm-log-expander { color:#%06x; font-weight:bold; }"
-        ".ldtm-detail-expander > title,.ldtm-log-expander > title { padding:6px 4px; }"
+        "#ldtm-result-summary { color:#%06x; font-size:12px; }"
         "treeview,textview,textview text,viewport,scrolledwindow { background-color:#%06x; color:#%06x; border-color:#%06x; }"
         "treeview.view header button { background-image:linear-gradient(to bottom,#%06x,#%06x); border-color:#%06x; font-weight:bold; }"
         "treeview.view:selected { background-color:#%06x; color:#%06x; }"
@@ -200,6 +187,23 @@ void ldtm_apply_mb_theme(void)
         (unsigned)palette->card_rgb,
         (unsigned)palette->text_rgb,
         (unsigned)palette->status_border_rgb);
+
+    g_string_append(css,
+        ".ldtm-ready-badge { padding:5px 8px; border:1px solid alpha(#54db79,0.48); border-radius:8px; background-color:alpha(#08291a,0.7); }"
+        ".ldtm-ready-badge label { color:#77e995; font-size:12px; }"
+        "#ldtm-ready-count { font-weight:bold; }"
+        "#ldtm-layout-facts,#ldtm-workflow-note,#ldtm-selected-meta { color:#a6bdcc; font-size:12px; }"
+        "#ldtm-workflow-note { padding-top:3px; }"
+        "#ldtm-target-title,#ldtm-selected-title { font-size:16px; font-weight:bold; }"
+        "#ldtm-selected-detail { color:#d9eaf4; font-size:13px; }"
+        ".ldtm-inspector > border { border-color:#2c718d; border-radius:8px; }"
+        ".ldtm-inspector.ldtm-fs-failure > border { border-color:#be5659; }"
+        ".ldtm-fs-selected { border-color:#31c8f4; background-image:linear-gradient(135deg,#163549,#102331); }"
+        ".ldtm-fs-tile { padding:0; min-height:64px; }"
+        ".ldtm-tabs button,.ldtm-tool-button { padding:5px 10px; min-height:26px; color:#cce1ee; background-image:linear-gradient(to bottom,#182631,#101a22); border:1px solid #334a5b; border-radius:7px; box-shadow:none; }"
+        ".ldtm-tabs button:checked,.ldtm-tabs button:hover,.ldtm-tool-button:hover { color:#e8faff; border-color:#31c8f4; background-image:linear-gradient(to bottom,#16465b,#102b39); }"
+        ".ldtm-tool-button:disabled { color:#738896; border-color:#27323b; }"
+        "#ldtm-operation-summary { font-size:14px; font-weight:bold; }");
 
     /* Dialogs keep a readable neutral escape and an unmistakable red destructive action. */
     g_string_append(

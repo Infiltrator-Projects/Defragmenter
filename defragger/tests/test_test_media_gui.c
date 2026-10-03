@@ -21,17 +21,6 @@ static GtkWidget *find_named(GtkWidget *widget, const char *name)
     return found;
 }
 
-static void expand_details(GtkWidget *widget)
-{
-    if (GTK_IS_EXPANDER(widget))
-        gtk_expander_set_expanded(GTK_EXPANDER(widget), TRUE);
-    if (!GTK_IS_CONTAINER(widget)) return;
-    GList *children = gtk_container_get_children(GTK_CONTAINER(widget));
-    for (GList *item = children; item != NULL; item = item->next)
-        expand_details(GTK_WIDGET(item->data));
-    g_list_free(children);
-}
-
 static void check_font(GtkWidget *widget, const char *family, int minimum_pixels)
 {
     PangoFontDescription *requested = NULL;
@@ -93,60 +82,6 @@ static void check_operation_colours(void)
     }
 }
 
-static gboolean layout_probe(gpointer user_data)
-{
-    unsigned int *phase = user_data;
-    GList *windows = gtk_window_list_toplevels();
-    GtkWidget *window = NULL;
-    for (GList *item = windows; item != NULL; item = item->next)
-        if (find_named(GTK_WIDGET(item->data), "ldtm-page-scroll") != NULL)
-            window = item->data;
-    g_list_free(windows);
-    CHECK(window != NULL);
-    GtkWidget *page = find_named(window, "ldtm-page-scroll");
-    CHECK(GTK_IS_SCROLLED_WINDOW(page));
-    CHECK(find_named(window, "ldtm-view-log") != NULL);
-    if (*phase == 0U) {
-        const InfiltratrTypography *typography = infiltratr_typography();
-        check_font(find_named(window, "ldtm-header-brand-title"), typography->brand_family, 22);
-        check_font(find_named(window, "ldtm-hero-title"), typography->brand_family, 30);
-        check_font(find_named(window, "ldtm-hero-subtitle"), typography->ui_family, 12);
-        check_font(find_named(window, "ldtm-section-title"), typography->ui_family, 16);
-        GdkRectangle workarea;
-        GdkWindow *surface = gtk_widget_get_window(window);
-        GdkMonitor *monitor = gdk_display_get_monitor_at_window(gtk_widget_get_display(window), surface);
-        gdk_monitor_get_workarea(monitor, &workarea);
-        CHECK(gdk_window_get_width(surface) <= workarea.width);
-        CHECK(gdk_window_get_height(surface) <= workarea.height);
-        GtkWidget *grid = find_named(window, "ldtm-filesystem-grid");
-        CHECK(GTK_IS_FLOW_BOX(grid));
-        CHECK(!GTK_IS_SCROLLED_WINDOW(gtk_widget_get_parent(grid)));
-        GList *tiles = gtk_container_get_children(GTK_CONTAINER(grid));
-        CHECK(g_list_length(tiles) == LDTM_SPEC_COUNT);
-        for (GList *item = tiles; item != NULL; item = item->next)
-            CHECK(gtk_widget_get_allocated_height(GTK_WIDGET(item->data)) >= 48);
-        g_list_free(tiles);
-        capture_window(window, "LDTM_GUI_TEST_DESKTOP_SCREENSHOT");
-        expand_details(window);
-        gtk_window_resize(GTK_WINDOW(window), 900, 680);
-        ++*phase;
-        return G_SOURCE_CONTINUE;
-    }
-    gint width = 0, height = 0;
-    gtk_window_get_size(GTK_WINDOW(window), &width, &height);
-    CHECK(width <= 1024 && height <= 768);
-    GtkAdjustment *vertical = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(page));
-    CHECK(gtk_adjustment_get_upper(vertical) > gtk_adjustment_get_page_size(vertical));
-    gtk_adjustment_set_value(vertical, gtk_adjustment_get_upper(vertical));
-    if (*phase == 1U) {
-        ++*phase;
-        return G_SOURCE_CONTINUE;
-    }
-    capture_window(window, "LDTM_GUI_TEST_SCREENSHOT");
-    gtk_widget_destroy(window);
-    return G_SOURCE_REMOVE;
-}
-
 static gboolean close_log_dialog(gpointer user_data)
 {
     unsigned int *count = user_data;
@@ -161,32 +96,8 @@ static gboolean close_log_dialog(gpointer user_data)
     return G_SOURCE_REMOVE;
 }
 
-static void test_final_worker_output(void)
+static void test_final_worker_output(LdtmApp *app)
 {
-    LdtmApp app = {0};
-    app.window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    g_object_ref_sink(app.window);
-    app.device_store = gtk_list_store_new(LDTM_DEVICE_N_COLUMNS,
-        G_TYPE_STRING, G_TYPE_STRING, G_TYPE_BOOLEAN, G_TYPE_STRING);
-    app.device_combo = GTK_COMBO_BOX(make_device_combo(&app));
-    app.filesystem_store = gtk_list_store_new(LDTM_FS_N_COLUMNS,
-        G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING,
-        G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING);
-    app.build_button = gtk_button_new();
-    app.qualify_button = gtk_button_new();
-    app.verify_button = gtk_button_new();
-    app.progress = gtk_progress_bar_new();
-    app.operation_summary = gtk_label_new("");
-    app.readiness_summary = gtk_label_new("");
-    app.log_expander = gtk_expander_new("Log");
-    app.log_buffer = gtk_text_buffer_new(NULL);
-    GtkWidget *owned[] = { GTK_WIDGET(app.device_combo), app.build_button,
-        app.qualify_button, app.verify_button, app.progress,
-        app.operation_summary, app.readiness_summary, app.log_expander };
-    for (size_t index = 0U; index < G_N_ELEMENTS(owned); ++index)
-        g_object_ref_sink(owned[index]);
-    reset_filesystem_rows(&app);
-
     int descriptors[2];
     CHECK(pipe(descriptors) == 0);
     for (unsigned int index = 0U; index < 80U; ++index) {
@@ -196,28 +107,28 @@ static void test_final_worker_output(void)
     const char final[] = "LDTM_STATUS\tzfs\tqualification-failed\tnlevels=2 indblkshift=11\nFINAL DIAGNOSTIC\n";
     CHECK(write(descriptors[1], final, sizeof(final) - 1U) == (ssize_t)(sizeof(final) - 1U));
     CHECK(close(descriptors[1]) == 0);
-    app.stdout_channel = g_io_channel_unix_new(descriptors[0]);
-    g_io_channel_set_close_on_unref(app.stdout_channel, TRUE);
-    CHECK(g_io_channel_set_flags(app.stdout_channel, G_IO_FLAG_NONBLOCK, NULL) == G_IO_STATUS_NORMAL);
-    CHECK(channel_watch(app.stdout_channel, G_IO_IN, &app));
+    app->stdout_channel = g_io_channel_unix_new(descriptors[0]);
+    g_io_channel_set_close_on_unref(app->stdout_channel, TRUE);
+    CHECK(g_io_channel_set_flags(app->stdout_channel, G_IO_FLAG_NONBLOCK, NULL) == G_IO_STATUS_NORMAL);
+    CHECK(channel_watch(app->stdout_channel, G_IO_IN, app));
 
     unsigned int dialogs = 0U;
     g_idle_add(close_log_dialog, &dialogs);
-    worker_finished(0, 1 << 8, &app);
+    worker_finished(0, 1 << 8, app);
     CHECK(dialogs == 1U);
-    CHECK(gtk_expander_get_expanded(GTK_EXPANDER(app.log_expander)));
+    CHECK(g_strcmp0(gtk_stack_get_visible_child_name(GTK_STACK(app->result_stack)), "log") == 0);
     GtkTextIter start, end;
-    gtk_text_buffer_get_bounds(app.log_buffer, &start, &end);
-    char *log = gtk_text_buffer_get_text(app.log_buffer, &start, &end, FALSE);
+    gtk_text_buffer_get_bounds(app->log_buffer, &start, &end);
+    char *log = gtk_text_buffer_get_text(app->log_buffer, &start, &end, FALSE);
     CHECK(strstr(log, "FINAL DIAGNOSTIC") != NULL);
     CHECK(strstr(log, "exit status 1") != NULL);
     CHECK(strcmp(display_result("qualification-failed"), "Qualification failed") == 0);
     GtkTreeIter iter;
-    CHECK(gtk_tree_model_get_iter_first(GTK_TREE_MODEL(app.filesystem_store), &iter));
+    CHECK(gtk_tree_model_get_iter_first(GTK_TREE_MODEL(app->filesystem_store), &iter));
     gboolean found = FALSE;
     do {
         char *key = NULL, *result = NULL;
-        gtk_tree_model_get(GTK_TREE_MODEL(app.filesystem_store), &iter,
+        gtk_tree_model_get(GTK_TREE_MODEL(app->filesystem_store), &iter,
                            LDTM_FS_COL_KEY, &key, LDTM_FS_COL_RESULT, &result, -1);
         if (strcmp(key, "zfs") == 0) {
             CHECK(strcmp(result, "Qualification failed") == 0);
@@ -225,22 +136,102 @@ static void test_final_worker_output(void)
         }
         g_free(key);
         g_free(result);
-    } while (gtk_tree_model_iter_next(GTK_TREE_MODEL(app.filesystem_store), &iter));
+    } while (gtk_tree_model_iter_next(GTK_TREE_MODEL(app->filesystem_store), &iter));
     CHECK(found);
-    copy_operation_log(&app);
+    copy_operation_log(app);
     char *copied = gtk_clipboard_wait_for_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD));
     CHECK(g_strcmp0(log, copied) == 0);
     g_free(copied);
     g_free(log);
-    gtk_widget_destroy(app.window);
-    g_object_unref(app.window);
-    for (size_t index = 0U; index < G_N_ELEMENTS(owned); ++index) {
-        gtk_widget_destroy(owned[index]);
-        g_object_unref(owned[index]);
+}
+
+static void check_inside(GtkWidget *window, GtkWidget *widget)
+{
+    gint x = 0, y = 0;
+    CHECK(gtk_widget_translate_coordinates(widget, window, 0, 0, &x, &y));
+    CHECK(x >= 0 && y >= 0);
+    CHECK(x + gtk_widget_get_allocated_width(widget) <= gtk_widget_get_allocated_width(window));
+    CHECK(y + gtk_widget_get_allocated_height(widget) <= gtk_widget_get_allocated_height(window));
+}
+
+typedef struct { LdtmApp *app; unsigned int phase; } LayoutProbe;
+static gboolean layout_probe(gpointer user_data)
+{
+    LayoutProbe *probe = user_data;
+    LdtmApp *app = probe->app;
+    GtkWidget *window = app->window;
+    CHECK(GTK_IS_BOX(find_named(window, "ldtm-workspace")));
+    CHECK(find_named(window, "ldtm-page-scroll") == NULL);
+    GtkWidget *controls[] = { GTK_WIDGET(app->device_combo), app->build_button,
+        app->qualify_button, app->verify_button, find_named(window, "ldtm-activity") };
+    for (size_t index = 0U; index < G_N_ELEMENTS(controls); ++index)
+        check_inside(window, controls[index]);
+    if (probe->phase == 0U) {
+        const InfiltratrTypography *typography = infiltratr_typography();
+        check_font(find_named(window, "ldtm-header-brand-title"), typography->brand_family, 22);
+        check_font(find_named(window, "ldtm-hero-title"), typography->brand_family, 26);
+        check_font(find_named(window, "ldtm-hero-subtitle"), typography->ui_family, 12);
+        check_font(find_named(window, "ldtm-section-title"), typography->ui_family, 16);
+        CHECK(gtk_widget_get_sensitive(app->build_button));
+        app->worker_running = TRUE; update_interaction_controls(app);
+        CHECK(!gtk_widget_get_sensitive(app->build_button));
+        CHECK(!gtk_widget_get_sensitive(GTK_WIDGET(app->device_combo)));
+        CHECK(gtk_widget_get_sensitive(app->filesystem_tiles[0]));
+        app->worker_running = FALSE;
+        app->discovering_devices = TRUE; update_interaction_controls(app);
+        CHECK(!gtk_widget_get_sensitive(app->qualify_button));
+        app->discovering_devices = FALSE;
+        GtkTreeIter device;
+        CHECK(gtk_tree_model_get_iter_first(GTK_TREE_MODEL(app->device_store), &device));
+        gtk_list_store_set(app->device_store, &device, LDTM_DEVICE_COL_SAFE, FALSE, -1);
+        update_interaction_controls(app);
+        CHECK(!gtk_widget_get_sensitive(app->verify_button));
+        gtk_list_store_set(app->device_store, &device, LDTM_DEVICE_COL_SAFE, TRUE, -1);
+        update_interaction_controls(app);
+        CHECK(gtk_widget_get_sensitive(app->qualify_button));
+        GtkWidget *grid = find_named(window, "ldtm-filesystem-grid");
+        GList *tiles = gtk_container_get_children(GTK_CONTAINER(grid));
+        CHECK(g_list_length(tiles) == LDTM_SPEC_COUNT);
+        g_list_free(tiles);
+        capture_window(window, "LDTM_GUI_TEST_DESKTOP_SCREENSHOT");
+        gtk_window_resize(GTK_WINDOW(window), 900, 600);
+        ++probe->phase; return G_SOURCE_CONTINUE;
     }
-    g_object_unref(app.device_store);
-    g_object_unref(app.filesystem_store);
-    g_object_unref(app.log_buffer);
+    if (probe->phase == 1U) {
+        CHECK(gtk_widget_get_allocated_width(window) <= 1024);
+        CHECK(gtk_widget_get_allocated_height(window) <= 768);
+        GtkAdjustment *vertical = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(find_named(window, "ldtm-grid-scroll")));
+        CHECK(gtk_adjustment_get_upper(vertical) > gtk_adjustment_get_page_size(vertical));
+        for (size_t index = 0U; index < LDTM_SPEC_COUNT; ++index) {
+            CHECK(GTK_IS_BUTTON(app->filesystem_tiles[index]));
+            if (strcmp(ldtm_specs()[index].key, "zfs") == 0) gtk_button_clicked(GTK_BUTTON(app->filesystem_tiles[index]));
+        }
+        CHECK(strstr(gtk_label_get_text(GTK_LABEL(app->selected_title)), "ZFS") != NULL);
+        update_filesystem_status(app, "zfs", "qualification-failed", "nlevels=2 indblkshift=11 — retained diagnostic");
+        CHECK(strstr(gtk_label_get_text(GTK_LABEL(app->selected_detail)), "retained diagnostic") != NULL);
+        CHECK(strstr(gtk_label_get_text(GTK_LABEL(app->result_summary)), "1 failed") != NULL);
+        unsigned int dialogs = 0U;
+        g_idle_add(close_log_dialog, &dialogs);
+        gtk_button_clicked(GTK_BUTTON(find_named(window, "ldtm-filesystem-details")));
+        CHECK(dialogs == 1U);
+
+        ++probe->phase; return G_SOURCE_CONTINUE;
+    }
+    if (probe->phase == 2U) {
+        capture_window(window, "LDTM_GUI_TEST_SCREENSHOT");
+        gtk_button_clicked(GTK_BUTTON(find_named(window, "ldtm-view-log")));
+        CHECK(g_strcmp0(gtk_stack_get_visible_child_name(GTK_STACK(app->result_stack)), "log") == 0);
+        test_final_worker_output(app);
+        ++probe->phase; return G_SOURCE_CONTINUE;
+    }
+    if (probe->phase == 3U) {
+        capture_window(window, "LDTM_GUI_TEST_LOG_SCREENSHOT");
+        gtk_stack_set_visible_child_name(GTK_STACK(app->result_stack), "details");
+        ++probe->phase; return G_SOURCE_CONTINUE;
+    }
+    gtk_widget_destroy(window);
+    ++probe->phase;
+    return G_SOURCE_REMOVE;
 }
 
 int main(int argc, char **argv)
@@ -248,10 +239,23 @@ int main(int argc, char **argv)
     gtk_init(&argc, &argv);
     ldtm_apply_mb_theme();
     check_operation_colours();
-    test_final_worker_output();
-    unsigned int phase = 0U;
-    g_timeout_add(100U, layout_probe, &phase);
-    CHECK(ldtm_gui_main(argc, argv) == 0);
-    CHECK(phase == 2U);
+    LdtmApp app = {0};
+    create_test_media_window(&app);
+    reset_filesystem_rows(&app);
+    GtkTreeIter device;
+    gtk_list_store_append(app.device_store, &device);
+    gtk_list_store_set(app.device_store, &device,
+        LDTM_DEVICE_COL_PATH, "ui-test-device",
+        LDTM_DEVICE_COL_DISPLAY, "USB test disk — 119.1 GiB — ui-test-device",
+        LDTM_DEVICE_COL_SAFE, TRUE,
+        LDTM_DEVICE_COL_SUMMARY, "USB test disk • 119.1 GiB • USB\nSerial: UI-FIXTURE\nIdentity locked for test fixture", -1);
+    gtk_combo_box_set_active(app.device_combo, 0);
+    gtk_widget_show_all(app.window);
+    LayoutProbe probe = { &app, 0U };
+    g_timeout_add(150U, layout_probe, &probe);
+    gtk_main();
+    CHECK(probe.phase == 5U);
+    g_object_unref(app.device_store);
+    g_object_unref(app.filesystem_store);
     return 0;
 }

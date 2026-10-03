@@ -258,13 +258,27 @@ static void emit_stream_ranges(const NtfsCatalogue *catalogue, bool directories,
     putchar(']');
 }
 
+static void analysis_phase(const char *phase) {
+    fprintf(stderr, "@@ANALYSIS {\"phase\":\"%s\"}\n", phase);
+    fflush(stderr);
+}
+
+static void scan_progress(uint64_t completed, uint64_t total, void *context) {
+    (void)context;
+    fprintf(stderr, "@@ANALYSIS {\"phase\":\"Scanning NTFS MFT\","
+        "\"completed\":%" PRIu64 ",\"total\":%" PRIu64 "}\n", completed, total);
+    fflush(stderr);
+}
+
 static int analyse_json(const char *path, char **error) {
     NtfsVolume volume; NtfsLayout layout; NtfsCatalogue catalogue;
+    analysis_phase("Reading NTFS allocation bitmap and MFT geometry");
     if (ntfs_open_volume(path, false, &volume, error) != 0) return -1;
     if (ntfs_read_layout(&volume, true, &layout, error) != 0) { ntfs_close_volume(&volume); return -1; }
-    if (ntfs_scan_catalogue(&volume, &layout, &catalogue, error) != 0) {
+    if (ntfs_scan_catalogue_progress(&volume, &layout, &catalogue, error, scan_progress, NULL) != 0) {
         ntfs_layout_free(&layout); ntfs_close_volume(&volume); return -1;
     }
+    analysis_phase("Building NTFS allocation ranges");
     char serial[17]; serial_hex(volume.serial, serial);
     double percentage = infiltratr_percent_u64(
         catalogue.fragmented_files, catalogue.regular_files);

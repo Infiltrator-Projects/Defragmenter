@@ -607,7 +607,7 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
 
 class Desktop {
 public:
-    Desktop() {
+    explicit Desktop(bool start_services = true) {
         mapper_ = defragger::resolve_program("mapper");
         engine_ = defragger::resolve_program("operation-engine");
         helper_path_ = defragger::resolve_program("helper");
@@ -1064,6 +1064,7 @@ public:
         gtk_stack_set_visible_child_name(GTK_STACK(pages_), "overview");
 
         gtk_widget_show_all(window_);
+        if (!start_services) return;
         refresh();
         // Request authentication once per session, matching the existing desktop behavior.
         auth_timer_ = g_timeout_add(200, [](gpointer data) -> gboolean {
@@ -1074,6 +1075,7 @@ public:
     }
 
     ~Desktop() {
+        if (analysis_timer_) g_source_remove(analysis_timer_);
         if (auth_timer_) g_source_remove(auth_timer_);
         if (local_stop_timer_) g_source_remove(local_stop_timer_);
         if (selection_analysis_timer_)
@@ -1101,6 +1103,7 @@ public:
     }
 
 private:
+    friend struct DesktopAnalysisTest;
     GtkWidget *window_{}, *pages_{}, *volumes_widget_{}, *detail_{}, *volume_title_{};
     GtkWidget *progress_{}, *status_{}, *map_{}, *summary_{}, *log_{};
     GtkWidget *hero_status_{}, *activity_secondary_{}, *footer_volume_{}, *footer_status_{};
@@ -1130,6 +1133,12 @@ private:
     bool helper_ready_ = false, busy_ = false, stopping_ = false, closing_ = false;
     bool discovering_ = false, probing_ = false;
     int request_id_ = 0, active_id_ = 0;
+    guint analysis_timer_ = 0;
+    gint64 analysis_started_ = 0;
+    std::string analysis_phase_, local_detail_;
+    bool analysis_has_progress_ = false, local_waited_ = false;
+    int local_code_ = 127;
+    unsigned int local_streams_ = 0;
     guint auth_timer_ = 0;
     guint local_stop_timer_ = 0;
     guint selection_analysis_timer_ = 0;
@@ -1450,8 +1459,10 @@ private:
         cairo_stroke(cr);
 
         char text[16];
-        std::snprintf(
-            text, sizeof(text), "%.0f%%", value * 100.0);
+        if (self->map_data_.is_null())
+            std::snprintf(text, sizeof(text), "—");
+        else
+            std::snprintf(text, sizeof(text), "%.0f%%", value * 100.0);
         const auto* typography = infiltratr_typography();
         if (typography != nullptr)
             cairo_select_font_face(
@@ -2226,6 +2237,20 @@ private:
             GTK_PROGRESS_BAR(progress_), (purpose_ + " in progress").c_str());
         gtk_label_set_text(GTK_LABEL(status_), (purpose_ + " in progress").c_str());
         note("Starting " + purpose_ + " on " + (current() ? current()->path : ""));
+        if (purpose_ == "analysis") {
+            cells_.clear(); map_data_ = Json(); reset_summary(); queue_maps(); queue_gauges();
+            analysis_started_ = g_get_monotonic_time();
+            analysis_phase_ = "Starting analyser";
+            analysis_has_progress_ = false;
+            render_analysis_progress();
+            analysis_timer_ = g_timeout_add(200U, [](gpointer data) -> gboolean {
+                auto* self = static_cast<Desktop*>(data);
+                if (!self->analysis_has_progress_)
+                    gtk_progress_bar_pulse(GTK_PROGRESS_BAR(self->progress_));
+                self->render_analysis_progress();
+                return G_SOURCE_CONTINUE;
+            }, this);
+        }
         update();
         if (purpose_ == "analysis" && current() && access(current()->path.c_str(), R_OK) == 0) {
             start_local_analysis();
@@ -2245,27 +2270,93 @@ private:
             completed(127, detail);
             return;
         }
-        g_subprocess_communicate_utf8_async(local_, nullptr, nullptr,
+        local_streams_ = 2U;
+        local_waited_ = false;
+        local_detail_.clear();
+        read_local_stream(g_data_input_stream_new(g_subprocess_get_stdout_pipe(local_)), false);
+        read_local_stream(g_data_input_stream_new(g_subprocess_get_stderr_pipe(local_)), true);
+        g_subprocess_wait_async(local_, nullptr,
             [](GObject* source, GAsyncResult* result, gpointer data) {
                 auto* self = static_cast<Desktop*>(data);
-                gchar* out = nullptr;
-                gchar* err = nullptr;
-                GError* local_error = nullptr;
-                bool received = g_subprocess_communicate_utf8_finish(G_SUBPROCESS(source), result, &out, &err, &local_error);
-                self->output_ = out ? out : "";
-                std::string detail = local_error ? local_error->message : (err ? err : "");
-                int code = received && g_subprocess_get_if_exited(self->local_)
-                    ? g_subprocess_get_exit_status(self->local_) : 127;
-                if (local_error) g_error_free(local_error);
-                g_free(out); g_free(err);
-                if (self->local_stop_timer_ != 0U) {
-                    g_source_remove(self->local_stop_timer_);
-                    self->local_stop_timer_ = 0U;
-                }
-                g_object_unref(self->local_);
-                self->local_ = nullptr;
-                self->completed(code, detail);
+                GError* wait_error = nullptr;
+                const bool waited = g_subprocess_wait_finish(G_SUBPROCESS(source), result, &wait_error);
+                self->local_code_ = waited && g_subprocess_get_if_exited(G_SUBPROCESS(source))
+                    ? g_subprocess_get_exit_status(G_SUBPROCESS(source)) : 127;
+                if (wait_error) { self->local_detail_ += wait_error->message; g_error_free(wait_error); }
+                self->local_waited_ = true;
+                self->finish_local_analysis();
             }, this);
+    }
+    void read_local_stream(GDataInputStream* stream, bool diagnostics) {
+        struct ReadContext { Desktop* desktop; bool diagnostics; };
+        auto* request = new ReadContext{this, diagnostics};
+        g_data_input_stream_read_line_async(stream, G_PRIORITY_DEFAULT, nullptr,
+            [](GObject* source, GAsyncResult* result, gpointer data) {
+                const std::unique_ptr<ReadContext> context(static_cast<ReadContext*>(data));
+                auto* self = context->desktop;
+                GError* failure = nullptr;
+                gsize length = 0U;
+                char* raw = g_data_input_stream_read_line_finish(G_DATA_INPUT_STREAM(source), result, &length, &failure);
+                if (raw != nullptr) {
+                    const std::string line(raw, length);
+                    g_free(raw);
+                    if (!self->consume_analysis_progress(line)) {
+                        if (context->diagnostics) {
+                            self->local_detail_ += line + "\n";
+                            if (self->local_detail_.size() > 4096U)
+                                self->local_detail_.erase(0U, self->local_detail_.size() - 4096U);
+                            self->note(line);
+                        } else self->output_ += line + "\n";
+                    }
+                    self->read_local_stream(G_DATA_INPUT_STREAM(source), context->diagnostics);
+                    return;
+                }
+                if (failure) { self->local_detail_ += failure->message; g_error_free(failure); }
+                g_object_unref(source);
+                --self->local_streams_;
+                self->finish_local_analysis();
+            }, request);
+    }
+    void finish_local_analysis() {
+        if (!local_waited_ || local_streams_ != 0U) return;
+        if (local_stop_timer_ != 0U) {
+            g_source_remove(local_stop_timer_); local_stop_timer_ = 0U;
+        }
+        if (stopping_) result_status_ = "stopped";
+        const int code = local_code_;
+        const std::string detail = local_detail_;
+        g_object_unref(local_); local_ = nullptr;
+        completed(code, detail);
+    }
+    bool consume_analysis_progress(const std::string& line) {
+        if (line.rfind("@@ANALYSIS ", 0U) != 0U) return false;
+        try {
+            const Json event = Json::parse(line.substr(11U));
+            const std::string phase = field(event, "phase");
+            if (phase.empty() || phase.size() > 256U) return true;
+            if (phase != analysis_phase_) note(phase);
+            analysis_phase_ = phase;
+            const auto total = number(event, "total");
+            const auto done = number(event, "completed");
+            analysis_has_progress_ = total > 0U && done <= total;
+            if (analysis_has_progress_) {
+                gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(progress_),
+                    static_cast<double>(done) / static_cast<double>(total));
+                analysis_phase_ += " • " + std::to_string(done) + " / " + std::to_string(total) + " records";
+            }
+            render_analysis_progress();
+        } catch (const std::exception& ex) { note(std::string("Invalid analysis progress: ") + ex.what()); }
+        return true;
+    }
+    void render_analysis_progress() {
+        const auto seconds = (g_get_monotonic_time() - analysis_started_) / G_USEC_PER_SEC;
+        const std::string text = (stopping_ ? "Stopping analysis" : analysis_phase_) +
+            " • " + std::to_string(seconds) + "s elapsed";
+        gtk_progress_bar_set_text(GTK_PROGRESS_BAR(progress_), text.c_str());
+        gtk_label_set_text(GTK_LABEL(summary_), text.c_str());
+        gtk_label_set_text(GTK_LABEL(status_), "Analysing selected volume");
+        if (activity_secondary_) gtk_label_set_text(GTK_LABEL(activity_secondary_), text.c_str());
+        if (footer_status_) gtk_label_set_text(GTK_LABEL(footer_status_), text.c_str());
     }
     void write_helper(const Json& request) {
         if (!helper_) throw std::runtime_error("Administrator helper is unavailable");
@@ -2356,7 +2447,9 @@ private:
         if (static_cast<int>(number(message, "id")) != active_id_ || !busy_) return;
         if (type == "output") {
             std::string line = field(message, "line");
-            if (purpose_ == "analysis") output_ += line + "\n";
+            if (purpose_ == "analysis") {
+                if (!consume_analysis_progress(line)) output_ += line + "\n";
+            }
             else if (line.rfind("@@", 0) == 0) {
                 try { apply_live(line); }
                 catch (const std::exception& ex) { note(std::string("Invalid live event: ") + ex.what()); }
@@ -2416,6 +2509,8 @@ private:
     }
     void completed(int code, const std::string& detail) {
         std::string purpose = purpose_;
+        if (purpose == "analysis" && stopping_ && code != 0) result_status_ = "stopped";
+        if (analysis_timer_) { g_source_remove(analysis_timer_); analysis_timer_ = 0U; }
         std::string reason = detail;
         bool actually_started = active_id_ != 0 || local_ != nullptr;
         active_id_ = 0;
@@ -2424,6 +2519,9 @@ private:
             try { present_map(Json::parse(output_)); }
             catch (const std::exception& ex) { code = 127; reason = std::string("Invalid allocation map: ") + ex.what(); }
         }
+        if (purpose == "analysis" && code != 0)
+            gtk_label_set_text(GTK_LABEL(summary_), result_status_ == "stopped"
+                ? "Analysis stopped. No completed allocation map." : "Analysis failed. See the activity log for details.");
         if (code == 0 && purpose == "unmount") refresh();
         const bool success = code == 0 && result_status_ != "failed" && result_status_ != "stopped";
         const char* final_status = success
@@ -2431,6 +2529,7 @@ private:
             : (result_status_ == "stopped" ? "Stopped safely" : "Operation failed");
         gtk_label_set_text(GTK_LABEL(status_), final_status);
         gtk_progress_bar_set_text(GTK_PROGRESS_BAR(progress_), final_status);
+        gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(progress_), success ? 1.0 : 0.0);
         if (code != 0 && result_status_ != "stopped") error("Operation failed", reason.empty() ? "Exit status " + std::to_string(code) : reason);
         if (!closing_ && actually_started && (success || result_status_ == "stopped") &&
             (purpose == "defrag" || purpose == "growth-defrag" || purpose == "recover")) {
@@ -2954,6 +3053,7 @@ private:
 };
 } // namespace
 
+#ifndef LD_DESKTOP_ANALYSIS_TEST
 int main(int argc, char** argv) {
     gtk_init(&argc, &argv);
     try {
@@ -2966,3 +3066,5 @@ int main(int argc, char** argv) {
         return 1;
     }
 }
+
+#endif

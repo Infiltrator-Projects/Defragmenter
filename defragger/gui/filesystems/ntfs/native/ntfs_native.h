@@ -177,6 +177,11 @@ int ntfs_read_layout(NtfsVolume *volume, bool allow_dirty, NtfsLayout *layout, c
 void ntfs_layout_free(NtfsLayout *layout);
 int ntfs_scan_catalogue(NtfsVolume *volume, NtfsLayout *layout,
                         NtfsCatalogue *catalogue, char **error);
+/* Counts preserve catalogue order; the caller owns the returned array. */
+size_t *ntfs_logical_stream_counts(const NtfsCatalogue *catalogue);
+typedef void (*NtfsScanProgress)(uint64_t completed, uint64_t total, void *context);
+int ntfs_scan_catalogue_progress(NtfsVolume *volume, NtfsLayout *layout,
+    NtfsCatalogue *catalogue, char **error, NtfsScanProgress progress, void *context);
 void ntfs_catalogue_free(NtfsCatalogue *catalogue);
 int ntfs_bitmap_bit(const NtfsLayout *layout, uint64_t cluster);
 void ntfs_bitmap_set(NtfsLayout *layout, uint64_t cluster, bool used);

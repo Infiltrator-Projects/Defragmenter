@@ -235,6 +235,17 @@ int main() {
     ok = check(command.standard_output == "native-cpp", "process stdout") && ok;
     ok = check(command.standard_error == "warning", "process stderr") && ok;
 
+    std::vector<std::string> observed;
+    const CommandResult streamed = run_capture(
+        {"/bin/sh", "-c", "printf '@@ANA' >&2; printf 'LYSIS phase\\nwarning\\n' >&2; printf map-json"},
+        1024U, std::chrono::seconds(5),
+        [&](const std::string& line) { observed.push_back(line); });
+    ok = check(observed == std::vector<std::string>{"@@ANALYSIS phase", "warning"},
+               "stderr observation assembles complete lines") && ok;
+    ok = check(streamed.standard_output == "map-json" &&
+               streamed.standard_error == "@@ANALYSIS phase\nwarning\n",
+               "progress observation preserves separate stdout and stderr") && ok;
+
     const CommandResult exact_limit =
         run_capture({"/bin/sh", "-c", "printf 1234"}, 4U);
     ok = check(exact_limit.standard_output == "1234",

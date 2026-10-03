@@ -546,35 +546,57 @@ static uint64_t catalogue_stream_owner(const NtfsStream *stream) {
         ? stream->base_record : stream->record_number;
 }
 
-static size_t catalogue_logical_stream_parts(const NtfsCatalogue *catalogue,
-                                             const NtfsStream *stream) {
-    size_t count = 0U;
-    const uint64_t owner = catalogue_stream_owner(stream);
-    for (size_t index = 0U; index < catalogue->count; ++index) {
-        const NtfsStream *candidate = &catalogue->items[index];
-        if (catalogue_stream_owner(candidate) != owner ||
-            candidate->attribute_type != stream->attribute_type ||
-            strcmp(candidate->attribute_name, stream->attribute_name) != 0)
-            continue;
-        count++;
-    }
-    return count;
+typedef struct {
+    const NtfsStream *stream;
+    size_t index;
+} LogicalStreamEntry;
+
+static int compare_logical_streams(const void *left, const void *right) {
+    const NtfsStream *a = ((const LogicalStreamEntry *)left)->stream;
+    const NtfsStream *b = ((const LogicalStreamEntry *)right)->stream;
+    const uint64_t ao = catalogue_stream_owner(a), bo = catalogue_stream_owner(b);
+    if (ao != bo) return ao < bo ? -1 : 1;
+    if (a->attribute_type != b->attribute_type)
+        return a->attribute_type < b->attribute_type ? -1 : 1;
+    return strcmp(a->attribute_name, b->attribute_name);
 }
 
-static void qualify_movable_streams(NtfsCatalogue *catalogue) {
+size_t *ntfs_logical_stream_counts(const NtfsCatalogue *catalogue) {
+    size_t entry_bytes = 0U, count_bytes = 0U;
+    if (!infiltratr_size_multiply_checked(catalogue->count, sizeof(LogicalStreamEntry), &entry_bytes) ||
+        !infiltratr_size_multiply_checked(catalogue->count, sizeof(size_t), &count_bytes))
+        ld_die("NTFS logical stream index size overflow");
+    LogicalStreamEntry *entries = ld_xmalloc(entry_bytes);
+    size_t *counts = ld_xmalloc(count_bytes);
+    for (size_t index = 0U; index < catalogue->count; ++index)
+        entries[index] = (LogicalStreamEntry){&catalogue->items[index], index};
+    qsort(entries, catalogue->count, sizeof(*entries), compare_logical_streams);
+    for (size_t first = 0U; first < catalogue->count;) {
+        size_t end = first + 1U;
+        while (end < catalogue->count &&
+               compare_logical_streams(&entries[first], &entries[end]) == 0) ++end;
+        for (size_t index = first; index < end; ++index)
+            counts[entries[index].index] = end - first;
+        first = end;
+    }
+    free(entries);
+    return counts;
+}
+
+static void qualify_movable_streams(NtfsCatalogue *catalogue, const size_t *parts) {
     for (size_t index = 0U; index < catalogue->count; ++index) {
         NtfsStream *stream = &catalogue->items[index];
         if (!stream->movable)
             continue;
         if (stream->lowest_vcn != 0U ||
-            catalogue_logical_stream_parts(catalogue, stream) != 1U)
+            parts[index] != 1U)
             stream->movable = false;
     }
 }
 
 static void aggregate_object_state(NtfsLayout *layout,
                                    NtfsCatalogue *catalogue,
-                                   ObjectVec *objects) {
+                                   ObjectVec *objects, const size_t *parts) {
     for (size_t index = 0; index < catalogue->count; ++index) {
         NtfsStream *stream = &catalogue->items[index];
         const uint64_t owner =
@@ -598,7 +620,7 @@ static void aggregate_object_state(NtfsLayout *layout,
              */
             if (stream_is_fragmented(stream) ||
                 stream->lowest_vcn != 0U ||
-                catalogue_logical_stream_parts(catalogue, stream) != 1U)
+                parts[index] != 1U)
                 object->fragmented = true;
         }
 
@@ -636,8 +658,8 @@ static void aggregate_object_state(NtfsLayout *layout,
     }
 }
 
-int ntfs_scan_catalogue(NtfsVolume *volume, NtfsLayout *layout,
-                        NtfsCatalogue *catalogue, char **error) {
+int ntfs_scan_catalogue_progress(NtfsVolume *volume, NtfsLayout *layout,
+    NtfsCatalogue *catalogue, char **error, NtfsScanProgress progress, void *context) {
     memset(catalogue, 0, sizeof(*catalogue));
     catalogue->growth_10_satisfied = true;
 
@@ -669,6 +691,7 @@ int ntfs_scan_catalogue(NtfsVolume *volume, NtfsLayout *layout,
     if (results == NULL) ld_die("cannot allocate NTFS MFT parse batch");
 
     int result = 0;
+    if (progress != NULL) progress(0U, record_count, context);
     for (uint64_t first = 0U; first < record_count; first += records_per_batch) {
         const uint64_t remaining = record_count - first;
         const size_t count =
@@ -693,11 +716,14 @@ int ntfs_scan_catalogue(NtfsVolume *volume, NtfsLayout *layout,
         for (size_t index = 0; index < count; ++index)
             parsed_record_free(&results[index]);
         if (result != 0) break;
+        if (progress != NULL) progress(first + count, record_count, context);
     }
 
     if (result == 0) {
-        qualify_movable_streams(catalogue);
-    aggregate_object_state(layout, catalogue, &objects);
+        size_t *parts = ntfs_logical_stream_counts(catalogue);
+        qualify_movable_streams(catalogue, parts);
+        aggregate_object_state(layout, catalogue, &objects, parts);
+        free(parts);
         if (catalogue->regular_files == 0U ||
             catalogue->fragmented_directories != 0U)
             catalogue->growth_10_satisfied = false;
@@ -710,6 +736,11 @@ int ntfs_scan_catalogue(NtfsVolume *volume, NtfsLayout *layout,
 
     if (result != 0) ntfs_catalogue_free(catalogue);
     return result;
+}
+
+int ntfs_scan_catalogue(NtfsVolume *volume, NtfsLayout *layout,
+                        NtfsCatalogue *catalogue, char **error) {
+    return ntfs_scan_catalogue_progress(volume, layout, catalogue, error, NULL, NULL);
 }
 
 void ntfs_catalogue_free(NtfsCatalogue *catalogue) {

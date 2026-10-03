@@ -58,8 +58,10 @@ std::runtime_error system_error_code(const char* action, int code) {
 }
 
 void read_stream(int fd, std::string& output, std::size_t limit,
-                 std::atomic<bool>& exceeded) noexcept {
+                 std::atomic<bool>& exceeded,
+                 const std::function<void(const std::string&)>& observer) noexcept {
     std::array<char, 8192> buffer{};
+    std::string line;
     for (;;) {
         const ssize_t count = read(fd, buffer.data(), buffer.size());
         if (count == 0) return;
@@ -68,6 +70,14 @@ void read_stream(int fd, std::string& output, std::size_t limit,
             return;
         }
         const auto amount = static_cast<std::size_t>(count);
+        if (observer) {
+            for (std::size_t index = 0; index < amount; ++index) {
+                if (buffer[index] == '\n') {
+                    try { observer(line); } catch (...) { /* Observation cannot break capture. */ }
+                    line.clear();
+                } else if (line.size() < 4096U) line += buffer[index];
+            }
+        }
         const std::size_t available =
             output.size() < limit ? limit - output.size() : 0U;
         const std::size_t kept = std::min(available, amount);
@@ -94,7 +104,8 @@ void set_run_capture_cancel_flag(
 
 CommandResult run_capture(const std::vector<std::string>& command,
                           std::size_t output_limit,
-                          std::chrono::milliseconds timeout) {
+                          std::chrono::milliseconds timeout,
+                          const std::function<void(const std::string&)>& stderr_line) {
     if (command.empty() || command.front().empty())
         throw std::invalid_argument("cannot run an empty command");
 
@@ -189,10 +200,10 @@ CommandResult run_capture(const std::vector<std::string>& command,
     std::atomic<bool> stderr_exceeded{false};
     std::thread stdout_thread(
         read_stream, stdout_read.get(), std::ref(result.standard_output),
-        output_limit, std::ref(stdout_exceeded));
+        output_limit, std::ref(stdout_exceeded), std::function<void(const std::string&)>{});
     std::thread stderr_thread(
         read_stream, stderr_read.get(), std::ref(result.standard_error),
-        output_limit, std::ref(stderr_exceeded));
+        output_limit, std::ref(stderr_exceeded), std::cref(stderr_line));
 
     const auto started = std::chrono::steady_clock::now();
     bool timed_out = false;

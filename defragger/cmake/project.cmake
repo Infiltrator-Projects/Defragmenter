@@ -611,6 +611,13 @@ if(BUILD_TESTING)
     add_test(NAME linux-defragger-cpp-runtime
         COMMAND linux-defragger-cpp-runtime-test)
 
+    add_executable(linux-defragger-ntfs-stream-index-test tests/test_ntfs_stream_index.c)
+    target_link_libraries(linux-defragger-ntfs-stream-index-test PRIVATE linux-defragger-ntfs-native)
+    target_compile_options(linux-defragger-ntfs-stream-index-test PRIVATE ${LD_WARNING_FLAGS})
+    set_property(TARGET linux-defragger-ntfs-stream-index-test PROPERTY LINKER_LANGUAGE CXX)
+    add_test(NAME linux-defragger-ntfs-stream-index COMMAND linux-defragger-ntfs-stream-index-test)
+    set_tests_properties(linux-defragger-ntfs-stream-index PROPERTIES TIMEOUT 20)
+
     add_executable(linux-defragger-privileged-helper-test
         native/privileged_helper.cpp)
     target_include_directories(linux-defragger-privileged-helper-test PRIVATE
