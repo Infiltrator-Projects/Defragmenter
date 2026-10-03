@@ -21,6 +21,15 @@ struct DesktopAnalysisTest {
         "\"cells\":[{\"start\":0,\"end\":7,\"used\":7,\"free\":1}]}";
 
     DesktopAnalysisTest() {
+        /* Startup checks belong to the shipped desktop, not the retired
+         * Python Gtk.Application lifecycle. */
+        CHECK(desktop.theme_mode_ == INFILTRATR_THEME_NIGHT);
+        const auto* night = infiltratr_theme_resolve(INFILTRATR_THEME_NIGHT, false);
+        CHECK(desktop.palette_->background_rgb == night->background_rgb);
+        CHECK(desktop.palette_->text_rgb == night->text_rgb);
+        auto* icon = gtk_window_get_icon(GTK_WINDOW(desktop.window_));
+        CHECK(icon != nullptr && gdk_pixbuf_get_width(icon) == 96 &&
+              gdk_pixbuf_get_height(icon) == 96);
         DesktopVolume volume;
         volume.path = "/dev/null"; volume.filesystem = "ntfs";
         volume.size = 4096U; volume.image = true; volume.verified = true;
@@ -102,10 +111,15 @@ struct DesktopAnalysisTest {
 }
 
 int main(int argc, char** argv) {
+    gchar* config = g_dir_make_tmp("defragger-desktop-startup-XXXXXX", nullptr);
+    CHECK(config != nullptr && g_setenv("XDG_CONFIG_HOME", config, TRUE));
     gtk_init(&argc, &argv);
+    save_theme_mode(INFILTRATR_THEME_NIGHT);
     DesktopAnalysisTest test;
     g_timeout_add(50U, DesktopAnalysisTest::probe, &test);
     gtk_main();
     CHECK(test.phase == 3U);
+    fs::remove_all(config);
+    g_free(config);
     return 0;
 }

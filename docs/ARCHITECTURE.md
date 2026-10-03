@@ -13,9 +13,7 @@ A dependency is chosen because its contract is stronger for the job, not because
 ## Structure
 
 ```text
-GTK 3 presentation
-        ↓
-Python GTK coordinators / presentation models
+Native C++17 GTK 3 desktop
         ↓
 C++17 application services
 registry / mapper / operation dispatcher / privileged session
@@ -38,10 +36,10 @@ The source tree reflects those responsibilities:
 
 ```text
 defragger/
-├── gui/ui/                 GTK presentation and user interaction
-├── gui/core/               presentation-side protocol/device/path contracts
+├── gui/ui/                 retained presentation fixtures and runtime artwork
+├── gui/core/               retained protocol/device/path fixtures
 ├── gui/filesystems/*/native/ authoritative per-filesystem native engines
-├── native/                 authoritative C++17 registry/control services
+├── native/                 C++17 GTK desktop and registry/control services
 ├── src/core/               filesystem-neutral native C safety/runtime services
 ├── test_media/             destructive sacrificial-media utility
 ├── tests/                  native, filesystem, GUI, safety and release evidence
@@ -116,7 +114,7 @@ The project assumes the kernel, libc, required libraries and storage hardware ho
 
 Common is authoritative for reusable mechanisms whose semantics are genuinely generic. If Defragmenter has a stronger implementation of a generic primitive, the preferred direction is to improve Common until its contract preserves that correctness, performance and resilience, then remove the local duplicate.
 
-For this pin, Common also owns deterministic finite-decimal conversion used by the C++ JSON adapter, checked allocation sizing used by local runtime wrappers, allocation-free key=value line parsing for native journals/manifests, POSIX lexical path joining/concatenation, native typography/structural design identity, immutable MB Corpo asset provenance and the complete layered Linux MBLINK Day/Night semantic role set. The GTK adapter is generated from Common's design JSON and consumes matching titlebar/connection/heading/summary/detail/note/state roles; Test Media consumes the same native design API directly. Defragmenter's no-font-fallback policy remains product-local because the package installs the verified Common-described faces itself. Python is confined to GTK presentation/glue; filesystem analysis, mapping, mutation, durability and capability authority are native.
+For this pin, Common also owns deterministic finite-decimal conversion used by the C++ JSON adapter, checked allocation sizing used by local runtime wrappers, allocation-free key=value line parsing for native journals/manifests, POSIX lexical path joining/concatenation, native typography/structural design identity, immutable MB Corpo asset provenance and the complete layered Linux MBLINK Day/Night semantic role set. The GTK adapter is generated from Common's design JSON and consumes matching titlebar/connection/heading/summary/detail/note/state roles; Test Media consumes the same native design API directly. Defragmenter's no-font-fallback policy remains product-local because the package installs the verified Common-described faces itself. Remaining Python modules are source/test fixtures, with no launcher or application startup path. The GTK desktop, filesystem analysis, mapping, mutation, durability and capability authority are native.
 
 Do not move filesystem policy, target-safety decisions or transaction semantics into Common merely to reduce line count.
 

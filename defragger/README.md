@@ -35,8 +35,8 @@ Unsupported or structurally ambiguous layouts fail closed.
 
 ## Source layout
 
-- `gui/ui/` — GTK presentation, coordinators and user interaction.
-- `gui/core/` — Python presentation-side protocol, device-discovery and path contracts.
+- `gui/ui/` — retained Python presentation fixtures and native desktop artwork.
+- `gui/core/` — retained Python protocol, device-discovery and path fixtures.
 - `gui/filesystems/<format>/native/` — authoritative per-filesystem native implementations.
 - `native/` — authoritative C++17 registry, mapper, operation dispatcher and privileged session.
 - `src/core/` — filesystem-neutral native safety/runtime services.

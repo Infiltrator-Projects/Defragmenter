@@ -23,7 +23,7 @@ Read-only analysis may cover formats for which mutation is intentionally unavail
 
 C remains the default for on-disk codecs, fixed-layout structures, raw filesystem transforms and direct storage work. C++17 is used where deterministic lifetime management, stronger value types or scoped process/protocol ownership materially improve filesystem-neutral application services. C++ must not introduce inheritance or virtual dispatch without a genuine polymorphic requirement, and working C is not converted merely for language uniformity.
 
-The current split keeps raw filesystem writers and the storage-safety core in C. C++17 owns the native application registry, JSON/protocol values, allocation-map translation, operation dispatch, bounded child-process capture and privileged helper session; NTFS plan-database persistence also uses narrow RAII for SQLite/OpenSSL resources. Python is now confined to GTK presentation/glue and consumes native manifests/events rather than carrying filesystem policy or privileged process safety.
+The current split keeps raw filesystem writers and the storage-safety core in C. C++17 owns the native application registry, JSON/protocol values, allocation-map translation, operation dispatch, bounded child-process capture and privileged helper session; NTFS plan-database persistence also uses narrow RAII for SQLite/OpenSSL resources. The installed GTK desktop is native C++17. Remaining Python modules are source/test fixtures; the obsolete Python launcher and application lifecycle have been removed.
 
 Platform libraries and in-process filesystem libraries are used when their documented contract is the stronger engineering choice. External command-line repair or defragmentation programs are not part of production mutation paths.
 

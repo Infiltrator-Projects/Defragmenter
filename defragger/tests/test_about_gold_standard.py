@@ -7,7 +7,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ABOUT = (ROOT / "gui" / "ui" / "about.py").read_text()
 ICON_ASSETS = (ROOT / "gui" / "ui" / "icon_assets.py").read_text()
-APPLICATION = (ROOT / "gui" / "ui" / "application.py").read_text()
 WINDOW = (ROOT / "gui" / "ui" / "window.py").read_text()
 WINDOW_VIEW = (ROOT / "gui" / "ui" / "window_view.py").read_text()
 DESKTOP = (ROOT / "packaging" / "io.github.linuxdefragger.desktop").read_text()
@@ -47,18 +46,13 @@ for required in (
     '"/usr/share/icons/hicolor/96x96/apps/io.github.linuxdefragger.png"',
     '"packaging" / "io.github.linuxdefragger.png"',
     "GdkPixbuf.Pixbuf.new_from_file_at_scale",
-    "GLib.set_prgname(APP_ICON_NAME)",
-    "GLib.set_application_name(APP_NAME)",
-    "Gdk.set_program_class(APP_ICON_NAME)",
-    "Gtk.Window.set_default_icon(icon)",
     "window.set_icon(icon)",
-    "Gtk.Window.set_default_icon_name(APP_ICON_NAME)",
     "window.set_icon_name(APP_ICON_NAME)",
 ):
     assert required in ICON_ASSETS, required
 
-assert "apply_default_window_icon()" in APPLICATION
-assert "configure_desktop_identity()" in APPLICATION
+# Native startup artwork and persisted appearance are exercised by the real
+# GTK desktop C++ regression, rather than the retired Python application.
 assert "StartupWMClass=io.github.linuxdefragger" in DESKTOP
 assert "from .about import SuiteStandardWindowView" in WINDOW
 assert "apply_window_icon(self)" in WINDOW

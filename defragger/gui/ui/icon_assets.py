@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Single runtime authority for Defragmenter application artwork."""
+"""Artwork helpers for retained Python presentation fixtures."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from gi.repository import Gdk, GdkPixbuf, GLib, Gtk
+from gi.repository import GdkPixbuf, GLib, Gtk
 
-from .window_view import APP_ICON_NAME, APP_NAME
+from .window_view import APP_ICON_NAME
 
 
 _MODULE_PATH = Path(__file__).resolve()
@@ -21,13 +21,6 @@ _HICOLOR_ICON_PATH = Path(
 _SOURCE_ICON_PATH = (
     _MODULE_PATH.parents[2] / "packaging" / "io.github.linuxdefragger.png"
 )
-
-
-def configure_desktop_identity() -> None:
-    """Bind GTK/X11 window identity to the installed desktop entry."""
-    GLib.set_prgname(APP_ICON_NAME)
-    GLib.set_application_name(APP_NAME)
-    Gdk.set_program_class(APP_ICON_NAME)
 
 
 def app_icon_paths() -> tuple[Path, ...]:
@@ -74,15 +67,6 @@ def load_app_icon_pixbuf(size: int):
         )
     except GLib.Error:
         return None
-
-
-def apply_default_window_icon() -> None:
-    """Set the process-wide GTK window icon from the approved artwork."""
-    icon = load_app_icon_pixbuf(256)
-    if icon is not None:
-        Gtk.Window.set_default_icon(icon)
-        return
-    Gtk.Window.set_default_icon_name(APP_ICON_NAME)
 
 
 def apply_window_icon(window: Gtk.Window) -> None:

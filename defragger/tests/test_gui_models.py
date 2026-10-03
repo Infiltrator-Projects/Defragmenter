@@ -585,7 +585,6 @@ def test_theme_modes_are_persistent_and_shared_across_windows() -> None:
     about_source = (GUI / "ui" / "about.py").read_text()
     test_media_theme = (ROOT / "test_media" / "test_media_theme.c").read_text()
     view_source = (GUI / "ui" / "window_view.py").read_text()
-    application_source = (GUI / "ui" / "application.py").read_text()
 
     for required in (
         'SYSTEM = "system"',
@@ -666,7 +665,6 @@ def test_theme_modes_are_persistent_and_shared_across_windows() -> None:
     assert "save_theme_mode(mode)" in view_source
     assert "apply_theme(mode)" in view_source
     assert "sync_theme_menu" in view_source
-    assert "apply_theme(load_theme_mode())" in application_source
 
     # Follow-system is policy, not a third palette: host light/dark state
     # must resolve to the exact Common Day or Night palette and update live.
