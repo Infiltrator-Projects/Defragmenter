@@ -5,19 +5,19 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-10-03
 
-Applies to: release version 1.8.0-238
-Audited source commit: 51520cb73964c923e6d9b0df8f1d4f35c51784e8
-Audited release-governance commit: e09599f6c84b31e7f29ec5da9e5f9db23807b9d9
+Applies to: release version 1.8.0-239
+Audited source commit: 195e3eb48299f1fba25eea83082a384ce3a53a67
+Audited release-governance commit: c42c943d1d0d60a55d47cf5e936afbe7ff88b715
 
-This status records the 1.8.0-238 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
+This status records the 1.8.0-239 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
-This document records the completed 1.8.0-238 release safety case and the explicit release decision after warnings-clean qualification. Re-running the release gate uses the audited source baseline named above. Historical audit-development detail remains in Git history and immutable release tags rather than being repeated as a second changelog.
+This document records the completed 1.8.0-239 release safety case and the explicit release decision after warnings-clean qualification. Re-running the release gate uses the audited source baseline named above. Historical audit-development detail remains in Git history and immutable release tags rather than being repeated as a second changelog.
 
 ## Qualification evidence
 
-The current audited production/build/Test-Media source baseline is commit `51520cb73964c923e6d9b0df8f1d4f35c51784e8` for release version 1.8.0-238. Write-capable filesystem engines remain unchanged from the qualified 1.8.0-237 storage baseline. This release corrects the unreadable neutral/default buttons in Test Media modal dialogs and extends the read-only bounded ZFS exact reader to accept valid modern unencrypted ZAP dnode type encodings used by current OpenZFS metadata directories.
+The current audited production/build/Test-Media source baseline is commit `195e3eb48299f1fba25eea83082a384ce3a53a67` for release version 1.8.0-239. Write-capable filesystem engines remain unchanged from the qualified 1.8.0-238 storage baseline. This release removes stale native desktop presentation state left by the earlier renderer, caches the physical allocation raster so ordinary GTK redraws no longer rebuild up to 1,048,576 display cells on the UI thread, aligns Defragmenter and Test Media to the current Infiltrator OS titlebar/navigation metrics, removes duplicated retained theme styling, and advances the exact Infiltratr Common dependency to 1.19.38 at commit `7070c5812b50821fd7580101cb2289a3184f6b2c`. The subsequent governance-only cleanup removes the temporary 1.8.0-239 maintenance/forensic workflows so the permanent quality and release pipelines are again the only active publication controls.
 
 The supplied 1.8.0-237 physical-media rerun proves that the previous UFS creator and main Test Media action-button corrections are active on the target system, while ZFS still stops during exact native qualification. The 1.8.0-237 reader already supports bounded fat/multi-block ZAP block structures, but its dnode admission check still required the historical `DMU_OT_OBJECT_DIRECTORY` value. Current OpenZFS can encode MOS ZAP metadata through the newer `DMU_OTN_ZAP_*` object-type form. The 1.8.0-238 reader recognises the ZAP byteswap class in that modern unencrypted encoding while continuing to reject encrypted or non-ZAP metadata, preserving the same bounded read-only safety contract.
 
@@ -37,7 +37,7 @@ The previously unreported UFS slot also had an independent Test Media oracle def
 
 Hosted and self-hosted regression coverage locks the 21-slot accounting, XFS/Btrfs/ZFS bounded live profiles, UFS boundary-file count, HFS MDB reconciliation and decoded worker status. The destructive physical-media rerun remains environment-dependent evidence: this audit does not represent the hosted suite as proof that a particular MMC/USB device has completed the corrected 21-slot run. Publication remains conditioned on the exact-head warnings-as-errors build, shipped native GTK Xvfb smoke test, complete CTest suite and ASan/UBSan lane.
 
-The release-governance baseline remains `a3c3bf4fed0007178886d411e4172ce2b5302643`. The malformed-media matrix, transaction/recovery tests, native integration fixtures, GUI contract tests, release/package tests and architecture ownership checks remain part of the permanent **Project quality gate**. Environment-dependent destructive-media evidence remains supplementary and is not represented as hosted-CI proof.
+The release-governance baseline is `c42c943d1d0d60a55d47cf5e936afbe7ff88b715`. The malformed-media matrix, transaction/recovery tests, native integration fixtures, GUI contract tests, release/package tests and architecture ownership checks remain part of the permanent **Project quality gate**. Environment-dependent destructive-media evidence remains supplementary and is not represented as hosted-CI proof.
 
 ## Current safety case
 
