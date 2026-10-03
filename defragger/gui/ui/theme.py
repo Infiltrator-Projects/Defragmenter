@@ -115,7 +115,7 @@ def _base_css() -> str:
     return f"""
     * {{ font-family: "{body}"; font-weight: {regular}; }}
     #defrag-shell-header {{
-        min-height: 58px;
+        min-height: 44px;
         padding: 6px 10px;
         background-image: linear-gradient(to right, #06131f, #08263a);
         background-color: #06131f;
@@ -245,15 +245,6 @@ def _night_css() -> str:
         border: 1px solid {p["status_border"]};
     }}
     .volume-selector-kicker {{ color: {p["neutral_accent"]}; }}
-    .hero-drive-badge > border {{
-        background-color: alpha({p["panel"]}, 0.82);
-        border: 1px solid alpha({p["neutral_accent"]}, 0.60);
-    }}
-    .hero-status {{
-        color: {p["success"]};
-        background-color: alpha({p["success"]}, 0.10);
-        border: 1px solid alpha({p["success"]}, 0.45);
-    }}
     .hero-drive-badge > border {{
         background-color: alpha({p["background"]}, 0.72);
         border: 1px solid alpha({p["neutral_accent"]}, 0.70);

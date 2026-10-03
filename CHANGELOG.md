@@ -2,6 +2,21 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-239
+
+- Forensically audit the installed native C++ desktop for stale pre-migration state and remove the unused `map_palette_` path left by the earlier map renderer. Retired Python presentation code remains source/test-only and is not part of the installed runtime.
+- Cache each rendered physical allocation raster by widget size, device scale and map generation. Ordinary GTK expose/redraw events now repaint the cached Cairo surface instead of reparsing and recombining up to 1,048,576 JSON allocation cells on the UI thread.
+- Keep cache invalidation exact for selection, analysis, live-map and appearance changes, preserving the physical-order raster semantics while eliminating redundant redraw work.
+- Align Defragmenter and Test Media to the current Infiltrator OS 44-pixel titlebar and 195-pixel normal navigation-rail standard.
+- Remove a duplicate Night hero-style block from the retained source/test reference theme.
+- Advance the exact Infiltratr Common dependency from 1.19.35 (`7cc5de3de0e94ed2cfcff0840bbb5346eb5c9c9f`) to 1.19.38 (`7070c5812b50821fd7580101cb2289a3184f6b2c`) across CMake, local packaging, documentation and release assertions.
+- No filesystem analyser, writer, placement, transaction or recovery semantics are changed.
+
+## 1.8.0-238
+
+- Accept current unencrypted OpenZFS ZAP-typed dnodes in the bounded exact metadata reader instead of restricting valid ZAP objects to the legacy object type encoding. Encrypted, malformed and unknown metadata remains fail-closed.
+- Keep Test Media confirmation-dialog buttons on explicit Infiltrator dark surfaces in normal, hover, focus/default and disabled states so host GTK dialog styling cannot reintroduce pale unreadable controls.
+
 ## 1.8.0-237
 
 - Extend the bounded native ZFS exact reader to resolve ordinary fat and multi-block ZAP pool/feature directories instead of failing after the micro-ZAP-only path.

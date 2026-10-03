@@ -72,6 +72,23 @@ GtkWidget* section(const char* title, GtkWidget* child) {
 void css_class(GtkWidget* widget, const char* name) {
     gtk_style_context_add_class(gtk_widget_get_style_context(widget), name);
 }
+
+struct MapRasterCache {
+    cairo_surface_t* surface = nullptr;
+    int width = 0;
+    int height = 0;
+    int scale = 1;
+    std::uint64_t generation = 0U;
+};
+
+void destroy_map_raster_cache(gpointer data)
+{
+    auto* cache = static_cast<MapRasterCache*>(data);
+    if (cache == nullptr) return;
+    if (cache->surface != nullptr)
+        cairo_surface_destroy(cache->surface);
+    delete cache;
+}
 fs::path artwork(const char* name) {
     const fs::path installed = fs::path("/usr/lib/linux-defragger/ui/art") / name;
     if (fs::is_regular_file(installed)) return installed;
@@ -419,7 +436,7 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
      */
     css += "headerbar { background: " + chrome_titlebar + "; color: " +
            chrome_heading + "; border-bottom: 1px solid " + chrome_border +
-           "; min-height: 58px; padding: 2px 8px; }\n";
+           "; min-height: 44px; padding: 2px 8px; }\n";
     css += "headerbar button { background: transparent; border: 0; color: " +
            chrome_heading + "; box-shadow: none; padding: 2px; }\n";
     css += ".header-end { margin-left: 10px; }\n";
@@ -591,9 +608,6 @@ public:
         helper_path_ = defragger::resolve_program("helper");
         theme_mode_ = load_theme_mode();
         palette_ = install_style(theme_mode_);
-        map_palette_ = infiltratr_theme_resolve(INFILTRATR_THEME_NIGHT, true);
-        if (map_palette_ == nullptr)
-            throw std::runtime_error("Common map palette is unavailable");
         window_ = gtk_window_new(GTK_WINDOW_TOPLEVEL);
         g_object_set_data(G_OBJECT(window_), "desktop", this);
         gtk_window_set_title(GTK_WINDOW(window_), "Defragmenter");
@@ -670,12 +684,12 @@ public:
 
         auto* paned = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
         gtk_box_pack_start(GTK_BOX(outer), paned, TRUE, TRUE, 0);
-        auto* sidebar = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+        auto* sidebar = gtk_box_new(GTK_ORIENTATION_VERTICAL, 3);
         css_class(sidebar, "sidebar");
-        gtk_container_set_border_width(GTK_CONTAINER(sidebar), 12);
-        gtk_widget_set_size_request(sidebar, 238, -1);
+        gtk_container_set_border_width(GTK_CONTAINER(sidebar), 8);
+        gtk_widget_set_size_request(sidebar, 195, -1);
         gtk_paned_pack1(GTK_PANED(paned), sidebar, FALSE, FALSE);
-        gtk_paned_set_position(GTK_PANED(paned), 238);
+        gtk_paned_set_position(GTK_PANED(paned), 195);
 
         auto* sidebar_brand = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 9);
         auto* sidebar_icon = app_icon_image(52);
@@ -1092,7 +1106,6 @@ private:
     GtkWidget *page_analyse_{}, *page_defrag_{}, *page_growth_{}, *page_recover_{};
     InfiltratrThemeMode theme_mode_ = INFILTRATR_THEME_SYSTEM;
     const InfiltratrThemePalette* palette_ = nullptr;
-    const InfiltratrThemePalette* map_palette_ = nullptr;
     GtkWidget* cards_[4]{};
     GtkWidget* gauges_[3]{};
     double gauge_values_[3]{};
@@ -1115,6 +1128,7 @@ private:
     guint auth_timer_ = 0;
     guint local_stop_timer_ = 0;
     guint selection_analysis_timer_ = 0;
+    std::uint64_t map_generation_ = 1U;
 
     GtkWidget* build_operation_page(
         const char* title,
@@ -1564,6 +1578,8 @@ private:
     }
 
     void queue_maps() {
+        ++map_generation_;
+        if (map_generation_ == 0U) map_generation_ = 1U;
         if (map_ != nullptr) gtk_widget_queue_draw(map_);
         for (auto* widget : detail_maps_)
             if (widget != nullptr) gtk_widget_queue_draw(widget);
@@ -2678,8 +2694,39 @@ private:
         const std::size_t display_count =
             static_cast<std::size_t>(width) *
             static_cast<std::size_t>(height);
-        std::vector<std::uint32_t> pixels(
-            display_count, UINT32_C(0xFF000000) | background);
+
+        auto* cache = static_cast<MapRasterCache*>(
+            g_object_get_data(G_OBJECT(widget), "defrag-map-raster-cache"));
+        if (cache != nullptr && cache->surface != nullptr &&
+            cache->width == width && cache->height == height &&
+            cache->scale == scale &&
+            cache->generation == self->map_generation_) {
+            cairo_set_source_surface(cr, cache->surface, 0.0, 0.0);
+            cairo_paint(cr);
+            return FALSE;
+        }
+        if (cache == nullptr) {
+            cache = new MapRasterCache();
+            g_object_set_data_full(
+                G_OBJECT(widget), "defrag-map-raster-cache", cache,
+                destroy_map_raster_cache);
+        }
+        if (cache->surface != nullptr) {
+            cairo_surface_destroy(cache->surface);
+            cache->surface = nullptr;
+        }
+        cache->surface = cairo_image_surface_create(
+            CAIRO_FORMAT_ARGB32, width, height);
+        if (cairo_surface_status(cache->surface) != CAIRO_STATUS_SUCCESS) {
+            cairo_surface_destroy(cache->surface);
+            cache->surface = nullptr;
+            return FALSE;
+        }
+        auto* pixels = reinterpret_cast<std::uint32_t*>(
+            cairo_image_surface_get_data(cache->surface));
+        std::fill_n(
+            pixels, display_count,
+            UINT32_C(0xFF000000) | background);
 
         const MapDisplayGeometry geometry = self->map_display_geometry();
         if (geometry.exact_subunits) {
@@ -2886,21 +2933,17 @@ private:
             }
         }
 
-        cairo_surface_t* surface =
-            cairo_image_surface_create_for_data(
-                reinterpret_cast<unsigned char*>(pixels.data()),
-                CAIRO_FORMAT_ARGB32,
-                width, height,
-                width * static_cast<int>(sizeof(std::uint32_t)));
-        if (cairo_surface_status(surface) == CAIRO_STATUS_SUCCESS) {
-            cairo_surface_set_device_scale(
-                surface,
-                static_cast<double>(scale),
-                static_cast<double>(scale));
-            cairo_set_source_surface(cr, surface, 0.0, 0.0);
-            cairo_paint(cr);
-        }
-        cairo_surface_destroy(surface);
+        cairo_surface_mark_dirty(cache->surface);
+        cairo_surface_set_device_scale(
+            cache->surface,
+            static_cast<double>(scale),
+            static_cast<double>(scale));
+        cache->width = width;
+        cache->height = height;
+        cache->scale = scale;
+        cache->generation = self->map_generation_;
+        cairo_set_source_surface(cr, cache->surface, 0.0, 0.0);
+        cairo_paint(cr);
         return FALSE;
     }
 };

@@ -214,11 +214,11 @@ def main() -> None:
     assert declared_path == "defragger/shared/infiltratr-common"
 
     common_contract = (
-        ('COMMON_TAG="v1.19.35"', 'INFILTRATR_COMMON_TAG "v1.19.35"'),
-        ('COMMON_VERSION="1.19.35"', 'INFILTRATR_COMMON_EXPECTED_VERSION "1.19.35"'),
+        ('COMMON_TAG="v1.19.38"', 'INFILTRATR_COMMON_TAG "v1.19.38"'),
+        ('COMMON_VERSION="1.19.38"', 'INFILTRATR_COMMON_EXPECTED_VERSION "1.19.38"'),
         (
-            'COMMON_COMMIT="7cc5de3de0e94ed2cfcff0840bbb5346eb5c9c9f"',
-            '7cc5de3de0e94ed2cfcff0840bbb5346eb5c9c9f',
+            'COMMON_COMMIT="7070c5812b50821fd7580101cb2289a3184f6b2c"',
+            '7070c5812b50821fd7580101cb2289a3184f6b2c',
         ),
     )
     for local_required, cmake_required in common_contract:
@@ -232,8 +232,8 @@ def main() -> None:
         assert f"v{stale_version}" not in local_run
         assert f'COMMON_VERSION="{stale_version}"' not in local_run
         assert f"Infiltratr Common {stale_version}" not in design
-    assert "Infiltratr Common 1.19.35" in design
-    assert "7cc5de3de0e94ed2cfcff0840bbb5346eb5c9c9f" in design
+    assert "Infiltratr Common 1.19.38" in design
+    assert "7070c5812b50821fd7580101cb2289a3184f6b2c" in design
 
     for required in (
         "Status: **complete**",

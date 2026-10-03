@@ -28,7 +28,7 @@ void ldtm_apply_mb_theme(void) {
         "window, dialog, .background { background-color: #%06x; }"
         "headerbar, .titlebar { background-image: none; background-color: #%06x; border-bottom: 1px solid #%06x; color: #%06x; box-shadow: none; }"
         "headerbar label, .titlebar label { color: #%06x; font-weight: normal; }"
-        "#ldtm-shell-header { min-height: 58px; padding: 6px 10px; background-image: linear-gradient(to right, #06131f, #08263a); background-color: #06131f; border-bottom: 1px solid #263746; }"
+        "#ldtm-shell-header { min-height: 44px; padding: 6px 10px; background-image: linear-gradient(to right, #06131f, #08263a); background-color: #06131f; border-bottom: 1px solid #263746; }"
         "#ldtm-header-brand { padding: 2px 4px; }"
         "#ldtm-header-brand-icon { background-color: #111820; border: 1px solid #263746; border-radius: 12px; padding: 7px; box-shadow: 0 0 18px alpha(#00adef, 0.18); }"
         "#ldtm-header-brand-icon image { color: #00adef; }"

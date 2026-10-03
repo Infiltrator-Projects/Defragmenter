@@ -646,7 +646,7 @@ def test_theme_modes_are_persistent_and_shared_across_windows() -> None:
         "accent_hover",
     ):
         assert f'p["{role}"]' in theme_source, (
-            f"GTK theme does not consume Common 1.19.35 role {role}"
+            f"GTK theme does not consume Common 1.19.38 role {role}"
         )
     for role in (
         "titlebar_rgb",
@@ -694,7 +694,7 @@ def test_theme_modes_are_persistent_and_shared_across_windows() -> None:
         'gtk_header_bar_pack_end(GTK_HEADER_BAR(header), header_end)',
         'selection_analysis_timer_ = g_idle_add(',
         'std::to_string(desired_map_cells())',
-        'std::vector<std::uint32_t> pixels(',
+        'defrag-map-raster-cache',
         'const std::size_t source_count = self->cells_.size();',
         'const std::size_t display_count',
         'source_count < display_count',
@@ -749,7 +749,8 @@ def test_theme_modes_are_persistent_and_shared_across_windows() -> None:
     native_desktop = (ROOT / "native" / "desktop.cpp").read_text()
     assert "const bool day_mode =" in native_desktop
     assert "infiltratr_theme_resolve(INFILTRATR_THEME_NIGHT, true)" in native_desktop
-    assert "map_palette_" in native_desktop
+    assert "map_palette_" not in native_desktop
+    assert "defrag-map-raster-cache" in native_desktop
     assert "const std::string control_border = day_mode ? border : accent;" in native_desktop
 
 
