@@ -84,6 +84,7 @@ jobs:
           set -euo pipefail
           git config user.name 'Shannon Smith'
           git config user.email 'infiltratr@yandex.com'
+          git restore --staged --worktree --source=HEAD .github/workflows
           git add -A
           git diff --cached --check
           test "$(cat defragger/VERSION)" = '1.8.0-239'
