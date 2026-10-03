@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   local-quality:
-    runs-on: [self-hosted, Linux, X64, linux-native, bigbedroom]
+    runs-on: [self-hosted, Linux, X64, linux-native]
     timeout-minutes: 45
     defaults:
       run:
@@ -46,7 +46,7 @@ jobs:
         shell: bash
         run: |
           set -u
-          commands=(cmake cc c++ make dpkg-deb pkg-config zip unzip python3 makefs udisksctl pkexec)
+          commands=(cmake cc c++ make dpkg-deb pkg-config zip unzip python3 makefs udisksctl pkexec xvfb-run Xvfb xauth)
           missing=()
           for command_name in "${commands[@]}"; do
             command -v "$command_name" >/dev/null 2>&1 || missing+=("$command_name")
@@ -63,15 +63,12 @@ jobs:
             exit 0
           fi
           echo "available=false" >>"$GITHUB_OUTPUT"
-          printf "BigBedroom qualification skipped because this runner is not provisioned.\n" >&2
+          printf "Local qualification cannot run because this runner is missing dependencies.\n" >&2
           ((${#missing[@]})) && printf "Missing commands: %s\n" "${missing[*]}" >&2 || true
           ((${#missing_packages[@]})) && printf "Missing pkg-config packages: %s\n" "${missing_packages[*]}" >&2 || true
           ((python_ok == 0)) && printf "Missing Python GTK test bindings.\n" >&2 || true
+          exit 1
 
-      - name: Record unprovisioned BigBedroom runner
-        if: steps.local-deps.outputs.available != 'true'
-        run: |
-          printf '%s\n' 'Local heavy qualification was not executed on this runner; hosted mandatory qualification still runs for this commit.'
       - name: Build first-party C/C++ with warnings as errors
         if: steps.local-deps.outputs.available == 'true'
         run: |
@@ -115,3 +112,4 @@ jobs:
           python3 tests/test_architecture.py
           python3 tests/test_btrfs_architecture.py
           python3 tests/test_release_gate.py
+
