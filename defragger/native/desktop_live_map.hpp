@@ -7,8 +7,9 @@
 
 namespace defragger {
 
-// Apply worker events to the same allocation schema returned by the mapper.
-// The map and cells are updated together only after the event is validated.
+// Apply worker events to the validated allocation schema returned by the mapper.
+// Whole-map resets remain transactional; range/cell events stage only the cells
+// they touch and publish those sparse patches after the complete event validates.
 void desktop_live_reset(Json& map, std::vector<Json>& cells, const Json& payload);
 void desktop_live_ranges(const Json& map, std::vector<Json>& cells,
                          const Json& payload, bool plural);
