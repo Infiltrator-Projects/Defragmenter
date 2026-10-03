@@ -81,6 +81,13 @@ struct MapRasterCache {
     std::uint64_t generation = 0U;
 };
 
+struct RasterImageCache {
+    GdkPixbuf* source = nullptr;
+    GdkPixbuf* scaled = nullptr;
+    int width = 0;
+    int height = 0;
+};
+
 void destroy_map_raster_cache(gpointer data)
 {
     auto* cache = static_cast<MapRasterCache*>(data);
@@ -95,6 +102,58 @@ fs::path artwork(const char* name) {
     const auto local = fs::path("defragger/gui/ui/art") / name;
     if (fs::is_regular_file(local)) return local;
     return {};
+}
+
+void destroy_raster_image_cache(gpointer data)
+{
+    auto* cache = static_cast<RasterImageCache*>(data);
+    if (cache == nullptr) return;
+    if (cache->source != nullptr) g_object_unref(cache->source);
+    if (cache->scaled != nullptr) g_object_unref(cache->scaled);
+    delete cache;
+}
+
+GdkPixbuf* scaled_cover_pixbuf(
+    GtkWidget* widget, const char* asset_name, const char* cache_key,
+    int width, int height)
+{
+    auto* cache = static_cast<RasterImageCache*>(
+        g_object_get_data(G_OBJECT(widget), cache_key));
+    if (cache == nullptr) {
+        cache = new RasterImageCache();
+        g_object_set_data_full(
+            G_OBJECT(widget), cache_key, cache,
+            destroy_raster_image_cache);
+    }
+    if (cache->source == nullptr) {
+        const fs::path path = artwork(asset_name);
+        if (path.empty()) return nullptr;
+        GError* failure = nullptr;
+        cache->source = gdk_pixbuf_new_from_file(path.string().c_str(), &failure);
+        if (failure != nullptr) g_error_free(failure);
+        if (cache->source == nullptr) return nullptr;
+    }
+    if (cache->scaled != nullptr &&
+        cache->width == width && cache->height == height)
+        return cache->scaled;
+    if (cache->scaled != nullptr) {
+        g_object_unref(cache->scaled);
+        cache->scaled = nullptr;
+    }
+    const int source_width = std::max(1, gdk_pixbuf_get_width(cache->source));
+    const int source_height = std::max(1, gdk_pixbuf_get_height(cache->source));
+    const double scale = std::max(
+        static_cast<double>(width) / source_width,
+        static_cast<double>(height) / source_height);
+    const int scaled_width = std::max(
+        1, static_cast<int>(source_width * scale + 0.5));
+    const int scaled_height = std::max(
+        1, static_cast<int>(source_height * scale + 0.5));
+    cache->scaled = gdk_pixbuf_scale_simple(
+        cache->source, scaled_width, scaled_height, GDK_INTERP_BILINEAR);
+    cache->width = width;
+    cache->height = height;
+    return cache->scaled;
 }
 
 GtkWidget* app_icon_image(int size)
@@ -152,53 +211,25 @@ gboolean draw_hero_art(GtkWidget* widget, cairo_t* cr, gpointer) {
     cairo_set_source_rgb(cr, 0.018, 0.028, 0.045);
     cairo_paint(cr);
 
-    auto* source = static_cast<GdkPixbuf*>(
-        g_object_get_data(G_OBJECT(widget), "hero-source"));
-    if (source == nullptr) {
-        const fs::path path = artwork("hero-landscape.jpg");
-        if (!path.empty()) {
-            GError* failure = nullptr;
-            source = gdk_pixbuf_new_from_file(path.string().c_str(), &failure);
-            if (failure != nullptr) g_error_free(failure);
-            if (source != nullptr)
-                g_object_set_data_full(
-                    G_OBJECT(widget), "hero-source", source,
-                    reinterpret_cast<GDestroyNotify>(g_object_unref));
-        }
+    const int destination_width = std::max(1, width * 68 / 100);
+    auto* scaled = scaled_cover_pixbuf(
+        widget, "hero-landscape.jpg", "hero-image-cache",
+        destination_width, height);
+    if (scaled != nullptr) {
+        const int scaled_width = gdk_pixbuf_get_width(scaled);
+        const int scaled_height = gdk_pixbuf_get_height(scaled);
+        const double x = width - destination_width +
+                         (destination_width - scaled_width) / 2.0;
+        const double y = (height - scaled_height) / 2.0;
+        cairo_save(cr);
+        cairo_rectangle(cr, width - destination_width, 0,
+                        destination_width, height);
+        cairo_clip(cr);
+        gdk_cairo_set_source_pixbuf(cr, scaled, x, y);
+        cairo_paint(cr);
+        cairo_restore(cr);
     }
 
-    if (source != nullptr) {
-        const int destination_width = std::max(1, width * 68 / 100);
-        const int source_width = std::max(1, gdk_pixbuf_get_width(source));
-        const int source_height = std::max(1, gdk_pixbuf_get_height(source));
-        const double scale = std::max(
-            static_cast<double>(destination_width) / source_width,
-            static_cast<double>(height) / source_height);
-        const int scaled_width =
-            std::max(1, static_cast<int>(source_width * scale + 0.5));
-        const int scaled_height =
-            std::max(1, static_cast<int>(source_height * scale + 0.5));
-        auto* scaled = gdk_pixbuf_scale_simple(
-            source, scaled_width, scaled_height, GDK_INTERP_BILINEAR);
-        if (scaled != nullptr) {
-            const double x =
-                width - destination_width +
-                (destination_width - scaled_width) / 2.0;
-            const double y = (height - scaled_height) / 2.0;
-            cairo_save(cr);
-            cairo_rectangle(
-                cr, width - destination_width, 0,
-                destination_width, height);
-            cairo_clip(cr);
-            gdk_cairo_set_source_pixbuf(cr, scaled, x, y);
-            cairo_paint(cr);
-            cairo_restore(cr);
-            g_object_unref(scaled);
-        }
-    }
-
-    // A subtle left-to-right veil makes selected-volume text readable without
-    // muting the landscape on the right.
     cairo_pattern_t* veil =
         cairo_pattern_create_linear(0.0, 0.0, width * 0.78, 0.0);
     cairo_pattern_add_color_stop_rgba(
@@ -222,36 +253,11 @@ gboolean draw_raster_cover(
     gtk_widget_get_allocation(widget, &allocation);
     const int width = std::max(1, allocation.width);
     const int height = std::max(1, allocation.height);
-
-    auto* source = static_cast<GdkPixbuf*>(
-        g_object_get_data(G_OBJECT(widget), cache_key));
-    if (source == nullptr) {
-        const fs::path path = artwork(asset_name);
-        if (!path.empty()) {
-            GError* failure = nullptr;
-            source = gdk_pixbuf_new_from_file(path.string().c_str(), &failure);
-            if (failure != nullptr) g_error_free(failure);
-            if (source != nullptr)
-                g_object_set_data_full(
-                    G_OBJECT(widget), cache_key, source,
-                    reinterpret_cast<GDestroyNotify>(g_object_unref));
-        }
-    }
-    if (source == nullptr) return FALSE;
-
-    const int source_width = std::max(1, gdk_pixbuf_get_width(source));
-    const int source_height = std::max(1, gdk_pixbuf_get_height(source));
-    const double scale = std::max(
-        static_cast<double>(width) / source_width,
-        static_cast<double>(height) / source_height);
-    const int scaled_width =
-        std::max(1, static_cast<int>(source_width * scale + 0.5));
-    const int scaled_height =
-        std::max(1, static_cast<int>(source_height * scale + 0.5));
-    auto* scaled = gdk_pixbuf_scale_simple(
-        source, scaled_width, scaled_height, GDK_INTERP_BILINEAR);
+    auto* scaled = scaled_cover_pixbuf(
+        widget, asset_name, cache_key, width, height);
     if (scaled == nullptr) return FALSE;
-
+    const int scaled_width = gdk_pixbuf_get_width(scaled);
+    const int scaled_height = gdk_pixbuf_get_height(scaled);
     const double x = (width - scaled_width) / 2.0;
     const double y = (height - scaled_height) / 2.0;
     cairo_save(cr);
@@ -260,7 +266,6 @@ gboolean draw_raster_cover(
     gdk_cairo_set_source_pixbuf(cr, scaled, x, y);
     cairo_paint(cr);
     cairo_restore(cr);
-    g_object_unref(scaled);
     return FALSE;
 }
 
@@ -624,7 +629,7 @@ public:
         auto* header = gtk_header_bar_new();
         gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(header), FALSE);
         gtk_header_bar_set_custom_title(GTK_HEADER_BAR(header), gtk_label_new(""));
-        gtk_widget_set_size_request(header, -1, 58);
+        gtk_widget_set_size_request(header, -1, 44);
         auto* brand = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 9);
         auto* icon = app_icon_image(32);
         gtk_box_pack_start(GTK_BOX(brand), icon, FALSE, FALSE, 0);
@@ -738,7 +743,7 @@ public:
             "Appearance and preferences", "page-settings", false);
 
         auto* sidebar_art = gtk_drawing_area_new();
-        gtk_widget_set_size_request(sidebar_art, 210, 160);
+        gtk_widget_set_size_request(sidebar_art, 179, 136);
         gtk_widget_set_halign(sidebar_art, GTK_ALIGN_CENTER);
         gtk_widget_set_valign(sidebar_art, GTK_ALIGN_END);
         gtk_widget_set_hexpand(sidebar_art, FALSE);

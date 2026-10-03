@@ -98,14 +98,13 @@ static void show_message(GtkWindow *parent, GtkMessageType type,
 
 static void append_log(LdtmApp *app, const char *text) {
     GtkTextIter end;
-    GtkTextMark *mark;
     GtkTextView *view = GTK_TEXT_VIEW(g_object_get_data(G_OBJECT(app->log_buffer), "view"));
     gtk_text_buffer_get_end_iter(app->log_buffer, &end);
     gtk_text_buffer_insert(app->log_buffer, &end, text, -1);
-    gtk_text_buffer_get_end_iter(app->log_buffer, &end);
-    mark = gtk_text_buffer_create_mark(app->log_buffer, NULL, &end, FALSE);
-    if (view != NULL) gtk_text_view_scroll_mark_onscreen(view, mark);
-    gtk_text_buffer_delete_mark(app->log_buffer, mark);
+    if (view != NULL) {
+        gtk_text_buffer_get_end_iter(app->log_buffer, &end);
+        gtk_text_view_scroll_to_iter(view, &end, 0.0, FALSE, 0.0, 0.0);
+    }
 }
 
 static const char *display_result(const char *status) {
@@ -197,8 +196,9 @@ static void parse_worker_status(LdtmApp *app, const char *line) {
 
 static gboolean channel_watch(GIOChannel *channel, GIOCondition condition, gpointer user_data) {
     LdtmApp *app = (LdtmApp *)user_data;
+    guint lines = 0U;
     if ((condition & (G_IO_IN | G_IO_HUP)) != 0) {
-        for (;;) {
+        while (lines < 64U) {
             gchar *line = NULL;
             gsize length = 0U;
             GIOStatus status = g_io_channel_read_line(channel, &line, &length, NULL, NULL);
@@ -207,12 +207,14 @@ static gboolean channel_watch(GIOChannel *channel, GIOCondition condition, gpoin
                 append_log(app, line);
                 parse_worker_status(app, line);
                 g_free(line);
+                ++lines;
                 continue;
             }
             g_free(line);
             if (status == G_IO_STATUS_AGAIN) return TRUE;
             break;
         }
+        if (lines == 64U) return TRUE;
     }
     return (condition & (G_IO_ERR | G_IO_NVAL | G_IO_HUP)) == 0;
 }

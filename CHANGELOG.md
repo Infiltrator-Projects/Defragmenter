@@ -2,6 +2,14 @@
 
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
+## 1.8.0-240
+
+- Cache hero, drive and sidebar raster artwork at the current widget geometry instead of bilinear-rescaling it on every GTK expose/redraw.
+- Bound Test Media child stdout/stderr processing to 64 lines per main-loop dispatch and remove per-line temporary text-mark allocation so sustained qualification output cannot monopolise the GTK thread.
+- Remove the final stale Infiltrator OS geometry holdovers: the native header widget is actually 44 px, and sidebar artwork fits inside the 195 px navigation rail instead of requesting 210 px and expanding it.
+- Reverify the dependency against current Infiltratr Common main: Common remains 1.19.38 at exact commit `7070c5812b50821fd7580101cb2289a3184f6b2c`, so no Common bump is required.
+- Keep the Python GUI/reference layer source-only for regression compatibility; shipped packages and the local installer continue to exclude Python sources and run the native C/C++ desktop.
+
 ## 1.8.0-239
 
 - Forensically audit the installed native C++ desktop for stale pre-migration state and remove the unused `map_palette_` path left by the earlier map renderer. Retired Python presentation code remains source/test-only and is not part of the installed runtime.
