@@ -5,19 +5,19 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-10-03
 
-Applies to: release version 1.8.0-239
-Audited source commit: 195e3eb48299f1fba25eea83082a384ce3a53a67
-Audited release-governance commit: c42c943d1d0d60a55d47cf5e936afbe7ff88b715
+Applies to: release version 1.8.0-240
+Audited source commit: 54803a734c88501f9f1578b803e00a5f085da254
+Audited release-governance commit: 54803a734c88501f9f1578b803e00a5f085da254
 
-This status records the 1.8.0-239 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
+This status records the 1.8.0-240 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
-This document records the completed 1.8.0-239 release safety case and the explicit release decision after warnings-clean qualification. Re-running the release gate uses the audited source baseline named above. Historical audit-development detail remains in Git history and immutable release tags rather than being repeated as a second changelog.
+This document records the completed 1.8.0-240 release safety case and the explicit release decision after warnings-clean qualification. Re-running the release gate uses the audited source baseline named above. Historical audit-development detail remains in Git history and immutable release tags rather than being repeated as a second changelog.
 
 ## Qualification evidence
 
-The current audited production/build/Test-Media source baseline is commit `195e3eb48299f1fba25eea83082a384ce3a53a67` for release version 1.8.0-239. Write-capable filesystem engines remain unchanged from the qualified 1.8.0-238 storage baseline. This release removes stale native desktop presentation state left by the earlier renderer, caches the physical allocation raster so ordinary GTK redraws no longer rebuild up to 1,048,576 display cells on the UI thread, aligns Defragmenter and Test Media to the current Infiltrator OS titlebar/navigation metrics, removes duplicated retained theme styling, and advances the exact Infiltratr Common dependency to 1.19.38 at commit `7070c5812b50821fd7580101cb2289a3184f6b2c`. The subsequent governance-only cleanup removes the temporary 1.8.0-239 maintenance/forensic workflows so the permanent quality and release pipelines are again the only active publication controls.
+The current audited production/build/Test-Media source baseline is commit `54803a734c88501f9f1578b803e00a5f085da254` for release version 1.8.0-240. Write-capable filesystem engines are unchanged from the qualified 1.8.0-239 storage baseline. This pass removes the remaining UI-thread redraw waste after the allocation-map cache: static hero/drive/sidebar imagery is geometry-cached, Test Media bounds child-output work per GTK dispatch, and the 58 px header / 210 px sidebar-art holdovers are aligned to the 44 px titlebar and 195 px Infiltrator OS navigation rail. The production dependency remains current Infiltratr Common 1.19.38 at exact commit `7070c5812b50821fd7580101cb2289a3184f6b2c`; current Common main is the same commit.
 
 The supplied 1.8.0-237 physical-media rerun proves that the previous UFS creator and main Test Media action-button corrections are active on the target system, while ZFS still stops during exact native qualification. The 1.8.0-237 reader already supports bounded fat/multi-block ZAP block structures, but its dnode admission check still required the historical `DMU_OT_OBJECT_DIRECTORY` value. Current OpenZFS can encode MOS ZAP metadata through the newer `DMU_OTN_ZAP_*` object-type form. The 1.8.0-238 reader recognises the ZAP byteswap class in that modern unencrypted encoding while continuing to reject encrypted or non-ZAP metadata, preserving the same bounded read-only safety contract.
 
