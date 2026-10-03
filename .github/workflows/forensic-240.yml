@@ -1,0 +1,410 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Defragmenter 1.8.0-240 forensic cleanup
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.head_commit.message == 'Run Defragmenter 1.8.0-240 forensic responsiveness cleanup'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out exact main
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Apply audited native UI responsiveness cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path('.')
+          desktop_path = root / 'defragger/native/desktop.cpp'
+          desktop = desktop_path.read_text()
+
+          def one(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one match, found {count}')
+              return text.replace(old, new, 1)
+
+          cache_anchor = '''void destroy_map_raster_cache(gpointer data)
+          {
+              auto* cache = static_cast<MapRasterCache*>(data);
+              if (cache == nullptr) return;
+              if (cache->surface != nullptr)
+                  cairo_surface_destroy(cache->surface);
+              delete cache;
+          }
+          '''
+          cache_insert = cache_anchor + '''
+          struct RasterImageCache {
+              GdkPixbuf* source = nullptr;
+              GdkPixbuf* scaled = nullptr;
+              int width = 0;
+              int height = 0;
+          };
+
+          void destroy_raster_image_cache(gpointer data)
+          {
+              auto* cache = static_cast<RasterImageCache*>(data);
+              if (cache == nullptr) return;
+              if (cache->source != nullptr) g_object_unref(cache->source);
+              if (cache->scaled != nullptr) g_object_unref(cache->scaled);
+              delete cache;
+          }
+
+          GdkPixbuf* scaled_cover_pixbuf(
+              GtkWidget* widget, const char* asset_name, const char* cache_key,
+              int width, int height)
+          {
+              auto* cache = static_cast<RasterImageCache*>(
+                  g_object_get_data(G_OBJECT(widget), cache_key));
+              if (cache == nullptr) {
+                  cache = new RasterImageCache();
+                  g_object_set_data_full(
+                      G_OBJECT(widget), cache_key, cache,
+                      destroy_raster_image_cache);
+              }
+
+              if (cache->source == nullptr) {
+                  const fs::path path = artwork(asset_name);
+                  if (path.empty()) return nullptr;
+                  GError* failure = nullptr;
+                  cache->source = gdk_pixbuf_new_from_file(
+                      path.string().c_str(), &failure);
+                  if (failure != nullptr) g_error_free(failure);
+                  if (cache->source == nullptr) return nullptr;
+              }
+
+              if (cache->scaled != nullptr &&
+                  cache->width == width && cache->height == height)
+                  return cache->scaled;
+
+              if (cache->scaled != nullptr) {
+                  g_object_unref(cache->scaled);
+                  cache->scaled = nullptr;
+              }
+
+              const int source_width =
+                  std::max(1, gdk_pixbuf_get_width(cache->source));
+              const int source_height =
+                  std::max(1, gdk_pixbuf_get_height(cache->source));
+              const double scale = std::max(
+                  static_cast<double>(width) / source_width,
+                  static_cast<double>(height) / source_height);
+              const int scaled_width = std::max(
+                  1, static_cast<int>(source_width * scale + 0.5));
+              const int scaled_height = std::max(
+                  1, static_cast<int>(source_height * scale + 0.5));
+              cache->scaled = gdk_pixbuf_scale_simple(
+                  cache->source, scaled_width, scaled_height,
+                  GDK_INTERP_BILINEAR);
+              cache->width = width;
+              cache->height = height;
+              return cache->scaled;
+          }
+          '''
+          desktop = one(desktop, cache_anchor, cache_insert,
+                        'raster image cache helper')
+
+          old_hero = '''    auto* source = static_cast<GdkPixbuf*>(
+              g_object_get_data(G_OBJECT(widget), "hero-source"));
+              if (source == nullptr) {
+                  const fs::path path = artwork("hero-landscape.jpg");
+                  if (!path.empty()) {
+                      GError* failure = nullptr;
+                      source = gdk_pixbuf_new_from_file(path.string().c_str(), &failure);
+                      if (failure != nullptr) g_error_free(failure);
+                      if (source != nullptr)
+                          g_object_set_data_full(
+                              G_OBJECT(widget), "hero-source", source,
+                              reinterpret_cast<GDestroyNotify>(g_object_unref));
+                  }
+              }
+
+              if (source != nullptr) {
+                  const int destination_width = std::max(1, width * 68 / 100);
+                  const int source_width = std::max(1, gdk_pixbuf_get_width(source));
+                  const int source_height = std::max(1, gdk_pixbuf_get_height(source));
+                  const double scale = std::max(
+                      static_cast<double>(destination_width) / source_width,
+                      static_cast<double>(height) / source_height);
+                  const int scaled_width =
+                      std::max(1, static_cast<int>(source_width * scale + 0.5));
+                  const int scaled_height =
+                      std::max(1, static_cast<int>(source_height * scale + 0.5));
+                  auto* scaled = gdk_pixbuf_scale_simple(
+                      source, scaled_width, scaled_height, GDK_INTERP_BILINEAR);
+                  if (scaled != nullptr) {
+                      const double x =
+                          width - destination_width +
+                          (destination_width - scaled_width) / 2.0;
+                      const double y = (height - scaled_height) / 2.0;
+                      cairo_save(cr);
+                      cairo_rectangle(
+                          cr, width - destination_width, 0,
+                          destination_width, height);
+                      cairo_clip(cr);
+                      gdk_cairo_set_source_pixbuf(cr, scaled, x, y);
+                      cairo_paint(cr);
+                      cairo_restore(cr);
+                      g_object_unref(scaled);
+                  }
+              }
+          '''
+          new_hero = '''    const int destination_width = std::max(1, width * 68 / 100);
+              auto* scaled = scaled_cover_pixbuf(
+                  widget, "hero-landscape.jpg", "hero-image-cache",
+                  destination_width, height);
+              if (scaled != nullptr) {
+                  const int scaled_width = gdk_pixbuf_get_width(scaled);
+                  const int scaled_height = gdk_pixbuf_get_height(scaled);
+                  const double x =
+                      width - destination_width +
+                      (destination_width - scaled_width) / 2.0;
+                  const double y = (height - scaled_height) / 2.0;
+                  cairo_save(cr);
+                  cairo_rectangle(
+                      cr, width - destination_width, 0,
+                      destination_width, height);
+                  cairo_clip(cr);
+                  gdk_cairo_set_source_pixbuf(cr, scaled, x, y);
+                  cairo_paint(cr);
+                  cairo_restore(cr);
+              }
+          '''
+          desktop = one(desktop, old_hero, new_hero,
+                        'hero redraw scaling')
+
+          old_cover = '''    auto* source = static_cast<GdkPixbuf*>(
+              g_object_get_data(G_OBJECT(widget), cache_key));
+              if (source == nullptr) {
+                  const fs::path path = artwork(asset_name);
+                  if (!path.empty()) {
+                      GError* failure = nullptr;
+                      source = gdk_pixbuf_new_from_file(path.string().c_str(), &failure);
+                      if (failure != nullptr) g_error_free(failure);
+                      if (source != nullptr)
+                          g_object_set_data_full(
+                              G_OBJECT(widget), cache_key, source,
+                              reinterpret_cast<GDestroyNotify>(g_object_unref));
+                  }
+              }
+              if (source == nullptr) return FALSE;
+
+              const int source_width = std::max(1, gdk_pixbuf_get_width(source));
+              const int source_height = std::max(1, gdk_pixbuf_get_height(source));
+              const double scale = std::max(
+                  static_cast<double>(width) / source_width,
+                  static_cast<double>(height) / source_height);
+              const int scaled_width =
+                  std::max(1, static_cast<int>(source_width * scale + 0.5));
+              const int scaled_height =
+                  std::max(1, static_cast<int>(source_height * scale + 0.5));
+              auto* scaled = gdk_pixbuf_scale_simple(
+                  source, scaled_width, scaled_height, GDK_INTERP_BILINEAR);
+              if (scaled == nullptr) return FALSE;
+
+              const double x = (width - scaled_width) / 2.0;
+              const double y = (height - scaled_height) / 2.0;
+              cairo_save(cr);
+              cairo_rectangle(cr, 0, 0, width, height);
+              cairo_clip(cr);
+              gdk_cairo_set_source_pixbuf(cr, scaled, x, y);
+              cairo_paint(cr);
+              cairo_restore(cr);
+              g_object_unref(scaled);
+              return FALSE;
+          '''
+          new_cover = '''    auto* scaled = scaled_cover_pixbuf(
+                  widget, asset_name, cache_key, width, height);
+              if (scaled == nullptr) return FALSE;
+
+              const int scaled_width = gdk_pixbuf_get_width(scaled);
+              const int scaled_height = gdk_pixbuf_get_height(scaled);
+              const double x = (width - scaled_width) / 2.0;
+              const double y = (height - scaled_height) / 2.0;
+              cairo_save(cr);
+              cairo_rectangle(cr, 0, 0, width, height);
+              cairo_clip(cr);
+              gdk_cairo_set_source_pixbuf(cr, scaled, x, y);
+              cairo_paint(cr);
+              cairo_restore(cr);
+              return FALSE;
+          '''
+          desktop = one(desktop, old_cover, new_cover,
+                        'generic artwork redraw scaling')
+
+          desktop = one(
+              desktop,
+              '        gtk_widget_set_size_request(header, -1, 58);\n',
+              '        gtk_widget_set_size_request(header, -1, 44);\n',
+              'native titlebar widget height')
+          desktop = one(
+              desktop,
+              '        gtk_widget_set_size_request(sidebar_art, 210, 160);\n',
+              '        gtk_widget_set_size_request(sidebar_art, 179, 136);\n',
+              'sidebar artwork width')
+          desktop_path.write_text(desktop)
+
+          test_media_path = root / 'defragger/test_media/test_media_gui.c'
+          test_media = test_media_path.read_text()
+          old_append = '''static void append_log(LdtmApp *app, const char *text) {
+              GtkTextIter end;
+              GtkTextMark *mark;
+              GtkTextView *view = GTK_TEXT_VIEW(g_object_get_data(G_OBJECT(app->log_buffer), "view"));
+              gtk_text_buffer_get_end_iter(app->log_buffer, &end);
+              gtk_text_buffer_insert(app->log_buffer, &end, text, -1);
+              gtk_text_buffer_get_end_iter(app->log_buffer, &end);
+              mark = gtk_text_buffer_create_mark(app->log_buffer, NULL, &end, FALSE);
+              if (view != NULL) gtk_text_view_scroll_mark_onscreen(view, mark);
+              gtk_text_buffer_delete_mark(app->log_buffer, mark);
+          }
+          '''
+          new_append = '''static void append_log(LdtmApp *app, const char *text) {
+              GtkTextIter end;
+              GtkTextView *view = GTK_TEXT_VIEW(g_object_get_data(G_OBJECT(app->log_buffer), "view"));
+              gtk_text_buffer_get_end_iter(app->log_buffer, &end);
+              gtk_text_buffer_insert(app->log_buffer, &end, text, -1);
+              if (view != NULL) {
+                  gtk_text_buffer_get_end_iter(app->log_buffer, &end);
+                  gtk_text_view_scroll_to_iter(view, &end, 0.0, FALSE, 0.0, 0.0);
+              }
+          }
+          '''
+          test_media = one(test_media, old_append, new_append,
+                           'test-media log scrolling')
+
+          old_watch = '''static gboolean channel_watch(GIOChannel *channel, GIOCondition condition, gpointer user_data) {
+              LdtmApp *app = (LdtmApp *)user_data;
+              if ((condition & (G_IO_IN | G_IO_HUP)) != 0) {
+                  for (;;) {
+                      gchar *line = NULL;
+                      gsize length = 0U;
+                      GIOStatus status = g_io_channel_read_line(channel, &line, &length, NULL, NULL);
+                      if (status == G_IO_STATUS_NORMAL && line != NULL) {
+                          (void)length;
+                          append_log(app, line);
+                          parse_worker_status(app, line);
+                          g_free(line);
+                          continue;
+                      }
+                      g_free(line);
+                      if (status == G_IO_STATUS_AGAIN) return TRUE;
+                      break;
+                  }
+              }
+              return (condition & (G_IO_ERR | G_IO_NVAL | G_IO_HUP)) == 0;
+          }
+          '''
+          new_watch = '''static gboolean channel_watch(GIOChannel *channel, GIOCondition condition, gpointer user_data) {
+              LdtmApp *app = (LdtmApp *)user_data;
+              guint lines = 0U;
+              if ((condition & (G_IO_IN | G_IO_HUP)) != 0) {
+                  while (lines < 64U) {
+                      gchar *line = NULL;
+                      gsize length = 0U;
+                      GIOStatus status = g_io_channel_read_line(channel, &line, &length, NULL, NULL);
+                      if (status == G_IO_STATUS_NORMAL && line != NULL) {
+                          (void)length;
+                          append_log(app, line);
+                          parse_worker_status(app, line);
+                          g_free(line);
+                          ++lines;
+                          continue;
+                      }
+                      g_free(line);
+                      if (status == G_IO_STATUS_AGAIN) return TRUE;
+                      break;
+                  }
+                  if (lines == 64U)
+                      return TRUE;
+              }
+              return (condition & (G_IO_ERR | G_IO_NVAL | G_IO_HUP)) == 0;
+          }
+          '''
+          test_media = one(test_media, old_watch, new_watch,
+                           'test-media bounded IO dispatch')
+          test_media_path.write_text(test_media)
+
+          version = root / 'defragger/VERSION'
+          if version.read_text().strip() != '1.8.0-239':
+              raise SystemExit('unexpected VERSION before 1.8.0-240')
+          version.write_text('1.8.0-240\n')
+
+          changelog = root / 'CHANGELOG.md'
+          text = changelog.read_text()
+          marker = '## 1.8.0-239\n'
+          if text.count(marker) != 1:
+              raise SystemExit('1.8.0-239 changelog marker missing')
+          entry = '''## 1.8.0-240
+
+          - Complete the native responsiveness pass by caching hero, drive and sidebar artwork at the current widget geometry instead of bilinear-rescaling raster assets on every GTK expose/redraw.
+          - Bound Test Media stdout/stderr processing to 64 lines per main-loop dispatch so sustained qualification output cannot monopolise the GTK thread, and remove the per-line temporary text-mark allocation from log autoscroll.
+          - Correct two stale Infiltrator OS geometry holdovers left after 1.8.0-239: the native header widget itself is now 44 px rather than merely styling a 58 px widget as 44 px, and sidebar artwork fits inside the 195 px navigation rail instead of requesting 210 px and forcing the rail wider.
+          - Reverify the exact Infiltratr Common dependency against current Common main: 1.19.38 at `7070c5812b50821fd7580101cb2289a3184f6b2c`; no newer Common revision exists to consume.
+          - Retain the source-only Python compatibility/reference layer for regression coverage, but the shipped desktop/runtime remains wholly native C/C++ and local-release packaging continues to exclude Python sources.
+
+          '''
+          changelog.write_text(text.replace(marker, entry + marker, 1))
+          PY
+
+          git rm .github/workflows/forensic-240.yml
+          git config user.name "Shannon Smith"
+          git config user.email "infiltratr@yandex.com"
+          git add defragger/native/desktop.cpp defragger/test_media/test_media_gui.c defragger/VERSION CHANGELOG.md
+          git commit -m "Complete Defragmenter 1.8.0-240 forensic responsiveness cleanup"
+          CODE_SHA=$(git rev-parse HEAD)
+
+          python3 - "$CODE_SHA" <<'PY'
+          from pathlib import Path
+          import sys
+
+          sha = sys.argv[1]
+          path = Path('docs/AUDIT_STATUS.md')
+          text = path.read_text()
+          text = text.replace('Applies to: release version 1.8.0-239',
+                              'Applies to: release version 1.8.0-240', 1)
+          import re
+          text, n = re.subn(r'Audited source commit: [0-9a-f]{40}',
+                            f'Audited source commit: {sha}', text, count=1)
+          if n != 1:
+              raise SystemExit('audited source commit line missing')
+          text, n = re.subn(r'Audited release-governance commit: [0-9a-f]{40}',
+                            f'Audited release-governance commit: {sha}', text, count=1)
+          if n != 1:
+              raise SystemExit('audited governance commit line missing')
+          text = text.replace('This status records the 1.8.0-239 release audit.',
+                              'This status records the 1.8.0-240 release audit.', 1)
+          text = text.replace('This document records the completed 1.8.0-239 release safety case',
+                              'This document records the completed 1.8.0-240 release safety case', 1)
+          marker = '## Qualification evidence\n\n'
+          if marker not in text:
+              raise SystemExit('qualification heading missing')
+          paragraph = (
+              f'The current audited production/build/Test-Media source baseline is commit `{sha}` for release version 1.8.0-240. '
+              'Write-capable filesystem engines are unchanged from the qualified 1.8.0-239 storage baseline. '
+              'This pass removes the remaining UI-thread redraw waste found after the first raster-map cache: hero/drive/sidebar imagery is now geometry-cached, Test Media bounds child-output work per GTK dispatch, and the final 58 px header / 210 px sidebar-art holdovers are aligned to the 44 px titlebar and 195 px Infiltrator OS navigation rail. '
+              'The production dependency remains the current Infiltratr Common 1.19.38 at exact commit `7070c5812b50821fd7580101cb2289a3184f6b2c`; current Common main is the same commit.\n\n'
+          )
+          # Replace the first current-baseline paragraph rather than accumulating another copy.
+          text, n = re.subn(
+              r'The current audited production/build/Test-Media source baseline is commit `[^`]+` for release version 1\.8\.0-239\.[^\n]*\n\n',
+              paragraph, text, count=1)
+          if n != 1:
+              raise SystemExit('1.8.0-239 audited baseline paragraph missing')
+          path.write_text(text)
+          PY
+
+          git add docs/AUDIT_STATUS.md
+          git commit -m "Release 1.8.0-240"
+          git push origin HEAD:main
