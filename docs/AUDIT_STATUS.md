@@ -7,7 +7,7 @@ Extended: 2026-10-03
 
 Applies to: release version 1.8.0-245
 Audited source commit: cba07ba5552947b4c2b4ad0aada8eeff55ac353d
-Audited release-governance commit: cba07ba5552947b4c2b4ad0aada8eeff55ac353d
+Audited release-governance commit: 628eb90439a3e2653033bdab7acfe4cca0716fd0
 
 This status records the 1.8.0-245 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
 
@@ -16,6 +16,8 @@ Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btr
 This document records the completed 1.8.0-245 release safety case and the explicit release decision after warnings-clean qualification. Re-running the release gate uses the audited source baseline named above. Historical audit-development detail remains in Git history and immutable release tags rather than being repeated as a second changelog.
 
 ## Qualification evidence
+
+The 2026-10-03 runner configuration review extends the release-governance baseline to `628eb90439a3e2653033bdab7acfe4cca0716fd0`. The local BigBedroom lane now provides Node.js for the already pinned Python type checker, requires the Xvfb tools used by its GUI tests, and fails when prerequisites are missing instead of reporting a successful skipped qualification. Its full warnings-clean build and all 47 CTest tests passed on BigBedroom-Linux-4 in run `37114937748`; the final contract check correctly held the run until this governance record was updated. The mandatory hosted quality and sanitizer gates, main-only release handoff, exact Common pin, production source baseline, and physical-media safety scope are unchanged.
 
 The current audited production/build/Test-Media source baseline is commit `cba07ba5552947b4c2b4ad0aada8eeff55ac353d` for release version 1.8.0-245. This review covers the Test Media visual correction requested after the supplied comparison screenshots showed the 1.8.0-243/244 styling regression. The previous graphical treatment is restored: blue-to-purple hero, coloured summary icons and borders, filesystem-family edges, status pills and distinct cyan/purple/red operations. Common continues to own the MB font identities, role weights, neutral palette and structural metrics; Test Media owns its graphical accents. Brand headings explicitly select MB Corpo A regular; interface text uses MB Corpo S regular/bold. Secondary text is 12 pixels, filesystem names 14 pixels, section headings 16 pixels and summary values 20 pixels. Long operation copy and filesystem results wrap, the grid grows naturally inside the page, and initial/minimum sizing accounts for the custom header plus a decoration allowance before applying monitor work-area limits. Theme parse failures now emit their diagnostic instead of being silently discarded.
 
