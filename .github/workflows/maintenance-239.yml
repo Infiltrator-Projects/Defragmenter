@@ -1,0 +1,302 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Defragmenter 1.8.0-239 forensic maintenance
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  maintain:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact main with Common
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Apply audited runtime and UI maintenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path('.')
+          desktop_path = root / 'defragger/native/desktop.cpp'
+          desktop = desktop_path.read_text()
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one match, found {count}')
+              return text.replace(old, new, 1)
+
+          # Remove a dead palette pointer left behind by the pre-native map renderer.
+          desktop = replace_once(
+              desktop,
+              '        map_palette_ = infiltratr_theme_resolve(INFILTRATR_THEME_NIGHT, true);\n'
+              '        if (map_palette_ == nullptr)\n'
+              '            throw std::runtime_error("Common map palette is unavailable");\n',
+              '',
+              'dead map palette bootstrap')
+          desktop = replace_once(
+              desktop,
+              '    const InfiltratrThemePalette* map_palette_ = nullptr;\n',
+              '',
+              'dead map palette member')
+
+          # Match the current suite titlebar/navigation density rather than the older oversized shell.
+          desktop = replace_once(
+              desktop,
+              '; min-height: 58px; padding: 2px 8px; }\\\n',
+              '; min-height: 44px; padding: 2px 8px; }\\\n',
+              'native titlebar height')
+          desktop = replace_once(
+              desktop,
+              '        auto* sidebar = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);\n'
+              '        css_class(sidebar, "sidebar");\n'
+              '        gtk_container_set_border_width(GTK_CONTAINER(sidebar), 12);\n'
+              '        gtk_widget_set_size_request(sidebar, 238, -1);\n'
+              '        gtk_paned_pack1(GTK_PANED(paned), sidebar, FALSE, FALSE);\n'
+              '        gtk_paned_set_position(GTK_PANED(paned), 238);\n',
+              '        auto* sidebar = gtk_box_new(GTK_ORIENTATION_VERTICAL, 3);\n'
+              '        css_class(sidebar, "sidebar");\n'
+              '        gtk_container_set_border_width(GTK_CONTAINER(sidebar), 8);\n'
+              '        gtk_widget_set_size_request(sidebar, 220, -1);\n'
+              '        gtk_paned_pack1(GTK_PANED(paned), sidebar, FALSE, FALSE);\n'
+              '        gtk_paned_set_position(GTK_PANED(paned), 220);\n',
+              'native navigation density')
+
+          # Cache the expensive allocation raster per drawing widget. Previously every expose,
+          # resize repaint and overlapping-window redraw rebuilt up to a million JSON-derived
+          # pixels on the GTK main thread.
+          desktop = replace_once(
+              desktop,
+              'void css_class(GtkWidget* widget, const char* name) {\n'
+              '    gtk_style_context_add_class(gtk_widget_get_style_context(widget), name);\n'
+              '}\n',
+              'void css_class(GtkWidget* widget, const char* name) {\n'
+              '    gtk_style_context_add_class(gtk_widget_get_style_context(widget), name);\n'
+              '}\n\n'
+              'struct MapRasterCache {\n'
+              '    cairo_surface_t* surface = nullptr;\n'
+              '    int width = 0;\n'
+              '    int height = 0;\n'
+              '    int scale = 1;\n'
+              '    std::uint64_t generation = 0U;\n'
+              '};\n\n'
+              'void destroy_map_raster_cache(gpointer data)\n'
+              '{\n'
+              '    auto* cache = static_cast<MapRasterCache*>(data);\n'
+              '    if (cache == nullptr) return;\n'
+              '    if (cache->surface != nullptr)\n'
+              '        cairo_surface_destroy(cache->surface);\n'
+              '    delete cache;\n'
+              '}\n',
+              'map raster cache type')
+          desktop = replace_once(
+              desktop,
+              '    guint selection_analysis_timer_ = 0;\n',
+              '    guint selection_analysis_timer_ = 0;\n'
+              '    std::uint64_t map_generation_ = 1U;\n',
+              'map generation member')
+          desktop = replace_once(
+              desktop,
+              '    void queue_maps() {\n'
+              '        if (map_ != nullptr) gtk_widget_queue_draw(map_);\n'
+              '        for (auto* widget : detail_maps_)\n'
+              '            if (widget != nullptr) gtk_widget_queue_draw(widget);\n'
+              '    }\n',
+              '    void queue_maps() {\n'
+              '        ++map_generation_;\n'
+              '        if (map_generation_ == 0U) map_generation_ = 1U;\n'
+              '        if (map_ != nullptr) gtk_widget_queue_draw(map_);\n'
+              '        for (auto* widget : detail_maps_)\n'
+              '            if (widget != nullptr) gtk_widget_queue_draw(widget);\n'
+              '    }\n',
+              'map invalidation')
+          desktop = replace_once(
+              desktop,
+              '        const std::size_t display_count =\n'
+              '            static_cast<std::size_t>(width) *\n'
+              '            static_cast<std::size_t>(height);\n'
+              '        std::vector<std::uint32_t> pixels(\n'
+              '            display_count, UINT32_C(0xFF000000) | background);\n\n'
+              '        const MapDisplayGeometry geometry = self->map_display_geometry();\n',
+              '        const std::size_t display_count =\n'
+              '            static_cast<std::size_t>(width) *\n'
+              '            static_cast<std::size_t>(height);\n\n'
+              '        auto* cache = static_cast<MapRasterCache*>(\n'
+              '            g_object_get_data(G_OBJECT(widget), "defrag-map-raster-cache"));\n'
+              '        if (cache != nullptr && cache->surface != nullptr &&\n'
+              '            cache->width == width && cache->height == height &&\n'
+              '            cache->scale == scale &&\n'
+              '            cache->generation == self->map_generation_) {\n'
+              '            cairo_set_source_surface(cr, cache->surface, 0.0, 0.0);\n'
+              '            cairo_paint(cr);\n'
+              '            return FALSE;\n'
+              '        }\n'
+              '        if (cache == nullptr) {\n'
+              '            cache = new MapRasterCache();\n'
+              '            g_object_set_data_full(\n'
+              '                G_OBJECT(widget), "defrag-map-raster-cache", cache,\n'
+              '                destroy_map_raster_cache);\n'
+              '        }\n'
+              '        if (cache->surface != nullptr) {\n'
+              '            cairo_surface_destroy(cache->surface);\n'
+              '            cache->surface = nullptr;\n'
+              '        }\n'
+              '        cache->surface = cairo_image_surface_create(\n'
+              '            CAIRO_FORMAT_ARGB32, width, height);\n'
+              '        if (cairo_surface_status(cache->surface) != CAIRO_STATUS_SUCCESS) {\n'
+              '            cairo_surface_destroy(cache->surface);\n'
+              '            cache->surface = nullptr;\n'
+              '            return FALSE;\n'
+              '        }\n'
+              '        auto* pixels = reinterpret_cast<std::uint32_t*>(\n'
+              '            cairo_image_surface_get_data(cache->surface));\n'
+              '        std::fill_n(\n'
+              '            pixels, display_count,\n'
+              '            UINT32_C(0xFF000000) | background);\n\n'
+              '        const MapDisplayGeometry geometry = self->map_display_geometry();\n',
+              'map raster allocation/cache lookup')
+          desktop = replace_once(
+              desktop,
+              '        cairo_surface_t* surface =\n'
+              '            cairo_image_surface_create_for_data(\n'
+              '                reinterpret_cast<unsigned char*>(pixels.data()),\n'
+              '                CAIRO_FORMAT_ARGB32,\n'
+              '                width, height,\n'
+              '                width * static_cast<int>(sizeof(std::uint32_t)));\n'
+              '        if (cairo_surface_status(surface) == CAIRO_STATUS_SUCCESS) {\n'
+              '            cairo_surface_set_device_scale(\n'
+              '                surface,\n'
+              '                static_cast<double>(scale),\n'
+              '                static_cast<double>(scale));\n'
+              '            cairo_set_source_surface(cr, surface, 0.0, 0.0);\n'
+              '            cairo_paint(cr);\n'
+              '        }\n'
+              '        cairo_surface_destroy(surface);\n'
+              '        return FALSE;\n',
+              '        cairo_surface_mark_dirty(cache->surface);\n'
+              '        cairo_surface_set_device_scale(\n'
+              '            cache->surface,\n'
+              '            static_cast<double>(scale),\n'
+              '            static_cast<double>(scale));\n'
+              '        cache->width = width;\n'
+              '        cache->height = height;\n'
+              '        cache->scale = scale;\n'
+              '        cache->generation = self->map_generation_;\n'
+              '        cairo_set_source_surface(cr, cache->surface, 0.0, 0.0);\n'
+              '        cairo_paint(cr);\n'
+              '        return FALSE;\n',
+              'map raster cache commit')
+
+          desktop_path.write_text(desktop)
+
+          # Keep the companion and source/test reference shell on the same current titlebar metric.
+          for path in [
+              root / 'defragger/test_media/test_media_theme.c',
+              root / 'defragger/gui/ui/theme.py',
+          ]:
+              text = path.read_text()
+              if '58px' not in text:
+                  raise SystemExit(f'{path}: expected old 58px titlebar metric')
+              path.write_text(text.replace('58px', '44px'))
+
+          # Remove the duplicate Night hero selector pair left in the retired reference theme.
+          theme_path = root / 'defragger/gui/ui/theme.py'
+          theme = theme_path.read_text()
+          duplicate = '''    .hero-drive-badge > border {{\n        background-color: alpha({p["panel"]}, 0.82);\n        border: 1px solid alpha({p["neutral_accent"]}, 0.60);\n    }}\n    .hero-status {{\n        color: {p["success"]};\n        background-color: alpha({p["success"]}, 0.10);\n        border: 1px solid alpha({p["success"]}, 0.45);\n    }}\n'''
+          if theme.count(duplicate) != 1:
+              raise SystemExit('reference theme: duplicate hero block changed unexpectedly')
+          theme_path.write_text(theme.replace(duplicate, '', 1))
+
+          # Advance every current Common contract assertion without rewriting historical changelog entries.
+          old_version = '1.19.35'
+          new_version = '1.19.38'
+          old_commit = '7cc5de3de0e94ed2cfcff0840bbb5346eb5c9c9f'
+          new_commit = '7070c5812b50821fd7580101cb2289a3184f6b2c'
+          touched = 0
+          for path in root.rglob('*'):
+              if not path.is_file() or '.git' in path.parts or path == root / 'CHANGELOG.md':
+                  continue
+              try:
+                  text = path.read_text()
+              except (UnicodeDecodeError, OSError):
+                  continue
+              changed = text.replace(old_version, new_version).replace(old_commit, new_commit)
+              if changed != text:
+                  path.write_text(changed)
+                  touched += 1
+          if touched < 8:
+              raise SystemExit(f'Common pin audit touched only {touched} files')
+
+          # Update the native GUI source-contract regression for the cached raster implementation.
+          gui_test = root / 'defragger/tests/test_gui_models.py'
+          text = gui_test.read_text()
+          text = text.replace(
+              "'std::vector<std::uint32_t> pixels(',",
+              "'defrag-map-raster-cache',")
+          if "'defrag-map-raster-cache'," not in text:
+              raise SystemExit('GUI source regression did not adopt raster-cache contract')
+          gui_test.write_text(text)
+
+          (root / 'defragger/VERSION').write_text('1.8.0-239\n')
+
+          changelog = root / 'CHANGELOG.md'
+          text = changelog.read_text()
+          anchor = '# Changelog\n\nThis changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.\n\n'
+          if not text.startswith(anchor):
+              raise SystemExit('CHANGELOG header changed unexpectedly')
+          entry = '''## 1.8.0-239\n\n- Forensically audit the installed native C++ desktop for stale pre-migration state and remove the unused `map_palette_` path left by the earlier map renderer. Retired Python presentation code remains source/test-only and is not part of the installed runtime.\n- Cache each rendered physical allocation raster by widget size, device scale and map generation. Ordinary GTK expose/redraw events now repaint the cached Cairo surface instead of reparsing and recombining up to 1,048,576 JSON allocation cells on the UI thread.\n- Keep cache invalidation exact for selection, analysis, live-map and appearance changes, preserving the physical-order raster semantics while eliminating redundant redraw work.\n- Align Defragmenter and Test Media titlebar height plus the native navigation rail density with the current Infiltrator OS shell standard.\n- Remove a duplicate Night hero-style block from the retained source/test reference theme.\n- Advance the exact Infiltratr Common dependency from 1.19.35 (`7cc5de3de0e94ed2cfcff0840bbb5346eb5c9c9f`) to 1.19.38 (`7070c5812b50821fd7580101cb2289a3184f6b2c`) across CMake, local packaging, documentation and release assertions.\n- No filesystem analyser, writer, placement, transaction or recovery semantics are changed.\n\n## 1.8.0-238\n\n- Accept current unencrypted OpenZFS ZAP-typed dnodes in the bounded exact metadata reader instead of restricting valid ZAP objects to the legacy object type encoding. Encrypted, malformed and unknown metadata remains fail-closed.\n- Keep Test Media confirmation-dialog buttons on explicit Infiltrator dark surfaces in normal, hover, focus/default and disabled states so host GTK dialog styling cannot reintroduce pale unreadable controls.\n\n'''
+          changelog.write_text(anchor + entry + text[len(anchor):])
+          PY
+
+          git -C defragger/shared/infiltratr-common fetch --quiet origin 7070c5812b50821fd7580101cb2289a3184f6b2c
+          git -C defragger/shared/infiltratr-common checkout --quiet --detach 7070c5812b50821fd7580101cb2289a3184f6b2c
+
+          rm -f .github/workflows/forensic-239-run.yml
+          rm -f .github/workflows/maintenance-239.yml
+
+      - name: Install build and validation dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake dpkg-dev pkg-config zip unzip \
+            python3 python3-gi python3-cairo \
+            gir1.2-gtk-3.0 libgtk-3-dev policykit-1 udisks2 util-linux makefs xvfb \
+            libext2fs-dev libsqlite3-dev libssl-dev
+
+      - name: Qualify the exact maintained tree
+        shell: bash
+        working-directory: defragger
+        run: |
+          set -euo pipefail
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DLD_ENABLE_WERROR=ON -DBUILD_TESTING=ON
+          cmake --build build -j2
+          cmake --build build --target linux-defragger-desktop -j2
+          PYTHONDONTWRITEBYTECODE=1 \
+          PYTHONPATH="$PWD/gui:$PWD/tests" \
+          LINUX_DEFRAGGER_BUILD_DIR="$PWD/build" \
+            ctest --test-dir build --output-on-failure
+
+      - name: Publish maintained main candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Shannon Smith'
+          git config user.email 'infiltratr@yandex.com'
+          git add -A
+          git diff --cached --check
+          test "$(cat defragger/VERSION)" = '1.8.0-239'
+          test "$(cat defragger/shared/infiltratr-common/VERSION)" = '1.19.38'
+          git commit -m 'Release 1.8.0-239'
+          git push origin HEAD:main
