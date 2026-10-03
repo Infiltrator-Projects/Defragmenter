@@ -524,43 +524,91 @@ static int flush_block_bitmap_cache(ExtFs *fs, char **error)
     return 0;
 }
 
+/* A read-only scan may outlive its descriptor-table snapshot on a mounted
+ * filesystem. Refresh a rejected descriptor/bitmap pair, retaining every
+ * checksum check. Writable plans must continue using their locked snapshot. */
+static int refresh_group_descriptor(ExtFs *fs, uint32_t group, char **error)
+{
+    uint8_t *block = ld_xmalloc(fs->block_size);
+    const uint64_t location = descriptor_block_location(fs, group / fs->desc_per_block);
+    if (location == UINT64_MAX || read_block(fs, location, block, error) != 0) {
+        free(block);
+        return -1;
+    }
+    uint8_t *old = ld_xmalloc(fs->desc_size);
+    memcpy(old, group_desc(fs, group), fs->desc_size);
+    memcpy(group_desc(fs, group),
+           block + (size_t)(group % fs->desc_per_block) * fs->desc_size, fs->desc_size);
+    free(block);
+    const int result = verify_group_checksum(fs, group, error);
+    if (result != 0) memcpy(group_desc(fs, group), old, fs->desc_size);
+    free(old);
+    return result;
+}
+
 static int load_block_bitmap(ExtFs *fs, uint32_t group, char **error)
 {
-    if (fs->block_bitmap_valid && fs->block_bitmap_group == group)
-        return 0;
-    if (flush_block_bitmap_cache(fs, error) != 0)
-        return -1;
-
+    if (fs->block_bitmap_valid && fs->block_bitmap_group == group) return 0;
+    if (flush_block_bitmap_cache(fs, error) != 0) return -1;
+    fs->block_bitmap_valid = false;
     fs->block_bitmap_group = group;
-    fs->block_bitmap_valid = true;
-    fs->block_bitmap_dirty = false;
-    fs->block_bitmap_synthetic =
-        (desc_flags(fs, group) & EXT_BG_BLOCK_UNINIT) != 0U;
-
-    if (fs->block_bitmap_synthetic) {
-        synthesize_uninit_block_bitmap(fs, group, fs->block_bitmap);
-        return 0;
+    if (!fs->writable && (desc_flags(fs, group) & EXT_BG_BLOCK_UNINIT) != 0U &&
+        refresh_group_descriptor(fs, group, error) != 0) return -1;
+    for (unsigned attempt = 0U; attempt < 3U; ++attempt) {
+        fs->block_bitmap_synthetic =
+            (desc_flags(fs, group) & EXT_BG_BLOCK_UNINIT) != 0U;
+        if (fs->block_bitmap_synthetic) {
+            synthesize_uninit_block_bitmap(fs, group, fs->block_bitmap);
+            fs->block_bitmap_valid = true;
+            return 0;
+        }
+        if (read_block(fs, block_bitmap_block(fs, group), fs->block_bitmap, error) != 0)
+            return -1;
+        char *detail = NULL;
+        if (verify_block_bitmap_checksum(fs, group, fs->block_bitmap, &detail) == 0) {
+            fs->block_bitmap_valid = true;
+            return 0;
+        }
+        if (fs->writable || attempt == 2U) {
+            set_error(error, detail);
+            free(detail);
+            return -1;
+        }
+        free(detail);
+        if (refresh_group_descriptor(fs, group, error) != 0) return -1;
     }
-    if (read_block(fs, block_bitmap_block(fs, group),
-                   fs->block_bitmap, error) != 0)
-        return -1;
-    return verify_block_bitmap_checksum(fs, group, fs->block_bitmap, error);
+    return -1;
 }
 
 static int load_inode_bitmap(ExtFs *fs, uint32_t group, char **error)
 {
-    if (fs->inode_bitmap_valid && fs->inode_bitmap_group == group)
-        return 0;
+    if (fs->inode_bitmap_valid && fs->inode_bitmap_group == group) return 0;
+    fs->inode_bitmap_valid = false;
     fs->inode_bitmap_group = group;
-    fs->inode_bitmap_valid = true;
-    if ((desc_flags(fs, group) & EXT_BG_INODE_UNINIT) != 0U) {
-        memset(fs->inode_bitmap, 0, fs->block_size);
-        return 0;
+    if (!fs->writable && (desc_flags(fs, group) & EXT_BG_INODE_UNINIT) != 0U &&
+        refresh_group_descriptor(fs, group, error) != 0) return -1;
+    for (unsigned attempt = 0U; attempt < 3U; ++attempt) {
+        if ((desc_flags(fs, group) & EXT_BG_INODE_UNINIT) != 0U) {
+            memset(fs->inode_bitmap, 0, fs->block_size);
+            fs->inode_bitmap_valid = true;
+            return 0;
+        }
+        if (read_block(fs, inode_bitmap_block(fs, group), fs->inode_bitmap, error) != 0)
+            return -1;
+        char *detail = NULL;
+        if (verify_inode_bitmap_checksum(fs, group, fs->inode_bitmap, &detail) == 0) {
+            fs->inode_bitmap_valid = true;
+            return 0;
+        }
+        if (fs->writable || attempt == 2U) {
+            set_error(error, detail);
+            free(detail);
+            return -1;
+        }
+        free(detail);
+        if (refresh_group_descriptor(fs, group, error) != 0) return -1;
     }
-    if (read_block(fs, inode_bitmap_block(fs, group),
-                   fs->inode_bitmap, error) != 0)
-        return -1;
-    return verify_inode_bitmap_checksum(fs, group, fs->inode_bitmap, error);
+    return -1;
 }
 
 static int read_group_descriptors(ExtFs *fs, char **error)

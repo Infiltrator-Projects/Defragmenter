@@ -87,13 +87,23 @@ CommandResult worker(
     std::vector<std::string> command{
         resolve_program(backend.worker), mode, path};
     command.insert(command.end(), options.begin(), options.end());
-    return run_capture(command, output_limit, timeout,
+    CommandResult result = run_capture(command, output_limit, timeout,
         [](const std::string& line) {
             if (line.rfind("@@ANALYSIS ", 0U) == 0U) {
                 std::fprintf(stderr, "%s\n", line.c_str());
                 std::fflush(stderr);
             }
         });
+    std::string diagnostics;
+    for (std::size_t begin = 0U; begin < result.standard_error.size();) {
+        const std::size_t newline = result.standard_error.find('\n', begin);
+        const std::size_t end = newline == std::string::npos ? result.standard_error.size() : newline + 1U;
+        if (result.standard_error.compare(begin, 11U, "@@ANALYSIS ") != 0)
+            diagnostics.append(result.standard_error, begin, end - begin);
+        begin = end;
+    }
+    result.standard_error = std::move(diagnostics);
+    return result;
 }
 
 void analysis_phase(const char* phase) {
@@ -339,6 +349,11 @@ Json map_ext(const BackendInfo& backend, const std::string& path,
         backend, payload, cells, total, size, filesystem,
         std::move(details), false, "blocks");
 
+    if (const Json* warning = payload.find("analysis_warning")) {
+        if (!warning->is_string()) throw std::runtime_error("EXT analysis warning is not text");
+        set(result, "analysis_warning", *warning);
+    }
+
     auto metadata_ranges =
         pair_ranges(metadata, "metadata_ranges", total, true);
     const std::uint64_t metadata_units =
@@ -545,7 +560,7 @@ Json map_hfsplus(const BackendInfo& backend, const std::string& path,
 Json map_ntfs(const BackendInfo& backend, const std::string& path,
               std::size_t cells) {
     Json payload = parse_worker_json(
-        worker(backend, "analyse-json", path), "native NTFS analyser");
+        worker(backend, "analyse-json", path, {"--qualify"}), "native NTFS analyser");
     if (payload.at("filesystem").string() != "ntfs")
         throw std::runtime_error("native NTFS analyser returned wrong identity");
     const std::uint64_t size = required_u64(payload, "cluster_size");
@@ -563,6 +578,22 @@ Json map_ntfs(const BackendInfo& backend, const std::string& path,
         std::move(details), true, "clusters");
     if (const Json* value = payload.find("growth_10_satisfied"))
         set(result, "growth_10_satisfied", *value);
+    const Json* defrag = payload.find("defrag_qualified");
+    const Json* growth = payload.find("growth_qualified");
+    if ((defrag == nullptr) != (growth == nullptr))
+        throw std::runtime_error("NTFS analyser returned incomplete qualification");
+    if (defrag != nullptr) {
+        if (!defrag->is_bool() || !growth->is_bool())
+            throw std::runtime_error("NTFS qualification is not boolean");
+        set(result, "defrag_qualified", *defrag);
+        set(result, "growth_qualified", *growth);
+    }
+    for (const auto key : {"defrag_reason", "growth_reason"}) {
+        if (const Json* value = payload.find(key)) {
+            if (!value->is_string()) throw std::runtime_error("NTFS qualification reason is not text");
+            set(result, key, *value);
+        }
+    }
     return result;
 }
 
@@ -978,7 +1009,9 @@ Json map_backend(const BackendInfo& backend, const std::string& path,
     if ((backend.capabilities & CAP_DEFRAG) != 0U) {
         MutationQualification defrag{true, {}};
         MutationQualification growth{true, {}};
-        if (backend_has_writer_preflight(backend)) {
+        if (backend_has_writer_preflight(backend) &&
+            !(backend.id == "ntfs" && result.find("defrag_qualified") &&
+              result.find("growth_qualified"))) {
             analysis_phase("Checking Defragment availability (up to 60 seconds)");
             defrag = mutation_qualification(
                 backend, path, "preflight-defrag");
@@ -986,8 +1019,10 @@ Json map_backend(const BackendInfo& backend, const std::string& path,
             growth = mutation_qualification(
                 backend, path, "preflight-growth");
         }
-        set(result, "defrag_qualified", Json(defrag.qualified));
-        set(result, "growth_qualified", Json(growth.qualified));
+        if (!result.find("defrag_qualified"))
+            set(result, "defrag_qualified", Json(defrag.qualified));
+        if (!result.find("growth_qualified"))
+            set(result, "growth_qualified", Json(growth.qualified));
         if (!defrag.reason.empty())
             set(result, "defrag_reason", Json(std::move(defrag.reason)));
         if (!growth.reason.empty())

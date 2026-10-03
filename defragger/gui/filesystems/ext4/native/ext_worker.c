@@ -525,7 +525,15 @@ static void emit_ranges(const ExtRangeVec *ranges) {
 
 static int analyse_json(const char *path, char **error) {
     ExtGeometry geometry; ExtCatalogue catalogue;
-    if (ext_scan_catalogue(path, &geometry, &catalogue, error) != 0) return -1;
+    const bool mounted = ld_path_is_mounted(path);
+    if (ext_scan_catalogue(path, &geometry, &catalogue, error) != 0) {
+        if (mounted && error != NULL && *error != NULL) {
+            char *detail = *error; *error = NULL;
+            ext_set_error(error, "Unable to verify a consistent raw EXT view while this volume is mounted: %s", detail);
+            free(detail);
+        }
+        return -1;
+    }
     char uuid[33]; uuid_hex(geometry.uuid, uuid);
     printf("{\"filesystem\":\"%s\",\"block_size\":%u,\"total_blocks\":%" PRIu64
            ",\"physical_blocks\":%" PRIu64 ",\"free_blocks\":%" PRIu64
@@ -539,7 +547,9 @@ static int analyse_json(const char *path, char **error) {
            catalogue.malformed_inodes, catalogue.growth_10_satisfied ? "true" : "false");
     emit_ranges(&catalogue.free_ranges); fputs(",\"fragmented_ranges\":", stdout);
     emit_ranges(&catalogue.fragmented_ranges); fputs(",\"directory_ranges\":", stdout);
-    emit_ranges(&catalogue.directory_ranges); puts("}");
+    emit_ranges(&catalogue.directory_ranges);
+    if (mounted) fputs(",\"analysis_warning\":\"Live EXT scan: allocation can change while this volume is mounted.\"", stdout);
+    puts("}");
     ext_catalogue_free(&catalogue); return 0;
 }
 

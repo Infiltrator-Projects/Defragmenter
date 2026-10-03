@@ -435,6 +435,7 @@ int ntfs_read_layout(NtfsVolume *volume, bool allow_dirty, NtfsLayout *layout, c
     uint8_t *raw=NULL,*fixed=NULL;
     if(ntfs_read_record(volume,&layout->mft_runs,3,&raw,&fixed,error)!=0)goto fail;
     uint16_t flags=0;if(resident_volume_flags(fixed,volume->record_size,&flags,error)!=0||validate_flags(flags,allow_dirty,error)!=0){free(raw);free(fixed);goto fail;}free(raw);free(fixed);
+    layout->volume_dirty = (flags & NTFS_VOLUME_DIRTY) != 0U;
     raw=fixed=NULL;
     if(ntfs_read_record(volume,&layout->mft_runs,6,&raw,&fixed,error)!=0)goto fail;
     NtfsAttributeVec attrs={0};if(ntfs_parse_attributes(fixed,volume->record_size,&attrs,error)!=0){free(raw);free(fixed);goto fail;}

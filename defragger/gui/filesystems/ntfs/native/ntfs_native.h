@@ -121,6 +121,7 @@ typedef struct {
     uint64_t bitmap_data_size;
     uint8_t *bitmap;
     size_t bitmap_bytes;
+    bool volume_dirty;
 } NtfsLayout;
 
 typedef struct {

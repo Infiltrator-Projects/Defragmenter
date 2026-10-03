@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import subprocess
@@ -97,6 +98,37 @@ def test_exfat(work: Path) -> None:
     grown = run_json(worker, image)
     assert grown["serial"] == serial
     assert_clean(grown, growth=True)
+
+
+def test_ntfs_combined_analysis(work: Path) -> None:
+    worker = BUILD / "linux-defragger-ntfs-worker"
+    for dirty in (False, True):
+        image = work / f"ntfs-combined-{dirty}.img"
+        make_ntfs_image(image, volume_flags=1 if dirty else 0,
+                        fragmented_data=True, directory_data=True)
+        digest = hashlib.sha256(image.read_bytes()).digest()
+        plain = run_json(worker, image)
+        completed = subprocess.run(
+            [str(worker), "analyse-json", str(image), "--qualify"],
+            check=True, text=True, capture_output=True)
+        combined = json.loads(completed.stdout)
+        for key, value in plain.items():
+            assert combined[key] == value, key
+        for mode in ("defrag", "growth"):
+            standalone = subprocess.run(
+                [str(worker), f"preflight-{mode}", str(image)],
+                text=True, capture_output=True)
+            assert combined[f"{mode}_qualified"] == (standalone.returncode == 0)
+            if standalone.returncode and not dirty:
+                assert combined[f"{mode}_reason"] in standalone.stderr
+        mapped = map_json("ntfs", image)
+        assert mapped["defrag_qualified"] == combined["defrag_qualified"]
+        assert mapped["growth_qualified"] == combined["growth_qualified"]
+        assert "@@ANALYSIS" not in mapped.get("defrag_reason", "")
+        assert hashlib.sha256(image.read_bytes()).digest() == digest
+        assert completed.stderr.count('"completed":0') == 1
+        if dirty:
+            assert "dirty flag" in combined["defrag_reason"]
 
 
 def test_ntfs(work: Path) -> None:
@@ -239,6 +271,7 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="linux-defragger-native83-") as directory:
         work = Path(directory)
         test_exfat(work)
+        test_ntfs_combined_analysis(work)
         test_ntfs(work)
         test_ntfs_relocates_named_data_stream(work)
         test_ntfs_preserves_safe_unsupported_user_stream(work)

@@ -611,6 +611,12 @@ if(BUILD_TESTING)
     add_test(NAME linux-defragger-cpp-runtime
         COMMAND linux-defragger-cpp-runtime-test)
 
+    add_executable(linux-defragger-ext-bitmap-cache-test tests/test_ext_bitmap_cache.c)
+    target_link_libraries(linux-defragger-ext-bitmap-cache-test PRIVATE linux-defragger-core)
+    target_compile_options(linux-defragger-ext-bitmap-cache-test PRIVATE ${LD_WARNING_FLAGS})
+    target_compile_definitions(linux-defragger-ext-bitmap-cache-test PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+    add_test(NAME linux-defragger-ext-bitmap-cache COMMAND linux-defragger-ext-bitmap-cache-test)
+
     add_executable(linux-defragger-ntfs-stream-index-test tests/test_ntfs_stream_index.c)
     target_link_libraries(linux-defragger-ntfs-stream-index-test PRIVATE linux-defragger-ntfs-native)
     target_compile_options(linux-defragger-ntfs-stream-index-test PRIVATE ${LD_WARNING_FLAGS})

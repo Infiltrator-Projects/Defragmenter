@@ -9,6 +9,7 @@
 #include "ld_path.h"
 
 #include "infiltratr/core.h"
+#include "infiltratr/escape.h"
 #include "infiltratr/config.h"
 #include "infiltratr/posix.h"
 #include "ld_stop.h"
@@ -36,7 +37,7 @@ static void usage(FILE *stream) {
             "Usage:\n"
             "  %s --version\n"
             "  %s identify DEVICE\n"
-            "  %s analyse-json DEVICE\n"
+            "  %s analyse-json DEVICE [--qualify]\n"
             "  %s defrag|growth-defrag|recover DEVICE --write --confirm DEVICE --journal PATH [--live-updates]\n",
             PROGRAM_NAME, PROGRAM_NAME, PROGRAM_NAME, PROGRAM_NAME);
 }
@@ -270,7 +271,60 @@ static void scan_progress(uint64_t completed, uint64_t total, void *context) {
     fflush(stderr);
 }
 
-static int analyse_json(const char *path, char **error) {
+static int qualify_catalogue(const NtfsVolume *volume, NtfsLayout *layout,
+                              NtfsCatalogue *catalogue, bool growth, char **error) {
+    if (layout->volume_dirty) {
+        ntfs_set_error(error, "NTFS dirty flag is set; complete Windows filesystem checking first");
+        return -1;
+    }
+    if (catalogue->malformed_records != 0U) {
+        ntfs_set_error(error, "NTFS contains malformed MFT records; refusing mutation");
+        return -1;
+    }
+    if (catalogue->hibernation_active) {
+        ntfs_set_error(error, "NTFS hibernation image is active; resume and shut down Windows fully first");
+        return -1;
+    }
+    /* Planning owns a bitmap copy. Both modes see the original allocation and
+     * the final analysis ranges never reflect tentative placements. */
+    NtfsLayout working = *layout;
+    working.bitmap = ld_xmalloc(layout->bitmap_bytes);
+    memcpy(working.bitmap, layout->bitmap, layout->bitmap_bytes);
+    NtfsPlacementVec placements = {0};
+    int result = ntfs_plan_layout(&working, catalogue, volume->total_clusters,
+                                  growth, &placements, error);
+    if (result != 0 && error != NULL && *error != NULL &&
+        strstr(*error, "no supported movable") != NULL &&
+        catalogue->fragmented_files == 0U && catalogue->fragmented_directories == 0U &&
+        (!growth || catalogue->growth_10_satisfied)) {
+        free(*error); *error = NULL; result = 0;
+    }
+    ntfs_placements_free(&placements); free(working.bitmap);
+    return result;
+}
+
+static void emit_qualification(const NtfsVolume *volume, NtfsLayout *layout,
+                                NtfsCatalogue *catalogue, bool growth) {
+    analysis_phase(growth ? "Checking NTFS Growth Defrag availability" :
+                            "Checking NTFS Defragment availability");
+    char *reason = NULL;
+    const bool okay = qualify_catalogue(volume, layout, catalogue, growth, &reason) == 0;
+    const char *key = growth ? "growth" : "defrag";
+    printf(",\"%s_qualified\":%s", key, okay ? "true" : "false");
+    if (!okay) {
+        size_t required = 0U;
+        const char *detail = reason != NULL ? reason : "NTFS layout is not writable";
+        if (!infiltratr_escape_json(detail, NULL, 0U, &required) || required == 0U)
+            ld_die("cannot encode NTFS qualification reason");
+        char *escaped = ld_xmalloc(required);
+        if (!infiltratr_escape_json(detail, escaped, required, NULL))
+            ld_die("cannot encode NTFS qualification reason");
+        printf(",\"%s_reason\":\"%s\"", key, escaped); free(escaped);
+    }
+    free(reason);
+}
+
+static int analyse_json(const char *path, bool qualify, char **error) {
     NtfsVolume volume; NtfsLayout layout; NtfsCatalogue catalogue;
     analysis_phase("Reading NTFS allocation bitmap and MFT geometry");
     if (ntfs_open_volume(path, false, &volume, error) != 0) return -1;
@@ -295,6 +349,10 @@ static int analyse_json(const char *path, char **error) {
     emit_bitmap_ranges(&layout, volume.total_clusters, true);
     fputs(",\"fragmented_ranges\":", stdout); emit_stream_ranges(&catalogue, false, true);
     fputs(",\"directory_ranges\":", stdout); emit_stream_ranges(&catalogue, true, false);
+    if (qualify) {
+        emit_qualification(&volume, &layout, &catalogue, false);
+        emit_qualification(&volume, &layout, &catalogue, true);
+    }
     fputs("}\n", stdout);
     ntfs_catalogue_free(&catalogue); ntfs_layout_free(&layout); ntfs_close_volume(&volume); return 0;
 }
@@ -550,7 +608,6 @@ static int writer_preflight(const char *device, bool growth,
     NtfsVolume volume;
     NtfsLayout layout;
     NtfsCatalogue catalogue;
-    NtfsPlacementVec placements = {0};
     memset(&volume, 0, sizeof(volume));
     volume.fd = -1;
     memset(&layout, 0, sizeof(layout));
@@ -561,32 +618,9 @@ static int writer_preflight(const char *device, bool growth,
         ntfs_read_layout(&volume, false, &layout, error) != 0 ||
         ntfs_scan_catalogue(&volume, &layout, &catalogue, error) != 0)
         goto done;
-    if (catalogue.malformed_records != 0U) {
-        ntfs_set_error(error,
-                       "NTFS contains malformed MFT records; refusing mutation");
-        goto done;
-    }
-    if (catalogue.hibernation_active) {
-        ntfs_set_error(error,
-                       "NTFS hibernation image is active; resume and shut down Windows fully first");
-        goto done;
-    }
-
-    result = ntfs_plan_layout(
-        &layout, &catalogue, volume.total_clusters,
-        growth, &placements, error);
-    if (result != 0 && error != NULL && *error != NULL &&
-        strstr(*error, "no supported movable") != NULL &&
-        catalogue.fragmented_files == 0U &&
-        catalogue.fragmented_directories == 0U &&
-        (!growth || catalogue.growth_10_satisfied)) {
-        free(*error);
-        *error = NULL;
-        result = 0;
-    }
+    result = qualify_catalogue(&volume, &layout, &catalogue, growth, error);
 
 done:
-    ntfs_placements_free(&placements);
     ntfs_catalogue_free(&catalogue);
     ntfs_layout_free(&layout);
     ntfs_close_volume(&volume);
@@ -848,7 +882,7 @@ int main(int argc, char **argv) {
         ntfs_close_volume(&volume); puts("{\"filesystem\":\"ntfs\"}"); return 0;
     }
     if (strcmp(operation, "analyse-json") == 0) {
-        char *error = NULL; int result = analyse_json(device, &error);
+        char *error = NULL; int result = analyse_json(device, argc == 4 && strcmp(argv[3], "--qualify") == 0, &error);
         if (result != 0 && error != NULL) fprintf(stderr, "%s\n", error);
         free(error); return result == 0 ? 0 : 1;
     }

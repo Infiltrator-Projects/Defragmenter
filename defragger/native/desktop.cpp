@@ -16,12 +16,15 @@ extern "C" {
 
 #include <algorithm>
 #include <chrono>
+#include <cerrno>
+#include <cstdlib>
 #include <cmath>
 #include <filesystem>
 #include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using defragger::DesktopVolume;
@@ -2228,6 +2231,15 @@ private:
         }
     }
     void start(std::vector<std::string> args, std::string program, std::string purpose) {
+        std::error_code executable_error;
+        const std::string executable = fs::read_symlink("/proc/self/exe", executable_error).string();
+        constexpr std::string_view deleted = " (deleted)";
+        if (!executable_error && executable.size() >= deleted.size() &&
+            executable.compare(executable.size() - deleted.size(), deleted.size(), deleted) == 0) {
+            error("Restart Defragmenter", "Defragmenter was updated while this window was open. "
+                  "Close and reopen it to use the matching desktop and filesystem workers.");
+            return;
+        }
         busy_ = true; stopping_ = false; output_.clear(); result_status_.clear();
         purpose_ = std::move(purpose);
         pending_program_ = std::move(program);
@@ -2257,13 +2269,28 @@ private:
         } else if (helper_ready_) submit();
         else start_helper();
     }
+    void signal_local_analysis(int signal_number) {
+        const char* identifier = g_subprocess_get_identifier(local_);
+        char* end = nullptr;
+        const long pid = identifier ? std::strtol(identifier, &end, 10) : 0L;
+        if (pid > 0L && pid <= std::numeric_limits<pid_t>::max() &&
+            end != nullptr && *end == '\0') {
+            if (kill(-static_cast<pid_t>(pid), signal_number) == 0 || errno != ESRCH)
+                return;
+        }
+        g_subprocess_send_signal(local_, signal_number);
+    }
     void start_local_analysis() {
         std::vector<const char*> argv;
         for (const auto& argument : pending_args_) argv.push_back(argument.c_str());
         argv.push_back(nullptr);
         GError* failure = nullptr;
-        local_ = g_subprocess_newv(argv.data(),
-            static_cast<GSubprocessFlags>(G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_PIPE), &failure);
+        auto* launcher = g_subprocess_launcher_new(
+            static_cast<GSubprocessFlags>(G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_PIPE));
+        g_subprocess_launcher_set_child_setup(launcher,
+            [](gpointer) { if (setpgid(0, 0) != 0) _exit(125); }, nullptr, nullptr);
+        local_ = g_subprocess_launcher_spawnv(launcher, argv.data(), &failure);
+        g_object_unref(launcher);
         if (!local_) {
             std::string detail = failure ? failure->message : "Unable to start mapper";
             if (failure) g_error_free(failure);
@@ -2479,7 +2506,7 @@ private:
         stopping_ = true;
         update();
         if (local_) {
-            g_subprocess_send_signal(local_, SIGINT);
+            signal_local_analysis(SIGINT);
             note("Stopping read-only analysis and its filesystem worker…");
             if (local_stop_timer_ == 0U) {
                 local_stop_timer_ = g_timeout_add_seconds(
@@ -2491,7 +2518,7 @@ private:
                             self->busy_ && self->stopping_) {
                             self->note(
                                 "Analysis did not stop cooperatively; terminating it now.");
-                            g_subprocess_force_exit(self->local_);
+                            self->signal_local_analysis(SIGKILL);
                         }
                         return G_SOURCE_REMOVE;
                     },

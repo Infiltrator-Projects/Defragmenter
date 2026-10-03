@@ -38,7 +38,12 @@ struct DesktopAnalysisTest {
 
     static gboolean probe(gpointer data) {
         auto* self = static_cast<DesktopAnalysisTest*>(data);
-        CHECK(++self->ticks < 100U);
+        if (++self->ticks >= 100U) {
+            std::fprintf(stderr, "analysis test timed out: phase=%u busy=%d progress=%s result=%s\n",
+                self->phase, self->desktop.busy_, self->desktop.analysis_phase_.c_str(),
+                self->desktop.result_status_.c_str());
+            CHECK(false);
+        }
         auto& app = self->desktop;
         if (self->phase == 0U) {
             if (app.analysis_phase_.find("32 / 64 records") == std::string::npos) return G_SOURCE_CONTINUE;

@@ -22,7 +22,7 @@ bool check(bool condition, const char* message) {
     return false;
 }
 
-std::string fake_map_worker(const char* payload) {
+std::string fake_map_worker(const char* payload, const char* tail = "") {
     char path[] = "/tmp/defragger-map-worker.XXXXXX";
     const int fd = mkstemp(path);
     if (fd < 0) throw std::runtime_error("mkstemp failed");
@@ -33,7 +33,7 @@ std::string fake_map_worker(const char* payload) {
         throw std::runtime_error("fdopen failed");
     }
     const int written = std::fprintf(
-        stream, "#!/bin/sh\nprintf '%%s\\n' '%s'\n", payload);
+        stream, "#!/bin/sh\nprintf '%%s\\n' '%s'\n%s\n", payload, tail);
     const int closed = std::fclose(stream);
     if (written < 0 || closed != 0 || chmod(path, 0700) != 0) {
         (void)unlink(path);
@@ -339,6 +339,35 @@ int main() {
         ok = check(rejected_counts, "native map inconsistent counts rejected") && ok;
         (void)unlink(inconsistent_counts.c_str());
         (void)unsetenv("LINUX_DEFRAGGER_BTRFS_WORKER");
+    }
+
+    const BackendInfo* ntfs = backend_by_fstype("ntfs");
+    if (ntfs != nullptr) {
+        const std::string combined_worker = fake_map_worker(
+            "{\"filesystem\":\"ntfs\",\"cluster_size\":512,\"total_clusters\":8,"
+            "\"free_ranges\":[[3,8]],\"defrag_qualified\":false,\"growth_qualified\":false,"
+            "\"defrag_reason\":\"fixed layout\",\"growth_reason\":\"fixed layout\"}",
+            "test \"$1\" = analyse-json || exit 12");
+        (void)setenv("LINUX_DEFRAGGER_NTFS_WORKER", combined_worker.c_str(), 1);
+        const Json mapped = map_backend(*ntfs, "/dev/null", 1U);
+        ok = check(!mapped.at("defrag_qualified").boolean() &&
+                   !mapped.at("growth_qualified").boolean(),
+                   "combined NTFS rejection is preserved without duplicate worker calls") && ok;
+        (void)unlink(combined_worker.c_str());
+        const std::string failed_worker = fake_map_worker("{}",
+            "printf '%s\\n' '@@ANALYSIS {\"phase\":\"scan\"}' >&2\n"
+            "printf '%s\\n' 'real checksum failure' >&2\nexit 1");
+        (void)setenv("LINUX_DEFRAGGER_NTFS_WORKER", failed_worker.c_str(), 1);
+        bool clean_failure = false;
+        try { (void)map_backend(*ntfs, "/dev/null", 1U); }
+        catch (const std::exception& failure) {
+            const std::string detail(failure.what());
+            clean_failure = detail.find("real checksum failure") != std::string::npos &&
+                            detail.find("@@ANALYSIS") == std::string::npos;
+        }
+        ok = check(clean_failure, "native progress is excluded from failure diagnostics") && ok;
+        (void)unlink(failed_worker.c_str());
+        (void)unsetenv("LINUX_DEFRAGGER_NTFS_WORKER");
     }
 
     const HelperCommand helper = helper_command(

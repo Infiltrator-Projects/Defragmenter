@@ -42,6 +42,46 @@ static uint64_t stream_span(const NtfsStream *s,bool growth){uint64_t reserve=gr
 static void set_stream_free(NtfsLayout *layout,const NtfsStream *s){for(size_t r=0;r<s->runs.count;++r){NtfsRun run=s->runs.items[r];if(run.sparse)continue;for(uint64_t c=0;c<run.length;++c)ntfs_bitmap_set(layout,run.lcn+c,false);}}
 static void collect_free(const NtfsLayout *layout,uint64_t total,FreeVec *free_runs){uint64_t upper=total>0?total-1U:0U;bool active=false;uint64_t start=0;for(uint64_t c=1;c<upper;++c){bool free=!ntfs_bitmap_bit(layout,c);if(free&&!active){active=true;start=c;}else if(!free&&active){free_push(free_runs,start,c-start);active=false;}}if(active)free_push(free_runs,start,upper-start);}
 
+/* Address-ordered maximum tree: query the earliest run that fits without
+ * rescanning depleted runs for every canonical stream. Leaves retain exactly
+ * the existing first-fit order; parent maxima only prune impossible runs. */
+typedef struct { uint64_t *maxima; size_t leaves; } FreeIndex;
+static FreeIndex free_index_build(const FreeVec *runs) {
+    size_t leaves = 1U;
+    while (leaves < runs->count) {
+        if (leaves > SIZE_MAX / 2U) ld_die("NTFS free-run index is too large");
+        leaves *= 2U;
+    }
+    if (leaves > SIZE_MAX / (2U * sizeof(uint64_t)))
+        ld_die("NTFS free-run index is too large");
+    FreeIndex index = {ld_xmalloc(2U * leaves * sizeof(uint64_t)), leaves};
+    memset(index.maxima, 0, 2U * leaves * sizeof(uint64_t));
+    for (size_t run = 0U; run < runs->count; ++run)
+        index.maxima[leaves + run] = runs->items[run].length;
+    for (size_t node = leaves; node-- > 1U;)
+        index.maxima[node] = index.maxima[node * 2U] > index.maxima[node * 2U + 1U]
+            ? index.maxima[node * 2U] : index.maxima[node * 2U + 1U];
+    return index;
+}
+static size_t free_index_first(const FreeIndex *index, uint64_t span) {
+    if (index->maxima[1] < span) return SIZE_MAX;
+    size_t node = 1U;
+    while (node < index->leaves) {
+        node *= 2U;
+        if (index->maxima[node] < span) ++node;
+    }
+    return node - index->leaves;
+}
+static void free_index_update(FreeIndex *index, size_t run, uint64_t length) {
+    size_t node = index->leaves + run;
+    index->maxima[node] = length;
+    while (node > 1U) {
+        node /= 2U;
+        index->maxima[node] = index->maxima[node * 2U] > index->maxima[node * 2U + 1U]
+            ? index->maxima[node * 2U] : index->maxima[node * 2U + 1U];
+    }
+}
+
 static bool primary_object_stream(const NtfsStream *stream) {
     if (stream->directory) return stream->attribute_type == NTFS_ATTR_INDEX_ALLOCATION;
     return stream->attribute_type == NTFS_ATTR_DATA && stream->attribute_name[0] == '\0';
@@ -128,25 +168,17 @@ int ntfs_plan_layout(NtfsLayout *layout,NtfsCatalogue *catalogue,uint64_t total_
     }
     FreeVec free_runs={0};
     collect_free(layout,total_clusters,&free_runs);
+    FreeIndex free_index = free_index_build(&free_runs);
     bool have_start=false;
-    /*
-     * Place each canonical stream in the earliest legal free run that can hold
-     * the whole stream plus Growth reserve.  The previous exact subset-sum
-     * solver indexed a dynamic-programming table by cluster capacity, making
-     * planning time proportional to free-run clusters multiplied by stream
-     * count.  On large NTFS volumes that could require billions of iterations.
-     *
-     * This run-oriented first-fit policy is deterministic, never splits a
-     * stream, preserves the low-address packing objective and has no work term
-     * proportional to the number of clusters inside a run.
-     */
+    /* Keep whole-stream canonical first-fit placement. The maximum tree finds
+     * the earliest legal run in O(log free_runs), including Growth reserve,
+     * without rescanning a growing prefix of exhausted or undersized runs. */
     for(size_t item=0;item<movable;++item){
         NtfsStream *s=all[item].stream;
         const uint64_t span=all[item].span;
-        bool placed=false;
-        for(size_t fr=0;fr<free_runs.count;++fr){
+        const size_t fr = free_index_first(&free_index, span);
+        if (fr != SIZE_MAX) {
             FreeRun *run=&free_runs.items[fr];
-            if(run->length<span)continue;
             const uint64_t start_cluster=run->start;
             const uint64_t reserve=span-s->clusters;
             placement_push(placements,(NtfsPlacement){
@@ -154,6 +186,7 @@ int ntfs_plan_layout(NtfsLayout *layout,NtfsCatalogue *catalogue,uint64_t total_
                 s->clusters,reserve});
             run->start+=span;
             run->length-=span;
+            free_index_update(&free_index, fr, run->length);
             if(!have_start){
                 placements->envelope_start=start_cluster;
                 have_start=true;
@@ -161,10 +194,7 @@ int ntfs_plan_layout(NtfsLayout *layout,NtfsCatalogue *catalogue,uint64_t total_
             const uint64_t end_cluster=start_cluster+span;
             if(end_cluster>placements->envelope_end)
                 placements->envelope_end=end_cluster;
-            placed=true;
-            break;
-        }
-        if(!placed){
+        } else {
             ntfs_set_error(error,
                            "NTFS has insufficient legal free clusters for the canonical layout");
             goto fail;
@@ -182,10 +212,10 @@ int ntfs_plan_layout(NtfsLayout *layout,NtfsCatalogue *catalogue,uint64_t total_
     }
     for(size_t i=0;i<placements->count;++i){NtfsPlacement *p=&placements->items[i];for(uint64_t c=0;c<p->clusters;++c)ntfs_bitmap_set(layout,p->start+c,true);for(uint64_t c=0;c<p->reserve;++c)ntfs_bitmap_set(layout,p->start+p->clusters+c,false);}
     for(size_t i=0;i<reserved.count;++i)for(uint64_t c=0;c<reserved.items[i].length;++c)ntfs_bitmap_set(layout,reserved.items[i].start+c,false);
-    free(all);free(free_runs.items);free(reserved.items);return 0;
+    free(free_index.maxima);free(all);free(free_runs.items);free(reserved.items);return 0;
 fail:
     for(size_t i=0;i<reserved.count;++i)for(uint64_t c=0;c<reserved.items[i].length;++c)ntfs_bitmap_set(layout,reserved.items[i].start+c,false);
-    free(all);free(free_runs.items);free(reserved.items);ntfs_placements_free(placements);return -1;
+    free(free_index.maxima);free(all);free(free_runs.items);free(reserved.items);ntfs_placements_free(placements);return -1;
 fail_before_free:
     for(size_t i=0;i<reserved.count;++i)for(uint64_t c=0;c<reserved.items[i].length;++c)ntfs_bitmap_set(layout,reserved.items[i].start+c,false);
     free(all);free(reserved.items);ntfs_placements_free(placements);return -1;
