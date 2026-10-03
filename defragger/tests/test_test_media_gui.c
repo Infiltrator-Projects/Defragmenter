@@ -225,6 +225,8 @@ static gboolean layout_probe(gpointer user_data)
         ++probe->phase; return G_SOURCE_CONTINUE;
     }
     if (probe->phase == 3U) {
+        GtkAdjustment *log_scroll = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(find_named(window, "ldtm-log-scroll")));
+        CHECK(gtk_adjustment_get_value(log_scroll) + gtk_adjustment_get_page_size(log_scroll) >= gtk_adjustment_get_upper(log_scroll) - 2.0);
         capture_window(window, "LDTM_GUI_TEST_LOG_SCREENSHOT");
         gtk_stack_set_visible_child_name(GTK_STACK(app->result_stack), "details");
         ++probe->phase; return G_SOURCE_CONTINUE;

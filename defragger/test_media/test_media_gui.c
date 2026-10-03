@@ -114,6 +114,18 @@ static void show_message(GtkWindow *parent, GtkMessageType type,
     gtk_widget_destroy(dialog);
 }
 
+static gboolean follow_log_end(gpointer data)
+{
+    GtkTextView *view = GTK_TEXT_VIEW(data);
+    g_object_set_data(G_OBJECT(view), "ldtm-follow-source", NULL);
+    if (gtk_widget_get_realized(GTK_WIDGET(view))) {
+        GtkAdjustment *vertical = gtk_scrollable_get_vadjustment(GTK_SCROLLABLE(view));
+        gtk_adjustment_set_value(vertical, MAX(gtk_adjustment_get_lower(vertical),
+            gtk_adjustment_get_upper(vertical) - gtk_adjustment_get_page_size(vertical)));
+    }
+    return G_SOURCE_REMOVE;
+}
+
 static void append_log(LdtmApp *app, const char *text)
 {
     GtkTextIter end;
@@ -122,11 +134,11 @@ static void append_log(LdtmApp *app, const char *text)
     gtk_text_buffer_get_end_iter(app->log_buffer, &end);
     gtk_text_buffer_insert(app->log_buffer, &end, text, -1);
     if (view != NULL) {
-        gtk_text_buffer_get_end_iter(app->log_buffer, &end);
-        GtkTextMark *mark = gtk_text_buffer_get_mark(app->log_buffer, "ldtm-log-end");
-        if (mark == NULL) mark = gtk_text_buffer_create_mark(app->log_buffer, "ldtm-log-end", &end, FALSE);
-        else gtk_text_buffer_move_mark(app->log_buffer, mark, &end);
-        gtk_text_view_scroll_to_mark(view, mark, 0.0, FALSE, 0.0, 1.0);
+        if (g_object_get_data(G_OBJECT(view), "ldtm-follow-source") == NULL) {
+            guint source = g_timeout_add_full(G_PRIORITY_LOW, 50U, follow_log_end,
+                g_object_ref(view), g_object_unref);
+            g_object_set_data(G_OBJECT(view), "ldtm-follow-source", GUINT_TO_POINTER(source));
+        }
     }
 }
 
@@ -448,6 +460,7 @@ static void worker_finished(GPid pid, gint status, gpointer user_data)
         (void)snprintf(message, sizeof(message), "\nWorker failed (wait status %d).\n", status);
     append_log(app, message);
     show_operation_log(app, "Test-media operation failed — diagnostic log");
+    if (!app->shutting_down) append_log(app, "");
 }
 
 static char *selected_device(LdtmApp *app)
