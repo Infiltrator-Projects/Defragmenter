@@ -95,6 +95,22 @@ install(FILES packaging/io.github.linuxdefragger.TestMedia.desktop
         DESTINATION share/applications)
 
 if(BUILD_TESTING)
+    add_executable(linux-defragger-test-media-gui-test
+        tests/test_test_media_gui.c test_media/test_media_theme.c)
+    target_include_directories(linux-defragger-test-media-gui-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/test_media" "${LD_GENERATED_DIR}")
+    target_compile_options(linux-defragger-test-media-gui-test PRIVATE ${LD_WARNING_FLAGS})
+    target_compile_definitions(linux-defragger-test-media-gui-test PRIVATE
+        _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+    target_link_libraries(linux-defragger-test-media-gui-test PRIVATE
+        linux-defragger-test-media-core PkgConfig::GTK3 OpenSSL::Crypto)
+    find_program(LDTM_XVFB_RUN xvfb-run)
+    if(LDTM_XVFB_RUN)
+        add_test(NAME linux-defragger-test-media-gui
+            COMMAND "${LDTM_XVFB_RUN}" -a -s "-screen 0 1024x768x24"
+                "$<TARGET_FILE:linux-defragger-test-media-gui-test>")
+        set_tests_properties(linux-defragger-test-media-gui PROPERTIES TIMEOUT 20)
+    endif()
     add_executable(linux-defragger-test-media-test tests/test_test_media.c)
     target_include_directories(linux-defragger-test-media-test PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/test_media"

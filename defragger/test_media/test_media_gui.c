@@ -116,6 +116,44 @@ static void append_log(LdtmApp *app, const char *text)
     }
 }
 
+static void copy_operation_log(LdtmApp *app)
+{
+    GtkTextIter start, end;
+    gtk_text_buffer_get_bounds(app->log_buffer, &start, &end);
+    char *text = gtk_text_buffer_get_text(app->log_buffer, &start, &end, FALSE);
+    gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), text, -1);
+    g_free(text);
+}
+
+static void show_operation_log(LdtmApp *app, const char *title)
+{
+    GtkWidget *dialog = gtk_dialog_new_with_buttons(
+        title, GTK_WINDOW(app->window),
+        GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+        "Copy log", GTK_RESPONSE_APPLY, "Close", GTK_RESPONSE_CLOSE, NULL);
+    GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
+    GtkWidget *view = gtk_text_view_new_with_buffer(app->log_buffer);
+    gtk_window_set_default_size(GTK_WINDOW(dialog), 820, 460);
+    gtk_text_view_set_editable(GTK_TEXT_VIEW(view), FALSE);
+    gtk_text_view_set_cursor_visible(GTK_TEXT_VIEW(view), FALSE);
+    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(view), GTK_WRAP_WORD_CHAR);
+    gtk_container_add(GTK_CONTAINER(scroll), view);
+    gtk_widget_set_hexpand(scroll, TRUE);
+    gtk_widget_set_vexpand(scroll, TRUE);
+    gtk_box_pack_start(GTK_BOX(gtk_dialog_get_content_area(GTK_DIALOG(dialog))),
+                        scroll, TRUE, TRUE, 8U);
+    gtk_widget_show_all(dialog);
+    while (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_APPLY)
+        copy_operation_log(app);
+    gtk_widget_destroy(dialog);
+}
+
+static void view_log_clicked(GtkButton *button, gpointer user_data)
+{
+    (void)button;
+    show_operation_log((LdtmApp *)user_data, "Test Media operation log");
+}
+
 static const char *display_result(const char *status)
 {
     if (status == NULL) return "Unknown";
@@ -326,10 +364,30 @@ static void cleanup_channels(LdtmApp *app)
     if (app->stderr_channel != NULL) { g_io_channel_unref(app->stderr_channel); app->stderr_channel = NULL; }
 }
 
+static void drain_finished_channel(LdtmApp *app, GIOChannel *channel)
+{
+    if (channel == NULL) return;
+    for (;;) {
+        gchar *line = NULL;
+        GIOStatus status = g_io_channel_read_line(channel, &line, NULL, NULL, NULL);
+        if (status == G_IO_STATUS_NORMAL && line != NULL) {
+            append_log(app, line);
+            parse_worker_status(app, line);
+            g_free(line);
+            continue;
+        }
+        g_free(line);
+        break;
+    }
+}
+
 static void worker_finished(GPid pid, gint status, gpointer user_data)
 {
     LdtmApp *app = (LdtmApp *)user_data;
     char message[128];
+    /* The child watch may run before the final pipe-readable notification. */
+    drain_finished_channel(app, app->stdout_channel);
+    drain_finished_channel(app, app->stderr_channel);
     cleanup_channels(app);
     app->child_watch = 0U;
     app->child_pid = 0;
@@ -344,7 +402,7 @@ static void worker_finished(GPid pid, gint status, gpointer user_data)
     }
     gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(app->progress), 0.0);
     gtk_progress_bar_set_text(GTK_PROGRESS_BAR(app->progress), "Operation failed");
-    gtk_label_set_text(GTK_LABEL(app->operation_summary), "Operation failed — details opened below");
+    gtk_label_set_text(GTK_LABEL(app->operation_summary), "Operation failed — diagnostic log opened");
     if (app->log_expander != NULL) gtk_expander_set_expanded(GTK_EXPANDER(app->log_expander), TRUE);
     if (WIFEXITED(status))
         (void)snprintf(message, sizeof(message), "\nWorker failed (exit status %d).\n", WEXITSTATUS(status));
@@ -353,9 +411,7 @@ static void worker_finished(GPid pid, gint status, gpointer user_data)
     else
         (void)snprintf(message, sizeof(message), "\nWorker failed (wait status %d).\n", status);
     append_log(app, message);
-    show_message(GTK_WINDOW(app->window), GTK_MESSAGE_ERROR,
-                 "Test-media operation failed",
-                 "The filesystem-specific diagnostic log is open below.");
+    show_operation_log(app, "Test-media operation failed — diagnostic log");
 }
 
 static char *selected_device(LdtmApp *app)
@@ -967,13 +1023,14 @@ static void window_destroyed(GtkWidget *widget, gpointer user_data)
 int ldtm_gui_main(int argc, char **argv)
 {
     LdtmApp app;
-    GtkWidget *outer, *hero, *hero_box, *hero_copy, *hero_title, *hero_subtitle, *hero_badge;
+    GtkWidget *page_scroll, *outer, *hero, *hero_box, *hero_copy, *hero_title, *hero_subtitle, *hero_badge;
     GtkWidget *device_card, *device_box, *device_heading, *device_copy, *device_title, *device_subtitle;
     GtkWidget *stats_row, *dummy_value, *matrix_card, *matrix_box, *matrix_title, *matrix_subtitle;
     GtkWidget *flow_scroll, *flow, *detail_expander, *detail_scroll, *detail_tree, *actions_row;
-    GtkWidget *operation_card, *operation_box, *operation_header, *operation_title;
+    GtkWidget *operation_card, *operation_box, *operation_header, *operation_title, *view_log_button;
     GtkWidget *log_scroll, *log_view;
     GdkGeometry geometry;
+    GdkRectangle workarea = {0, 0, 1280, 860};
     memset(&app, 0, sizeof(app));
     gtk_init(&argc, &argv);
     app.device_store = gtk_list_store_new(LDTM_DEVICE_N_COLUMNS,
@@ -983,16 +1040,24 @@ int ldtm_gui_main(int argc, char **argv)
         G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING);
     app.window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_window_set_title(GTK_WINDOW(app.window), "Defragmenter Test Media");
-    gtk_window_set_default_size(GTK_WINDOW(app.window), 1280, 860);
+    GdkDisplay *display = gdk_display_get_default();
+    GdkMonitor *monitor = gdk_display_get_primary_monitor(display);
+    if (monitor == NULL) monitor = gdk_display_get_monitor(display, 0);
+    if (monitor != NULL) gdk_monitor_get_workarea(monitor, &workarea);
+    gtk_window_set_default_size(GTK_WINDOW(app.window), MIN(1280, workarea.width), MIN(860, workarea.height));
     gtk_window_set_position(GTK_WINDOW(app.window), GTK_WIN_POS_CENTER);
-    geometry.min_width = 900; geometry.min_height = 680;
+    geometry.min_width = MIN(900, workarea.width); geometry.min_height = MIN(680, workarea.height);
     gtk_window_set_geometry_hints(GTK_WINDOW(app.window), app.window, &geometry, GDK_HINT_MIN_SIZE);
     g_signal_connect(app.window, "destroy", G_CALLBACK(window_destroyed), &app);
     gtk_window_set_titlebar(GTK_WINDOW(app.window), make_suite_header(&app));
 
     outer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
     gtk_container_set_border_width(GTK_CONTAINER(outer), 12U);
-    gtk_container_add(GTK_CONTAINER(app.window), outer);
+    page_scroll = gtk_scrolled_window_new(NULL, NULL);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(page_scroll), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+    gtk_widget_set_name(page_scroll, "ldtm-page-scroll");
+    gtk_container_add(GTK_CONTAINER(page_scroll), outer);
+    gtk_container_add(GTK_CONTAINER(app.window), page_scroll);
 
     hero = gtk_frame_new(NULL); gtk_frame_set_shadow_type(GTK_FRAME(hero), GTK_SHADOW_NONE);
     gtk_widget_set_name(hero, "ldtm-hero");
@@ -1065,11 +1130,17 @@ int ldtm_gui_main(int argc, char **argv)
         gtk_flow_box_insert(GTK_FLOW_BOX(flow), make_filesystem_tile(&app, index), -1);
     flow_scroll = gtk_scrolled_window_new(NULL, NULL);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(flow_scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
-    gtk_widget_set_size_request(flow_scroll, -1, 205); gtk_container_add(GTK_CONTAINER(flow_scroll), flow);
+    gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(flow_scroll), 120);
+    gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(flow_scroll), 205);
+    gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(flow_scroll), TRUE);
+    gtk_container_add(GTK_CONTAINER(flow_scroll), flow);
     gtk_box_pack_start(GTK_BOX(matrix_box), flow_scroll, TRUE, TRUE, 0);
     detail_tree = make_tree_view(&app); detail_scroll = gtk_scrolled_window_new(NULL, NULL);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(detail_scroll), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
-    gtk_widget_set_size_request(detail_scroll, -1, 230); gtk_container_add(GTK_CONTAINER(detail_scroll), detail_tree);
+    gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(detail_scroll), 120);
+    gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(detail_scroll), 230);
+    gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(detail_scroll), TRUE);
+    gtk_container_add(GTK_CONTAINER(detail_scroll), detail_tree);
     detail_expander = gtk_expander_new("Technical filesystem details");
     gtk_style_context_add_class(gtk_widget_get_style_context(detail_expander), "ldtm-detail-expander");
     gtk_container_add(GTK_CONTAINER(detail_expander), detail_scroll);
@@ -1101,6 +1172,10 @@ int ldtm_gui_main(int argc, char **argv)
     operation_header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     operation_title = gtk_label_new("Operation"); gtk_widget_set_name(operation_title, "ldtm-operation-strip-title");
     gtk_box_pack_start(GTK_BOX(operation_header), operation_title, FALSE, FALSE, 0);
+    view_log_button = gtk_button_new_with_label("View log");
+    gtk_widget_set_name(view_log_button, "ldtm-view-log");
+    g_signal_connect(view_log_button, "clicked", G_CALLBACK(view_log_clicked), &app);
+    gtk_box_pack_end(GTK_BOX(operation_header), view_log_button, FALSE, FALSE, 0);
     app.operation_summary = gtk_label_new("Ready"); gtk_widget_set_name(app.operation_summary, "ldtm-operation-summary");
     gtk_box_pack_end(GTK_BOX(operation_header), app.operation_summary, TRUE, TRUE, 0);
     gtk_box_pack_start(GTK_BOX(operation_box), operation_header, FALSE, FALSE, 0);
@@ -1114,7 +1189,10 @@ int ldtm_gui_main(int argc, char **argv)
     gtk_text_view_set_left_margin(GTK_TEXT_VIEW(log_view), 8); gtk_text_view_set_right_margin(GTK_TEXT_VIEW(log_view), 8);
     app.log_buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(log_view)); g_object_set_data(G_OBJECT(app.log_buffer), "view", log_view);
     log_scroll = gtk_scrolled_window_new(NULL, NULL); gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(log_scroll), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
-    gtk_widget_set_size_request(log_scroll, -1, 190); gtk_container_add(GTK_CONTAINER(log_scroll), log_view);
+    gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(log_scroll), 120);
+    gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(log_scroll), 190);
+    gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(log_scroll), TRUE);
+    gtk_container_add(GTK_CONTAINER(log_scroll), log_view);
     app.log_expander = gtk_expander_new("Live operation log");
     gtk_style_context_add_class(gtk_widget_get_style_context(app.log_expander), "ldtm-log-expander");
     gtk_container_add(GTK_CONTAINER(app.log_expander), log_scroll);

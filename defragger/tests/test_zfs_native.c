@@ -375,7 +375,7 @@ static void make_dnode(uint8_t dnode[512], int big, uint8_t type,
     memset(dnode, 0, 512U);
     void (*put64)(uint8_t *, uint64_t) = big ? put_be64 : put_le64;
     dnode[0] = type;
-    dnode[1] = 14U;
+    dnode[1] = 0U;
     dnode[2] = 1U;
     dnode[3] = 1U;
     dnode[4] = bonus_type;
@@ -455,7 +455,9 @@ static void make_fatzap_leaf_uint64(uint8_t block[4096],
     put16(block + value_array + 22U, ZAP_CHAIN_END, 0);
 }
 
-static void write_exact_fixture(int fd, int log_spacemap, int fat_pool_directory)
+static void write_geometry_fixture(int fd, int log_spacemap, int fat_pool_directory,
+                                    uint8_t meta_levels, uint8_t meta_shift,
+                                    uint8_t meta_pointers, size_t file_indirect_size)
 {
     uint8_t space_map_data[4096];
     memset(space_map_data, 0, sizeof(space_map_data));
@@ -498,6 +500,23 @@ static void write_exact_fixture(int fd, int log_spacemap, int fat_pool_directory
                file_bp0);
     dataset_dnodes[512U + 3U] = 2U;
     memcpy(dataset_dnodes + 512U + 192U, file_bp1, sizeof(file_bp1));
+    if (file_indirect_size != 0U) {
+        uint8_t indirect[4096] = {0};
+        uint8_t indirect_bp[128];
+        const uint64_t indirect_offset = UINT64_C(768) * 1024U;
+        CHECK(file_indirect_size <= sizeof(indirect));
+        memcpy(indirect, file_bp0, sizeof(file_bp0));
+        memcpy(indirect + 128U, file_bp1, sizeof(file_bp1));
+        write_all(fd, indirect, file_indirect_size,
+                  (off_t)(VDEV_DATA_START + indirect_offset));
+        encode_bp(indirect_bp, 0, indirect_offset, 19U,
+                  indirect, file_indirect_size);
+        indirect_bp[55U] |= 1U; /* Level 1, preserving the data byte order. */
+        make_dnode(dataset_dnodes + 512U, 0, 19U, 0U, 8U, 0U, 1U,
+                   indirect_bp);
+        dataset_dnodes[512U + 1U] = 12U;
+        dataset_dnodes[512U + 2U] = 2U;
+    }
     write_all(fd, dataset_dnodes, sizeof(dataset_dnodes),
               (off_t)(VDEV_DATA_START + DATASET_DNODE_LOGICAL_OFFSET));
 
@@ -590,8 +609,16 @@ static void write_exact_fixture(int fd, int log_spacemap, int fat_pool_directory
     uint8_t mos[4096];
     memset(mos, 0, sizeof(mos));
     make_dnode(mos, 0, 10U, 0U, 32U, 0U, 0U, meta_bp);
+    mos[1] = meta_shift;
+    mos[2] = meta_levels;
+    mos[3] = meta_pointers;
     write_all(fd, mos, sizeof(mos),
               (off_t)(VDEV_DATA_START + MOS_ROOT_LOGICAL_OFFSET));
+}
+
+static void write_exact_fixture(int fd, int log_spacemap, int fat_pool_directory)
+{
+    write_geometry_fixture(fd, log_spacemap, fat_pool_directory, 1U, 0U, 1U, 0U);
 }
 
 static off_t write_uber(int fd, unsigned label, unsigned slot, int big,
@@ -705,6 +732,55 @@ int main(void)
     CHECK(analysis.fragmented_bytes == 8192U);
     CHECK(analysis.range_count == 7U);
     zfs_analysis_destroy(&analysis);
+
+    /* Direct-only MOS and file trees do not use an indirect-block shift. */
+    const uint8_t direct_shifts[] = {0U, 11U, 14U, 18U};
+    for (size_t index = 0U; index < sizeof(direct_shifts); ++index) {
+        reset_image(fd);
+        write_label_config(fd, 0U, NULL);
+        write_geometry_fixture(fd, 0, 0, 1U, direct_shifts[index], 1U, 0U);
+        (void)write_uber(fd, 0U, 3U, 0, 28U, 10U, 77U, 1000U);
+        CHECK(zfs_analyse_exact(path, &analysis, error, sizeof(error)) == 0);
+        CHECK(analysis.exact_allocation && analysis.exact_fragmentation);
+        CHECK(analysis.unknown_bytes == 0U && analysis.fragmented_files == 1U);
+        zfs_analysis_destroy(&analysis);
+    }
+
+    /* Every rejected geometry states the actual failing field and value. */
+    const uint8_t invalid_geometry[][3] = {
+        {0U, 14U, 1U}, {6U, 14U, 1U}, {1U, 0U, 0U},
+        {2U, 0U, 1U}, {2U, 11U, 1U}, {2U, 18U, 1U}
+    };
+    for (size_t index = 0U; index < sizeof(invalid_geometry) / sizeof(invalid_geometry[0]); ++index) {
+        reset_image(fd);
+        write_label_config(fd, 0U, NULL);
+        write_geometry_fixture(fd, 0, 0, invalid_geometry[index][0],
+                                invalid_geometry[index][1], invalid_geometry[index][2], 0U);
+        (void)write_uber(fd, 0U, 3U, 0, 28U, 10U, 77U, 1000U);
+        CHECK(zfs_analyse_exact(path, &analysis, error, sizeof(error)) != 0);
+        CHECK(strstr(error, index < 2U ? "nlevels=" :
+                           index == 2U ? "nblkptr=0" : "indblkshift=") != NULL);
+    }
+
+    /* An actual indirect file tree remains accepted, with exact block size. */
+    for (size_t indirect_size = 2048U; indirect_size <= 4096U; indirect_size *= 2U) {
+        reset_image(fd);
+        write_label_config(fd, 0U, NULL);
+        write_geometry_fixture(fd, 0, 0, 1U, 0U, 1U, indirect_size);
+        (void)write_uber(fd, 0U, 3U, 0, 28U, 10U, 77U, 1000U);
+        const int result = zfs_analyse_exact(path, &analysis, error, sizeof(error));
+        if (indirect_size == 4096U) {
+            CHECK(result == 0);
+            CHECK(analysis.exact_allocation && analysis.exact_fragmentation);
+            CHECK(analysis.fragmented_files == 1U);
+            zfs_analysis_destroy(&analysis);
+        } else {
+            CHECK(result != 0);
+            if (strstr(error, "invalid ZFS file indirect block") == NULL)
+                fprintf(stderr, "unexpected geometry rejection: %s\n", error);
+            CHECK(strstr(error, "invalid ZFS file indirect block") != NULL);
+        }
+    }
 
     /*
      * OpenZFS does not require the physical top-vdev asize to be an exact

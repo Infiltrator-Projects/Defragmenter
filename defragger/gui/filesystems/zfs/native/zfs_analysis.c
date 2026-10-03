@@ -897,22 +897,56 @@ static int power_u64(uint64_t base, unsigned int exponent, uint64_t *result)
     return 0;
 }
 
+static int dnode_tree_geometry(const ZfsDnode *dnode,
+                                uint64_t *entries_per_indirect,
+                                char *error, size_t error_size)
+{
+    char detail[192];
+    if (dnode->nlevels == 0U || dnode->nlevels > ZFS_DNODE_MAX_LEVELS) {
+        errno = ENOTSUP;
+        (void)snprintf(detail, sizeof(detail),
+                  "unsupported ZFS dnode levels: nlevels=%u (supported 1-%u)",
+                  (unsigned int)dnode->nlevels, ZFS_DNODE_MAX_LEVELS);
+        set_error(error, error_size, detail);
+        return -1;
+    }
+    if (dnode->nblkptr == 0U) {
+        errno = EINVAL;
+        (void)snprintf(detail, sizeof(detail),
+                  "invalid ZFS dnode root pointers: nblkptr=0 nlevels=%u",
+                  (unsigned int)dnode->nlevels);
+        set_error(error, error_size, detail);
+        return -1;
+    }
+    /* Direct trees never use the indirect-block size or its shift. */
+    *entries_per_indirect = 1U;
+    if (dnode->nlevels == 1U)
+        return 0;
+    if (dnode->indblkshift < ZFS_DNODE_MIN_INDBLKSHIFT ||
+        dnode->indblkshift > ZFS_DNODE_MAX_INDBLKSHIFT) {
+        errno = ENOTSUP;
+        (void)snprintf(detail, sizeof(detail),
+                  "unsupported ZFS indirect-block shift: indblkshift=%u "
+                  "nlevels=%u nblkptr=%u (supported %u-%u)",
+                  (unsigned int)dnode->indblkshift,
+                  (unsigned int)dnode->nlevels,
+                  (unsigned int)dnode->nblkptr,
+                  ZFS_DNODE_MIN_INDBLKSHIFT, ZFS_DNODE_MAX_INDBLKSHIFT);
+        set_error(error, error_size, detail);
+        return -1;
+    }
+    *entries_per_indirect = UINT64_C(1) << (dnode->indblkshift - 7U);
+    return 0;
+}
+
 static int object_lookup_bp(ZfsContext *context, const ZfsDnode *dnode,
                             uint64_t block_id, ZfsBlockPointer *result,
                             char *error, size_t error_size)
 {
-    if (dnode->nlevels == 0U || dnode->nlevels > ZFS_DNODE_MAX_LEVELS ||
-        dnode->nblkptr == 0U ||
-        dnode->indblkshift < ZFS_DNODE_MIN_INDBLKSHIFT ||
-        dnode->indblkshift > ZFS_DNODE_MAX_INDBLKSHIFT) {
-        errno = ENOTSUP;
-        set_error(error, error_size,
-                  "unsupported ZFS dnode block-tree geometry");
+    uint64_t entries_per_indirect = 0U;
+    if (dnode_tree_geometry(dnode, &entries_per_indirect,
+                            error, error_size) != 0)
         return -1;
-    }
-
-    const uint64_t entries_per_indirect =
-        UINT64_C(1) << (dnode->indblkshift - 7U);
     uint64_t root_span = 0U;
     if (power_u64(entries_per_indirect, dnode->nlevels - 1U,
                   &root_span) != 0)
@@ -941,8 +975,7 @@ static int object_lookup_bp(ZfsContext *context, const ZfsDnode *dnode,
                                     &indirect, &indirect_length,
                                     error, error_size) != 0)
             return -1;
-        if (indirect_length < ZFS_BP_SIZE ||
-            indirect_length % ZFS_BP_SIZE != 0U) {
+        if (indirect_length != entries_per_indirect * ZFS_BP_SIZE) {
             free(indirect);
             errno = EINVAL;
             set_error(error, error_size,
@@ -1849,8 +1882,7 @@ static int collect_file_tree(ZfsContext *context,
     if (read_block_pointer_data(context, bp, &indirect, &indirect_length,
                                 error, error_size) != 0)
         return -1;
-    if (indirect_length == 0U ||
-        (indirect_length % ZFS_BP_SIZE) != 0U) {
+    if (indirect_length != entries_per_indirect * ZFS_BP_SIZE) {
         free(indirect);
         errno = EINVAL;
         set_error(error, error_size,
@@ -1901,17 +1933,10 @@ static int collect_file_extents(ZfsContext *context,
 {
     if (dnode->nlevels == 0U)
         return 0;
-    if (dnode->nlevels > ZFS_DNODE_MAX_LEVELS ||
-        dnode->nblkptr == 0U ||
-        dnode->indblkshift < ZFS_DNODE_MIN_INDBLKSHIFT ||
-        dnode->indblkshift > ZFS_DNODE_MAX_INDBLKSHIFT) {
-        errno = ENOTSUP;
-        set_error(error, error_size,
-                  "unsupported ZFS file dnode geometry");
+    uint64_t entries_per_indirect = 0U;
+    if (dnode_tree_geometry(dnode, &entries_per_indirect,
+                            error, error_size) != 0)
         return -1;
-    }
-    const uint64_t entries_per_indirect =
-        UINT64_C(1) << (dnode->indblkshift - 7U);
     uint64_t root_span = 0U;
     if (power_u64(entries_per_indirect, dnode->nlevels - 1U,
                   &root_span) != 0)

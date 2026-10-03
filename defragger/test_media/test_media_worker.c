@@ -2243,23 +2243,29 @@ static int create_ufs_and_populate(const LdtmFilesystemSpec *spec, const char *p
         return 1;
     }
     if (!ufs2_summary_ok(image)) {
-        emit_status(spec->key, "format-failed",
+        emit_status(spec->key, "qualification-failed",
                     "makefs completed but the native UFS2 parser rejected its image");
         (void)state_write_status(
-            state, spec, "format-failed",
+            state, spec, "qualification-failed",
             "makefs output failed native UFS2 geometry validation");
         return 1;
     }
     printf("+ copy verified UFS2 image %s -> %s\n", image, partition);
     fflush(stdout);
-    if (copy_image_to_partition(image, partition) != 0 ||
-        !ufs2_summary_ok(partition)) {
+    if (copy_image_to_partition(image, partition) != 0) {
         emit_status(
             spec->key, "format-failed",
-            "UFS2 image copy could not be independently validated");
+            "UFS2 image copy failed");
         (void)state_write_status(
             state, spec, "format-failed",
-            "UFS2 partition validation failed");
+            "UFS2 image copy failed");
+        return 1;
+    }
+    if (!ufs2_summary_ok(partition)) {
+        emit_status(spec->key, "qualification-failed",
+                    "copied UFS2 image failed native geometry validation");
+        (void)state_write_status(state, spec, "qualification-failed",
+                                 "UFS2 partition validation failed");
         return 1;
     }
     {
@@ -2354,12 +2360,12 @@ static int create_zfs_and_populate(const LdtmFilesystemSpec *spec, const char *p
         if (!zfs_exact_analysis_ok(
                 partition, detail, sizeof(detail))) {
             emit_status(
-                spec->key, "format-failed",
+                spec->key, "qualification-failed",
                 detail[0] != '\0'
                     ? detail
                     : "native exact analyser rejected the exported feature-disabled ZFS pool");
             (void)state_write_status(
-                state, spec, "format-failed",
+                state, spec, "qualification-failed",
                 detail[0] != '\0'
                     ? detail
                     : "native exact analyser rejected the exported feature-disabled ZFS pool");
