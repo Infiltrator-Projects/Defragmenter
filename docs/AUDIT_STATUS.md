@@ -6,8 +6,8 @@ Completed: 2026-09-22
 Extended: 2026-10-03
 
 Applies to: release version 1.8.0-245
-Audited source commit: f8e0bf8a40c66cb8c4bbdaad802b1bcbc2c7b44a
-Audited release-governance commit: 54803a734c88501f9f1578b803e00a5f085da254
+Audited source commit: cba07ba5552947b4c2b4ad0aada8eeff55ac353d
+Audited release-governance commit: cba07ba5552947b4c2b4ad0aada8eeff55ac353d
 
 This status records the 1.8.0-245 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
 
@@ -17,7 +17,9 @@ This document records the completed 1.8.0-245 release safety case and the explic
 
 ## Qualification evidence
 
-The current audited production/build/Test-Media source baseline is commit `f8e0bf8a40c66cb8c4bbdaad802b1bcbc2c7b44a` for release version 1.8.0-245. This review covers the Test Media visual correction requested after the supplied comparison screenshots showed the 1.8.0-243/244 styling regression. The previous graphical treatment is restored: blue-to-purple hero, coloured summary icons and borders, filesystem-family edges, status pills and distinct cyan/purple/red operations. Common continues to own the MB font identities, role weights, neutral palette and structural metrics; Test Media owns its graphical accents. Brand headings explicitly select MB Corpo A regular; interface text uses MB Corpo S regular/bold. Secondary text is 12 pixels, filesystem names 14 pixels, section headings 16 pixels and summary values 20 pixels. Long operation copy and filesystem results wrap, the grid grows naturally inside the page, and initial/minimum sizing accounts for the custom header plus a decoration allowance before applying monitor work-area limits. Theme parse failures now emit their diagnostic instead of being silently discarded.
+The current audited production/build/Test-Media source baseline is commit `cba07ba5552947b4c2b4ad0aada8eeff55ac353d` for release version 1.8.0-245. This review covers the Test Media visual correction requested after the supplied comparison screenshots showed the 1.8.0-243/244 styling regression. The previous graphical treatment is restored: blue-to-purple hero, coloured summary icons and borders, filesystem-family edges, status pills and distinct cyan/purple/red operations. Common continues to own the MB font identities, role weights, neutral palette and structural metrics; Test Media owns its graphical accents. Brand headings explicitly select MB Corpo A regular; interface text uses MB Corpo S regular/bold. Secondary text is 12 pixels, filesystem names 14 pixels, section headings 16 pixels and summary values 20 pixels. Long operation copy and filesystem results wrap, the grid grows naturally inside the page, and initial/minimum sizing accounts for the custom header plus a decoration allowance before applying monitor work-area limits. Theme parse failures now emit their diagnostic instead of being silently discarded.
+
+The local qualification workflow also now fetches the same Common 1.19.38 commit declared by CMake and the Git submodule. Its stale 1.19.35 checkout was detected when the provisioned local runner rejected the first release candidate at configuration. A release-contract regression now compares these pins. This governance change aligns qualification with the unchanged production dependency; it does not weaken or skip a check. The audited governance baseline above includes this correction.
 
 No analyser, writer, placement, transaction, recovery, privilege or target-identity semantics changed. The 1.8.0-244 ZFS dnode validation and exact indirect geometry remain intact, as do qualification-stage failure classification, final buffered worker-output draining, the separate failure log dialog, View log, Copy log and whole-page scrolling. Disabled and destructive controls retain explicit application-owned styling and the unchanged physical-disk safety checks.
 
