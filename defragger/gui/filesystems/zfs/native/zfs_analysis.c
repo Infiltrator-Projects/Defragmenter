@@ -45,6 +45,10 @@
 #define ZFS_DMU_OT_OBJSET 11U
 #define ZFS_DMU_OT_DSL_DATASET 16U
 #define ZFS_DMU_OT_PLAIN_FILE_CONTENTS 19U
+#define ZFS_DMU_OT_NEWTYPE UINT8_C(0x80)
+#define ZFS_DMU_OT_ENCRYPTED UINT8_C(0x20)
+#define ZFS_DMU_OT_BYTESWAP_MASK UINT8_C(0x1f)
+#define ZFS_DMU_BSWAP_ZAP UINT8_C(4)
 #define ZFS_DSL_DATASET_BP_OFFSET 128U
 #define ZFS_DSL_DATASET_NUM_CHILDREN_OFFSET 40U
 #define ZFS_CHECKSUM_OFF 2U
@@ -157,6 +161,22 @@ static uint64_t zfs_allocatable_asize(const ZfsContext *context)
         UINT64_C(1) << context->summary.metaslab_shift;
     return context->summary.top_vdev_asize -
            (context->summary.top_vdev_asize % metaslab_size);
+}
+
+/*
+ * Modern OpenZFS uses the DMU_OTN_* encoding for many metadata objects.
+ * A feature directory is therefore allowed to be either the historical
+ * DMU_OT_OBJECT_DIRECTORY value or an unencrypted new-type object whose
+ * byteswap class is ZAP.  Metadata/data is deliberately irrelevant here;
+ * encryption is not, because encrypted metadata remains outside this reader.
+ */
+static bool zfs_dnode_type_is_zap(uint8_t type)
+{
+    if (type == ZFS_DMU_OT_OBJECT_DIRECTORY)
+        return true;
+    return (type & ZFS_DMU_OT_NEWTYPE) != 0U &&
+           (type & ZFS_DMU_OT_ENCRYPTED) == 0U &&
+           (type & ZFS_DMU_OT_BYTESWAP_MASK) == ZFS_DMU_BSWAP_ZAP;
 }
 
 static void set_error(char *error, size_t error_size, const char *message)
@@ -1243,7 +1263,7 @@ static int zap_lookup_uint64(ZfsContext *context, uint64_t object,
         return -1;
 
     int result = -1;
-    if (zap.type != ZFS_DMU_OT_OBJECT_DIRECTORY ||
+    if (!zfs_dnode_type_is_zap(zap.type) ||
         zap.datablkszsec == 0U) {
         errno = ENOTSUP;
         set_error(error, error_size,
