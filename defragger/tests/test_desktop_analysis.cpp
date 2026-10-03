@@ -111,6 +111,8 @@ struct DesktopAnalysisTest {
 }
 
 int main(int argc, char** argv) {
+    /* Find source artwork even when CTest starts in the build directory. */
+    fs::current_path(fs::path(__FILE__).parent_path().parent_path());
     gchar* config = g_dir_make_tmp("defragger-desktop-startup-XXXXXX", nullptr);
     CHECK(config != nullptr && g_setenv("XDG_CONFIG_HOME", config, TRUE));
     gtk_init(&argc, &argv);
