@@ -716,6 +716,24 @@ static uint64_t ufs_group_base(const LdUfsSummary *summary, uint32_t group)
     return (uint64_t)group * summary->fragments_per_group;
 }
 
+/*
+ * Cylinder-group metadata creates unavoidable physical gaps between otherwise
+ * compact UFS allocations.  A forward transition to a later cylinder group is
+ * therefore a natural allocation boundary, not avoidable file fragmentation.
+ */
+static bool ufs_compact_transition(const LdUfsSummary *summary,
+                                   uint64_t previous_end, uint64_t next_start)
+{
+    if (next_start == previous_end)
+        return true;
+    if (previous_end == 0U || next_start >= summary->filesystem_fragments)
+        return false;
+    const uint64_t previous_group =
+        (previous_end - 1U) / summary->fragments_per_group;
+    const uint64_t next_group = next_start / summary->fragments_per_group;
+    return next_group > previous_group;
+}
+
 static int ufs_group_start(const LdUfsSummary *summary, uint32_t group,
                            uint64_t *start, char *error, size_t error_size)
 {
@@ -1146,7 +1164,9 @@ static int inventory_collect_files(UfsInventory *inventory,
                         return -1;
                     }
                 }
-                if (previous && physical_fragment != previous_end)
+                if (previous &&
+                    !ufs_compact_transition(summary, previous_end,
+                                            physical_fragment))
                     file.fragmented = true;
                 previous = true;
                 previous_end = physical_fragment + span;
@@ -1336,28 +1356,49 @@ static bool run_is_clear(const uint8_t *blocked, uint64_t start, uint64_t count)
     return true;
 }
 
-static int choose_run(const LdUfsSummary *summary, uint8_t *blocked,
-                      uint32_t preferred_group, uint64_t data_fragments,
-                      uint64_t reserve_fragments, uint64_t *start_out,
-                      char *error, size_t error_size)
+static int choose_run_in_group(const LdUfsSummary *summary, uint8_t *blocked,
+                               uint32_t group, uint64_t data_fragments,
+                               uint64_t reserve_fragments, uint64_t *start_out,
+                               char *error, size_t error_size)
 {
     uint64_t span = 0U;
     if (!infiltratr_u64_add_checked(data_fragments, reserve_fragments, &span)) {
         ufs_error(error, error_size, "UFS placement span overflows");
         return -1;
     }
+    if (group >= summary->cylinder_groups) {
+        ufs_error(error, error_size, "UFS cylinder group is out of range");
+        return -1;
+    }
+    const uint64_t base = ufs_group_base(summary, group);
+    if (base >= summary->filesystem_fragments)
+        return 1;
+    const uint64_t remaining = summary->filesystem_fragments - base;
+    const uint64_t group_fragments =
+        remaining < summary->fragments_per_group
+            ? remaining : summary->fragments_per_group;
+    const uint64_t end = base + group_fragments;
+    for (uint64_t start = base; start < end;
+         start += summary->fragments_per_block) {
+        if (span > end - start || !run_is_clear(blocked, start, span))
+            continue;
+        for (uint64_t fragment = 0U; fragment < span; ++fragment)
+            bit_set(blocked, start + fragment, true);
+        *start_out = start;
+        return 0;
+    }
+    return 1;
+}
+
+static int choose_run(const LdUfsSummary *summary, uint8_t *blocked,
+                      uint32_t preferred_group, uint64_t data_fragments,
+                      uint64_t reserve_fragments, uint64_t *start_out,
+                      char *error, size_t error_size)
+{
     if (preferred_group >= summary->cylinder_groups) {
         ufs_error(error, error_size, "UFS preferred cylinder group is out of range");
         return -1;
     }
-
-    /*
-     * Preserve locality when possible by trying the file's original cylinder
-     * group first, then search every other group. UFS block pointers are
-     * filesystem-global fragment addresses; there is no validity requirement
-     * that a regular file remain in the cylinder group where it happened to
-     * live before defragmentation.
-     */
     for (uint32_t pass = 0U; pass < summary->cylinder_groups; ++pass) {
         uint32_t group = preferred_group;
         if (pass != 0U) {
@@ -1367,24 +1408,11 @@ static int choose_run(const LdUfsSummary *summary, uint8_t *blocked,
         }
         if (group >= summary->cylinder_groups)
             continue;
-
-        const uint64_t base = ufs_group_base(summary, group);
-        if (base >= summary->filesystem_fragments)
-            continue;
-        const uint64_t remaining = summary->filesystem_fragments - base;
-        const uint64_t group_fragments =
-            remaining < summary->fragments_per_group
-                ? remaining : summary->fragments_per_group;
-        const uint64_t end = base + group_fragments;
-        for (uint64_t start = base; start < end;
-             start += summary->fragments_per_block) {
-            if (span > end - start || !run_is_clear(blocked, start, span))
-                continue;
-            for (uint64_t fragment = 0U; fragment < span; ++fragment)
-                bit_set(blocked, start + fragment, true);
-            *start_out = start;
-            return 0;
-        }
+        const int placed = choose_run_in_group(
+            summary, blocked, group, data_fragments, reserve_fragments,
+            start_out, error, error_size);
+        if (placed <= 0)
+            return placed;
     }
     ufs_error(error, error_size,
               "UFS writer cannot place a file contiguously with the requested reserve in any cylinder group");
@@ -1668,7 +1696,9 @@ int ufs_verify_layout(const char *path, bool growth, unsigned growth_percent,
         for (uint32_t block = 0U; block < file->block_count; ++block) {
             const UfsBlockRef *reference =
                 &inventory.blocks[file->first_block + block];
-            if (previous && reference->physical_fragment != end) {
+            if (previous &&
+                !ufs_compact_transition(&inventory.summary, end,
+                                        reference->physical_fragment)) {
                 if (error != NULL && error_size != 0U)
                     (void)snprintf(error, error_size,
                         "UFS inode %" PRIu64 " remains fragmented", file->inode);
@@ -1812,47 +1842,179 @@ int ufs_build_stage(const char *source_path, const char *stage_path,
             reserve = scaled / 100U;
         }
         const UfsBlockRef *first = &source.blocks[file->first_block];
-        const uint32_t group = (uint32_t)(
+        const uint32_t preferred_group = (uint32_t)(
             first->physical_fragment / source.summary.fragments_per_group);
-        uint64_t destination = 0U;
-        if (choose_run(&source.summary, blocked, group, data_fragments, reserve,
-                       &destination, error, error_size) != 0) {
-            result = -1; break;
+
+        bool whole_blocks = !file->sparse;
+        for (uint32_t b = 0U; b < file->block_count && whole_blocks; ++b) {
+            const UfsBlockRef *ref = &source.blocks[file->first_block + b];
+            if (ref->span_fragments != source.summary.fragments_per_block ||
+                ref->physical_fragment % source.summary.fragments_per_block != 0U)
+                whole_blocks = false;
         }
-        uint64_t cursor = destination;
-        for (uint32_t b = 0U; b < file->block_count; ++b) {
-            UfsBlockRef *ref = &source.blocks[file->first_block + b];
-            const uint64_t so = ref->physical_fragment *
-                (uint64_t)source.summary.fragment_size;
-            const uint64_t to = cursor *
-                (uint64_t)source.summary.fragment_size;
-            const uint64_t copy_bytes64 =
-                (uint64_t)ref->span_fragments *
-                source.summary.fragment_size;
-            if (copy_bytes64 > SIZE_MAX) {
+
+        if (whole_blocks) {
+            const size_t group_count = source.summary.cylinder_groups;
+            uint64_t *group_fragments = calloc(group_count, sizeof(*group_fragments));
+            uint64_t *group_starts = calloc(group_count, sizeof(*group_starts));
+            if (group_fragments == NULL || group_starts == NULL) {
+                free(group_fragments);
+                free(group_starts);
                 ufs_error(error, error_size,
-                          "UFS file fragment span exceeds addressable I/O size");
+                          "out of memory planning UFS cylinder-group runs");
                 result = -1;
                 break;
             }
-            const int copied = copy_bytes(
-                source.fd, stage_fd, so, to, copy_bytes64,
-                error, error_size);
-            if (copied != 0) { result = copied; break; }
-            for (uint32_t fr = 0U; fr < ref->span_fragments; ++fr)
-                bit_set(final_free, cursor + fr, false);
-            if (write_daddr_at(stage_fd, &source.summary, ref->pointer_offset,
-                               cursor, error, error_size) != 0) {
-                result = -1; break;
+            uint32_t final_group = UINT32_MAX;
+            for (uint32_t b = 0U; b < file->block_count; ++b) {
+                const UfsBlockRef *ref = &source.blocks[file->first_block + b];
+                const uint64_t group64 =
+                    ref->physical_fragment / source.summary.fragments_per_group;
+                if (group64 >= source.summary.cylinder_groups ||
+                    !infiltratr_u64_add_checked(
+                        group_fragments[group64], ref->span_fragments,
+                        &group_fragments[group64])) {
+                    ufs_error(error, error_size,
+                              "UFS cylinder-group data budget overflows");
+                    result = -1;
+                    break;
+                }
             }
-            cursor += ref->span_fragments;
-        }
-        if (result == 0 && live_updates) {
-            (void)printf(
-                "@@LIVE_RANGES {\"ranges\":[[%" PRIu64 ",%" PRIu64
-                ",1]],\"sequence\":%zu}\n",
-                destination, destination + data_fragments, ++live_sequence);
-            (void)fflush(stdout);
+            if (result == 0) {
+                for (uint32_t group = 0U;
+                     group < source.summary.cylinder_groups; ++group)
+                    if (group_fragments[group] != 0U)
+                        final_group = group;
+                if (final_group == UINT32_MAX) {
+                    ufs_error(error, error_size,
+                              "UFS whole-block file has no allocation budget");
+                    result = -1;
+                }
+            }
+            if (result == 0) {
+                for (uint32_t group = 0U;
+                     group < source.summary.cylinder_groups; ++group) {
+                    if (group_fragments[group] == 0U)
+                        continue;
+                    const uint64_t group_reserve =
+                        group == final_group ? reserve : 0U;
+                    const int placed = choose_run_in_group(
+                        &source.summary, blocked, group, group_fragments[group],
+                        group_reserve, &group_starts[group], error, error_size);
+                    if (placed != 0) {
+                        if (placed > 0)
+                            ufs_error(error, error_size,
+                                      "UFS writer cannot compact a whole-block file within its original cylinder-group allocation budget");
+                        result = -1;
+                        break;
+                    }
+                }
+            }
+            uint32_t placement_group = 0U;
+            while (result == 0 && placement_group < source.summary.cylinder_groups &&
+                   group_fragments[placement_group] == 0U)
+                placement_group++;
+            uint64_t cursor = placement_group < source.summary.cylinder_groups
+                ? group_starts[placement_group] : 0U;
+            uint64_t remaining_in_group = placement_group < source.summary.cylinder_groups
+                ? group_fragments[placement_group] : 0U;
+            for (uint32_t b = 0U; b < file->block_count && result == 0; ++b) {
+                UfsBlockRef *ref = &source.blocks[file->first_block + b];
+                while (remaining_in_group == 0U) {
+                    placement_group++;
+                    while (placement_group < source.summary.cylinder_groups &&
+                           group_fragments[placement_group] == 0U)
+                        placement_group++;
+                    if (placement_group >= source.summary.cylinder_groups) {
+                        ufs_error(error, error_size,
+                                  "UFS cylinder-group run plan ended before the file");
+                        result = -1;
+                        break;
+                    }
+                    cursor = group_starts[placement_group];
+                    remaining_in_group = group_fragments[placement_group];
+                }
+                if (result != 0)
+                    break;
+                if (ref->span_fragments > remaining_in_group) {
+                    ufs_error(error, error_size,
+                              "UFS cylinder-group run plan splits a filesystem block");
+                    result = -1;
+                    break;
+                }
+                const uint64_t so = ref->physical_fragment *
+                    (uint64_t)source.summary.fragment_size;
+                const uint64_t to = cursor *
+                    (uint64_t)source.summary.fragment_size;
+                const uint64_t copy_bytes64 =
+                    (uint64_t)ref->span_fragments * source.summary.fragment_size;
+                const int copied = copy_bytes(
+                    source.fd, stage_fd, so, to, copy_bytes64,
+                    error, error_size);
+                if (copied != 0) { result = copied; break; }
+                for (uint32_t fr = 0U; fr < ref->span_fragments; ++fr)
+                    bit_set(final_free, cursor + fr, false);
+                if (write_daddr_at(stage_fd, &source.summary, ref->pointer_offset,
+                                   cursor, error, error_size) != 0) {
+                    result = -1;
+                    break;
+                }
+                cursor += ref->span_fragments;
+                remaining_in_group -= ref->span_fragments;
+            }
+            if (result == 0 && live_updates) {
+                for (uint32_t group = 0U;
+                     group < source.summary.cylinder_groups; ++group) {
+                    if (group_fragments[group] == 0U)
+                        continue;
+                    (void)printf(
+                        "@@LIVE_RANGES {\"ranges\":[[%" PRIu64 ",%" PRIu64
+                        ",1]],\"sequence\":%zu}\n",
+                        group_starts[group],
+                        group_starts[group] + group_fragments[group],
+                        ++live_sequence);
+                }
+                (void)fflush(stdout);
+            }
+            free(group_fragments);
+            free(group_starts);
+        } else {
+            uint64_t destination = 0U;
+            if (choose_run(&source.summary, blocked, preferred_group,
+                           data_fragments, reserve, &destination,
+                           error, error_size) != 0) {
+                result = -1;
+                break;
+            }
+            uint64_t cursor = destination;
+            for (uint32_t b = 0U; b < file->block_count; ++b) {
+                UfsBlockRef *ref = &source.blocks[file->first_block + b];
+                const uint64_t so = ref->physical_fragment *
+                    (uint64_t)source.summary.fragment_size;
+                const uint64_t to = cursor *
+                    (uint64_t)source.summary.fragment_size;
+                const uint64_t copy_bytes64 =
+                    (uint64_t)ref->span_fragments * source.summary.fragment_size;
+                const int copied = copy_bytes(
+                    source.fd, stage_fd, so, to, copy_bytes64,
+                    error, error_size);
+                if (copied != 0) { result = copied; break; }
+                for (uint32_t fr = 0U; fr < ref->span_fragments; ++fr)
+                    bit_set(final_free, cursor + fr, false);
+                if (write_daddr_at(stage_fd, &source.summary, ref->pointer_offset,
+                                   cursor, error, error_size) != 0) {
+                    result = -1;
+                    break;
+                }
+                cursor += ref->span_fragments;
+            }
+            if (result == 0 && live_updates) {
+                (void)printf(
+                    "@@LIVE_RANGES {\"ranges\":[[%" PRIu64 ",%" PRIu64
+                    ",1]],\"sequence\":%zu}\n",
+                    destination, destination + data_fragments, ++live_sequence);
+                (void)fflush(stdout);
+            }
         }
     }
     if (result == 0) {
