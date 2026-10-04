@@ -1,0 +1,14 @@
+name: Branch qualification quality
+
+on:
+  push:
+    branches:
+      - fix/physical-qualification-251
+
+permissions:
+  contents: read
+
+jobs:
+  project-quality:
+    uses: ./.github/workflows/quality-gate.yml
+    secrets: inherit
