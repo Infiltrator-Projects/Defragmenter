@@ -748,7 +748,7 @@ int main(void)
 
     /* Every rejected geometry states the actual failing field and value. */
     const uint8_t invalid_geometry[][3] = {
-        {0U, 14U, 1U}, {6U, 14U, 1U}, {1U, 0U, 0U},
+        {0U, 14U, 1U}, {13U, 14U, 1U}, {1U, 0U, 0U},
         {2U, 0U, 1U}, {2U, 11U, 1U}, {2U, 18U, 1U}
     };
     for (size_t index = 0U; index < sizeof(invalid_geometry) / sizeof(invalid_geometry[0]); ++index) {
