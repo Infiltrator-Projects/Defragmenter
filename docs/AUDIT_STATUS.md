@@ -5,17 +5,19 @@ Status: **complete**
 Completed: 2026-09-22
 Extended: 2026-10-04
 
-Applies to: release version 1.8.0-249
-Audited source commit: 3f3cb831a72c7bb093c0e321f17b17882525026c
+Applies to: release version 1.8.0-250
+Audited source commit: ff00f2575ee40c6c9d25137647eac73d9b673833
 Audited release-governance commit: 628eb90439a3e2653033bdab7acfe4cca0716fd0
 
-This status records the 1.8.0-249 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
+This status records the 1.8.0-250 release audit. A newer `main` commit is not implicitly covered merely because the release version string has not changed; release eligibility still requires the exact-head quality gate and the source/governance drift checks described below.
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
-This document records the completed 1.8.0-249 release safety case and the explicit release decision after warnings-clean qualification. Re-running the release gate uses the audited source baseline named above. Historical audit-development detail remains in Git history and immutable release tags rather than being repeated as a second changelog.
+This document records the completed 1.8.0-250 release safety case and the explicit release decision after warnings-clean qualification. Re-running the release gate uses the audited source baseline named above. Historical audit-development detail remains in Git history and immutable release tags rather than being repeated as a second changelog.
 
 ## Qualification evidence
+
+The 1.8.0-250 extension corrects one native ZFS analysis geometry bound exposed by physical Test Media qualification. An ordinary OpenZFS single-disk pool produced a MOS metadnode with `nlevels=6`; Defragmenter's bounded exact analyser rejected it only because `ZFS_DNODE_MAX_LEVELS` was hard-coded to 5. OpenZFS derives `DN_MAX_LEVELS` as 12 for the current minimum block and block-pointer geometry, so the analyser now accepts levels 1 through 12 while retaining the existing indirect-block shift, overflow, checksum, compression, vdev and allocation bounds. The regression boundary now rejects level 13 instead of level 6. The complete hosted native/filesystem/GUI suite and the hosted ASan/UBSan lane passed on audited source commit `ff00f2575ee40c6c9d25137647eac73d9b673833`; the exact-head 1.8.0-250 full and sanitizer gates remain mandatory before publication. No writer, UI, Common pin, Test Media formatter/populator or release-governance workflow changed.
 
 The 1.8.0-249 extension retires the uninstalled Python GUI launcher, its Gtk.Application lifecycle and two startup-only artwork helpers, removing 89 net application-code lines. The installed launcher still executes the native C++17 GTK desktop. Remaining Python modules are retained source/test fixtures; authoritative native engines under gui/filesystems remain intact.
 
