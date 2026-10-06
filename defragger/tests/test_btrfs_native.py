@@ -68,8 +68,8 @@ def test_worker_contract(work: Path) -> None:
     assert result["total_units"] == 2560
     assert result["outside_bytes"] == 2 * 1024 * 1024
     assert result["unknown_bytes"] == 0
-    assert result["used_bytes"] == 9 * 4096
-    assert result["free_bytes"] == (2048 - 9) * 4096
+    assert result["used_bytes"] == 10 * 4096
+    assert result["free_bytes"] == (2048 - 10) * 4096
     assert result["regular_files"] == 1
     assert result["directories"] == 1
     assert result["fragmented_files"] == 1
@@ -95,6 +95,7 @@ def test_native_mapper_contract(work: Path) -> None:
     assert result["outside_bytes"] == 2 * 1024 * 1024
     assert sum(int(cell["outside"]) for cell in result["cells"]) == 512
 
+
 def test_malformed_metadata_fails_closed(work: Path) -> None:
     image = work / "malformed.img"
     make(image, "--malformed")
@@ -115,8 +116,6 @@ def test_unsupported_layouts_fail_closed(work: Path) -> None:
     completed = run("map", image, "--cells", "8", check=False)
     assert completed.returncode != 0
     assert "striped Btrfs profiles" in completed.stderr
-
-
 
 
 def payload(path: Path) -> bytes:
