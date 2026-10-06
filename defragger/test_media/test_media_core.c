@@ -115,6 +115,17 @@ LdtmFragmentProfile ldtm_fragment_profile(const LdtmFilesystemSpec *spec) {
         profile.anchor_kib = 0U;
         profile.directory_initial = 0U;
         profile.directory_second = 0U;
+    } else if (spec != NULL && strcmp(spec->key, "ufs") == 0) {
+        /*
+         * The qualified UFS writer relocates regular-file data while leaving
+         * directory data in place.  The normal 8192-entry churn fixture can
+         * fragment directory blocks and split the per-cylinder-group runs the
+         * bounded writer intentionally preserves.  Keep the complete 200 MiB
+         * heterogeneous regular-file corpus and boundary-sized files, while
+         * leaving directory-fragmentation stress to exact analyser fixtures.
+         */
+        profile.directory_initial = 0U;
+        profile.directory_second = 0U;
     } else if (spec != NULL && strcmp(spec->key, "zfs") == 0) {
         /*
          * ZFS is analysis-only and the exact reader intentionally has a
