@@ -117,50 +117,51 @@ void PrivilegedHelperTransport::shutdown() noexcept
 }
 
 void PrivilegedHelperTransport::read_next(
-    const std::shared_ptr<State>& state)
+    const std::shared_ptr<State>& session_state)
 {
-    if (state == nullptr || state->input == nullptr || state->shutting_down)
+    if (session_state == nullptr || session_state->input == nullptr ||
+        session_state->shutting_down)
         return;
 
-    auto* context = new std::shared_ptr<State>(state);
+    auto* callback_context = new std::shared_ptr<State>(session_state);
     g_data_input_stream_read_line_async(
-        state->input, G_PRIORITY_DEFAULT, nullptr,
+        session_state->input, G_PRIORITY_DEFAULT, nullptr,
         [](GObject* source, GAsyncResult* result, gpointer data) {
-            const std::unique_ptr<std::shared_ptr<State>> context(
+            const std::unique_ptr<std::shared_ptr<State>> context_holder(
                 static_cast<std::shared_ptr<State>*>(data));
-            const auto state = *context;
-            GError* failure = nullptr;
+            const auto callback_state = *context_holder;
+            GError* callback_error = nullptr;
             gsize length = 0U;
             gchar* line = g_data_input_stream_read_line_finish(
-                G_DATA_INPUT_STREAM(source), result, &length, &failure);
+                G_DATA_INPUT_STREAM(source), result, &length, &callback_error);
 
             if (line != nullptr) {
                 const std::string value(line, length);
                 g_free(line);
-                if (!state->shutting_down && state->on_line)
-                    state->on_line(value);
-                PrivilegedHelperTransport::read_next(state);
+                if (!callback_state->shutting_down && callback_state->on_line)
+                    callback_state->on_line(value);
+                PrivilegedHelperTransport::read_next(callback_state);
                 return;
             }
 
             const std::string detail =
-                failure != nullptr
-                    ? failure->message
+                callback_error != nullptr
+                    ? callback_error->message
                     : "administrator session ended";
-            if (failure != nullptr) g_error_free(failure);
+            if (callback_error != nullptr) g_error_free(callback_error);
 
-            if (state->input != nullptr) {
-                g_object_unref(state->input);
-                state->input = nullptr;
+            if (callback_state->input != nullptr) {
+                g_object_unref(callback_state->input);
+                callback_state->input = nullptr;
             }
-            if (state->process != nullptr) {
-                g_object_unref(state->process);
-                state->process = nullptr;
+            if (callback_state->process != nullptr) {
+                g_object_unref(callback_state->process);
+                callback_state->process = nullptr;
             }
-            if (!state->shutting_down && state->on_closed)
-                state->on_closed(detail);
+            if (!callback_state->shutting_down && callback_state->on_closed)
+                callback_state->on_closed(detail);
         },
-        context);
+        callback_context);
 }
 
 struct LocalAnalysisTransport::State {
@@ -213,7 +214,7 @@ void LocalAnalysisTransport::start(
         argv.push_back(argument.c_str());
     argv.push_back(nullptr);
 
-    GError* failure = nullptr;
+    GError* spawn_error = nullptr;
     auto* launcher = g_subprocess_launcher_new(
         static_cast<GSubprocessFlags>(
             G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_PIPE));
@@ -224,13 +225,13 @@ void LocalAnalysisTransport::start(
         },
         nullptr, nullptr);
     state_->process = g_subprocess_launcher_spawnv(
-        launcher, argv.data(), &failure);
+        launcher, argv.data(), &spawn_error);
     g_object_unref(launcher);
 
     if (state_->process == nullptr) {
         const std::string message =
-            failure != nullptr ? failure->message : "Unable to start mapper";
-        if (failure != nullptr) g_error_free(failure);
+            spawn_error != nullptr ? spawn_error->message : "Unable to start mapper";
+        if (spawn_error != nullptr) g_error_free(spawn_error);
         throw std::runtime_error(message);
     }
 
@@ -246,28 +247,28 @@ void LocalAnalysisTransport::start(
             g_subprocess_get_stderr_pipe(state_->process)),
         true);
 
-    auto* context = new std::shared_ptr<State>(state_);
+    auto* wait_context = new std::shared_ptr<State>(state_);
     g_subprocess_wait_async(
         state_->process, nullptr,
         [](GObject* source, GAsyncResult* result, gpointer data) {
-            const std::unique_ptr<std::shared_ptr<State>> context(
+            const std::unique_ptr<std::shared_ptr<State>> wait_holder(
                 static_cast<std::shared_ptr<State>*>(data));
-            const auto state = *context;
-            GError* failure = nullptr;
+            const auto callback_state = *wait_holder;
+            GError* wait_error = nullptr;
             const bool waited = g_subprocess_wait_finish(
-                G_SUBPROCESS(source), result, &failure);
-            state->code =
+                G_SUBPROCESS(source), result, &wait_error);
+            callback_state->code =
                 waited && g_subprocess_get_if_exited(G_SUBPROCESS(source))
                     ? g_subprocess_get_exit_status(G_SUBPROCESS(source))
                     : 127;
-            if (failure != nullptr) {
-                append_bounded(state->detail, failure->message);
-                g_error_free(failure);
+            if (wait_error != nullptr) {
+                append_bounded(callback_state->detail, wait_error->message);
+                g_error_free(wait_error);
             }
-            state->waited = true;
-            LocalAnalysisTransport::finish_if_ready(state);
+            callback_state->waited = true;
+            LocalAnalysisTransport::finish_if_ready(callback_state);
         },
-        context);
+        wait_context);
 }
 
 void LocalAnalysisTransport::signal(int signal_number) noexcept
@@ -302,7 +303,7 @@ void LocalAnalysisTransport::shutdown() noexcept
 }
 
 void LocalAnalysisTransport::read_stream(
-    const std::shared_ptr<State>& state,
+    const std::shared_ptr<State>& session_state,
     GDataInputStream* stream,
     bool diagnostics)
 {
@@ -310,41 +311,43 @@ void LocalAnalysisTransport::read_stream(
         std::shared_ptr<State> state;
         bool diagnostics;
     };
-    auto* context = new ReadContext{state, diagnostics};
+    auto* read_context = new ReadContext{session_state, diagnostics};
     g_data_input_stream_read_line_async(
         stream, G_PRIORITY_DEFAULT, nullptr,
         [](GObject* source, GAsyncResult* result, gpointer data) {
-            const std::unique_ptr<ReadContext> context(
+            const std::unique_ptr<ReadContext> read_holder(
                 static_cast<ReadContext*>(data));
-            const auto state = context->state;
-            GError* failure = nullptr;
+            const auto callback_state = read_holder->state;
+            GError* read_error = nullptr;
             gsize length = 0U;
             char* raw = g_data_input_stream_read_line_finish(
-                G_DATA_INPUT_STREAM(source), result, &length, &failure);
+                G_DATA_INPUT_STREAM(source), result, &length, &read_error);
 
             if (raw != nullptr) {
                 const std::string line(raw, length);
                 g_free(raw);
-                if (context->diagnostics) {
-                    append_bounded(state->detail, line);
-                    append_bounded(state->detail, "\n");
+                if (read_holder->diagnostics) {
+                    append_bounded(callback_state->detail, line);
+                    append_bounded(callback_state->detail, "\n");
                 }
-                if (!state->shutting_down && state->on_line)
-                    state->on_line(line, context->diagnostics);
+                if (!callback_state->shutting_down && callback_state->on_line)
+                    callback_state->on_line(line, read_holder->diagnostics);
                 LocalAnalysisTransport::read_stream(
-                    state, G_DATA_INPUT_STREAM(source), context->diagnostics);
+                    callback_state,
+                    G_DATA_INPUT_STREAM(source),
+                    read_holder->diagnostics);
                 return;
             }
 
-            if (failure != nullptr) {
-                append_bounded(state->detail, failure->message);
-                g_error_free(failure);
+            if (read_error != nullptr) {
+                append_bounded(callback_state->detail, read_error->message);
+                g_error_free(read_error);
             }
             g_object_unref(source);
-            if (state->streams != 0U) --state->streams;
-            LocalAnalysisTransport::finish_if_ready(state);
+            if (callback_state->streams != 0U) --callback_state->streams;
+            LocalAnalysisTransport::finish_if_ready(callback_state);
         },
-        context);
+        read_context);
 }
 
 void LocalAnalysisTransport::finish_if_ready(
