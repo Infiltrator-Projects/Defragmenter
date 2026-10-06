@@ -3,6 +3,8 @@
 
 #include "json.hpp"
 
+#include <gio/gio.h>
+
 #include <functional>
 #include <memory>
 #include <string>
@@ -55,7 +57,7 @@ private:
     struct State;
     std::shared_ptr<State> state_;
     static void read_stream(const std::shared_ptr<State>& state,
-                            void* stream,
+                            GDataInputStream* stream,
                             bool diagnostics);
     static void finish_if_ready(const std::shared_ptr<State>& state);
 };
