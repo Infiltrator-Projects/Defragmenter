@@ -3,7 +3,9 @@
 
 pkg_check_modules(GTK3 REQUIRED IMPORTED_TARGET gtk+-3.0)
 
-add_executable(linux-defragger-desktop native/desktop.cpp)
+add_executable(linux-defragger-desktop
+    native/desktop.cpp
+    native/desktop_map_render.cpp)
 target_include_directories(linux-defragger-desktop PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/native")
 target_compile_options(linux-defragger-desktop PRIVATE ${LD_WARNING_FLAGS})
