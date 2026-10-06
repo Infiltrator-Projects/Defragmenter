@@ -1,0 +1,195 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: One-shot desktop coupling refactor
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/refactor-desktop-coupling-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact main
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Extract desktop map rendering from the Desktop object
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          desktop = Path('defragger/native/desktop.cpp')
+          text = desktop.read_text(encoding='utf-8')
+
+          include_anchor = '#include "desktop_live_map.hpp"\n'
+          renderer_include = '#include "desktop_map_render.hpp"\n'
+          if renderer_include not in text:
+              if include_anchor not in text:
+                  raise SystemExit('desktop include anchor not found')
+              text = text.replace(
+                  include_anchor,
+                  include_anchor + renderer_include,
+                  1,
+              )
+
+          text, count = re.subn(
+              r'struct MapRasterCache \{.*?\n\};\n\n',
+              '',
+              text,
+              count=1,
+              flags=re.S,
+          )
+          if count != 1:
+              raise SystemExit(f'expected one MapRasterCache, removed {count}')
+
+          text, count = re.subn(
+              r'void destroy_map_raster_cache\(gpointer data\)\n\{.*?\n\}\n',
+              '',
+              text,
+              count=1,
+              flags=re.S,
+          )
+          if count != 1:
+              raise SystemExit(
+                  f'expected one map-raster cache destructor, removed {count}'
+              )
+
+          friend = '    friend struct DesktopAnalysisTest;\n'
+          if friend not in text:
+              raise SystemExit('desktop private test friend seam not found')
+          text = text.replace(friend, '', 1)
+
+          geometry_start = text.find('    struct MapDisplayGeometry {')
+          caption_start = text.find('    void update_map_caption() {', geometry_start)
+          if geometry_start < 0 or caption_start < 0:
+              raise SystemExit('map geometry block markers not found')
+          text = text[:geometry_start] + text[caption_start:]
+
+          old_geometry = (
+              '        const MapDisplayGeometry geometry = '
+              'map_display_geometry();'
+          )
+          new_geometry = (
+              '        const auto geometry =\n'
+              '            defragger::desktop_map_display_geometry('
+              'map_data_, cells_);'
+          )
+          if old_geometry not in text:
+              raise SystemExit('map caption geometry call not found')
+          text = text.replace(old_geometry, new_geometry, 1)
+
+          raster_start = text.find('    static std::uint32_t mix_rgb(')
+          class_end = text.find('\n};\n} // namespace', raster_start)
+          if raster_start < 0 or class_end < 0:
+              raise SystemExit('desktop raster block markers not found')
+          wrapper = '''    static gboolean draw_map(
+              GtkWidget* widget, cairo_t* cr, gpointer data)
+          {
+              auto* self = static_cast<Desktop*>(data);
+              return defragger::desktop_draw_map(
+                  widget, cr, self->map_data_, self->cells_,
+                  self->map_generation_);
+          }
+          '''
+          text = text[:raster_start] + wrapper + text[class_end:]
+
+          guard = '\n#ifndef LD_DESKTOP_ANALYSIS_TEST\n'
+          if guard not in text:
+              raise SystemExit('legacy desktop test guard not found')
+          text = text.replace(guard, '\n', 1)
+          if not text.endswith('\n#endif\n'):
+              raise SystemExit('legacy desktop test guard terminator not found')
+          text = text[:-len('\n#endif\n')] + '\n'
+
+          desktop.write_text(text, encoding='utf-8')
+
+          cmake = Path('defragger/cmake/test_media.cmake')
+          build = cmake.read_text(encoding='utf-8')
+          old_target = 'add_executable(linux-defragger-desktop native/desktop.cpp)'
+          new_target = '''add_executable(linux-defragger-desktop
+              native/desktop.cpp
+              native/desktop_map_render.cpp)'''
+          if old_target not in build:
+              raise SystemExit('desktop CMake target anchor not found')
+          build = build.replace(old_target, new_target, 1)
+          cmake.write_text(build, encoding='utf-8')
+
+          renderer = Path('defragger/native/desktop_map_render.cpp')
+          source = renderer.read_text(encoding='utf-8')
+          if '#include <utility>\n' not in source:
+              source = source.replace(
+                  '#include <limits>\n',
+                  '#include <limits>\n#include <utility>\n',
+                  1,
+              )
+          renderer.write_text(source, encoding='utf-8')
+          PY
+
+          grep -q 'desktop_map_render.hpp' defragger/native/desktop.cpp
+          ! grep -q 'friend struct DesktopAnalysisTest' defragger/native/desktop.cpp
+          ! grep -q 'static std::uint32_t mix_rgb' defragger/native/desktop.cpp
+          ! grep -q 'LD_DESKTOP_ANALYSIS_TEST' defragger/native/desktop.cpp
+
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake pkg-config python3 python3-gi python3-cairo \
+            gir1.2-gtk-3.0 libgtk-3-dev policykit-1 udisks2 util-linux makefs \
+            libext2fs-dev libsqlite3-dev libssl-dev xvfb
+
+      - name: Validate refactor
+        shell: bash
+        working-directory: defragger
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          PYTHONPATH: ${{ github.workspace }}/defragger/gui:${{ github.workspace }}/defragger/tests
+        run: |
+          set -euo pipefail
+          python3 tests/test_architecture.py
+          cmake -S . -B build-refactor \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLD_ENABLE_WERROR=ON \
+            -DBUILD_TESTING=ON
+          cmake --build build-refactor -j2 --target \
+            linux-defragger-desktop \
+            linux-defragger-desktop-analysis-test
+          ./build-refactor/linux-defragger-desktop-analysis-test
+          xvfb-run -a timeout --signal=TERM 5s \
+            ./build-refactor/linux-defragger-desktop \
+            >desktop-refactor-smoke.log 2>&1 || status=$?
+          status=${status:-0}
+          if [ "$status" -ne 124 ] && [ "$status" -ne 143 ]; then
+            cat desktop-refactor-smoke.log >&2
+            exit "$status"
+          fi
+
+      - name: Commit clean source-only result
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/refactor-desktop-coupling-once.yml
+          git config user.name 'The-First-Infiltrator'
+          git config user.email '316003614+The-First-Infiltrator@users.noreply.github.com'
+          git add \
+            defragger/native/desktop.cpp \
+            defragger/native/desktop_map_render.cpp \
+            defragger/native/desktop_map_render.hpp \
+            defragger/cmake/test_media.cmake
+          git diff --cached --check
+          git commit -m 'Refactor desktop map rendering boundary'
+          git push origin HEAD:main
