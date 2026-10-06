@@ -168,7 +168,10 @@ jobs:
             -DBUILD_TESTING=ON
           cmake --build build-refactor -j2 --target \
             linux-defragger-desktop \
-            linux-defragger-desktop-analysis-test
+            linux-defragger-desktop-analysis-test \
+            linux-defragger-mapper-cpp \
+            linux-defragger-operation-engine-cpp \
+            linux-defragger-privileged-helper-cpp
           ./build-refactor/linux-defragger-desktop-analysis-test
           xvfb-run -a timeout --signal=TERM 5s \
             ./build-refactor/linux-defragger-desktop \
