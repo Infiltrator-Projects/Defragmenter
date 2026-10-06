@@ -5,7 +5,8 @@ pkg_check_modules(GTK3 REQUIRED IMPORTED_TARGET gtk+-3.0)
 
 add_executable(linux-defragger-desktop
     native/desktop.cpp
-    native/desktop_map_render.cpp)
+    native/desktop_map_render.cpp
+    native/desktop_process_session.cpp)
 target_include_directories(linux-defragger-desktop PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/native")
 target_compile_options(linux-defragger-desktop PRIVATE ${LD_WARNING_FLAGS})
@@ -115,13 +116,11 @@ if(BUILD_TESTING)
     endif()
     add_executable(linux-defragger-desktop-analysis-test tests/test_desktop_analysis.cpp)
     target_compile_options(linux-defragger-desktop-analysis-test PRIVATE ${LD_WARNING_FLAGS})
-    target_link_libraries(linux-defragger-desktop-analysis-test PRIVATE linux-defragger-runtime-cpp PkgConfig::GTK3)
-    if(LDTM_XVFB_RUN)
-        add_test(NAME linux-defragger-desktop-analysis
-            COMMAND "${LDTM_XVFB_RUN}" -a -s "-screen 0 1024x768x24"
-                "$<TARGET_FILE:linux-defragger-desktop-analysis-test>")
-        set_tests_properties(linux-defragger-desktop-analysis PROPERTIES TIMEOUT 20)
-    endif()
+    target_link_libraries(linux-defragger-desktop-analysis-test PRIVATE
+        linux-defragger-runtime-cpp)
+    add_test(NAME linux-defragger-desktop-analysis
+        COMMAND "$<TARGET_FILE:linux-defragger-desktop-analysis-test>")
+    set_tests_properties(linux-defragger-desktop-analysis PROPERTIES TIMEOUT 20)
     add_executable(linux-defragger-test-media-test tests/test_test_media.c)
     target_include_directories(linux-defragger-test-media-test PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/test_media"
