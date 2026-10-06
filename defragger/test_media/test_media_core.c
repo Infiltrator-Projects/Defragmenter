@@ -240,7 +240,6 @@ const char *ldtm_creator_program(const LdtmFilesystemSpec *spec) {
         case LDTM_CREATOR_MINIX: return "mkfs.minix";
         case LDTM_CREATOR_UFS: return "makefs";
         case LDTM_CREATOR_SWAP: return "mkswap";
-        case LDTM_CREATOR_PFS3:
         case LDTM_CREATOR_ZFS:
         case LDTM_CREATOR_APFS:
         case LDTM_CREATOR_MANUAL:
