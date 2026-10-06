@@ -7,6 +7,29 @@ from __future__ import annotations
 import _architecture_contracts as contracts
 
 
+# Keep the release gate's authoritative writer scope visible in this entry
+# point while the detailed architecture contracts remain in the companion
+# module below. This set must match the native runtime registry and audit scope.
+NATIVE_WRITERS = {
+    "fat12": "fat-native",
+    "fat16": "fat-native",
+    "fat32": "fat-native",
+    "exfat": "exfat-native",
+    "ntfs": "ntfs-native",
+    "ext4": "ext-native",
+    "xfs": "xfs-native",
+    "affs": "affs-native",
+    "apfs": "apfs-native",
+    "btrfs": "btrfs-native",
+    "sfs": "sfs-native",
+    "pfs3": "pfs3-native",
+    "hfs": "hfs-native",
+    "hfsplus": "hfsplus-native",
+    "minix": "minix-native",
+    "ufs": "ufs-native",
+}
+
+
 for _name in dir(contracts):
     if _name.startswith("test_") and callable(getattr(contracts, _name)):
         globals()[_name] = getattr(contracts, _name)
