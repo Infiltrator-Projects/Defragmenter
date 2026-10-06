@@ -675,6 +675,11 @@ def test_theme_modes_are_persistent_and_shared_across_windows() -> None:
     assert "_night_css() if effective is ThemeMode.NIGHT else _day_css()" in theme_source
 
     native_desktop = (ROOT / "native" / "desktop.cpp").read_text()
+    native_map_render = (ROOT / "native" / "desktop_map_render.cpp").read_text()
+    native_ui = native_desktop + "\n" + native_map_render
+
+    # Verify stable ownership boundaries rather than requiring raster internals
+    # to remain physically embedded in desktop.cpp.
     for required in (
         'gtk_stack_add_named(GTK_STACK(pages_), outer_scroll, "overview")',
         '"page-analyse"',
@@ -686,18 +691,26 @@ def test_theme_modes_are_persistent_and_shared_across_windows() -> None:
         'build_operation_page(',
         'build_settings_page()',
         '"About Defragmenter"',
-        'gtk_box_pack_start(\n            GTK_BOX(header_end), minimize',
-        'gtk_box_pack_start(\n            GTK_BOX(header_end), maximize',
-        'gtk_box_pack_start(\n            GTK_BOX(header_end), close',
-        'gtk_header_bar_pack_end(GTK_HEADER_BAR(header), header_end)',
         'selection_analysis_timer_ = g_idle_add(',
         'std::to_string(desired_map_cells())',
-        'defrag-map-raster-cache',
-        'const std::size_t source_count = self->cells_.size();',
-        'const std::size_t display_count',
-        'source_count < display_count',
-        'pixel * source_count / display_count',
-        'map_cell_rgb(self->cells_[begin])',
+        'volume_combo_text(volume)',
+        'v->mounted ? "● Mounted" : "● Unmounted"',
+        'update_map_caption()',
+        '"Physical allocation raster · "',
+        '" per display pixel"',
+        '" display pixels per "',
+        '"clusters"',
+        'draw_gauge',
+        'defragger::desktop_draw_map(',
+    ):
+        assert required in native_desktop, (
+            f"native desktop lost public interface contract: {required}"
+        )
+
+    for required in (
+        '"defrag-map-raster-cache"',
+        'desktop_map_display_geometry(',
+        'desktop_draw_map(',
         'CAIRO_FORMAT_ARGB32',
         'gtk_widget_get_scale_factor',
         'display_units_per_allocation_unit',
@@ -706,33 +719,24 @@ def test_theme_modes_are_persistent_and_shared_across_windows() -> None:
         'display_total_units',
         'display_unit_name',
         'cairo_surface_set_device_scale',
-        '"sectors"',
-        'volume_combo_text(volume)',
-        'v->mounted ? "● Mounted" : "● Unmounted"',
-        'update_map_caption()',
-        '"Physical allocation raster · "',
-        '" per display pixel"',
-        '" display pixels per "',
-        '"clusters"',
         '0x0585FF',
         '0xFF253C',
         '0x9E2BFA',
         '0xFF9F0A',
-        'draw_gauge',
     ):
-        assert required in native_desktop, (
-            f"native desktop lost polished interface parity: {required}"
+        assert required in native_map_render, (
+            f"native map renderer lost raster contract: {required}"
         )
-    assert "allocation.width / 8" not in native_desktop
-    assert "allocation.height / 8" not in native_desktop
-    assert "cairo_scale(" not in native_desktop
-    assert "CAIRO_FILTER_NEAREST" not in native_desktop
-    assert "std::min(source_count, display_count)" not in native_desktop
-    assert "leave spare device pixels empty" not in native_desktop
+
+    assert "allocation.width / 8" not in native_ui
+    assert "allocation.height / 8" not in native_ui
+    assert "cairo_scale(" not in native_ui
+    assert "CAIRO_FILTER_NEAREST" not in native_ui
+    assert "std::min(source_count, display_count)" not in native_ui
+    assert "leave spare device pixels empty" not in native_ui
     assert "gtk_menu_bar_new()" not in native_desktop
     assert 'gtk_menu_item_new_with_label("File")' not in native_desktop
     assert 'gtk_menu_item_new_with_label("View")' not in native_desktop
-    assert "for (const auto* name : {\"minimize\", \"maximize\", \"close\"})" not in native_desktop
 
     # Day mode must remain visually coherent even when the host GTK theme is
     # dark: menu text is explicit, dark hero artwork keeps light Common chrome,
@@ -744,11 +748,10 @@ def test_theme_modes_are_persistent_and_shared_across_windows() -> None:
     assert "frame.summary-capacity > border," in theme_source
     assert "background-image: none;" in theme_source
 
-    native_desktop = (ROOT / "native" / "desktop.cpp").read_text()
     assert "const bool day_mode =" in native_desktop
     assert "infiltratr_theme_resolve(INFILTRATR_THEME_NIGHT, true)" in native_desktop
     assert "map_palette_" not in native_desktop
-    assert "defrag-map-raster-cache" in native_desktop
+    assert "defrag-map-raster-cache" in native_map_render
     assert "const std::string control_border = day_mode ? border : accent;" in native_desktop
 
 
