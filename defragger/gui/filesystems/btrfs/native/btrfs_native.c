@@ -803,6 +803,17 @@ static const RootRecord *find_root(const RootVec *roots, uint64_t objectid)
     return NULL;
 }
 
+/*
+ * Btrfs reserves negative signed object IDs for internal trees.  They are
+ * stored on disk in an unsigned u64, so an unsigned >= FIRST_FREE test would
+ * incorrectly classify roots such as DATA_RELOC (-9) as subvolumes.
+ */
+static bool root_is_filesystem_tree(uint64_t objectid)
+{
+    return objectid == BTRFS_FS_TREE_OBJECTID ||
+           (int64_t)objectid >= (int64_t)BTRFS_FIRST_FREE_OBJECTID;
+}
+
 static int run_push_coalesced(RunVec *runs, FileRun run,
                               char *error, size_t error_size)
 {
@@ -960,9 +971,7 @@ static int scan_filesystems(const Reader *reader, const ChunkVec *chunks, uint64
 {
     for (size_t i = 0U; i < roots->count; ++i) {
         const RootRecord *record = &roots->items[i];
-        if (record->refs == 0U ||
-            (record->objectid != BTRFS_FS_TREE_OBJECTID &&
-             record->objectid < BTRFS_FIRST_FREE_OBJECTID))
+        if (record->refs == 0U || !root_is_filesystem_tree(record->objectid))
             continue;
         analysis->filesystem_roots_scanned++;
         ItemVec items = {0};
@@ -2070,7 +2079,8 @@ static int writer_model_load(const char *path, WriterModel *model,
         const RootRecord *record = &model->roots.items[index];
         if (record->refs == 0U)
             continue;
-        if (record->objectid >= BTRFS_FIRST_FREE_OBJECTID ||
+        if ((record->objectid != BTRFS_FS_TREE_OBJECTID &&
+             root_is_filesystem_tree(record->objectid)) ||
             record->objectid == BTRFS_QUOTA_TREE_OBJECTID) {
             set_error(error, error_size,
                       "Btrfs writer refuses snapshots/subvolumes and qgroup trees in the bounded subset");

@@ -9,7 +9,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#define IMAGE_BYTES 300000
+#define IMAGE_BYTES 1000000
 #define UFS_DISK_STRUCT_BYTES 1376U
 #define UFS_DISK_MAGIC_OFFSET 1372U
 #define UFS_DISK_CONTIGSUMSIZE_OFFSET 1316U
@@ -457,6 +457,119 @@ static void test_fragmented_writer_variant(int fd, const char *path, bool ufs1)
     CHECK(unlink(stage) == 0);
 }
 
+static void build_multigroup_writer_fixture(int fd)
+{
+    clear_image(fd);
+    uint8_t superblock[UFS_DISK_STRUCT_BYTES];
+    memset(superblock, 0, sizeof(superblock));
+    put_le32(superblock + 8U, 8U);
+    put_le32(superblock + 12U, 16U);
+    put_le32(superblock + 16U, 80U);
+    put_le32(superblock + 20U, 96U);
+    put_le32(superblock + 44U, 2U);
+    put_le32(superblock + 48U, 8192U);
+    put_le32(superblock + 52U, 1024U);
+    put_le32(superblock + 56U, 8U);
+    put_le32(superblock + 116U, 1024U);
+    put_le32(superblock + 120U, 32U);
+    put_le32(superblock + 160U, 1024U);
+    put_le32(superblock + 184U, 64U);
+    put_le32(superblock + 188U, 160U);
+    put_le64(superblock + 1016U, 4U);
+    put_le64(superblock + 1032U, 0U);
+    put_le64(superblock + 1080U, 320U);
+    put_le64(superblock + 1088U, 128U);
+    superblock[209U] = 1U;
+    put_le32(superblock + UFS_DISK_MAGIC_OFFSET, 0x19540119U);
+    write_all(fd, superblock, sizeof(superblock), 8192);
+
+    static const uint32_t local_blocks[6] = {96U, 112U, 128U, 136U, 144U, 152U};
+    for (uint32_t group = 0U; group < 2U; ++group) {
+        uint8_t cg[1024];
+        memset(cg, 0, sizeof(cg));
+        put_le32(cg + 4U, 0x00090255U);
+        put_le32(cg + 12U, group);
+        put_le32(cg + 20U, 160U);
+        put_le32(cg + 28U, 2U);
+        put_le32(cg + 36U, 0U);
+        put_le32(cg + 92U, 168U);
+        put_le32(cg + 96U, 176U);
+        if (group == 0U)
+            cg[168U] |= (uint8_t)(1U << 2U);
+        for (uint32_t local = 96U; local < 160U; ++local) {
+            bool allocated = false;
+            for (size_t index = 0U; index < 6U; ++index) {
+                if (local >= local_blocks[index] &&
+                    local < local_blocks[index] + 8U) {
+                    allocated = true;
+                    break;
+                }
+            }
+            if (!allocated)
+                set_free(cg + 176U, local);
+        }
+        const uint64_t cg_fragment = (uint64_t)group * 160U + 16U;
+        write_all(fd, cg, sizeof(cg), (off_t)(cg_fragment * 1024U));
+    }
+
+    uint8_t inode[256];
+    memset(inode, 0, sizeof(inode));
+    put_le16(inode, UINT16_C(0100644));
+    put_le64(inode + 16U, UINT64_C(12) * UINT64_C(8192));
+    for (uint32_t block = 0U; block < 12U; ++block) {
+        const uint32_t group = block < 6U ? 0U : 1U;
+        const uint32_t local = local_blocks[block % 6U];
+        put_le64(inode + 112U + (size_t)block * 8U,
+                 (uint64_t)group * 160U + local);
+    }
+    write_all(fd, inode, sizeof(inode), (off_t)(80U * 1024U + 2U * 256U));
+
+    uint8_t block_data[8192];
+    for (uint32_t block = 0U; block < 12U; ++block) {
+        memset(block_data, (int)(0x20U + block), sizeof(block_data));
+        const uint32_t group = block < 6U ? 0U : 1U;
+        const uint64_t fragment =
+            (uint64_t)group * 160U + local_blocks[block % 6U];
+        write_all(fd, block_data, sizeof(block_data),
+                  (off_t)(fragment * 1024U));
+    }
+}
+
+static void test_multigroup_writer(int fd, const char *path)
+{
+    build_multigroup_writer_fixture(fd);
+    LdUfsAnalysis analysis;
+    char error[256] = {0};
+    CHECK(ufs_analyse_allocation(path, &analysis, NULL, 0U,
+                                 error, sizeof(error)) == 0);
+    CHECK(analysis.regular_files == 1U);
+    CHECK(analysis.fragmented_files == 1U);
+
+    char stage[512];
+    CHECK(snprintf(stage, sizeof(stage), "%s.ufs2-multigroup-stage", path) > 0);
+    (void)unlink(stage);
+    uint64_t commit_bytes = 0U;
+    CHECK(ufs_build_stage(path, stage, false, 10U, false, &commit_bytes,
+                          error, sizeof(error)) == 0);
+    CHECK(ufs_verify_layout(stage, false, 10U, error, sizeof(error)) == 0);
+    CHECK(ufs_analyse_allocation(stage, &analysis, NULL, 0U,
+                                 error, sizeof(error)) == 0);
+    CHECK(analysis.fragmented_files == 0U);
+    CHECK(unlink(stage) == 0);
+
+    build_multigroup_writer_fixture(fd);
+    CHECK(snprintf(stage, sizeof(stage),
+                   "%s.ufs2-multigroup-growth-stage", path) > 0);
+    (void)unlink(stage);
+    CHECK(ufs_build_stage(path, stage, true, 10U, false, &commit_bytes,
+                          error, sizeof(error)) == 0);
+    CHECK(ufs_verify_layout(stage, true, 10U, error, sizeof(error)) == 0);
+    CHECK(ufs_analyse_allocation(stage, &analysis, NULL, 0U,
+                                 error, sizeof(error)) == 0);
+    CHECK(analysis.fragmented_files == 0U);
+    CHECK(unlink(stage) == 0);
+}
+
 static void test_ufs2_exact_allocation(int fd, const char *path)
 {
     clear_image(fd);
@@ -524,6 +637,7 @@ int main(void)
     test_sparse_writer(fd, path, true);
     test_sparse_writer(fd, path, false);
     test_large_contigsum_writer(fd, path);
+    test_multigroup_writer(fd, path);
 
     clear_image(fd);
     static const uint8_t junk[4] = {0xdeU, 0xadU, 0xbeU, 0xefU};

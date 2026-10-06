@@ -25,6 +25,7 @@ EXTENT_TREE = MIXED_LOGICAL + NODE
 FS_TREE = MIXED_LOGICAL + 2 * NODE
 DEV_TREE = MIXED_LOGICAL + 3 * NODE
 CSUM_TREE = MIXED_LOGICAL + 4 * NODE
+DATA_RELOC_TREE = MIXED_LOGICAL + 5 * NODE
 DATA1 = 3 * 1024 * 1024
 DATA2 = DATA1 + 2 * SECTOR
 
@@ -36,6 +37,7 @@ BTRFS_EXTENT_FLAG_DATA = 1
 BTRFS_EXTENT_FLAG_TREE = 2
 BTRFS_TREE_BLOCK_REF_KEY = 176
 BTRFS_EXTENT_DATA_REF_KEY = 178
+BTRFS_DATA_RELOC_TREE_OBJECTID = (1 << 64) - 9
 BTRFS_EXTENT_CSUM_OBJECTID = (1 << 64) - 10
 BTRFS_EXTENT_CSUM_KEY = 128
 BTRFS_INODE_NODATASUM = 1
@@ -195,7 +197,7 @@ def build(path: Path, *, malformed: bool = False, multi_device: bool = False,
     superblock[88:96] = le64(CHUNK_TREE)
     superblock[96:104] = le64(0)
     superblock[112:120] = le64(FILESYSTEM_SIZE)
-    superblock[120:128] = le64(8 * SECTOR)
+    superblock[120:128] = le64(9 * SECTOR)
     superblock[136:144] = le64(2 if multi_device else 1)
     superblock[144:148] = le32(SECTOR)
     superblock[148:152] = le32(NODE)
@@ -210,7 +212,7 @@ def build(path: Path, *, malformed: bool = False, multi_device: bool = False,
     superblock[199] = 0
     superblock[201:209] = le64(1)
     superblock[209:217] = le64(FILESYSTEM_SIZE)
-    superblock[217:225] = le64(8 * SECTOR)
+    superblock[217:225] = le64(9 * SECTOR)
     superblock[233:237] = le32(SECTOR)
     superblock[245:253] = le64(1)
     superblock[267:283] = DEV_UUID
@@ -234,6 +236,9 @@ def build(path: Path, *, malformed: bool = False, multi_device: bool = False,
             (key(4, 132, 1), root_item(DEV_TREE)),
             (key(5, 132, 1), root_item(FS_TREE)),
             (key(7, 132, 1), root_item(CSUM_TREE)),
+            # Negative reserved IDs are internal trees, not subvolumes.
+            (key(BTRFS_DATA_RELOC_TREE_OBJECTID, 132, 1),
+             root_item(DATA_RELOC_TREE)),
         ],
     )
     image[EXTENT_TREE:EXTENT_TREE + NODE] = leaf(
@@ -245,12 +250,14 @@ def build(path: Path, *, malformed: bool = False, multi_device: bool = False,
             (key(FS_TREE, 169, 0), metadata_extent(5)),
             (key(DEV_TREE, 169, 0), metadata_extent(4)),
             (key(CSUM_TREE, 169, 0), metadata_extent(7)),
+            (key(DATA_RELOC_TREE, 169, 0),
+             metadata_extent(BTRFS_DATA_RELOC_TREE_OBJECTID)),
             (key(DATA1, 168, SECTOR), data_extent(256, 0)),
             (key(DATA2, 168, SECTOR), data_extent(256, SECTOR)),
             (key(SYSTEM_LOGICAL, 192, SYSTEM_LENGTH),
              block_group(SECTOR, 2)),
             (key(MIXED_LOGICAL, 192, MIXED_LENGTH),
-             block_group(7 * SECTOR, 5)),
+             block_group(8 * SECTOR, 5)),
         ],
     )
     image[FS_TREE:FS_TREE + NODE] = leaf(
@@ -263,6 +270,9 @@ def build(path: Path, *, malformed: bool = False, multi_device: bool = False,
         ],
     )
     image[DEV_TREE:DEV_TREE + NODE] = leaf(DEV_TREE, 4, [])
+    image[DATA_RELOC_TREE:DATA_RELOC_TREE + NODE] = leaf(
+        DATA_RELOC_TREE, BTRFS_DATA_RELOC_TREE_OBJECTID, []
+    )
     csum_records: list[tuple[bytes, bytes]] = []
     if checksummed:
         csum_records = [
