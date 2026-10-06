@@ -104,11 +104,15 @@ LdtmFragmentProfile ldtm_fragment_profile(const LdtmFilesystemSpec *spec) {
     } else if (spec != NULL && strcmp(spec->key, "btrfs") == 0) {
         /*
          * The bounded Btrfs writer is deliberately a level-0 mixed-group
-         * contract. Large directory churn would force the filesystem tree
-         * above level 0 before mutation is even tested, so Test Media keeps
-         * the 200 MiB fragmented-file workload while leaving directory-stress
-         * coverage to the analyser/unit fixtures.
+         * contract. The two-phase round-robin target writes already create
+         * two separated durable extents per retained file. Temporary anchor
+         * files add no retained-payload coverage and can permanently raise a
+         * mutable tree above level 0 even after those anchors are deleted.
+         * Keep the full heterogeneous 200 MiB payload while avoiding both
+         * temporary anchor metadata and unrelated directory churn.
          */
+        profile.anchors = 0U;
+        profile.anchor_kib = 0U;
         profile.directory_initial = 0U;
         profile.directory_second = 0U;
     } else if (spec != NULL && strcmp(spec->key, "zfs") == 0) {
@@ -235,10 +239,12 @@ const char *ldtm_creator_program(const LdtmFilesystemSpec *spec) {
         case LDTM_CREATOR_HFSPLUS: return "mkfs.hfsplus";
         case LDTM_CREATOR_MINIX: return "mkfs.minix";
         case LDTM_CREATOR_UFS: return "makefs";
-        case LDTM_CREATOR_ZFS: return "zpool";
-        case LDTM_CREATOR_APFS: return NULL;
         case LDTM_CREATOR_SWAP: return "mkswap";
-        case LDTM_CREATOR_MANUAL: return NULL;
+        case LDTM_CREATOR_PFS3:
+        case LDTM_CREATOR_ZFS:
+        case LDTM_CREATOR_APFS:
+        case LDTM_CREATOR_MANUAL:
+            break;
     }
     return NULL;
 }
