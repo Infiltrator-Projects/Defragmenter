@@ -25,6 +25,7 @@ struct OperationSpec {
     std::string label;
     std::string description;
     std::string warning;
+    std::vector<std::string> default_options;
     std::vector<std::string> unsupported_options;
     bool raw_offline = true;
     bool live_updates = true;
