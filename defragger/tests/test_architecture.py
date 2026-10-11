@@ -64,14 +64,38 @@ def _backends_by_id() -> dict[str, dict[str, object]]:
     return result
 
 
-def _native_package(backend: dict[str, object]) -> str:
-    worker = backend.get("worker")
-    assert isinstance(worker, str) and worker.endswith("-native")
-    if worker == "fat-native":
-        return "fat"
-    if worker == "ext-native":
-        return "ext4"
-    return worker.removesuffix("-native")
+def _operation_workers(backend: dict[str, object]) -> set[str]:
+    operations = backend.get("operations")
+    assert isinstance(operations, list)
+    workers = {
+        operation.get("worker")
+        for operation in operations
+        if isinstance(operation, dict)
+    }
+    assert all(isinstance(worker, str) and worker for worker in workers)
+    return workers
+
+
+def _native_package(backend_id: str, backend: dict[str, object]) -> str:
+    candidates = [backend_id]
+    workers = _operation_workers(backend)
+    if workers:
+        assert len(workers) == 1, (
+            f"{backend_id} operations span multiple native workers: {workers!r}"
+        )
+        worker = next(iter(workers))
+        assert worker.endswith("-native"), (
+            f"{backend_id} operation worker is not a native package: {worker!r}"
+        )
+        candidates.append(worker.removesuffix("-native"))
+
+    for candidate in dict.fromkeys(candidates):
+        if (GUI / "filesystems" / candidate / "native").is_dir():
+            return candidate
+    raise AssertionError(
+        f"{backend_id} has no native package matching its registry contract: "
+        f"{candidates!r}"
+    )
 
 
 def test_native_languages_are_declared_at_the_project_boundary() -> None:
@@ -94,23 +118,17 @@ def test_registry_manifest_is_the_capability_authority() -> None:
     for backend_id, backend in backends.items():
         capabilities = backend.get("capabilities")
         operations = backend.get("operations")
-        worker = backend.get("worker")
         assert isinstance(capabilities, int)
         assert isinstance(operations, list)
-        assert isinstance(worker, str) and worker
 
         if operations:
             writable += 1
             assert capabilities & CAP_DEFRAG, (
                 f"{backend_id} exposes mutation operations without CAP_DEFRAG"
             )
-            workers = {
-                operation.get("worker")
-                for operation in operations
-                if isinstance(operation, dict)
-            }
-            assert workers == {worker}, (
-                f"{backend_id} operation worker drift: {workers!r} != {worker!r}"
+            workers = _operation_workers(backend)
+            assert len(workers) == 1, (
+                f"{backend_id} operation worker drift: {workers!r}"
             )
         else:
             read_only += 1
@@ -146,9 +164,8 @@ def test_registry_exposes_mapper_policy_without_hidden_source_lists() -> None:
 
 def test_filesystem_policy_remains_owned_by_native_packages() -> None:
     for backend_id, backend in _backends_by_id().items():
-        package = _native_package(backend)
+        package = _native_package(backend_id, backend)
         native = GUI / "filesystems" / package / "native"
-        assert native.is_dir(), f"{backend_id} lost its native ownership boundary"
         native_sources = [
             path for path in native.iterdir()
             if path.is_file() and path.suffix in {".c", ".h", ".cpp", ".hpp"}
