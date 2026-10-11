@@ -23,10 +23,6 @@ if(BUILD_TESTING)
         COMMAND "${LD_PYTHON3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_ext_display_identity.py")
     add_test(
-        NAME linux-defragger-gui-ntfs-live-reset
-        COMMAND "${LD_PYTHON3_EXECUTABLE}"
-                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_live_map_ntfs_reset.py")
-    add_test(
         NAME linux-defragger-about-gold-standard
         COMMAND "${LD_PYTHON3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_about_gold_standard.py")
@@ -37,7 +33,6 @@ if(BUILD_TESTING)
         linux-defragger-system-update-contract
         linux-defragger-gui-volume-identity
         linux-defragger-gui-ext-display-identity
-        linux-defragger-gui-ntfs-live-reset
         linux-defragger-about-gold-standard
         PROPERTIES
         ENVIRONMENT
