@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <vector>
 
 #define CHECK(value) do { \
     if (!(value)) { \
@@ -101,6 +102,24 @@ int main()
     CHECK(defragger::operation_for(*backend, "defrag") != nullptr);
     CHECK(defragger::operation_for(*backend, "growth-defrag") != nullptr);
     CHECK(defragger::operation_for(*backend, "recover") != nullptr);
+
+    /* Worker invocation defaults belong to operation contracts, not desktop policy. */
+    const auto* fat = defragger::backend_by_fstype("fat12");
+    const auto* ext = defragger::backend_by_fstype("ext4");
+    CHECK(fat != nullptr);
+    CHECK(ext != nullptr);
+    const auto* fat_defrag = defragger::operation_for(*fat, "defrag");
+    const auto* fat_recover = defragger::operation_for(*fat, "recover");
+    const auto* ext_defrag = defragger::operation_for(*ext, "defrag");
+    CHECK(fat_defrag != nullptr);
+    CHECK(fat_recover != nullptr);
+    CHECK(ext_defrag != nullptr);
+    CHECK(fat_defrag->default_options ==
+          std::vector<std::string>({"--batch-clusters", "4096",
+                                    "--ram-buffer", "auto"}));
+    CHECK(fat_recover->default_options.empty());
+    CHECK(ext_defrag->default_options ==
+          std::vector<std::string>({"--batch-clusters", "4096"}));
 
     return 0;
 }
