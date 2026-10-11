@@ -189,8 +189,8 @@ std::vector<std::string> desktop_mutation(const DesktopVolume& v,
                                           unsigned cells,
                                           bool journal_exists) {
     const auto* backend = backend_by_fstype(v.filesystem);
-    if (!backend || !operation_for(*backend, operation) || !v.verified ||
-        v.mounted || v.readonly)
+    const auto* spec = backend ? operation_for(*backend, operation) : nullptr;
+    if (!backend || !spec || !v.verified || v.mounted || v.readonly)
         throw std::runtime_error("Volume is not verified, unmounted, writable or supported");
     if (operation != "recover" && !v.exact_analysis)
         throw std::runtime_error(
@@ -210,23 +210,12 @@ std::vector<std::string> desktop_mutation(const DesktopVolume& v,
     if (journal.empty()) throw std::runtime_error("A persistent journal path is required");
     std::vector<std::string> args = {std::string(engine), std::string(operation), v.path,
         "--filesystem", v.filesystem, "--write", "--confirm", v.path, "--journal", std::string(journal)};
+    args.insert(args.end(), spec->default_options.begin(), spec->default_options.end());
     if (operation == "growth-defrag") {
         args.emplace_back("--growth-percent");
         args.emplace_back("10");
     }
-    /*
-     * Pass tuning only to engines that actually consume it.  Cosmetic options
-     * are worse than no options: they imply a control exists when the worker
-     * merely parses and discards the value.
-     */
     if (operation != "recover") {
-        if (backend->id == "fat12" || backend->id == "fat16" ||
-            backend->id == "fat32" || backend->id == "exfat") {
-            args.insert(args.end(), {"--batch-clusters", "4096",
-                                     "--ram-buffer", "auto"});
-        } else if (backend->id == "ext4") {
-            args.insert(args.end(), {"--batch-clusters", "4096"});
-        }
         args.emplace_back("--live-map-cells");
         args.emplace_back(std::to_string(std::clamp(cells, 256U, 1048576U)));
     }
