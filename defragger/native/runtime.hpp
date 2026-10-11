@@ -58,6 +58,7 @@ struct BackendInfo {
     std::vector<OperationSpec> operations;
     QualificationMode qualification_mode = QualificationMode::None;
     std::string map_auxiliary_worker;
+    std::vector<std::string> accepted_map_accuracies;
 
     BackendInfo(
         std::string id_value,
@@ -69,7 +70,8 @@ struct BackendInfo {
         MapAdapter map_adapter_value,
         std::vector<OperationSpec> operations_value,
         QualificationMode qualification_mode_value = QualificationMode::None,
-        std::string map_auxiliary_worker_value = {})
+        std::string map_auxiliary_worker_value = {},
+        std::vector<std::string> accepted_map_accuracies_value = {})
         : id(std::move(id_value)),
           display_name(std::move(display_name_value)),
           aliases(std::move(aliases_value)),
@@ -79,13 +81,16 @@ struct BackendInfo {
           map_adapter(map_adapter_value),
           operations(std::move(operations_value)),
           qualification_mode(qualification_mode_value),
-          map_auxiliary_worker(std::move(map_auxiliary_worker_value)) {}
+          map_auxiliary_worker(std::move(map_auxiliary_worker_value)),
+          accepted_map_accuracies(std::move(accepted_map_accuracies_value)) {}
 };
 
 const std::vector<BackendInfo>& backend_registry();
 const BackendInfo* backend_by_fstype(std::string_view filesystem);
 const OperationSpec* operation_for(const BackendInfo& backend,
                                    std::string_view operation);
+bool backend_accepts_map_accuracy(const BackendInfo& backend,
+                                  std::string_view accuracy);
 
 std::vector<std::string> without_options(
     const std::vector<std::string>& arguments,
