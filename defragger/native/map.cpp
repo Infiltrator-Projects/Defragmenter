@@ -106,7 +106,6 @@ CommandResult worker_program(
     return result;
 }
 
-
 CommandResult worker(
     const BackendInfo& backend,
     const std::string& mode,
@@ -638,19 +637,6 @@ Json map_xfs(const BackendInfo& backend, const std::string& path,
         std::move(details), true, "blocks");
 }
 
-bool native_accuracy_matches(const BackendInfo& backend,
-                             std::string_view accuracy) {
-    if (backend.id == "btrfs") return accuracy == "exact-single-device";
-    if (backend.id == "swap")
-        return accuracy == "summary" || accuracy == "exact";
-    if (backend.id == "zfs")
-        return accuracy == "summary" || accuracy == "exact";
-    if (backend.id == "ufs")
-        return accuracy == "summary" || accuracy == "exact-allocation" ||
-               accuracy == "exact";
-    return accuracy == backend.map_accuracy;
-}
-
 void validate_native_map(const BackendInfo& backend, const Json& payload) {
     if (payload.find("schema") == nullptr ||
         payload.at("schema").unsigned_value() != 1U)
@@ -674,7 +660,7 @@ void validate_native_map(const BackendInfo& backend, const Json& payload) {
 
     const Json* accuracy = payload.find("map_accuracy");
     if (accuracy == nullptr || !accuracy->is_string() ||
-        !native_accuracy_matches(backend, accuracy->string()))
+        !backend_accepts_map_accuracy(backend, accuracy->string()))
         throw std::runtime_error(
             "native filesystem mapper returned unexpected accuracy contract");
 
