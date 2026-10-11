@@ -178,6 +178,8 @@ void validate_backend_registry(const std::vector<BackendInfo>& registry) {
     for (const auto& backend : registry) {
         if (backend.id.empty())
             throw std::logic_error("backend registry contains an empty id");
+        if (backend.map_accuracy.empty())
+            throw std::logic_error("backend " + backend.id + " has no map accuracy contract");
         if (program_spec(backend.worker) == nullptr)
             throw std::logic_error(
                 "backend " + backend.id + " names an unknown worker: " +
@@ -187,6 +189,19 @@ void validate_backend_registry(const std::vector<BackendInfo>& registry) {
             throw std::logic_error(
                 "backend " + backend.id + " names an unknown map auxiliary worker: " +
                 backend.map_auxiliary_worker);
+        }
+
+        std::vector<std::string> accuracies;
+        for (const auto& accuracy : backend.accepted_map_accuracies) {
+            if (accuracy.empty())
+                throw std::logic_error(
+                    "backend " + backend.id + " contains an empty accepted map accuracy");
+            if (std::find(accuracies.begin(), accuracies.end(), accuracy) !=
+                accuracies.end()) {
+                throw std::logic_error(
+                    "backend " + backend.id + " repeats accepted map accuracy: " + accuracy);
+            }
+            accuracies.push_back(accuracy);
         }
 
         const bool writable = (backend.capabilities & CAP_DEFRAG) != 0U;
@@ -262,7 +277,7 @@ const std::vector<BackendInfo>& backend_registry() {
                 "btrfs-native",
                 "Btrfs writing is offline and fail-closed to the qualified single-device, CRC32C, level-0 mixed data/metadata subset, including relocation and verification of ordinary checksum-tree-protected regular-file extents.",
                 "Btrfs Growth Defrag leaves an exact 10% free-sector reserve after each supported regular file."),
-            QualificationMode::WorkerPreflight});
+            QualificationMode::WorkerPreflight, {}, {"exact-single-device"}});
         result.push_back({
             "exfat", "exFAT", {"exfat"}, write, "exact",
             "exfat-native", MapAdapter::Exfat,
@@ -329,7 +344,8 @@ const std::vector<BackendInfo>& backend_registry() {
                 "SFS0/SFS2 Growth Defrag leaves an exact 10% free-block reserve after every regular file.")});
         result.push_back({
             "swap", "Linux Swap", {"swap", "swapspace", "linux-swap"},
-            read, "summary", "swap-native", MapAdapter::NativeMap, {}});
+            read, "summary", "swap-native", MapAdapter::NativeMap, {},
+            QualificationMode::None, {}, {"summary", "exact"}});
         result.push_back({
             "ufs", "Solaris/BSD UFS", {"ufs", "ufs1", "ufs2", "4.2bsd"},
             write, "exact", "ufs-native", MapAdapter::NativeMap,
@@ -337,7 +353,8 @@ const std::vector<BackendInfo>& backend_registry() {
                 "ufs-native",
                 "UFS1/UFS2 writing uses Defragmenter's offline first-party native C engine and is fail-closed to clean, non-journalled, snapshot-free filesystems whose regular-file allocation is fully understood.",
                 "UFS Growth Defrag uses the same staged native engine and leaves an exact 10% free-fragment reserve after every supported regular file."),
-            QualificationMode::WorkerPreflight});
+            QualificationMode::WorkerPreflight, {},
+            {"summary", "exact-allocation", "exact"}});
         result.push_back({
             "xfs", "XFS", {"xfs"}, write, "exact",
             "xfs-native", MapAdapter::Xfs,
@@ -348,7 +365,8 @@ const std::vector<BackendInfo>& backend_registry() {
             QualificationMode::WorkerPreflight});
         result.push_back({
             "zfs", "ZFS/OpenZFS Member", {"zfs", "zfs_member"},
-            read, "exact-bounded", "zfs-native", MapAdapter::NativeMap, {}});
+            read, "exact-bounded", "zfs-native", MapAdapter::NativeMap, {},
+            QualificationMode::None, {}, {"summary", "exact"}});
         validate_backend_registry(result);
         return result;
     }();
@@ -372,6 +390,16 @@ const OperationSpec* operation_for(const BackendInfo& backend,
         if (item.name == operation_name) return &item;
     }
     return nullptr;
+}
+
+bool backend_accepts_map_accuracy(const BackendInfo& backend,
+                                  std::string_view accuracy) {
+    if (backend.accepted_map_accuracies.empty())
+        return accuracy == backend.map_accuracy;
+    return std::find(
+               backend.accepted_map_accuracies.begin(),
+               backend.accepted_map_accuracies.end(),
+               accuracy) != backend.accepted_map_accuracies.end();
 }
 
 std::vector<std::string> without_options(
@@ -472,6 +500,17 @@ std::string registry_manifest_json(unsigned schema) {
         }
         out += "],\"capabilities\":" + std::to_string(backend.capabilities);
         out += ",\"map_accuracy\":" + json_quote(backend.map_accuracy);
+        out += ",\"accepted_map_accuracies\":[";
+        if (backend.accepted_map_accuracies.empty()) {
+            out += json_quote(backend.map_accuracy);
+        } else {
+            for (std::size_t index = 0;
+                 index < backend.accepted_map_accuracies.size(); ++index) {
+                if (index != 0U) out += ',';
+                out += json_quote(backend.accepted_map_accuracies[index]);
+            }
+        }
+        out += ']';
         out += ",\"qualification_mode\":" +
                json_quote(qualification_mode_key(backend.qualification_mode));
         out += ",\"map_auxiliary_worker\":" +
