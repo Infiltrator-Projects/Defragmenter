@@ -161,6 +161,70 @@ bool executable_file(const fs::path& path) {
            access(path.c_str(), X_OK) == 0;
 }
 
+const char* qualification_mode_key(QualificationMode mode) {
+    switch (mode) {
+    case QualificationMode::None:
+        return "none";
+    case QualificationMode::WorkerPreflight:
+        return "worker-preflight";
+    case QualificationMode::MapOrWorkerPreflight:
+        return "map-or-worker-preflight";
+    }
+    throw std::logic_error("unknown qualification mode");
+}
+
+void validate_backend_registry(const std::vector<BackendInfo>& registry) {
+    std::vector<std::string> names;
+    for (const auto& backend : registry) {
+        if (backend.id.empty())
+            throw std::logic_error("backend registry contains an empty id");
+        if (program_spec(backend.worker) == nullptr)
+            throw std::logic_error(
+                "backend " + backend.id + " names an unknown worker: " +
+                backend.worker);
+        if (!backend.map_auxiliary_worker.empty() &&
+            program_spec(backend.map_auxiliary_worker) == nullptr) {
+            throw std::logic_error(
+                "backend " + backend.id + " names an unknown map auxiliary worker: " +
+                backend.map_auxiliary_worker);
+        }
+
+        const bool writable = (backend.capabilities & CAP_DEFRAG) != 0U;
+        if (writable != !backend.operations.empty()) {
+            throw std::logic_error(
+                "backend " + backend.id +
+                " has inconsistent mutation capabilities and operations");
+        }
+        if (!writable && backend.qualification_mode != QualificationMode::None) {
+            throw std::logic_error(
+                "read-only backend " + backend.id +
+                " declares mutation qualification policy");
+        }
+
+        std::vector<std::string> backend_names{backend.id};
+        backend_names.insert(
+            backend_names.end(), backend.aliases.begin(), backend.aliases.end());
+        for (const auto& raw_name : backend_names) {
+            if (raw_name.empty())
+                throw std::logic_error(
+                    "backend " + backend.id + " contains an empty alias");
+            const std::string name = lower_ascii(raw_name);
+            if (std::find(names.begin(), names.end(), name) != names.end())
+                throw std::logic_error(
+                    "backend registry contains duplicate id/alias: " + name);
+            names.push_back(name);
+        }
+
+        for (const auto& operation : backend.operations) {
+            if (program_spec(operation.worker) == nullptr) {
+                throw std::logic_error(
+                    "backend " + backend.id + " operation " + operation.name +
+                    " names an unknown worker: " + operation.worker);
+            }
+        }
+    }
+}
+
 } // namespace
 
 const std::vector<BackendInfo>& backend_registry() {
@@ -186,16 +250,16 @@ const std::vector<BackendInfo>& backend_registry() {
             standard_write_ops(
                 "apfs-native",
                 "APFS writing is offline and fail-closed to the qualified one-CIB, unencrypted, snapshot-free flat-tree subset; validated older descriptor-ring checkpoint history is retained unchanged.",
-                "APFS Growth Defrag leaves an exact 10% free-block reserve after each supported regular-file data stream.")});
-        result.back().qualification_mode = QualificationMode::WorkerPreflight;
+                "APFS Growth Defrag leaves an exact 10% free-block reserve after each supported regular-file data stream."),
+            QualificationMode::WorkerPreflight});
         result.push_back({
             "btrfs", "Btrfs", {"btrfs"}, write, "exact",
             "btrfs-native", MapAdapter::NativeMap,
             standard_write_ops(
                 "btrfs-native",
                 "Btrfs writing is offline and fail-closed to the qualified single-device, CRC32C, level-0 mixed data/metadata subset, including relocation and verification of ordinary checksum-tree-protected regular-file extents.",
-                "Btrfs Growth Defrag leaves an exact 10% free-sector reserve after each supported regular file.")});
-        result.back().qualification_mode = QualificationMode::WorkerPreflight;
+                "Btrfs Growth Defrag leaves an exact 10% free-sector reserve after each supported regular file."),
+            QualificationMode::WorkerPreflight});
         result.push_back({
             "exfat", "exFAT", {"exfat"}, write, "exact",
             "exfat-native", MapAdapter::Exfat,
@@ -205,9 +269,8 @@ const std::vector<BackendInfo>& backend_registry() {
                 "exFAT Growth Defrag uses the same native C raw engine and leaves an exact 10% free-cluster reserve after every regular file.")});
         result.push_back({
             "ext4", "ext2/3/4", {"ext2", "ext3", "ext4"}, write, "exact",
-            "ext-native", MapAdapter::Ext, standard_write_ops("ext-native")});
-        result.back().qualification_mode = QualificationMode::WorkerPreflight;
-        result.back().map_auxiliary_worker = "ext-metadata";
+            "ext-native", MapAdapter::Ext, standard_write_ops("ext-native"),
+            QualificationMode::WorkerPreflight, "ext-metadata"});
         for (const int bits : {12, 16, 32}) {
             const std::string id = "fat" + std::to_string(bits);
             result.push_back({
@@ -222,16 +285,16 @@ const std::vector<BackendInfo>& backend_registry() {
             standard_write_ops(
                 "hfs-native",
                 "Classic HFS writing uses Defragmenter's offline first-party native C engine and relocates complete regular-file forks across both inline and Extents Overflow records while preserving validated B-tree topology.",
-                "Classic HFS Growth Defrag leaves a 10% free allocation-block reserve after each supported non-empty file fork.")});
-        result.back().qualification_mode = QualificationMode::WorkerPreflight;
+                "Classic HFS Growth Defrag leaves a 10% free allocation-block reserve after each supported non-empty file fork."),
+            QualificationMode::WorkerPreflight});
         result.push_back({
             "hfsplus", "Apple HFS+/HFSX", {"hfsplus", "hfs+", "hfsx"},
             write, "exact", "hfsplus-native", MapAdapter::HfsPlus,
             standard_write_ops(
                 "hfsplus-native",
                 "HFS+/HFSX writing uses Defragmenter's offline first-party native C raw engine.",
-                "HFS+/HFSX Growth Defrag uses the native C raw engine and leaves an exact 10% free allocation-block reserve after each movable fork.")});
-        result.back().qualification_mode = QualificationMode::WorkerPreflight;
+                "HFS+/HFSX Growth Defrag uses the native C raw engine and leaves an exact 10% free allocation-block reserve after each movable fork."),
+            QualificationMode::WorkerPreflight});
         result.push_back({
             "minix", "Minix Filesystem", {"minix", "minix2", "minix3"},
             write, "exact", "minix-native", MapAdapter::NativeMap,
@@ -245,8 +308,8 @@ const std::vector<BackendInfo>& backend_registry() {
             standard_write_ops(
                 "ntfs-native",
                 "NTFS writing uses Defragmenter's offline native C raw engine. No NTFS filesystem driver, mount, filesystem ioctl or external filesystem utility is used.",
-                "NTFS Growth Defrag uses the same native C raw engine and leaves an exact 10% free-cluster reserve after every supported regular-file stream.")});
-        result.back().qualification_mode = QualificationMode::MapOrWorkerPreflight;
+                "NTFS Growth Defrag uses the same native C raw engine and leaves an exact 10% free-cluster reserve after every supported regular-file stream."),
+            QualificationMode::MapOrWorkerPreflight});
         result.push_back({
             "pfs3", "Amiga PFS3", {"pfs3", "pfs", "professionalfilesystem"},
             write, "exact-allocation", "pfs3-native", MapAdapter::NativeMap,
@@ -270,19 +333,20 @@ const std::vector<BackendInfo>& backend_registry() {
             standard_write_ops(
                 "ufs-native",
                 "UFS1/UFS2 writing uses Defragmenter's offline first-party native C engine and is fail-closed to clean, non-journalled, snapshot-free filesystems whose regular-file allocation is fully understood.",
-                "UFS Growth Defrag uses the same staged native engine and leaves an exact 10% free-fragment reserve after every supported regular file.")});
-        result.back().qualification_mode = QualificationMode::WorkerPreflight;
+                "UFS Growth Defrag uses the same staged native engine and leaves an exact 10% free-fragment reserve after every supported regular file."),
+            QualificationMode::WorkerPreflight});
         result.push_back({
             "xfs", "XFS", {"xfs"}, write, "exact",
             "xfs-native", MapAdapter::Xfs,
             standard_write_ops(
                 "xfs-native",
                 "XFS writing uses Defragmenter's offline native C raw engine. No XFS kernel driver, mount, filesystem ioctl or external repair tool is used.",
-                "XFS Growth Defrag uses the native C raw engine, requires staging space, and preserves an exact 10% free run after every supported regular file.")});
-        result.back().qualification_mode = QualificationMode::WorkerPreflight;
+                "XFS Growth Defrag uses the native C raw engine, requires staging space, and preserves an exact 10% free run after every supported regular file."),
+            QualificationMode::WorkerPreflight});
         result.push_back({
             "zfs", "ZFS/OpenZFS Member", {"zfs", "zfs_member"},
             read, "exact-bounded", "zfs-native", MapAdapter::NativeMap, {}});
+        validate_backend_registry(result);
         return result;
     }();
     return registry;
@@ -405,6 +469,10 @@ std::string registry_manifest_json(unsigned schema) {
         }
         out += "],\"capabilities\":" + std::to_string(backend.capabilities);
         out += ",\"map_accuracy\":" + json_quote(backend.map_accuracy);
+        out += ",\"qualification_mode\":" +
+               json_quote(qualification_mode_key(backend.qualification_mode));
+        out += ",\"map_auxiliary_worker\":" +
+               json_quote(backend.map_auxiliary_worker);
         out += ",\"operations\":[";
         for (std::size_t index = 0; index < backend.operations.size(); ++index) {
             if (index != 0U) out += ',';
