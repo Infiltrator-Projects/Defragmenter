@@ -3,7 +3,7 @@
 #include "desktop_policy.hpp"
 #include "desktop_live_map.hpp"
 #include "desktop_map_render.hpp"
-#include "process.hpp"
+#include "desktop_process_session.hpp"
 
 extern "C" {
 #include "version.h"
@@ -17,11 +17,8 @@ extern "C" {
 
 #include <algorithm>
 #include <chrono>
-#include <cerrno>
-#include <cstdlib>
 #include <cmath>
 #include <filesystem>
-#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -421,12 +418,6 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
            "; font-family: '" + typography->ui_family + "'; }\n";
     css += ".app-shell { background: " + shell_background + "; color: " +
            text + "; font-family: '" + typography->ui_family + "'; }\n";
-
-    /*
-     * The suite title bar and hero artwork are dark branded surfaces in both
-     * appearance modes.  Use Common's Night semantic roles for text/chrome on
-     * those dark rasters instead of placing Day's dark text on dark imagery.
-     */
     css += "headerbar { background: " + chrome_titlebar + "; color: " +
            chrome_heading + "; border-bottom: 1px solid " + chrome_border +
            "; min-height: 44px; padding: 2px 8px; }\n";
@@ -442,7 +433,6 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
            chrome_heading + "; }\n";
     css += ".brand-subtitle { font-size: 10px; letter-spacing: 2px; color: " +
            chrome_summary + "; }\n";
-
     css += ".sidebar { background-image: linear-gradient(to bottom, " +
            sidebar_background + ", " + background +
            "); border-right: 1px solid " + status_border + "; }\n";
@@ -546,7 +536,6 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
     css += ".operation-page { background: " + shell_background + "; }\n";
     css += ".operation-page .panel { background: " + card_background + "; }\n";
     css += ".gauge-title { color: " + detail + "; font-size: 10px; letter-spacing: 1px; }\n";
-
     css += "button { border-radius: " +
            std::to_string(metrics->control_radius) +
            "px; padding: 7px 12px; background: " + card_background +
@@ -560,7 +549,6 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
            "; font-weight: bold; }\n";
     css += ".stop-action { background: " + operation + "; color: " + text +
            "; border-color: " + fault + "; }\n";
-
     css += "combobox button, entry, spinbutton { background: " +
            text_background + "; color: " + text + "; border: 1px solid " +
            border + "; }\n";
@@ -591,7 +579,6 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
     }
     return palette;
 }
-
 
 class Desktop {
 public:
@@ -633,14 +620,8 @@ public:
         gtk_box_pack_start(GTK_BOX(brand), brand_text, FALSE, FALSE, 0);
         gtk_header_bar_pack_start(GTK_HEADER_BAR(header), brand);
 
-        /*
-         * Match System Settings: pack one trailing box so GTK cannot reverse
-         * the individual controls. The visible order is always
-         * Minimize | Maximize | Close, with Close at the far right.
-         */
         auto* header_end = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
         css_class(header_end, "header-end");
-
         auto* minimize = gtk_button_new_from_icon_name(
             "window-minimize-symbolic", GTK_ICON_SIZE_BUTTON);
         auto* maximize = gtk_button_new_from_icon_name(
@@ -652,29 +633,20 @@ public:
             gtk_widget_set_size_request(button, 32, 32);
         }
         css_class(close, "header-control-close");
-
-        g_object_set_data_full(
-            G_OBJECT(minimize), "action", g_strdup("minimize"), g_free);
-        g_object_set_data_full(
-            G_OBJECT(maximize), "action", g_strdup("maximize"), g_free);
-        g_object_set_data_full(
-            G_OBJECT(close), "action", g_strdup("close"), g_free);
+        g_object_set_data_full(G_OBJECT(minimize), "action", g_strdup("minimize"), g_free);
+        g_object_set_data_full(G_OBJECT(maximize), "action", g_strdup("maximize"), g_free);
+        g_object_set_data_full(G_OBJECT(close), "action", g_strdup("close"), g_free);
         g_signal_connect(minimize, "clicked", G_CALLBACK(clicked), nullptr);
         g_signal_connect(maximize, "clicked", G_CALLBACK(clicked), nullptr);
         g_signal_connect(close, "clicked", G_CALLBACK(clicked), nullptr);
-
-        gtk_box_pack_start(
-            GTK_BOX(header_end), minimize, FALSE, FALSE, 0);
-        gtk_box_pack_start(
-            GTK_BOX(header_end), maximize, FALSE, FALSE, 0);
-        gtk_box_pack_start(
-            GTK_BOX(header_end), close, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(header_end), minimize, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(header_end), maximize, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(header_end), close, FALSE, FALSE, 0);
         gtk_header_bar_pack_end(GTK_HEADER_BAR(header), header_end);
         gtk_window_set_titlebar(GTK_WINDOW(window_), header);
 
         auto* outer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
         gtk_container_add(GTK_CONTAINER(window_), outer);
-
         auto* paned = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
         gtk_box_pack_start(GTK_BOX(outer), paned, TRUE, TRUE, 0);
         auto* sidebar = gtk_box_new(GTK_ORIENTATION_VERTICAL, 3);
@@ -683,11 +655,9 @@ public:
         gtk_widget_set_size_request(sidebar, 195, -1);
         gtk_paned_pack1(GTK_PANED(paned), sidebar, FALSE, FALSE);
         gtk_paned_set_position(GTK_PANED(paned), 195);
-
         auto* sidebar_brand = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 9);
         auto* sidebar_icon = app_icon_image(52);
-        gtk_box_pack_start(
-            GTK_BOX(sidebar_brand), sidebar_icon, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(sidebar_brand), sidebar_icon, FALSE, FALSE, 0);
         auto* sidebar_copy = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
         auto* sidebar_title = gtk_label_new("Defragmenter");
         css_class(sidebar_title, "sidebar-brand-title");
@@ -695,64 +665,35 @@ public:
         auto* sidebar_subtitle = gtk_label_new("Visual disk optimisation");
         css_class(sidebar_subtitle, "sidebar-brand-subtitle");
         gtk_label_set_xalign(GTK_LABEL(sidebar_subtitle), 0);
-        gtk_box_pack_start(
-            GTK_BOX(sidebar_copy), sidebar_title, FALSE, FALSE, 0);
-        gtk_box_pack_start(
-            GTK_BOX(sidebar_copy), sidebar_subtitle, FALSE, FALSE, 0);
-        gtk_box_pack_start(
-            GTK_BOX(sidebar_brand), sidebar_copy, TRUE, TRUE, 0);
-        gtk_box_pack_start(
-            GTK_BOX(sidebar), sidebar_brand, FALSE, FALSE, 5);
-
-        nav_overview_ = add_nav_button(
-            sidebar, "go-home-symbolic", "Overview", "Drive at a glance",
-            "page-overview", true);
-        nav_analyse_ = add_nav_button(
-            sidebar, "system-search-symbolic", "Analyse", "Scan and visualise",
-            "page-analyse", false);
-        nav_defrag_ = add_nav_button(
-            sidebar, "view-grid-symbolic", "Defragment", "Optimise file layout",
-            "page-defrag", false);
-        nav_growth_ = add_nav_button(
-            sidebar, "go-up-symbolic", "Growth Defrag",
-            "Keep free space contiguous", "page-growth", false);
-        nav_recover_ = add_nav_button(
-            sidebar, "edit-undo-symbolic", "Recover", "Resume safe recovery",
-            "page-recover", false);
-
+        gtk_box_pack_start(GTK_BOX(sidebar_copy), sidebar_title, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(sidebar_copy), sidebar_subtitle, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(sidebar_brand), sidebar_copy, TRUE, TRUE, 0);
+        gtk_box_pack_start(GTK_BOX(sidebar), sidebar_brand, FALSE, FALSE, 5);
+        nav_overview_ = add_nav_button(sidebar, "go-home-symbolic", "Overview", "Drive at a glance", "page-overview", true);
+        nav_analyse_ = add_nav_button(sidebar, "system-search-symbolic", "Analyse", "Scan and visualise", "page-analyse", false);
+        nav_defrag_ = add_nav_button(sidebar, "view-grid-symbolic", "Defragment", "Optimise file layout", "page-defrag", false);
+        nav_growth_ = add_nav_button(sidebar, "go-up-symbolic", "Growth Defrag", "Keep free space contiguous", "page-growth", false);
+        nav_recover_ = add_nav_button(sidebar, "edit-undo-symbolic", "Recover", "Resume safe recovery", "page-recover", false);
         auto* nav_separator = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
         gtk_box_pack_start(GTK_BOX(sidebar), nav_separator, FALSE, FALSE, 5);
-
-        nav_test_media_ = add_nav_button(
-            sidebar, "drive-removable-media-symbolic", "Test Media",
-            "Check and diagnose", "page-test-media", false);
-        nav_settings_ = add_nav_button(
-            sidebar, "preferences-system-symbolic", "Settings",
-            "Appearance and preferences", "page-settings", false);
-
+        nav_test_media_ = add_nav_button(sidebar, "drive-removable-media-symbolic", "Test Media", "Check and diagnose", "page-test-media", false);
+        nav_settings_ = add_nav_button(sidebar, "preferences-system-symbolic", "Settings", "Appearance and preferences", "page-settings", false);
         auto* sidebar_art = gtk_drawing_area_new();
         gtk_widget_set_size_request(sidebar_art, 179, 136);
         gtk_widget_set_halign(sidebar_art, GTK_ALIGN_CENTER);
         gtk_widget_set_valign(sidebar_art, GTK_ALIGN_END);
         gtk_widget_set_hexpand(sidebar_art, FALSE);
         gtk_widget_set_vexpand(sidebar_art, FALSE);
-        g_signal_connect(
-            sidebar_art, "draw", G_CALLBACK(draw_sidebar_art), nullptr);
-        gtk_box_pack_end(
-            GTK_BOX(sidebar), sidebar_art, FALSE, FALSE, 4);
+        g_signal_connect(sidebar_art, "draw", G_CALLBACK(draw_sidebar_art), nullptr);
+        gtk_box_pack_end(GTK_BOX(sidebar), sidebar_art, FALSE, FALSE, 4);
 
         pages_ = gtk_stack_new();
-        gtk_stack_set_transition_type(
-            GTK_STACK(pages_), GTK_STACK_TRANSITION_TYPE_CROSSFADE);
+        gtk_stack_set_transition_type(GTK_STACK(pages_), GTK_STACK_TRANSITION_TYPE_CROSSFADE);
         gtk_stack_set_transition_duration(GTK_STACK(pages_), 110U);
         gtk_paned_pack2(GTK_PANED(paned), pages_, TRUE, TRUE);
-
         auto* outer_scroll = gtk_scrolled_window_new(nullptr, nullptr);
-        gtk_scrolled_window_set_policy(
-            GTK_SCROLLED_WINDOW(outer_scroll),
-            GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+        gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(outer_scroll), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
         gtk_stack_add_named(GTK_STACK(pages_), outer_scroll, "overview");
-
         auto* base = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
         css_class(base, "app-shell");
         gtk_container_set_border_width(GTK_CONTAINER(base), 12);
@@ -763,27 +704,20 @@ public:
         auto* hero_art = gtk_drawing_area_new();
         gtk_widget_set_hexpand(hero_art, TRUE);
         gtk_widget_set_size_request(hero_art, -1, 136);
-        g_signal_connect(
-            hero_art, "draw", G_CALLBACK(draw_hero_art), nullptr);
+        g_signal_connect(hero_art, "draw", G_CALLBACK(draw_hero_art), nullptr);
         gtk_container_add(GTK_CONTAINER(hero), hero_art);
-
         auto* hero_content = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
         gtk_container_set_border_width(GTK_CONTAINER(hero_content), 16);
         gtk_widget_set_valign(hero_content, GTK_ALIGN_CENTER);
-
         auto* drive_badge = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
         css_class(drive_badge, "hero-drive");
         auto* drive_art = gtk_drawing_area_new();
         gtk_widget_set_size_request(drive_art, 84, 74);
         gtk_widget_set_hexpand(drive_art, FALSE);
         gtk_widget_set_vexpand(drive_art, FALSE);
-        g_signal_connect(
-            drive_art, "draw", G_CALLBACK(draw_drive_art), nullptr);
-        gtk_box_pack_start(
-            GTK_BOX(drive_badge), drive_art, FALSE, FALSE, 0);
-        gtk_box_pack_start(
-            GTK_BOX(hero_content), drive_badge, FALSE, FALSE, 0);
-
+        g_signal_connect(drive_art, "draw", G_CALLBACK(draw_drive_art), nullptr);
+        gtk_box_pack_start(GTK_BOX(drive_badge), drive_art, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(hero_content), drive_badge, FALSE, FALSE, 0);
         auto* hero_text = gtk_box_new(GTK_ORIENTATION_VERTICAL, 3);
         auto* hero_kicker = gtk_label_new("SELECTED VOLUME");
         gtk_label_set_xalign(GTK_LABEL(hero_kicker), 0);
@@ -793,35 +727,26 @@ public:
         gtk_label_set_xalign(GTK_LABEL(volume_title_), 0);
         gtk_label_set_ellipsize(GTK_LABEL(volume_title_), PANGO_ELLIPSIZE_END);
         css_class(volume_title_, "hero-title");
-        gtk_box_pack_start(
-            GTK_BOX(hero_text), volume_title_, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(hero_text), volume_title_, FALSE, FALSE, 0);
         detail_ = gtk_label_new("Choose a volume or open a filesystem image.");
         gtk_label_set_xalign(GTK_LABEL(detail_), 0);
         gtk_label_set_ellipsize(GTK_LABEL(detail_), PANGO_ELLIPSIZE_END);
         gtk_label_set_max_width_chars(GTK_LABEL(detail_), 78);
         css_class(detail_, "hint");
         gtk_box_pack_start(GTK_BOX(hero_text), detail_, FALSE, FALSE, 0);
-        gtk_box_pack_start(
-            GTK_BOX(hero_content), hero_text, TRUE, TRUE, 0);
-
+        gtk_box_pack_start(GTK_BOX(hero_content), hero_text, TRUE, TRUE, 0);
         hero_status_ = gtk_label_new("Ready");
         css_class(hero_status_, "hero-status");
-        gtk_box_pack_end(
-            GTK_BOX(hero_content), hero_status_, FALSE, FALSE, 0);
-
+        gtk_box_pack_end(GTK_BOX(hero_content), hero_status_, FALSE, FALSE, 0);
         auto* version_badge = gtk_box_new(GTK_ORIENTATION_VERTICAL, 1);
         css_class(version_badge, "version-badge");
         auto* version_label = gtk_label_new(("Version " + std::string(LD_VERSION)).c_str());
         gtk_label_set_xalign(GTK_LABEL(version_label), 1);
         auto* native_label = gtk_label_new("Native C++");
         gtk_label_set_xalign(GTK_LABEL(native_label), 1);
-        gtk_box_pack_start(
-            GTK_BOX(version_badge), version_label, FALSE, FALSE, 0);
-        gtk_box_pack_start(
-            GTK_BOX(version_badge), native_label, FALSE, FALSE, 0);
-        gtk_box_pack_end(
-            GTK_BOX(hero_content), version_badge, FALSE, FALSE, 0);
-
+        gtk_box_pack_start(GTK_BOX(version_badge), version_label, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(version_badge), native_label, FALSE, FALSE, 0);
+        gtk_box_pack_end(GTK_BOX(hero_content), version_badge, FALSE, FALSE, 0);
         gtk_overlay_add_overlay(GTK_OVERLAY(hero), hero_content);
         gtk_box_pack_start(GTK_BOX(base), hero, FALSE, FALSE, 0);
 
@@ -834,8 +759,7 @@ public:
         gtk_box_pack_start(GTK_BOX(selector_box), selector, FALSE, FALSE, 0);
         auto* selector_panel = section(nullptr, selector_box);
         css_class(selector_panel, "volume-selector-panel");
-        gtk_box_pack_start(
-            GTK_BOX(base), selector_panel, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(base), selector_panel, FALSE, FALSE, 0);
         volumes_widget_ = gtk_combo_box_text_new();
         gtk_widget_set_hexpand(volumes_widget_, TRUE);
         gtk_box_pack_start(GTK_BOX(selector), volumes_widget_, TRUE, TRUE, 0);
@@ -855,18 +779,13 @@ public:
             else if (i == 2) css_class(card, "summary-capacity");
             else css_class(card, "summary-files");
             gtk_container_set_border_width(GTK_CONTAINER(card), 10);
-
             if (i < 3) {
                 gauges_[i] = gtk_drawing_area_new();
                 gtk_widget_set_size_request(gauges_[i], 94, 94);
-                g_object_set_data(
-                    G_OBJECT(gauges_[i]), "gauge-index", GINT_TO_POINTER(i));
-                g_signal_connect(
-                    gauges_[i], "draw", G_CALLBACK(draw_gauge), this);
-                gtk_box_pack_start(
-                    GTK_BOX(card), gauges_[i], FALSE, FALSE, 0);
+                g_object_set_data(G_OBJECT(gauges_[i]), "gauge-index", GINT_TO_POINTER(i));
+                g_signal_connect(gauges_[i], "draw", G_CALLBACK(draw_gauge), this);
+                gtk_box_pack_start(GTK_BOX(card), gauges_[i], FALSE, FALSE, 0);
             }
-
             auto* copy = gtk_box_new(GTK_ORIENTATION_VERTICAL, 3);
             gtk_widget_set_valign(copy, GTK_ALIGN_CENTER);
             auto* caption = gtk_label_new(captions[i]);
@@ -892,8 +811,7 @@ public:
         gtk_widget_set_size_request(map_, -1, 64);
         gtk_box_pack_start(GTK_BOX(map_box), map_, TRUE, TRUE, 0);
         g_signal_connect(map_, "draw", G_CALLBACK(draw_map), this);
-        g_signal_connect(
-            map_, "size-allocate", G_CALLBACK(map_size_allocate), this);
+        g_signal_connect(map_, "size-allocate", G_CALLBACK(map_size_allocate), this);
         legend_ = gtk_label_new(nullptr);
         update_legend();
         gtk_label_set_xalign(GTK_LABEL(legend_), 0);
@@ -903,24 +821,15 @@ public:
         gtk_box_pack_start(GTK_BOX(map_box), summary_, FALSE, FALSE, 0);
         auto* map_panel = section(nullptr, map_box);
         css_class(map_panel, "map-panel");
-        gtk_box_pack_start(
-            GTK_BOX(base), map_panel, TRUE, TRUE, 0);
+        gtk_box_pack_start(GTK_BOX(base), map_panel, TRUE, TRUE, 0);
 
         auto* actions = gtk_grid_new();
         gtk_grid_set_column_spacing(GTK_GRID(actions), 10);
         gtk_grid_set_column_homogeneous(GTK_GRID(actions), TRUE);
-        analyse_ = make_action_button(
-            "system-search-symbolic", "Analyse", "Scan and visualise",
-            "analyse");
-        defrag_ = make_action_button(
-            "view-grid-symbolic", "Defragment", "Optimise file layout",
-            "defrag");
-        growth_ = make_action_button(
-            "go-up-symbolic", "Growth Defrag", "Keep growth space contiguous",
-            "growth-defrag");
-        recover_ = make_action_button(
-            "edit-undo-symbolic", "Recover", "Resume safe recovery",
-            "recover");
+        analyse_ = make_action_button("system-search-symbolic", "Analyse", "Scan and visualise", "analyse");
+        defrag_ = make_action_button("view-grid-symbolic", "Defragment", "Optimise file layout", "defrag");
+        growth_ = make_action_button("go-up-symbolic", "Growth Defrag", "Keep growth space contiguous", "growth-defrag");
+        recover_ = make_action_button("edit-undo-symbolic", "Recover", "Resume safe recovery", "recover");
         gtk_grid_attach(GTK_GRID(actions), analyse_, 0, 0, 1, 1);
         gtk_grid_attach(GTK_GRID(actions), defrag_, 1, 0, 1, 1);
         gtk_grid_attach(GTK_GRID(actions), growth_, 2, 0, 1, 1);
@@ -929,45 +838,30 @@ public:
 
         auto* activity = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
         auto* activity_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
-        auto* activity_icon = gtk_image_new_from_icon_name(
-            "media-playback-start-symbolic", GTK_ICON_SIZE_BUTTON);
+        auto* activity_icon = gtk_image_new_from_icon_name("media-playback-start-symbolic", GTK_ICON_SIZE_BUTTON);
         gtk_image_set_pixel_size(GTK_IMAGE(activity_icon), 18);
-        gtk_box_pack_start(
-            GTK_BOX(activity_row), activity_icon, FALSE, FALSE, 0);
-
+        gtk_box_pack_start(GTK_BOX(activity_row), activity_icon, FALSE, FALSE, 0);
         status_ = gtk_label_new("Ready for analysis");
         gtk_label_set_xalign(GTK_LABEL(status_), 0);
         css_class(status_, "activity-primary");
-        gtk_box_pack_start(
-            GTK_BOX(activity_row), status_, FALSE, FALSE, 0);
-
-        activity_secondary_ = gtk_label_new(
-            "Choose a volume; analysis and safe operations appear here.");
+        gtk_box_pack_start(GTK_BOX(activity_row), status_, FALSE, FALSE, 0);
+        activity_secondary_ = gtk_label_new("Choose a volume; analysis and safe operations appear here.");
         gtk_label_set_xalign(GTK_LABEL(activity_secondary_), 0);
-        gtk_label_set_ellipsize(
-            GTK_LABEL(activity_secondary_), PANGO_ELLIPSIZE_END);
+        gtk_label_set_ellipsize(GTK_LABEL(activity_secondary_), PANGO_ELLIPSIZE_END);
         css_class(activity_secondary_, "activity-secondary");
-        gtk_box_pack_start(
-            GTK_BOX(activity_row), activity_secondary_, TRUE, TRUE, 0);
-
+        gtk_box_pack_start(GTK_BOX(activity_row), activity_secondary_, TRUE, TRUE, 0);
         progress_ = gtk_progress_bar_new();
         gtk_progress_bar_set_show_text(GTK_PROGRESS_BAR(progress_), TRUE);
         gtk_progress_bar_set_text(GTK_PROGRESS_BAR(progress_), "Ready");
         gtk_widget_set_size_request(progress_, 220, -1);
-        gtk_box_pack_start(
-            GTK_BOX(activity_row), progress_, TRUE, TRUE, 8);
-
+        gtk_box_pack_start(GTK_BOX(activity_row), progress_, TRUE, TRUE, 8);
         stop_ = add_button(activity_row, "Stop safely", "stop");
         css_class(stop_, "stop-action");
         gtk_box_pack_start(GTK_BOX(activity), activity_row, FALSE, FALSE, 0);
-
         auto* log_expander = gtk_expander_new("Technical activity log");
-        gtk_box_pack_start(
-            GTK_BOX(activity), log_expander, FALSE, TRUE, 0);
+        gtk_box_pack_start(GTK_BOX(activity), log_expander, FALSE, TRUE, 0);
         auto* scroll = gtk_scrolled_window_new(nullptr, nullptr);
-        gtk_scrolled_window_set_policy(
-            GTK_SCROLLED_WINDOW(scroll),
-            GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+        gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
         gtk_widget_set_size_request(scroll, -1, 110);
         gtk_container_add(GTK_CONTAINER(log_expander), scroll);
         log_ = gtk_text_view_new();
@@ -979,85 +873,71 @@ public:
         gtk_container_add(GTK_CONTAINER(scroll), log_);
         auto* activity_panel = section(nullptr, activity);
         css_class(activity_panel, "activity-panel");
-        gtk_box_pack_start(
-            GTK_BOX(base), activity_panel, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(base), activity_panel, FALSE, FALSE, 0);
 
         auto* status_strip = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
         css_class(status_strip, "status-strip");
         gtk_container_set_border_width(GTK_CONTAINER(status_strip), 8);
         auto* ready_dot = gtk_label_new("●");
         css_class(ready_dot, "ready-dot");
-        gtk_box_pack_start(
-            GTK_BOX(status_strip), ready_dot, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(status_strip), ready_dot, FALSE, FALSE, 0);
         footer_volume_ = gtk_label_new("No volume selected");
         css_class(footer_volume_, "footer-volume");
         gtk_label_set_xalign(GTK_LABEL(footer_volume_), 0);
-        gtk_box_pack_start(
-            GTK_BOX(status_strip), footer_volume_, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(status_strip), footer_volume_, FALSE, FALSE, 0);
         auto* status_separator = gtk_separator_new(GTK_ORIENTATION_VERTICAL);
-        gtk_box_pack_start(
-            GTK_BOX(status_strip), status_separator, FALSE, FALSE, 8);
+        gtk_box_pack_start(GTK_BOX(status_strip), status_separator, FALSE, FALSE, 8);
         footer_status_ = gtk_label_new("Ready");
         css_class(footer_status_, "status-text");
         gtk_label_set_xalign(GTK_LABEL(footer_status_), 0);
-        gtk_box_pack_start(
-            GTK_BOX(status_strip), footer_status_, TRUE, TRUE, 0);
-        gtk_box_pack_start(
-            GTK_BOX(base), status_strip, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(status_strip), footer_status_, TRUE, TRUE, 0);
+        gtk_box_pack_start(GTK_BOX(base), status_strip, FALSE, FALSE, 0);
 
-        gtk_stack_add_named(
-            GTK_STACK(pages_),
-            build_operation_page(
-                "Analyse",
-                "Scan the selected filesystem and render its true physical allocation.",
-                "system-search-symbolic",
-                "Analyse selected volume",
-                "analyse",
-                true),
-            "analyse");
-        gtk_stack_add_named(
-            GTK_STACK(pages_),
-            build_operation_page(
-                "Defragment",
-                "Compact movable extents while preserving the verified filesystem contract.",
-                "view-grid-symbolic",
-                "Defragment selected volume",
-                "defrag",
-                true),
-            "defrag");
-        gtk_stack_add_named(
-            GTK_STACK(pages_),
-            build_operation_page(
-                "Growth Defrag",
-                "Keep at least the qualified growth reserve contiguous after file data.",
-                "go-up-symbolic",
-                "Growth Defrag selected volume",
-                "growth-defrag",
-                true),
-            "growth");
-        gtk_stack_add_named(
-            GTK_STACK(pages_),
-            build_operation_page(
-                "Recover",
-                "Resume a journalled operation without weakening target identity checks.",
-                "edit-undo-symbolic",
-                "Recover selected volume",
-                "recover",
-                false),
-            "recover");
-        gtk_stack_add_named(
-            GTK_STACK(pages_), build_test_media_page(), "test-media");
-        gtk_stack_add_named(
-            GTK_STACK(pages_), build_settings_page(), "settings");
+        gtk_stack_add_named(GTK_STACK(pages_), build_operation_page("Analyse", "Scan the selected filesystem and render its true physical allocation.", "system-search-symbolic", "Analyse selected volume", "analyse", true), "analyse");
+        gtk_stack_add_named(GTK_STACK(pages_), build_operation_page("Defragment", "Compact movable extents while preserving the verified filesystem contract.", "view-grid-symbolic", "Defragment selected volume", "defrag", true), "defrag");
+        gtk_stack_add_named(GTK_STACK(pages_), build_operation_page("Growth Defrag", "Keep at least the qualified growth reserve contiguous after file data.", "go-up-symbolic", "Growth Defrag selected volume", "growth-defrag", true), "growth");
+        gtk_stack_add_named(GTK_STACK(pages_), build_operation_page("Recover", "Resume a journalled operation without weakening target identity checks.", "edit-undo-symbolic", "Recover selected volume", "recover", false), "recover");
+        gtk_stack_add_named(GTK_STACK(pages_), build_test_media_page(), "test-media");
+        gtk_stack_add_named(GTK_STACK(pages_), build_settings_page(), "settings");
         gtk_stack_set_visible_child_name(GTK_STACK(pages_), "overview");
+
+        analysis_transport_ = std::make_unique<defragger::LocalAnalysisTransport>(
+            [this](std::string line, bool diagnostics) {
+                if (consume_analysis_progress(line)) return;
+                if (diagnostics) note(line);
+                else output_ += line + "\n";
+            },
+            [this](int code, std::string detail) {
+                if (local_stop_timer_ != 0U) {
+                    g_source_remove(local_stop_timer_);
+                    local_stop_timer_ = 0U;
+                }
+                if (stopping_) result_status_ = "stopped";
+                completed(code, detail);
+            });
+        helper_transport_ = std::make_unique<defragger::PrivilegedHelperTransport>(
+            helper_path_,
+            [this](std::string line) {
+                try { receive(Json::parse(line)); }
+                catch (const std::exception& ex) {
+                    note(std::string("Invalid helper response: ") + ex.what());
+                }
+            },
+            [this](std::string detail) {
+                helper_ready_ = false;
+                if (busy_ &&
+                    !(analysis_transport_ && analysis_transport_->active()))
+                    completed(127, detail);
+                else note(detail);
+            });
 
         gtk_widget_show_all(window_);
         if (!start_services) return;
         refresh();
-        // Request authentication once per session, matching the existing desktop behavior.
         auth_timer_ = g_timeout_add(200, [](gpointer data) -> gboolean {
-            static_cast<Desktop*>(data)->start_helper();
-            static_cast<Desktop*>(data)->auth_timer_ = 0;
+            auto* self = static_cast<Desktop*>(data);
+            self->start_helper();
+            self->auth_timer_ = 0;
             return G_SOURCE_REMOVE;
         }, this);
     }
@@ -1066,20 +946,15 @@ public:
         if (analysis_timer_) g_source_remove(analysis_timer_);
         if (auth_timer_) g_source_remove(auth_timer_);
         if (local_stop_timer_) g_source_remove(local_stop_timer_);
-        if (selection_analysis_timer_)
-            g_source_remove(selection_analysis_timer_);
-        if (helper_) {
-            // Never close an active helper transport; the helper treats EOF as a Stop.
-            if (!busy_) {
-                if (helper_ready_) {
-                    try { write_helper(Json::Object{{"action", Json("quit")}}); }
-                    catch (...) { /* The session has already ended. */ }
-                } else g_subprocess_force_exit(helper_);
+        if (selection_analysis_timer_) g_source_remove(selection_analysis_timer_);
+        if (helper_transport_) {
+            if (!busy_ && helper_ready_ && helper_transport_->active()) {
+                try { helper_transport_->send(Json::Object{{"action", Json("quit")}}); }
+                catch (...) { }
             }
-            g_object_unref(helper_);
+            helper_transport_->shutdown();
         }
-        if (helper_input_) g_object_unref(helper_input_);
-        if (local_) g_object_unref(local_);
+        if (analysis_transport_) analysis_transport_->shutdown();
         if (discovery_) {
             g_subprocess_force_exit(discovery_);
             g_object_unref(discovery_);
@@ -1111,47 +986,34 @@ private:
     std::string mapper_, engine_, helper_path_, pending_program_, purpose_, output_, result_status_;
     std::vector<std::string> pending_args_;
     Json map_data_;
-    GSubprocess* helper_ = nullptr;
-    GSubprocess* local_ = nullptr;
+    std::unique_ptr<defragger::PrivilegedHelperTransport> helper_transport_;
+    std::unique_ptr<defragger::LocalAnalysisTransport> analysis_transport_;
     GSubprocess* discovery_ = nullptr;
     GSubprocess* probe_ = nullptr;
-    GDataInputStream* helper_input_ = nullptr;
     std::string refresh_selected_path_, pending_image_path_;
     bool helper_ready_ = false, busy_ = false, stopping_ = false, closing_ = false;
     bool discovering_ = false, probing_ = false;
     int request_id_ = 0, active_id_ = 0;
     guint analysis_timer_ = 0;
     gint64 analysis_started_ = 0;
-    std::string analysis_phase_, local_detail_;
-    bool analysis_has_progress_ = false, local_waited_ = false;
-    int local_code_ = 127;
-    unsigned int local_streams_ = 0;
+    std::string analysis_phase_;
+    bool analysis_has_progress_ = false;
     guint auth_timer_ = 0;
     guint local_stop_timer_ = 0;
     guint selection_analysis_timer_ = 0;
     std::uint64_t map_generation_ = 1U;
 
-    GtkWidget* build_operation_page(
-        const char* title,
-        const char* subtitle,
-        const char* icon_name,
-        const char* button_text,
-        const char* action_name,
-        bool show_map)
-    {
+    GtkWidget* build_operation_page(const char* title, const char* subtitle,
+        const char* icon_name, const char* button_text,
+        const char* action_name, bool show_map) {
         auto* scroll = gtk_scrolled_window_new(nullptr, nullptr);
-        gtk_scrolled_window_set_policy(
-            GTK_SCROLLED_WINDOW(scroll),
-            GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
-
+        gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
         auto* page = gtk_box_new(GTK_ORIENTATION_VERTICAL, 16);
         css_class(page, "operation-page");
         gtk_container_set_border_width(GTK_CONTAINER(page), 24);
         gtk_container_add(GTK_CONTAINER(scroll), page);
-
         auto* heading = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 14);
-        auto* icon = gtk_image_new_from_icon_name(
-            icon_name, GTK_ICON_SIZE_DIALOG);
+        auto* icon = gtk_image_new_from_icon_name(icon_name, GTK_ICON_SIZE_DIALOG);
         gtk_image_set_pixel_size(GTK_IMAGE(icon), 44);
         gtk_box_pack_start(GTK_BOX(heading), icon, FALSE, FALSE, 0);
         auto* copy = gtk_box_new(GTK_ORIENTATION_VERTICAL, 3);
@@ -1162,56 +1024,40 @@ private:
         css_class(subtitle_label, "page-subtitle");
         gtk_label_set_xalign(GTK_LABEL(subtitle_label), 0);
         gtk_label_set_line_wrap(GTK_LABEL(subtitle_label), TRUE);
-        gtk_box_pack_start(
-            GTK_BOX(copy), title_label, FALSE, FALSE, 0);
-        gtk_box_pack_start(
-            GTK_BOX(copy), subtitle_label, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(copy), title_label, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(copy), subtitle_label, FALSE, FALSE, 0);
         gtk_box_pack_start(GTK_BOX(heading), copy, TRUE, TRUE, 0);
         gtk_box_pack_start(GTK_BOX(page), heading, FALSE, FALSE, 0);
-
         auto* volume_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
         auto* volume_art = gtk_drawing_area_new();
         gtk_widget_set_size_request(volume_art, 84, 74);
         gtk_widget_set_hexpand(volume_art, FALSE);
         gtk_widget_set_vexpand(volume_art, FALSE);
-        g_signal_connect(
-            volume_art, "draw", G_CALLBACK(draw_drive_art), nullptr);
-        gtk_box_pack_start(
-            GTK_BOX(volume_box), volume_art, FALSE, FALSE, 0);
+        g_signal_connect(volume_art, "draw", G_CALLBACK(draw_drive_art), nullptr);
+        gtk_box_pack_start(GTK_BOX(volume_box), volume_art, FALSE, FALSE, 0);
         auto* selected = gtk_label_new("No volume selected");
         css_class(selected, "page-volume");
         gtk_label_set_xalign(GTK_LABEL(selected), 0);
-        gtk_label_set_ellipsize(
-            GTK_LABEL(selected), PANGO_ELLIPSIZE_END);
-        gtk_box_pack_start(
-            GTK_BOX(volume_box), selected, TRUE, TRUE, 0);
+        gtk_label_set_ellipsize(GTK_LABEL(selected), PANGO_ELLIPSIZE_END);
+        gtk_box_pack_start(GTK_BOX(volume_box), selected, TRUE, TRUE, 0);
         page_volume_labels_.push_back(selected);
-        gtk_box_pack_start(
-            GTK_BOX(page), section(nullptr, volume_box), FALSE, FALSE, 0);
-
+        gtk_box_pack_start(GTK_BOX(page), section(nullptr, volume_box), FALSE, FALSE, 0);
         if (show_map) {
             auto* map_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
             auto* label = gtk_label_new("CURRENT PHYSICAL ALLOCATION");
             css_class(label, "kicker");
             gtk_label_set_xalign(GTK_LABEL(label), 0);
-            gtk_box_pack_start(
-                GTK_BOX(map_box), label, FALSE, FALSE, 0);
+            gtk_box_pack_start(GTK_BOX(map_box), label, FALSE, FALSE, 0);
             auto* detail_map = gtk_drawing_area_new();
             gtk_widget_set_size_request(detail_map, -1, 320);
-            g_signal_connect(
-                detail_map, "draw", G_CALLBACK(draw_map), this);
+            g_signal_connect(detail_map, "draw", G_CALLBACK(draw_map), this);
             detail_maps_.push_back(detail_map);
-            gtk_box_pack_start(
-                GTK_BOX(map_box), detail_map, TRUE, TRUE, 0);
-            gtk_box_pack_start(
-                GTK_BOX(page), section(nullptr, map_box), TRUE, TRUE, 0);
+            gtk_box_pack_start(GTK_BOX(map_box), detail_map, TRUE, TRUE, 0);
+            gtk_box_pack_start(GTK_BOX(page), section(nullptr, map_box), TRUE, TRUE, 0);
         }
-
-        auto* action_button = make_action_button(
-            icon_name, button_text,
+        auto* action_button = make_action_button(icon_name, button_text,
             "Run this operation on the selected volume", action_name);
-        gtk_box_pack_start(
-            GTK_BOX(page), action_button, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(page), action_button, FALSE, FALSE, 0);
         const std::string action_id(action_name);
         if (action_id == "analyse") page_analyse_ = action_button;
         else if (action_id == "defrag") page_defrag_ = action_button;
@@ -1220,85 +1066,56 @@ private:
         return scroll;
     }
 
-    GtkWidget* build_test_media_page()
-    {
-        return build_operation_page(
-            "Test Media",
+    GtkWidget* build_test_media_page() {
+        return build_operation_page("Test Media",
             "Create and diagnose sacrificial filesystem media in the native companion tool.",
-            "drive-removable-media-symbolic",
-            "Launch Test Media",
-            "test-media",
-            false);
+            "drive-removable-media-symbolic", "Launch Test Media", "test-media", false);
     }
 
-    GtkWidget* build_settings_page()
-    {
+    GtkWidget* build_settings_page() {
         auto* scroll = gtk_scrolled_window_new(nullptr, nullptr);
-        gtk_scrolled_window_set_policy(
-            GTK_SCROLLED_WINDOW(scroll),
-            GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+        gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
         auto* page = gtk_box_new(GTK_ORIENTATION_VERTICAL, 16);
         css_class(page, "operation-page");
         gtk_container_set_border_width(GTK_CONTAINER(page), 22);
         gtk_container_add(GTK_CONTAINER(scroll), page);
-
         auto* title = gtk_label_new("Settings");
         css_class(title, "page-title");
         gtk_label_set_xalign(GTK_LABEL(title), 0);
         gtk_box_pack_start(GTK_BOX(page), title, FALSE, FALSE, 0);
-
-        auto* note = gtk_label_new(
-            "Appearance follows the same Common Day/Night contract as the rest of Infiltrator OS.");
+        auto* note = gtk_label_new("Appearance follows the same Common Day/Night contract as the rest of Infiltrator OS.");
         css_class(note, "page-subtitle");
         gtk_label_set_xalign(GTK_LABEL(note), 0);
         gtk_label_set_line_wrap(GTK_LABEL(note), TRUE);
         gtk_box_pack_start(GTK_BOX(page), note, FALSE, FALSE, 0);
-
         auto* box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 9);
         auto* heading = gtk_label_new("APPEARANCE");
         css_class(heading, "kicker");
         gtk_label_set_xalign(GTK_LABEL(heading), 0);
         gtk_box_pack_start(GTK_BOX(box), heading, FALSE, FALSE, 0);
-
         theme_combo_ = gtk_combo_box_text_new();
-        gtk_combo_box_text_append_text(
-            GTK_COMBO_BOX_TEXT(theme_combo_),
-            theme_label(INFILTRATR_THEME_SYSTEM));
-        gtk_combo_box_text_append_text(
-            GTK_COMBO_BOX_TEXT(theme_combo_),
-            theme_label(INFILTRATR_THEME_DAY));
-        gtk_combo_box_text_append_text(
-            GTK_COMBO_BOX_TEXT(theme_combo_),
-            theme_label(INFILTRATR_THEME_NIGHT));
-        gtk_combo_box_set_active(
-            GTK_COMBO_BOX(theme_combo_), theme_index(theme_mode_));
-        g_signal_connect(
-            theme_combo_, "changed", G_CALLBACK(theme_changed), this);
-        gtk_box_pack_start(
-            GTK_BOX(box), theme_combo_, FALSE, FALSE, 0);
-        gtk_box_pack_start(
-            GTK_BOX(page), section(nullptr, box), FALSE, FALSE, 0);
-
+        gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(theme_combo_), theme_label(INFILTRATR_THEME_SYSTEM));
+        gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(theme_combo_), theme_label(INFILTRATR_THEME_DAY));
+        gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(theme_combo_), theme_label(INFILTRATR_THEME_NIGHT));
+        gtk_combo_box_set_active(GTK_COMBO_BOX(theme_combo_), theme_index(theme_mode_));
+        g_signal_connect(theme_combo_, "changed", G_CALLBACK(theme_changed), this);
+        gtk_box_pack_start(GTK_BOX(box), theme_combo_, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(page), section(nullptr, box), FALSE, FALSE, 0);
         auto* about_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 9);
         auto* about_heading = gtk_label_new("ABOUT");
         css_class(about_heading, "kicker");
         gtk_label_set_xalign(GTK_LABEL(about_heading), 0);
-        gtk_box_pack_start(
-            GTK_BOX(about_box), about_heading, FALSE, FALSE, 0);
-        auto* about_note = gtk_label_new(
-            "Version, licence and project information.");
+        gtk_box_pack_start(GTK_BOX(about_box), about_heading, FALSE, FALSE, 0);
+        auto* about_note = gtk_label_new("Version, licence and project information.");
         css_class(about_note, "page-subtitle");
         gtk_label_set_xalign(GTK_LABEL(about_note), 0);
-        gtk_box_pack_start(
-            GTK_BOX(about_box), about_note, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(about_box), about_note, FALSE, FALSE, 0);
         add_button(about_box, "About Defragmenter", "about");
-        gtk_box_pack_start(
-            GTK_BOX(page), section(nullptr, about_box), FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(page), section(nullptr, about_box), FALSE, FALSE, 0);
         return scroll;
     }
 
-    static int theme_index(InfiltratrThemeMode mode)
-    {
+    static int theme_index(InfiltratrThemeMode mode) {
         switch (mode) {
             case INFILTRATR_THEME_DAY: return 1;
             case INFILTRATR_THEME_NIGHT: return 2;
@@ -1307,14 +1124,8 @@ private:
         }
     }
 
-    static GtkWidget* add_nav_button(
-        GtkWidget* box,
-        const char* icon_name,
-        const char* title,
-        const char* subtitle,
-        const char* action,
-        bool selected)
-    {
+    static GtkWidget* add_nav_button(GtkWidget* box, const char* icon_name,
+        const char* title, const char* subtitle, const char* action, bool selected) {
         auto* button = gtk_button_new();
         css_class(button, "nav-button");
         const std::string action_id(action);
@@ -1325,8 +1136,7 @@ private:
         else if (action_id == "page-test-media") css_class(button, "nav-test-media");
         if (selected) css_class(button, "nav-selected");
         auto* row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 9);
-        auto* icon = gtk_image_new_from_icon_name(
-            icon_name, GTK_ICON_SIZE_BUTTON);
+        auto* icon = gtk_image_new_from_icon_name(icon_name, GTK_ICON_SIZE_BUTTON);
         gtk_image_set_pixel_size(GTK_IMAGE(icon), 28);
         const char* icon_class = "nav-icon-overview";
         if (action_id == "page-analyse") icon_class = "nav-icon-analyse";
@@ -1351,30 +1161,23 @@ private:
         css_class(arrow, "action-arrow");
         gtk_box_pack_end(GTK_BOX(row), arrow, FALSE, FALSE, 0);
         gtk_container_add(GTK_CONTAINER(button), row);
-        g_object_set_data_full(
-            G_OBJECT(button), "action", g_strdup(action), g_free);
+        g_object_set_data_full(G_OBJECT(button), "action", g_strdup(action), g_free);
         g_signal_connect(button, "clicked", G_CALLBACK(clicked), nullptr);
         gtk_box_pack_start(GTK_BOX(box), button, FALSE, FALSE, 0);
         return button;
     }
 
-    static GtkWidget* make_action_button(
-        const char* icon_name,
-        const char* title,
-        const char* subtitle,
-        const char* action)
-    {
+    static GtkWidget* make_action_button(const char* icon_name, const char* title,
+        const char* subtitle, const char* action) {
         auto* button = gtk_button_new();
         css_class(button, "action-card");
         const std::string action_id(action);
         if (action_id == "analyse") css_class(button, "action-analyse");
         else if (action_id == "defrag") css_class(button, "action-defrag");
-        else if (action_id == "growth-defrag" || action_id == "test-media")
-            css_class(button, "action-growth");
+        else if (action_id == "growth-defrag" || action_id == "test-media") css_class(button, "action-growth");
         else if (action_id == "recover") css_class(button, "action-recover");
         auto* row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 9);
-        auto* icon = gtk_image_new_from_icon_name(
-            icon_name, GTK_ICON_SIZE_DIALOG);
+        auto* icon = gtk_image_new_from_icon_name(icon_name, GTK_ICON_SIZE_DIALOG);
         gtk_image_set_pixel_size(GTK_IMAGE(icon), 32);
         gtk_box_pack_start(GTK_BOX(row), icon, FALSE, FALSE, 0);
         auto* copy = gtk_box_new(GTK_ORIENTATION_VERTICAL, 1);
@@ -1389,8 +1192,7 @@ private:
         gtk_box_pack_start(GTK_BOX(copy), secondary, FALSE, FALSE, 0);
         gtk_box_pack_start(GTK_BOX(row), copy, TRUE, TRUE, 0);
         gtk_container_add(GTK_CONTAINER(button), row);
-        g_object_set_data_full(
-            G_OBJECT(button), "action", g_strdup(action), g_free);
+        g_object_set_data_full(G_OBJECT(button), "action", g_strdup(action), g_free);
         g_signal_connect(button, "clicked", G_CALLBACK(clicked), nullptr);
         return button;
     }
@@ -1408,60 +1210,42 @@ private:
     }
     static gboolean draw_gauge(GtkWidget* widget, cairo_t* cr, gpointer data) {
         auto* self = static_cast<Desktop*>(data);
-        const int index = GPOINTER_TO_INT(
-            g_object_get_data(G_OBJECT(widget), "gauge-index"));
-        if (index < 0 || index >= 3 || self->palette_ == nullptr)
-            return FALSE;
-
+        const int index = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(widget), "gauge-index"));
+        if (index < 0 || index >= 3 || self->palette_ == nullptr) return FALSE;
         GtkAllocation allocation;
         gtk_widget_get_allocation(widget, &allocation);
         const double cx = allocation.width / 2.0;
         const double cy = allocation.height / 2.0;
-        const double radius = std::max(
-            8.0, std::min(allocation.width, allocation.height) / 2.0 - 8.0);
-        const double value = std::clamp(
-            self->gauge_values_[index], 0.0, 1.0);
+        const double radius = std::max(8.0, std::min(allocation.width, allocation.height) / 2.0 - 8.0);
+        const double value = std::clamp(self->gauge_values_[index], 0.0, 1.0);
         const auto set_rgb = [cr](std::uint32_t rgb) {
-            cairo_set_source_rgb(
-                cr,
+            cairo_set_source_rgb(cr,
                 static_cast<double>((rgb >> 16U) & 0xffU) / 255.0,
                 static_cast<double>((rgb >> 8U) & 0xffU) / 255.0,
                 static_cast<double>(rgb & 0xffU) / 255.0);
         };
-
         cairo_set_line_width(cr, 7.0);
         set_rgb(self->palette_->border_rgb);
         cairo_arc(cr, cx, cy, radius, 0.0, 6.283185307179586);
         cairo_stroke(cr);
-
-        const std::uint32_t colour =
-            index == 0 ? self->palette_->fault_rgb :
-            index == 1 ? self->palette_->neutral_accent_rgb :
-                         self->palette_->warning_rgb;
+        const std::uint32_t colour = index == 0 ? self->palette_->fault_rgb :
+            index == 1 ? self->palette_->neutral_accent_rgb : self->palette_->warning_rgb;
         set_rgb(colour);
         cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
-        cairo_arc(
-            cr, cx, cy, radius, -1.5707963267948966,
+        cairo_arc(cr, cx, cy, radius, -1.5707963267948966,
             -1.5707963267948966 + value * 6.283185307179586);
         cairo_stroke(cr);
-
         char text[16];
-        if (self->map_data_.is_null())
-            std::snprintf(text, sizeof(text), "—");
-        else
-            std::snprintf(text, sizeof(text), "%.0f%%", value * 100.0);
+        if (self->map_data_.is_null()) std::snprintf(text, sizeof(text), "—");
+        else std::snprintf(text, sizeof(text), "%.0f%%", value * 100.0);
         const auto* typography = infiltratr_typography();
         if (typography != nullptr)
-            cairo_select_font_face(
-                cr, typography->ui_family,
-                CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+            cairo_select_font_face(cr, typography->ui_family, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
         cairo_set_font_size(cr, 12.0);
         cairo_text_extents_t extents;
         cairo_text_extents(cr, text, &extents);
         set_rgb(self->palette_->heading_rgb);
-        cairo_move_to(
-            cr,
-            cx - (extents.width / 2.0 + extents.x_bearing),
+        cairo_move_to(cr, cx - (extents.width / 2.0 + extents.x_bearing),
             cy - (extents.height / 2.0 + extents.y_bearing));
         cairo_show_text(cr, text);
         return FALSE;
@@ -1470,12 +1254,10 @@ private:
         auto* self = owner(GTK_WIDGET(button));
         if (self) self->action(static_cast<const char*>(g_object_get_data(G_OBJECT(button), "action")));
     }
-    static void map_size_allocate(
-        GtkWidget*, GtkAllocation*, gpointer data) {
+    static void map_size_allocate(GtkWidget*, GtkAllocation*, gpointer data) {
         auto* self = static_cast<Desktop*>(data);
         if (self != nullptr) self->update_map_caption();
     }
-
     static void selected(GtkComboBox* combo, gpointer data) {
         auto* self = static_cast<Desktop*>(data);
         self->cells_.clear();
@@ -1487,23 +1269,19 @@ private:
         self->queue_gauges();
         self->reset_summary();
         self->update();
-
         if (self->selection_analysis_timer_ != 0U) {
             g_source_remove(self->selection_analysis_timer_);
             self->selection_analysis_timer_ = 0U;
         }
         if (gtk_combo_box_get_active(combo) >= 0) {
-            self->selection_analysis_timer_ = g_idle_add(
-                [](gpointer pointer) -> gboolean {
-                    auto* desktop = static_cast<Desktop*>(pointer);
-                    desktop->selection_analysis_timer_ = 0U;
-                    if (!desktop->closing_ && !desktop->busy_ &&
-                        !desktop->discovering_ && !desktop->probing_ &&
-                        desktop->current() != nullptr)
-                        desktop->action("analyse");
-                    return G_SOURCE_REMOVE;
-                },
-                self);
+            self->selection_analysis_timer_ = g_idle_add([](gpointer pointer) -> gboolean {
+                auto* desktop = static_cast<Desktop*>(pointer);
+                desktop->selection_analysis_timer_ = 0U;
+                if (!desktop->closing_ && !desktop->busy_ && !desktop->discovering_ &&
+                    !desktop->probing_ && desktop->current() != nullptr)
+                    desktop->action("analyse");
+                return G_SOURCE_REMOVE;
+            }, self);
         }
     }
     static void theme_changed(GtkComboBox* combo, gpointer data) {
@@ -1514,7 +1292,6 @@ private:
         else if (index == 2) mode = INFILTRATR_THEME_NIGHT;
         self->set_theme(mode);
     }
-
     static gboolean close_requested(GtkWidget*, GdkEvent*, gpointer data) {
         auto* self = static_cast<Desktop*>(data);
         if (self->busy_) {
@@ -1525,10 +1302,8 @@ private:
         }
         if (self->discovering_ || self->probing_) {
             self->closing_ = true;
-            if (self->discovery_)
-                g_subprocess_force_exit(self->discovery_);
-            if (self->probe_)
-                g_subprocess_send_signal(self->probe_, SIGTERM);
+            if (self->discovery_) g_subprocess_force_exit(self->discovery_);
+            if (self->probe_) g_subprocess_send_signal(self->probe_, SIGTERM);
             return TRUE;
         }
         gtk_main_quit();
@@ -1541,181 +1316,104 @@ private:
     void switch_page(const std::string& name) {
         if (pages_ == nullptr) return;
         gtk_stack_set_visible_child_name(GTK_STACK(pages_), name.c_str());
-        const struct {
-            const char* name;
-            GtkWidget* widget;
-        } navigation[] = {
-            {"overview", nav_overview_},
-            {"analyse", nav_analyse_},
-            {"defrag", nav_defrag_},
-            {"growth", nav_growth_},
-            {"recover", nav_recover_},
-            {"test-media", nav_test_media_},
+        const struct { const char* name; GtkWidget* widget; } navigation[] = {
+            {"overview", nav_overview_}, {"analyse", nav_analyse_},
+            {"defrag", nav_defrag_}, {"growth", nav_growth_},
+            {"recover", nav_recover_}, {"test-media", nav_test_media_},
             {"settings", nav_settings_},
         };
         for (const auto& item : navigation) {
             if (item.widget == nullptr) continue;
             auto* context = gtk_widget_get_style_context(item.widget);
             gtk_style_context_remove_class(context, "nav-selected");
-            if (name == item.name)
-                gtk_style_context_add_class(context, "nav-selected");
+            if (name == item.name) gtk_style_context_add_class(context, "nav-selected");
         }
     }
-
     void set_theme(InfiltratrThemeMode mode) {
         theme_mode_ = mode;
         save_theme_mode(theme_mode_);
         try {
             palette_ = install_style(theme_mode_);
-            if (theme_combo_ != nullptr &&
-                gtk_combo_box_get_active(GTK_COMBO_BOX(theme_combo_)) !=
-                    theme_index(theme_mode_))
-                gtk_combo_box_set_active(
-                    GTK_COMBO_BOX(theme_combo_), theme_index(theme_mode_));
+            if (theme_combo_ != nullptr && gtk_combo_box_get_active(GTK_COMBO_BOX(theme_combo_)) != theme_index(theme_mode_))
+                gtk_combo_box_set_active(GTK_COMBO_BOX(theme_combo_), theme_index(theme_mode_));
             update_legend();
             queue_maps();
             queue_gauges();
-        } catch (const std::exception& ex) {
-            error("Unable to change appearance", ex.what());
-        }
+        } catch (const std::exception& ex) { error("Unable to change appearance", ex.what()); }
     }
-
     void queue_maps() {
         ++map_generation_;
         if (map_generation_ == 0U) map_generation_ = 1U;
         if (map_ != nullptr) gtk_widget_queue_draw(map_);
-        for (auto* widget : detail_maps_)
-            if (widget != nullptr) gtk_widget_queue_draw(widget);
+        for (auto* widget : detail_maps_) if (widget != nullptr) gtk_widget_queue_draw(widget);
     }
-
     void queue_gauges() {
-        for (auto* widget : gauges_)
-            if (widget != nullptr) gtk_widget_queue_draw(widget);
+        for (auto* widget : gauges_) if (widget != nullptr) gtk_widget_queue_draw(widget);
     }
-
     void reset_summary() {
-        for (auto* label : cards_)
-            if (label != nullptr)
-                gtk_label_set_text(GTK_LABEL(label), "—");
-        if (summary_ != nullptr)
-            gtk_label_set_text(
-                GTK_LABEL(summary_),
-                "Run Analyse to inspect the allocation map.");
+        for (auto* label : cards_) if (label != nullptr) gtk_label_set_text(GTK_LABEL(label), "—");
+        if (summary_ != nullptr) gtk_label_set_text(GTK_LABEL(summary_), "Run Analyse to inspect the allocation map.");
     }
-
     void update_map_caption() {
         if (summary_ == nullptr || map_ == nullptr || cells_.empty()) return;
-
         GtkAllocation allocation;
         gtk_widget_get_allocation(map_, &allocation);
-        const std::uint64_t scale = static_cast<std::uint64_t>(
-            std::max(1, gtk_widget_get_scale_factor(map_)));
-        const std::uint64_t width =
-            static_cast<std::uint64_t>(std::max(1, allocation.width)) * scale;
-        const std::uint64_t height =
-            static_cast<std::uint64_t>(std::max(1, allocation.height)) * scale;
-        const std::uint64_t display_pixels = std::max<std::uint64_t>(
-            1U, width * height);
-
-        const auto geometry =
-            defragger::desktop_map_display_geometry(map_data_, cells_);
+        const std::uint64_t scale = static_cast<std::uint64_t>(std::max(1, gtk_widget_get_scale_factor(map_)));
+        const std::uint64_t width = static_cast<std::uint64_t>(std::max(1, allocation.width)) * scale;
+        const std::uint64_t height = static_cast<std::uint64_t>(std::max(1, allocation.height)) * scale;
+        const std::uint64_t display_pixels = std::max<std::uint64_t>(1U, width * height);
+        const auto geometry = defragger::desktop_map_display_geometry(map_data_, cells_);
         if (geometry.allocation_units == 0U) return;
-
-        /*
-         * The allocation address space always spans the complete raster.
-         * When storage units outnumber device pixels, adjacent units are
-         * summarised into one pixel.  When device pixels outnumber units, a
-         * unit simply occupies several adjacent pixels.  That is magnification
-         * of the same physical position, not invented filesystem detail.
-         */
-        const std::uint64_t measured_units = geometry.exact_subunits
-            ? geometry.total_display_units
-            : geometry.allocation_units;
-
+        const std::uint64_t measured_units = geometry.exact_subunits ? geometry.total_display_units : geometry.allocation_units;
         std::string unit_label = "allocation units";
         std::string suffix;
         if (geometry.exact_subunits) {
             unit_label = geometry.display_unit_name;
-            if (geometry.display_unit_size != 0U) {
-                suffix = " · " + bytes(geometry.display_unit_size) +
-                    (unit_label == "sectors" ? "/sector" : "/unit");
-            }
-            const std::uint64_t cluster_size =
-                number(map_data_, "cluster_size");
-            if (cluster_size != 0U)
-                suffix += " · " + bytes(cluster_size) + "/cluster";
-        } else if (map_data_.find("cluster_size") != nullptr &&
-                   map_data_.find("data_clusters") != nullptr) {
+            if (geometry.display_unit_size != 0U)
+                suffix = " · " + bytes(geometry.display_unit_size) + (unit_label == "sectors" ? "/sector" : "/unit");
+            const std::uint64_t cluster_size = number(map_data_, "cluster_size");
+            if (cluster_size != 0U) suffix += " · " + bytes(cluster_size) + "/cluster";
+        } else if (map_data_.find("cluster_size") != nullptr && map_data_.find("data_clusters") != nullptr) {
             unit_label = "clusters";
-            const std::uint64_t cluster_size =
-                number(map_data_, "cluster_size");
-            if (cluster_size != 0U)
-                suffix = " · " + bytes(cluster_size) + "/cluster";
+            const std::uint64_t cluster_size = number(map_data_, "cluster_size");
+            if (cluster_size != 0U) suffix = " · " + bytes(cluster_size) + "/cluster";
         } else {
             const std::string filesystem = field(map_data_, "filesystem");
             const std::uint64_t unit = number(map_data_, "unit_size");
-            if (filesystem == "exfat" || filesystem == "ntfs")
-                unit_label = "clusters";
-            else if (unit == 512U)
-                unit_label = "sectors";
-            else if (unit == 4096U)
-                unit_label = "4 KiB units";
-            else if (unit != 0U)
-                unit_label = bytes(unit) + " units";
+            if (filesystem == "exfat" || filesystem == "ntfs") unit_label = "clusters";
+            else if (unit == 512U) unit_label = "sectors";
+            else if (unit == 4096U) unit_label = "4 KiB units";
+            else if (unit != 0U) unit_label = bytes(unit) + " units";
         }
-
         char density[64];
         std::string relationship;
         if (measured_units >= display_pixels) {
-            const double units_per_pixel =
-                static_cast<double>(measured_units) /
-                static_cast<double>(display_pixels);
-            if (units_per_pixel >= 100.0)
-                g_snprintf(density, sizeof(density), "%.0f", units_per_pixel);
-            else if (units_per_pixel >= 10.0)
-                g_snprintf(density, sizeof(density), "%.1f", units_per_pixel);
-            else
-                g_snprintf(density, sizeof(density), "%.2f", units_per_pixel);
-            relationship = std::string(density) + " " +
-                unit_label + " per display pixel";
+            const double units_per_pixel = static_cast<double>(measured_units) / static_cast<double>(display_pixels);
+            if (units_per_pixel >= 100.0) g_snprintf(density, sizeof(density), "%.0f", units_per_pixel);
+            else if (units_per_pixel >= 10.0) g_snprintf(density, sizeof(density), "%.1f", units_per_pixel);
+            else g_snprintf(density, sizeof(density), "%.2f", units_per_pixel);
+            relationship = std::string(density) + " " + unit_label + " per display pixel";
         } else {
-            const double pixels_per_unit =
-                static_cast<double>(display_pixels) /
-                static_cast<double>(measured_units);
-            if (pixels_per_unit >= 100.0)
-                g_snprintf(density, sizeof(density), "%.0f", pixels_per_unit);
-            else if (pixels_per_unit >= 10.0)
-                g_snprintf(density, sizeof(density), "%.1f", pixels_per_unit);
-            else
-                g_snprintf(density, sizeof(density), "%.2f", pixels_per_unit);
-            relationship = std::string(density) +
-                " display pixels per " +
-                (unit_label == "clusters" ? "cluster" :
-                 unit_label == "sectors" ? "sector" :
-                 unit_label == "allocation units" ? "allocation unit" :
-                 unit_label);
+            const double pixels_per_unit = static_cast<double>(display_pixels) / static_cast<double>(measured_units);
+            if (pixels_per_unit >= 100.0) g_snprintf(density, sizeof(density), "%.0f", pixels_per_unit);
+            else if (pixels_per_unit >= 10.0) g_snprintf(density, sizeof(density), "%.1f", pixels_per_unit);
+            else g_snprintf(density, sizeof(density), "%.2f", pixels_per_unit);
+            relationship = std::string(density) + " display pixels per " +
+                (unit_label == "clusters" ? "cluster" : unit_label == "sectors" ? "sector" :
+                 unit_label == "allocation units" ? "allocation unit" : unit_label);
         }
-
-        const std::string caption =
-            "Physical allocation raster · " + relationship + suffix;
+        const std::string caption = "Physical allocation raster · " + relationship + suffix;
         gtk_label_set_text(GTK_LABEL(summary_), caption.c_str());
     }
-
     std::uint64_t desired_map_cells() const {
         if (map_ == nullptr) return 4096U;
         GtkAllocation allocation;
         gtk_widget_get_allocation(map_, &allocation);
-        const std::uint64_t scale = static_cast<std::uint64_t>(
-            std::max(1, gtk_widget_get_scale_factor(map_)));
-        const std::uint64_t width =
-            static_cast<std::uint64_t>(std::max(1, allocation.width)) * scale;
-        const std::uint64_t height =
-            static_cast<std::uint64_t>(std::max(1, allocation.height)) * scale;
-        const std::uint64_t pixels = width * height;
-        return std::clamp<std::uint64_t>(
-            pixels, 256U, 1048576U);
+        const std::uint64_t scale = static_cast<std::uint64_t>(std::max(1, gtk_widget_get_scale_factor(map_)));
+        const std::uint64_t width = static_cast<std::uint64_t>(std::max(1, allocation.width)) * scale;
+        const std::uint64_t height = static_cast<std::uint64_t>(std::max(1, allocation.height)) * scale;
+        return std::clamp<std::uint64_t>(width * height, 256U, 1048576U);
     }
-
     void note(const std::string& message) {
         GtkTextBuffer* buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(log_));
         GtkTextIter end;
@@ -1726,15 +1424,13 @@ private:
     }
     void error(const std::string& title, const std::string& message) {
         note(title + ": " + message);
-        auto* dialog = gtk_message_dialog_new(GTK_WINDOW(window_), GTK_DIALOG_MODAL,
-            GTK_MESSAGE_ERROR, GTK_BUTTONS_CLOSE, "%s", title.c_str());
+        auto* dialog = gtk_message_dialog_new(GTK_WINDOW(window_), GTK_DIALOG_MODAL, GTK_MESSAGE_ERROR, GTK_BUTTONS_CLOSE, "%s", title.c_str());
         gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(dialog), "%s", message.c_str());
         gtk_dialog_run(GTK_DIALOG(dialog));
         gtk_widget_destroy(dialog);
     }
     bool confirm(const std::string& title, const std::string& message) {
-        auto* dialog = gtk_message_dialog_new(GTK_WINDOW(window_), GTK_DIALOG_MODAL,
-            GTK_MESSAGE_WARNING, GTK_BUTTONS_CANCEL, "%s", title.c_str());
+        auto* dialog = gtk_message_dialog_new(GTK_WINDOW(window_), GTK_DIALOG_MODAL, GTK_MESSAGE_WARNING, GTK_BUTTONS_CANCEL, "%s", title.c_str());
         gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(dialog), "%s", message.c_str());
         gtk_dialog_add_button(GTK_DIALOG(dialog), "Continue", GTK_RESPONSE_ACCEPT);
         bool accepted = gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT;
@@ -1755,61 +1451,34 @@ private:
         auto* v = current();
         std::string page_identity = "No volume selected";
         if (v) {
-            gtk_label_set_text(
-                GTK_LABEL(volume_title_),
-                v->label.empty() ? v->path.c_str() : v->label.c_str());
+            gtk_label_set_text(GTK_LABEL(volume_title_), v->label.empty() ? v->path.c_str() : v->label.c_str());
             if (hero_status_ != nullptr) {
-                auto* context =
-                    gtk_widget_get_style_context(hero_status_);
-                gtk_style_context_remove_class(
-                    context, "hero-mounted");
-                gtk_style_context_remove_class(
-                    context, "hero-unmounted");
-                gtk_style_context_add_class(
-                    context,
-                    v->mounted ? "hero-mounted" : "hero-unmounted");
-                gtk_label_set_text(
-                    GTK_LABEL(hero_status_),
-                    v->mounted ? "● Mounted" : "● Unmounted");
+                auto* context = gtk_widget_get_style_context(hero_status_);
+                gtk_style_context_remove_class(context, "hero-mounted");
+                gtk_style_context_remove_class(context, "hero-unmounted");
+                gtk_style_context_add_class(context, v->mounted ? "hero-mounted" : "hero-unmounted");
+                gtk_label_set_text(GTK_LABEL(hero_status_), v->mounted ? "● Mounted" : "● Unmounted");
             }
-            if (footer_volume_ != nullptr)
-                gtk_label_set_text(
-                    GTK_LABEL(footer_volume_),
-                    v->label.empty() ? v->path.c_str() : v->label.c_str());
-            std::string details =
-                v->path + " · " + v->filesystem + " · " + bytes(v->size)
+            if (footer_volume_ != nullptr) gtk_label_set_text(GTK_LABEL(footer_volume_), v->label.empty() ? v->path.c_str() : v->label.c_str());
+            std::string details = v->path + " · " + v->filesystem + " · " + bytes(v->size)
                 + (v->mounted ? " · mounted" : " · unmounted")
-                + (v->verified
-                    ? " · identity verified"
-                    : " · native identity pending");
+                + (v->verified ? " · identity verified" : " · native identity pending");
             gtk_label_set_text(GTK_LABEL(detail_), details.c_str());
-            page_identity =
-                v->path + " — " + v->filesystem + " — " + bytes(v->size);
+            page_identity = v->path + " — " + v->filesystem + " — " + bytes(v->size);
         } else {
             gtk_label_set_text(GTK_LABEL(volume_title_), "Choose a disk");
-            gtk_label_set_text(
-                GTK_LABEL(detail_),
-                "Choose a volume or open a filesystem image.");
+            gtk_label_set_text(GTK_LABEL(detail_), "Choose a volume or open a filesystem image.");
             if (hero_status_ != nullptr) {
-                auto* context =
-                    gtk_widget_get_style_context(hero_status_);
-                gtk_style_context_remove_class(
-                    context, "hero-mounted");
-                gtk_style_context_remove_class(
-                    context, "hero-unmounted");
+                auto* context = gtk_widget_get_style_context(hero_status_);
+                gtk_style_context_remove_class(context, "hero-mounted");
+                gtk_style_context_remove_class(context, "hero-unmounted");
                 gtk_label_set_text(GTK_LABEL(hero_status_), "Ready");
             }
-            if (footer_volume_ != nullptr)
-                gtk_label_set_text(
-                    GTK_LABEL(footer_volume_), "No volume selected");
+            if (footer_volume_ != nullptr) gtk_label_set_text(GTK_LABEL(footer_volume_), "No volume selected");
         }
         if (footer_status_ != nullptr && status_ != nullptr)
-            gtk_label_set_text(
-                GTK_LABEL(footer_status_),
-                gtk_label_get_text(GTK_LABEL(status_)));
-        for (auto* label : page_volume_labels_)
-            gtk_label_set_text(
-                GTK_LABEL(label), page_identity.c_str());
+            gtk_label_set_text(GTK_LABEL(footer_status_), gtk_label_get_text(GTK_LABEL(status_)));
+        for (auto* label : page_volume_labels_) gtk_label_set_text(GTK_LABEL(label), page_identity.c_str());
         bool journal = v && fs::exists(defragger::desktop_journal(*v, getuid()));
         auto state = defragger::desktop_controls(v, busy_, stopping_, journal);
         gtk_widget_set_sensitive(analyse_, state.analyse);
@@ -1817,14 +1486,10 @@ private:
         gtk_widget_set_sensitive(defrag_, state.defrag);
         gtk_widget_set_sensitive(growth_, state.growth_defrag);
         gtk_widget_set_sensitive(recover_, state.recover);
-        if (page_analyse_ != nullptr)
-            gtk_widget_set_sensitive(page_analyse_, state.analyse);
-        if (page_defrag_ != nullptr)
-            gtk_widget_set_sensitive(page_defrag_, state.defrag);
-        if (page_growth_ != nullptr)
-            gtk_widget_set_sensitive(page_growth_, state.growth_defrag);
-        if (page_recover_ != nullptr)
-            gtk_widget_set_sensitive(page_recover_, state.recover);
+        if (page_analyse_ != nullptr) gtk_widget_set_sensitive(page_analyse_, state.analyse);
+        if (page_defrag_ != nullptr) gtk_widget_set_sensitive(page_defrag_, state.defrag);
+        if (page_growth_ != nullptr) gtk_widget_set_sensitive(page_growth_, state.growth_defrag);
+        if (page_recover_ != nullptr) gtk_widget_set_sensitive(page_recover_, state.recover);
         gtk_widget_set_sensitive(stop_, state.stop);
         const bool idle_selection = !busy_ && !discovering_ && !probing_;
         gtk_widget_set_sensitive(refresh_, idle_selection);
@@ -1832,85 +1497,51 @@ private:
         gtk_widget_set_sensitive(volumes_widget_, idle_selection);
     }
     void maybe_finish_close() {
-        if (closing_ && !busy_ && !discovering_ && !probing_)
-            gtk_widget_destroy(window_);
+        if (closing_ && !busy_ && !discovering_ && !probing_) gtk_widget_destroy(window_);
     }
-
     void refresh() {
         if (busy_ || discovering_ || probing_) return;
         refresh_selected_path_ = current() ? current()->path : "";
-        const char* argv[] = {
-            "lsblk", "--json", "--bytes", "--output",
-            "NAME,PATH,TYPE,FSTYPE,FSVER,LABEL,PARTLABEL,UUID,PARTUUID,SERIAL,WWN,START,SIZE,MOUNTPOINTS,RM,RO,MODEL,TRAN",
-            nullptr
-        };
+        const char* argv[] = {"lsblk", "--json", "--bytes", "--output",
+            "NAME,PATH,TYPE,FSTYPE,FSVER,LABEL,PARTLABEL,UUID,PARTUUID,SERIAL,WWN,START,SIZE,MOUNTPOINTS,RM,RO,MODEL,TRAN", nullptr};
         GError* failure = nullptr;
-        discovery_ = g_subprocess_newv(
-            argv,
-            static_cast<GSubprocessFlags>(
-                G_SUBPROCESS_FLAGS_STDOUT_PIPE |
-                G_SUBPROCESS_FLAGS_STDERR_PIPE),
-            &failure);
+        discovery_ = g_subprocess_newv(argv, static_cast<GSubprocessFlags>(G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_PIPE), &failure);
         if (!discovery_) {
-            std::string detail =
-                failure ? failure->message : "unable to start lsblk";
+            std::string detail = failure ? failure->message : "unable to start lsblk";
             if (failure) g_error_free(failure);
             error("Unable to discover volumes", detail);
             return;
         }
         discovering_ = true;
         update();
-        g_subprocess_communicate_utf8_async(
-            discovery_, nullptr, nullptr,
+        g_subprocess_communicate_utf8_async(discovery_, nullptr, nullptr,
             [](GObject* source, GAsyncResult* result, gpointer data) {
                 auto* self = static_cast<Desktop*>(data);
                 gchar* out = nullptr;
                 gchar* err = nullptr;
                 GError* callback_error = nullptr;
-                const bool received = g_subprocess_communicate_utf8_finish(
-                    G_SUBPROCESS(source), result, &out, &err, &callback_error);
-                const int code =
-                    received &&
-                    g_subprocess_get_if_exited(self->discovery_)
-                    ? g_subprocess_get_exit_status(self->discovery_)
-                    : 127;
-                std::string detail =
-                    callback_error ? callback_error->message : (err ? err : "");
+                const bool received = g_subprocess_communicate_utf8_finish(G_SUBPROCESS(source), result, &out, &err, &callback_error);
+                const int code = received && g_subprocess_get_if_exited(self->discovery_) ? g_subprocess_get_exit_status(self->discovery_) : 127;
+                std::string detail = callback_error ? callback_error->message : (err ? err : "");
                 try {
-                    if (code != 0)
-                        throw std::runtime_error(
-                            detail.empty() ? "lsblk failed" : detail);
+                    if (code != 0) throw std::runtime_error(detail.empty() ? "lsblk failed" : detail);
                     std::vector<DesktopVolume> images;
-                    for (const auto& volume : self->volumes_)
-                        if (volume.image) images.push_back(volume);
-                    auto discovered = defragger::desktop_discover(
-                        Json::parse(out ? out : ""));
-                    discovered.insert(discovered.end(),
-                                      images.begin(), images.end());
+                    for (const auto& volume : self->volumes_) if (volume.image) images.push_back(volume);
+                    auto discovered = defragger::desktop_discover(Json::parse(out ? out : ""));
+                    discovered.insert(discovered.end(), images.begin(), images.end());
                     self->volumes_ = std::move(discovered);
-                    gtk_combo_box_text_remove_all(
-                        GTK_COMBO_BOX_TEXT(self->volumes_widget_));
+                    gtk_combo_box_text_remove_all(GTK_COMBO_BOX_TEXT(self->volumes_widget_));
                     int preferred = 0;
                     for (size_t i = 0; i < self->volumes_.size(); ++i) {
                         const auto& volume = self->volumes_[i];
-                        const std::string label =
-                            volume_combo_text(volume);
-                        gtk_combo_box_text_append_text(
-                            GTK_COMBO_BOX_TEXT(self->volumes_widget_),
-                            label.c_str());
-                        if (volume.path == self->refresh_selected_path_)
-                            preferred = static_cast<int>(i);
+                        const std::string label = volume_combo_text(volume);
+                        gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(self->volumes_widget_), label.c_str());
+                        if (volume.path == self->refresh_selected_path_) preferred = static_cast<int>(i);
                     }
-                    if (!self->volumes_.empty())
-                        gtk_combo_box_set_active(
-                            GTK_COMBO_BOX(self->volumes_widget_), preferred);
-                    else
-                        gtk_label_set_text(
-                            GTK_LABEL(self->detail_),
-                            "No supported volumes found. Open a filesystem image to begin.");
+                    if (!self->volumes_.empty()) gtk_combo_box_set_active(GTK_COMBO_BOX(self->volumes_widget_), preferred);
+                    else gtk_label_set_text(GTK_LABEL(self->detail_), "No supported volumes found. Open a filesystem image to begin.");
                 } catch (const std::exception& ex) {
-                    if (!self->closing_)
-                        self->error("Unable to discover volumes", ex.what());
+                    if (!self->closing_) self->error("Unable to discover volumes", ex.what());
                 }
                 if (callback_error) g_error_free(callback_error);
                 g_free(out);
@@ -1922,48 +1553,32 @@ private:
                 self->maybe_finish_close();
             }, this);
     }
-
     void open_image() {
         if (busy_ || discovering_ || probing_) return;
-        auto* chooser = gtk_file_chooser_dialog_new(
-            "Open filesystem image", GTK_WINDOW(window_),
-            GTK_FILE_CHOOSER_ACTION_OPEN,
-            "Cancel", GTK_RESPONSE_CANCEL,
-            "Open", GTK_RESPONSE_ACCEPT, nullptr);
+        auto* chooser = gtk_file_chooser_dialog_new("Open filesystem image", GTK_WINDOW(window_), GTK_FILE_CHOOSER_ACTION_OPEN,
+            "Cancel", GTK_RESPONSE_CANCEL, "Open", GTK_RESPONSE_ACCEPT, nullptr);
         if (gtk_dialog_run(GTK_DIALOG(chooser)) != GTK_RESPONSE_ACCEPT) {
             gtk_widget_destroy(chooser);
             return;
         }
-        char* name =
-            gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(chooser));
+        char* name = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(chooser));
         gtk_widget_destroy(chooser);
         try {
             fs::path path = fs::canonical(name);
             g_free(name);
             name = nullptr;
-            if (!fs::is_regular_file(path))
-                throw std::runtime_error(
-                    "Select a regular filesystem image.");
+            if (!fs::is_regular_file(path)) throw std::runtime_error("Select a regular filesystem image.");
             pending_image_path_ = path.string();
         } catch (const std::exception& ex) {
             if (name) g_free(name);
             error("Unable to open image", ex.what());
             return;
         }
-
-        const char* argv[] = {
-            mapper_.c_str(), pending_image_path_.c_str(), "--probe", nullptr
-        };
+        const char* argv[] = {mapper_.c_str(), pending_image_path_.c_str(), "--probe", nullptr};
         GError* failure = nullptr;
-        probe_ = g_subprocess_newv(
-            argv,
-            static_cast<GSubprocessFlags>(
-                G_SUBPROCESS_FLAGS_STDOUT_PIPE |
-                G_SUBPROCESS_FLAGS_STDERR_PIPE),
-            &failure);
+        probe_ = g_subprocess_newv(argv, static_cast<GSubprocessFlags>(G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_PIPE), &failure);
         if (!probe_) {
-            const std::string detail =
-                failure ? failure->message : "unable to start native probe";
+            const std::string detail = failure ? failure->message : "unable to start native probe";
             if (failure) g_error_free(failure);
             error("Unable to open image", detail);
             pending_image_path_.clear();
@@ -1971,58 +1586,37 @@ private:
         }
         probing_ = true;
         update();
-        g_subprocess_communicate_utf8_async(
-            probe_, nullptr, nullptr,
+        g_subprocess_communicate_utf8_async(probe_, nullptr, nullptr,
             [](GObject* source, GAsyncResult* result, gpointer data) {
                 auto* self = static_cast<Desktop*>(data);
                 gchar* out = nullptr;
                 gchar* err = nullptr;
                 GError* callback_error = nullptr;
-                const bool received = g_subprocess_communicate_utf8_finish(
-                    G_SUBPROCESS(source), result, &out, &err, &callback_error);
-                const int code =
-                    received && g_subprocess_get_if_exited(self->probe_)
-                    ? g_subprocess_get_exit_status(self->probe_)
-                    : 127;
-                std::string detail =
-                    callback_error ? callback_error->message : (err ? err : "");
+                const bool received = g_subprocess_communicate_utf8_finish(G_SUBPROCESS(source), result, &out, &err, &callback_error);
+                const int code = received && g_subprocess_get_if_exited(self->probe_) ? g_subprocess_get_exit_status(self->probe_) : 127;
+                std::string detail = callback_error ? callback_error->message : (err ? err : "");
                 try {
-                    if (code != 0)
-                        throw std::runtime_error(
-                            "Native filesystem probe failed: " + detail);
+                    if (code != 0) throw std::runtime_error("Native filesystem probe failed: " + detail);
                     Json probe_data = Json::parse(out ? out : "");
                     DesktopVolume volume;
                     volume.path = self->pending_image_path_;
                     volume.filesystem = field(probe_data, "filesystem");
-                    if (!defragger::backend_by_fstype(volume.filesystem))
-                        throw std::runtime_error(
-                            "Unsupported filesystem image.");
+                    if (!defragger::backend_by_fstype(volume.filesystem)) throw std::runtime_error("Unsupported filesystem image.");
                     std::error_code size_error;
-                    volume.size =
-                        fs::file_size(volume.path, size_error);
-                    if (size_error)
-                        throw std::runtime_error(
-                            "Filesystem image changed during probing");
-                    volume.readonly =
-                        access(volume.path.c_str(), W_OK) != 0;
+                    volume.size = fs::file_size(volume.path, size_error);
+                    if (size_error) throw std::runtime_error("Filesystem image changed during probing");
+                    volume.readonly = access(volume.path.c_str(), W_OK) != 0;
                     volume.image = true;
                     volume.verified = true;
                     self->volumes_.push_back(volume);
-                    const std::string label =
-                        volume.path + " — " + volume.filesystem +
-                        " — " + bytes(volume.size);
-                    gtk_combo_box_text_append_text(
-                        GTK_COMBO_BOX_TEXT(self->volumes_widget_),
-                        label.c_str());
-                    gtk_combo_box_set_active(
-                        GTK_COMBO_BOX(self->volumes_widget_),
-                        static_cast<int>(self->volumes_.size() - 1U));
+                    const std::string label = volume.path + " — " + volume.filesystem + " — " + bytes(volume.size);
+                    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(self->volumes_widget_), label.c_str());
+                    gtk_combo_box_set_active(GTK_COMBO_BOX(self->volumes_widget_), static_cast<int>(self->volumes_.size() - 1U));
                     self->cells_.clear();
                     self->map_data_ = Json();
                     self->queue_maps();
                 } catch (const std::exception& ex) {
-                    if (!self->closing_)
-                        self->error("Unable to open image", ex.what());
+                    if (!self->closing_) self->error("Unable to open image", ex.what());
                 }
                 if (callback_error) g_error_free(callback_error);
                 g_free(out);
@@ -2035,7 +1629,6 @@ private:
                 self->maybe_finish_close();
             }, this);
     }
-
     void action(const std::string& action_name) {
         if (action_name == "minimize") { gtk_window_iconify(GTK_WINDOW(window_)); return; }
         if (action_name == "maximize") {
@@ -2043,54 +1636,32 @@ private:
             else gtk_window_maximize(GTK_WINDOW(window_));
             return;
         }
-        if (action_name == "close") {
-            gtk_window_close(GTK_WINDOW(window_));
-            return;
-        }
-        if (action_name.rfind("page-", 0) == 0) {
-            switch_page(action_name.substr(5));
-            return;
-        }
+        if (action_name == "close") { gtk_window_close(GTK_WINDOW(window_)); return; }
+        if (action_name.rfind("page-", 0) == 0) { switch_page(action_name.substr(5)); return; }
         if (busy_ && action_name != "stop" && action_name != "about") return;
         if (action_name == "refresh") { refresh(); return; }
         if (action_name == "image") { open_image(); return; }
         if (action_name == "stop") { request_stop(); return; }
         if (action_name == "about") {
-            const gchar* authors[] = {
-                "Shannon Smith — Author and project maintainer", nullptr
-            };
-            gtk_show_about_dialog(
-                GTK_WINDOW(window_),
-                "program-name", "Defragmenter",
-                "version", LD_VERSION,
+            const gchar* authors[] = {"Shannon Smith — Author and project maintainer", nullptr};
+            gtk_show_about_dialog(GTK_WINDOW(window_), "program-name", "Defragmenter", "version", LD_VERSION,
                 "comments", "Native filesystem analysis and safe layout operations",
                 "copyright", "Copyright © 2000–2026 Shannon Smith",
-                "website", "https://github.com/Infiltrator-Projects/Defragmenter",
-                "website-label", "Website",
-                "authors", authors,
-                "license-type", GTK_LICENSE_GPL_3_0,
-                "wrap-license", TRUE,
-                "logo-icon-name", "io.github.linuxdefragger",
-                nullptr);
+                "website", "https://github.com/Infiltrator-Projects/Defragmenter", "website-label", "Website",
+                "authors", authors, "license-type", GTK_LICENSE_GPL_3_0, "wrap-license", TRUE,
+                "logo-icon-name", "io.github.linuxdefragger", nullptr);
             return;
         }
-        if (action_name == "theme") {
-            set_theme(infiltratr_theme_mode_next(theme_mode_));
-            return;
-        }
+        if (action_name == "theme") { set_theme(infiltratr_theme_mode_next(theme_mode_)); return; }
         if (action_name == "test-media") {
             GError* failure = nullptr;
             try {
-                const std::string executable =
-                    defragger::resolve_program("test-media");
+                const std::string executable = defragger::resolve_program("test-media");
                 const char* argv[] = {executable.c_str(), nullptr};
-                auto* process =
-                    g_subprocess_newv(argv, G_SUBPROCESS_FLAGS_NONE, &failure);
-                if (process) {
-                    g_object_unref(process);
-                } else {
-                    const std::string detail =
-                        failure ? failure->message : "unable to start Test Media";
+                auto* process = g_subprocess_newv(argv, G_SUBPROCESS_FLAGS_NONE, &failure);
+                if (process) g_object_unref(process);
+                else {
+                    const std::string detail = failure ? failure->message : "unable to start Test Media";
                     if (failure) g_error_free(failure);
                     error("Unable to launch Test Media", detail);
                 }
@@ -2108,18 +1679,14 @@ private:
             v->growth_qualified = false;
             v->defrag_reason.clear();
             v->growth_reason.clear();
-            start({
-                mapper_, v->path, "--fstype", v->filesystem,
-                "--cells", std::to_string(desired_map_cells())},
-                "mapper", "analysis");
+            start({mapper_, v->path, "--fstype", v->filesystem, "--cells", std::to_string(desired_map_cells())}, "mapper", "analysis");
         } else if (action_name == "unmount") {
             if (confirm("Unmount " + v->path + "?", "The selected volume must be unmounted for raw filesystem operations."))
                 start({"udisksctl", "unmount", "-b", v->path}, "udisksctl", "unmount");
         } else {
             try {
                 const auto journal = defragger::desktop_journal(*v, getuid());
-                auto args = defragger::desktop_mutation(*v, action_name, engine_, journal,
-                    4096, fs::exists(journal));
+                auto args = defragger::desktop_mutation(*v, action_name, engine_, journal, 4096, fs::exists(journal));
                 const auto* backend = defragger::backend_by_fstype(v->filesystem);
                 const auto* spec = defragger::operation_for(*backend, action_name);
                 std::string message = spec->description + (spec->warning.empty() ? "" : "\n\n" + spec->warning)
@@ -2135,124 +1702,43 @@ private:
         constexpr std::string_view deleted = " (deleted)";
         if (!executable_error && executable.size() >= deleted.size() &&
             executable.compare(executable.size() - deleted.size(), deleted.size(), deleted) == 0) {
-            error("Restart Defragmenter", "Defragmenter was updated while this window was open. "
-                  "Close and reopen it to use the matching desktop and filesystem workers.");
+            error("Restart Defragmenter", "Defragmenter was updated while this window was open. Close and reopen it to use the matching desktop and filesystem workers.");
             return;
         }
-        busy_ = true; stopping_ = false; output_.clear(); result_status_.clear();
+        busy_ = true;
+        stopping_ = false;
+        output_.clear();
+        result_status_.clear();
         purpose_ = std::move(purpose);
         pending_program_ = std::move(program);
         pending_args_ = std::move(args);
         gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(progress_), 0);
-        gtk_progress_bar_set_text(
-            GTK_PROGRESS_BAR(progress_), (purpose_ + " in progress").c_str());
+        gtk_progress_bar_set_text(GTK_PROGRESS_BAR(progress_), (purpose_ + " in progress").c_str());
         gtk_label_set_text(GTK_LABEL(status_), (purpose_ + " in progress").c_str());
         note("Starting " + purpose_ + " on " + (current() ? current()->path : ""));
         if (purpose_ == "analysis") {
-            cells_.clear(); map_data_ = Json(); reset_summary(); queue_maps(); queue_gauges();
+            cells_.clear();
+            map_data_ = Json();
+            reset_summary();
+            queue_maps();
+            queue_gauges();
             analysis_started_ = g_get_monotonic_time();
             analysis_phase_ = "Starting analyser";
             analysis_has_progress_ = false;
             render_analysis_progress();
             analysis_timer_ = g_timeout_add(200U, [](gpointer data) -> gboolean {
                 auto* self = static_cast<Desktop*>(data);
-                if (!self->analysis_has_progress_)
-                    gtk_progress_bar_pulse(GTK_PROGRESS_BAR(self->progress_));
+                if (!self->analysis_has_progress_) gtk_progress_bar_pulse(GTK_PROGRESS_BAR(self->progress_));
                 self->render_analysis_progress();
                 return G_SOURCE_CONTINUE;
             }, this);
         }
         update();
         if (purpose_ == "analysis" && current() && access(current()->path.c_str(), R_OK) == 0) {
-            start_local_analysis();
+            try { analysis_transport_->start(pending_args_); }
+            catch (const std::exception& ex) { completed(127, ex.what()); }
         } else if (helper_ready_) submit();
         else start_helper();
-    }
-    void signal_local_analysis(int signal_number) {
-        const char* identifier = g_subprocess_get_identifier(local_);
-        char* end = nullptr;
-        const long pid = identifier ? std::strtol(identifier, &end, 10) : 0L;
-        if (pid > 0L && pid <= std::numeric_limits<pid_t>::max() &&
-            end != nullptr && *end == '\0') {
-            if (kill(-static_cast<pid_t>(pid), signal_number) == 0 || errno != ESRCH)
-                return;
-        }
-        g_subprocess_send_signal(local_, signal_number);
-    }
-    void start_local_analysis() {
-        std::vector<const char*> argv;
-        for (const auto& argument : pending_args_) argv.push_back(argument.c_str());
-        argv.push_back(nullptr);
-        GError* failure = nullptr;
-        auto* launcher = g_subprocess_launcher_new(
-            static_cast<GSubprocessFlags>(G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_PIPE));
-        g_subprocess_launcher_set_child_setup(launcher,
-            [](gpointer) { if (setpgid(0, 0) != 0) _exit(125); }, nullptr, nullptr);
-        local_ = g_subprocess_launcher_spawnv(launcher, argv.data(), &failure);
-        g_object_unref(launcher);
-        if (!local_) {
-            std::string detail = failure ? failure->message : "Unable to start mapper";
-            if (failure) g_error_free(failure);
-            completed(127, detail);
-            return;
-        }
-        local_streams_ = 2U;
-        local_waited_ = false;
-        local_detail_.clear();
-        read_local_stream(g_data_input_stream_new(g_subprocess_get_stdout_pipe(local_)), false);
-        read_local_stream(g_data_input_stream_new(g_subprocess_get_stderr_pipe(local_)), true);
-        g_subprocess_wait_async(local_, nullptr,
-            [](GObject* source, GAsyncResult* result, gpointer data) {
-                auto* self = static_cast<Desktop*>(data);
-                GError* wait_error = nullptr;
-                const bool waited = g_subprocess_wait_finish(G_SUBPROCESS(source), result, &wait_error);
-                self->local_code_ = waited && g_subprocess_get_if_exited(G_SUBPROCESS(source))
-                    ? g_subprocess_get_exit_status(G_SUBPROCESS(source)) : 127;
-                if (wait_error) { self->local_detail_ += wait_error->message; g_error_free(wait_error); }
-                self->local_waited_ = true;
-                self->finish_local_analysis();
-            }, this);
-    }
-    void read_local_stream(GDataInputStream* stream, bool diagnostics) {
-        struct ReadContext { Desktop* desktop; bool diagnostics; };
-        auto* request = new ReadContext{this, diagnostics};
-        g_data_input_stream_read_line_async(stream, G_PRIORITY_DEFAULT, nullptr,
-            [](GObject* source, GAsyncResult* result, gpointer data) {
-                const std::unique_ptr<ReadContext> context(static_cast<ReadContext*>(data));
-                auto* self = context->desktop;
-                GError* failure = nullptr;
-                gsize length = 0U;
-                char* raw = g_data_input_stream_read_line_finish(G_DATA_INPUT_STREAM(source), result, &length, &failure);
-                if (raw != nullptr) {
-                    const std::string line(raw, length);
-                    g_free(raw);
-                    if (!self->consume_analysis_progress(line)) {
-                        if (context->diagnostics) {
-                            self->local_detail_ += line + "\n";
-                            if (self->local_detail_.size() > 4096U)
-                                self->local_detail_.erase(0U, self->local_detail_.size() - 4096U);
-                            self->note(line);
-                        } else self->output_ += line + "\n";
-                    }
-                    self->read_local_stream(G_DATA_INPUT_STREAM(source), context->diagnostics);
-                    return;
-                }
-                if (failure) { self->local_detail_ += failure->message; g_error_free(failure); }
-                g_object_unref(source);
-                --self->local_streams_;
-                self->finish_local_analysis();
-            }, request);
-    }
-    void finish_local_analysis() {
-        if (!local_waited_ || local_streams_ != 0U) return;
-        if (local_stop_timer_ != 0U) {
-            g_source_remove(local_stop_timer_); local_stop_timer_ = 0U;
-        }
-        if (stopping_) result_status_ = "stopped";
-        const int code = local_code_;
-        const std::string detail = local_detail_;
-        g_object_unref(local_); local_ = nullptr;
-        completed(code, detail);
     }
     bool consume_analysis_progress(const std::string& line) {
         if (line.rfind("@@ANALYSIS ", 0U) != 0U) return false;
@@ -2266,8 +1752,7 @@ private:
             const auto done = number(event, "completed");
             analysis_has_progress_ = total > 0U && done <= total;
             if (analysis_has_progress_) {
-                gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(progress_),
-                    static_cast<double>(done) / static_cast<double>(total));
+                gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(progress_), static_cast<double>(done) / static_cast<double>(total));
                 analysis_phase_ += " • " + std::to_string(done) + " / " + std::to_string(total) + " records";
             }
             render_analysis_progress();
@@ -2276,8 +1761,7 @@ private:
     }
     void render_analysis_progress() {
         const auto seconds = (g_get_monotonic_time() - analysis_started_) / G_USEC_PER_SEC;
-        const std::string text = (stopping_ ? "Stopping analysis" : analysis_phase_) +
-            " • " + std::to_string(seconds) + "s elapsed";
+        const std::string text = (stopping_ ? "Stopping analysis" : analysis_phase_) + " • " + std::to_string(seconds) + "s elapsed";
         gtk_progress_bar_set_text(GTK_PROGRESS_BAR(progress_), text.c_str());
         gtk_label_set_text(GTK_LABEL(summary_), text.c_str());
         gtk_label_set_text(GTK_LABEL(status_), "Analysing selected volume");
@@ -2285,26 +1769,18 @@ private:
         if (footer_status_) gtk_label_set_text(GTK_LABEL(footer_status_), text.c_str());
     }
     void write_helper(const Json& request) {
-        if (!helper_) throw std::runtime_error("Administrator helper is unavailable");
-        std::string line = request.dump() + "\n";
-        GError* failure = nullptr;
-        gsize written = 0;
-        if (!g_output_stream_write_all(g_subprocess_get_stdin_pipe(helper_),
-                line.data(), line.size(), &written, nullptr, &failure)) {
-            std::string message = failure ? failure->message : "helper pipe closed";
-            if (failure) g_error_free(failure);
-            throw std::runtime_error(message);
-        }
+        if (!helper_transport_) throw std::runtime_error("Administrator helper is unavailable");
+        helper_transport_->send(request);
     }
     void submit() {
-        if (!busy_ || !helper_ready_ || active_id_ || local_) return;
+        if (!busy_ || !helper_ready_ || active_id_ ||
+            (analysis_transport_ && analysis_transport_->active())) return;
         if (stopping_) {
             result_status_ = "stopped";
             completed(0, "Cancelled before the operation started");
             return;
         }
         Json::Array args;
-        // The helper enforces the executable allowlist; it receives arguments only.
         for (size_t i = 1; i < pending_args_.size(); ++i) args.emplace_back(pending_args_[i]);
         active_id_ = ++request_id_;
         try {
@@ -2313,46 +1789,14 @@ private:
         } catch (const std::exception& ex) { completed(127, ex.what()); }
     }
     void start_helper() {
-        if (helper_ || helper_ready_) return;
-        const char* argv[] = {"pkexec", helper_path_.c_str(), nullptr};
-        GError* failure = nullptr;
-        helper_ = g_subprocess_newv(argv,
-            static_cast<GSubprocessFlags>(G_SUBPROCESS_FLAGS_STDIN_PIPE | G_SUBPROCESS_FLAGS_STDOUT_PIPE), &failure);
-        if (!helper_) {
-            std::string message = failure ? failure->message : "pkexec unavailable";
-            if (failure) g_error_free(failure);
-            if (busy_) completed(127, message);
-            else note("Administrator authentication unavailable: " + message);
-            return;
+        if (!helper_transport_ || helper_transport_->active() || helper_ready_) return;
+        try {
+            helper_transport_->start();
+            note("Requesting administrator access for this application session…");
+        } catch (const std::exception& ex) {
+            if (busy_) completed(127, ex.what());
+            else note("Administrator authentication unavailable: " + std::string(ex.what()));
         }
-        note("Requesting administrator access for this application session…");
-        helper_input_ = g_data_input_stream_new(g_subprocess_get_stdout_pipe(helper_));
-        read_helper();
-    }
-    void read_helper() {
-        g_data_input_stream_read_line_async(helper_input_, G_PRIORITY_DEFAULT, nullptr,
-            [](GObject* source, GAsyncResult* result, gpointer data) {
-                auto* self = static_cast<Desktop*>(data);
-                GError* failure = nullptr;
-                gsize length = 0;
-                gchar* line = g_data_input_stream_read_line_finish(G_DATA_INPUT_STREAM(source), result, &length, &failure);
-                if (!line) {
-                    std::string detail = failure ? failure->message : "administrator session ended";
-                    if (failure) g_error_free(failure);
-                    self->helper_ready_ = false;
-                    g_object_unref(self->helper_input_);
-                    self->helper_input_ = nullptr;
-                    g_object_unref(self->helper_);
-                    self->helper_ = nullptr;
-                    if (self->busy_ && !self->local_) self->completed(127, detail);
-                    else self->note(detail);
-                    return;
-                }
-                try { self->receive(Json::parse(std::string(line, length))); }
-                catch (const std::exception& ex) { self->note(std::string("Invalid helper response: ") + ex.what()); }
-                g_free(line);
-                if (self->helper_ready_ || self->helper_) self->read_helper();
-            }, this);
     }
     void receive(const Json& message) {
         if (!message.is_object()) return;
@@ -2367,7 +1811,8 @@ private:
         if (type == "stop-result") {
             note(std::string("Stop: ") + field(message, "message"));
             if (const auto* delivered = message.find("delivered"); delivered && !delivered->bool_or()) {
-                stopping_ = false; update();
+                stopping_ = false;
+                update();
             }
         }
         if (static_cast<int>(number(message, "id")) != active_id_ || !busy_) return;
@@ -2375,27 +1820,20 @@ private:
             std::string line = field(message, "line");
             if (purpose_ == "analysis") {
                 if (!consume_analysis_progress(line)) output_ += line + "\n";
-            }
-            else if (line.rfind("@@", 0) == 0) {
+            } else if (line.rfind("@@", 0) == 0) {
                 try { apply_live(line); }
                 catch (const std::exception& ex) { note(std::string("Invalid live event: ") + ex.what()); }
-            }
-            else note(line);
+            } else note(line);
         } else if (type == "progress") {
-            gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(progress_),
-                std::clamp(message.at("percent").real_value() / 100.0, 0.0, 1.0));
+            gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(progress_), std::clamp(message.at("percent").real_value() / 100.0, 0.0, 1.0));
         } else if (type == "finished") {
-            const int code =
-                static_cast<int>(number(message, "returncode"));
+            const int code = static_cast<int>(number(message, "returncode"));
             std::string detail;
             if (code != 0 && purpose_ == "analysis") {
                 detail = output_;
-                while (!detail.empty() &&
-                       (detail.back() == '\n' || detail.back() == '\r'))
-                    detail.pop_back();
+                while (!detail.empty() && (detail.back() == '\n' || detail.back() == '\r')) detail.pop_back();
                 constexpr std::size_t kMaxFailureDetail = 4096U;
-                if (detail.size() > kMaxFailureDetail)
-                    detail.erase(0, detail.size() - kMaxFailureDetail);
+                if (detail.size() > kMaxFailureDetail) detail.erase(0, detail.size() - kMaxFailureDetail);
             }
             completed(code, detail);
         }
@@ -2404,24 +1842,19 @@ private:
         if (!busy_ || stopping_) return;
         stopping_ = true;
         update();
-        if (local_) {
-            signal_local_analysis(SIGINT);
+        if (analysis_transport_ && analysis_transport_->active()) {
+            analysis_transport_->signal(SIGINT);
             note("Stopping read-only analysis and its filesystem worker…");
             if (local_stop_timer_ == 0U) {
-                local_stop_timer_ = g_timeout_add_seconds(
-                    5U,
-                    [](gpointer data) -> gboolean {
-                        auto* self = static_cast<Desktop*>(data);
-                        self->local_stop_timer_ = 0U;
-                        if (self->local_ != nullptr &&
-                            self->busy_ && self->stopping_) {
-                            self->note(
-                                "Analysis did not stop cooperatively; terminating it now.");
-                            self->signal_local_analysis(SIGKILL);
-                        }
-                        return G_SOURCE_REMOVE;
-                    },
-                    this);
+                local_stop_timer_ = g_timeout_add_seconds(5U, [](gpointer data) -> gboolean {
+                    auto* self = static_cast<Desktop*>(data);
+                    self->local_stop_timer_ = 0U;
+                    if (self->analysis_transport_ && self->analysis_transport_->active() && self->busy_ && self->stopping_) {
+                        self->note("Analysis did not stop cooperatively; terminating it now.");
+                        self->analysis_transport_->signal(SIGKILL);
+                    }
+                    return G_SOURCE_REMOVE;
+                }, this);
             }
             return;
         }
@@ -2431,32 +1864,38 @@ private:
             return;
         }
         try { write_helper(Json::Object{{"action", Json("stop")}, {"id", Json::integer(++request_id_)}}); }
-        catch (const std::exception& ex) { stopping_ = false; error("Unable to stop", ex.what()); update(); }
+        catch (const std::exception& ex) {
+            stopping_ = false;
+            error("Unable to stop", ex.what());
+            update();
+        }
     }
     void completed(int code, const std::string& detail) {
         std::string purpose = purpose_;
         if (purpose == "analysis" && stopping_ && code != 0) result_status_ = "stopped";
         if (analysis_timer_) { g_source_remove(analysis_timer_); analysis_timer_ = 0U; }
         std::string reason = detail;
-        bool actually_started = active_id_ != 0 || local_ != nullptr;
+        const bool actually_started = active_id_ != 0 ||
+            (analysis_transport_ && analysis_transport_->active());
         active_id_ = 0;
-        busy_ = false; stopping_ = false;
+        busy_ = false;
+        stopping_ = false;
         if (code == 0 && purpose == "analysis") {
             try { present_map(Json::parse(output_)); }
             catch (const std::exception& ex) { code = 127; reason = std::string("Invalid allocation map: ") + ex.what(); }
         }
         if (purpose == "analysis" && code != 0)
-            gtk_label_set_text(GTK_LABEL(summary_), result_status_ == "stopped"
-                ? "Analysis stopped. No completed allocation map." : "Analysis failed. See the activity log for details.");
+            gtk_label_set_text(GTK_LABEL(summary_), result_status_ == "stopped" ?
+                "Analysis stopped. No completed allocation map." : "Analysis failed. See the activity log for details.");
         if (code == 0 && purpose == "unmount") refresh();
         const bool success = code == 0 && result_status_ != "failed" && result_status_ != "stopped";
-        const char* final_status = success
-            ? (result_status_ == "not-needed" ? "No changes needed" : "Completed")
-            : (result_status_ == "stopped" ? "Stopped safely" : "Operation failed");
+        const char* final_status = success ? (result_status_ == "not-needed" ? "No changes needed" : "Completed") :
+            (result_status_ == "stopped" ? "Stopped safely" : "Operation failed");
         gtk_label_set_text(GTK_LABEL(status_), final_status);
         gtk_progress_bar_set_text(GTK_PROGRESS_BAR(progress_), final_status);
         gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(progress_), success ? 1.0 : 0.0);
-        if (code != 0 && result_status_ != "stopped") error("Operation failed", reason.empty() ? "Exit status " + std::to_string(code) : reason);
+        if (code != 0 && result_status_ != "stopped")
+            error("Operation failed", reason.empty() ? "Exit status " + std::to_string(code) : reason);
         if (!closing_ && actually_started && (success || result_status_ == "stopped") &&
             (purpose == "defrag" || purpose == "growth-defrag" || purpose == "recover")) {
             update();
@@ -2467,15 +1906,13 @@ private:
     }
     void present_map(const Json& map) {
         const auto* raw = map.find("cells");
-        if (!raw || !raw->is_array() || raw->array().empty() ||
-            raw->array().size() > 1048576 ||
+        if (!raw || !raw->is_array() || raw->array().empty() || raw->array().size() > 1048576 ||
             number(map, "cell_count") != raw->array().size() || number(map, "total_units") == 0)
             throw std::runtime_error("Missing or inconsistent allocation cells");
         std::uint64_t end = 0;
         bool first = true;
         for (const auto& cell : raw->array()) {
-            if (!cell.is_object() || number(cell, "end") < number(cell, "start") ||
-                (!first && number(cell, "start") <= end))
+            if (!cell.is_object() || number(cell, "end") < number(cell, "start") || (!first && number(cell, "start") <= end))
                 throw std::runtime_error("Allocation cells overlap or are out of order");
             end = number(cell, "end");
             first = false;
@@ -2484,110 +1921,55 @@ private:
         if (!v) return;
         defragger::desktop_verify_identity(*v, field(map, "filesystem"));
         const std::string accuracy = field(map, "map_accuracy");
-        v->exact_analysis =
-            !accuracy.empty() && accuracy != "summary" &&
-            number(map, "unknown_bytes") == 0U;
+        v->exact_analysis = !accuracy.empty() && accuracy != "summary" && number(map, "unknown_bytes") == 0U;
         const Json* defrag_qualified = map.find("defrag_qualified");
         const Json* growth_qualified = map.find("growth_qualified");
-        v->defrag_qualified =
-            v->exact_analysis && defrag_qualified != nullptr &&
-            defrag_qualified->bool_or(false);
-        v->growth_qualified =
-            v->exact_analysis && growth_qualified != nullptr &&
-            growth_qualified->bool_or(false);
+        v->defrag_qualified = v->exact_analysis && defrag_qualified != nullptr && defrag_qualified->bool_or(false);
+        v->growth_qualified = v->exact_analysis && growth_qualified != nullptr && growth_qualified->bool_or(false);
         v->defrag_reason = field(map, "defrag_reason");
         v->growth_reason = field(map, "growth_reason");
-        if (v->exact_analysis && !v->defrag_qualified &&
-            !v->defrag_reason.empty())
-            note("Defragment unavailable for this exact layout: " +
-                 v->defrag_reason);
-        if (v->exact_analysis && !v->growth_qualified &&
-            !v->growth_reason.empty() &&
-            v->growth_reason != v->defrag_reason)
-            note("Growth Defrag unavailable for this exact layout: " +
-                 v->growth_reason);
+        if (v->exact_analysis && !v->defrag_qualified && !v->defrag_reason.empty())
+            note("Defragment unavailable for this exact layout: " + v->defrag_reason);
+        if (v->exact_analysis && !v->growth_qualified && !v->growth_reason.empty() && v->growth_reason != v->defrag_reason)
+            note("Growth Defrag unavailable for this exact layout: " + v->growth_reason);
         map_data_ = map;
         cells_ = raw->array();
-        if (const Json* warning = map.find("analysis_warning");
-            warning != nullptr && warning->is_string() &&
-            !warning->string().empty()) {
+        if (const Json* warning = map.find("analysis_warning"); warning != nullptr && warning->is_string() && !warning->string().empty())
             note("Analysis warning: " + std::string(warning->string()));
-        }
         queue_maps();
         const bool complete_allocation = number(map, "unknown_bytes") == 0U;
-        const bool complete_fragmentation =
-            v->exact_analysis && map.find("fragmented_files") != nullptr;
-        const bool complete_file_count =
-            v->exact_analysis && map.find("regular_files") != nullptr;
+        const bool complete_fragmentation = v->exact_analysis && map.find("fragmented_files") != nullptr;
+        const bool complete_file_count = v->exact_analysis && map.find("regular_files") != nullptr;
         std::string summary = "Capacity " + bytes(number(map, "total_bytes")) + "    Free "
             + (complete_allocation ? bytes(number(map, "free_bytes")) : std::string("Not calculated"))
-            + "    Used "
-            + (complete_allocation ? bytes(number(map, "used_bytes")) : std::string("Not calculated"));
+            + "    Used " + (complete_allocation ? bytes(number(map, "used_bytes")) : std::string("Not calculated"));
         const std::uint64_t total_bytes = number(map, "total_bytes");
         const std::uint64_t free_bytes = number(map, "free_bytes");
         const std::uint64_t used_bytes = number(map, "used_bytes");
         const std::uint64_t regular_files = number(map, "regular_files");
         const std::uint64_t directories = number(map, "directories");
-        const std::uint64_t fragmented_files =
-            number(map, "fragmented_files");
-        const std::uint64_t fragmented_directories =
-            number(map, "fragmented_directories");
-
-        gauge_values_[0] = std::clamp(
-            real_number(
-                map, "fragmentation_percent",
-                regular_files == 0U
-                    ? 0.0
-                    : 100.0 * static_cast<double>(fragmented_files) /
-                        static_cast<double>(regular_files)) /
-                100.0,
-            0.0, 1.0);
-        gauge_values_[1] =
-            complete_allocation && total_bytes != 0U
-                ? std::clamp(
-                    static_cast<double>(free_bytes) /
-                        static_cast<double>(total_bytes),
-                    0.0, 1.0)
-                : 0.0;
-        gauge_values_[2] =
-            complete_allocation && total_bytes != 0U
-                ? std::clamp(
-                    static_cast<double>(used_bytes) /
-                        static_cast<double>(total_bytes),
-                    0.0, 1.0)
-                : 0.0;
+        const std::uint64_t fragmented_files = number(map, "fragmented_files");
+        const std::uint64_t fragmented_directories = number(map, "fragmented_directories");
+        gauge_values_[0] = std::clamp(real_number(map, "fragmentation_percent",
+            regular_files == 0U ? 0.0 : 100.0 * static_cast<double>(fragmented_files) / static_cast<double>(regular_files)) / 100.0, 0.0, 1.0);
+        gauge_values_[1] = complete_allocation && total_bytes != 0U ?
+            std::clamp(static_cast<double>(free_bytes) / static_cast<double>(total_bytes), 0.0, 1.0) : 0.0;
+        gauge_values_[2] = complete_allocation && total_bytes != 0U ?
+            std::clamp(static_cast<double>(used_bytes) / static_cast<double>(total_bytes), 0.0, 1.0) : 0.0;
         queue_gauges();
-
         const auto percentage = [](double value) {
             char text[24];
-            std::snprintf(
-                text, sizeof(text), "%.1f%%", value * 100.0);
+            std::snprintf(text, sizeof(text), "%.1f%%", value * 100.0);
             return std::string(text);
         };
-        gtk_label_set_text(
-            GTK_LABEL(cards_[0]),
-            complete_fragmentation
-                ? (std::to_string(fragmented_files) + " files · " +
-                   std::to_string(fragmented_directories) + " dirs").c_str()
-                : "Not calculated");
-        gtk_label_set_text(
-            GTK_LABEL(cards_[1]),
-            complete_allocation
-                ? (bytes(free_bytes) + " (" +
-                   percentage(gauge_values_[1]) + ")").c_str()
-                : "Not calculated");
-        gtk_label_set_text(
-            GTK_LABEL(cards_[2]),
-            complete_allocation
-                ? (bytes(used_bytes) + " (" +
-                   percentage(gauge_values_[2]) + ")").c_str()
-                : "Not calculated");
-        gtk_label_set_text(
-            GTK_LABEL(cards_[3]),
-            complete_file_count
-                ? (std::to_string(regular_files) + " files · " +
-                   std::to_string(directories) + " dirs").c_str()
-                : "Not calculated");
+        gtk_label_set_text(GTK_LABEL(cards_[0]), complete_fragmentation ?
+            (std::to_string(fragmented_files) + " files · " + std::to_string(fragmented_directories) + " dirs").c_str() : "Not calculated");
+        gtk_label_set_text(GTK_LABEL(cards_[1]), complete_allocation ?
+            (bytes(free_bytes) + " (" + percentage(gauge_values_[1]) + ")").c_str() : "Not calculated");
+        gtk_label_set_text(GTK_LABEL(cards_[2]), complete_allocation ?
+            (bytes(used_bytes) + " (" + percentage(gauge_values_[2]) + ")").c_str() : "Not calculated");
+        gtk_label_set_text(GTK_LABEL(cards_[3]), complete_file_count ?
+            (std::to_string(regular_files) + " files · " + std::to_string(directories) + " dirs").c_str() : "Not calculated");
         update_map_caption();
         note(summary);
     }
@@ -2610,8 +1992,7 @@ private:
             }
         } else if (kind == "@@LIVE_RANGE" || kind == "@@LIVE_RANGES") {
             if (!cells_.empty()) {
-                defragger::desktop_live_ranges(map_data_, cells_, payload,
-                    kind == "@@LIVE_RANGES");
+                defragger::desktop_live_ranges(map_data_, cells_, payload, kind == "@@LIVE_RANGES");
                 queue_maps();
             }
         } else if (kind == "@@LIVE_RESET") {
@@ -2621,15 +2002,10 @@ private:
             }
         }
     }
-    static gboolean draw_map(
-    GtkWidget* widget, cairo_t* cr, gpointer data)
-{
-    auto* self = static_cast<Desktop*>(data);
-    return defragger::desktop_draw_map(
-        widget, cr, self->map_data_, self->cells_,
-        self->map_generation_);
-}
-
+    static gboolean draw_map(GtkWidget* widget, cairo_t* cr, gpointer data) {
+        auto* self = static_cast<Desktop*>(data);
+        return defragger::desktop_draw_map(widget, cr, self->map_data_, self->cells_, self->map_generation_);
+    }
 };
 } // namespace
 
@@ -2637,7 +2013,6 @@ int main(int argc, char** argv) {
     gtk_init(&argc, &argv);
     try {
         Desktop desktop;
-        // GTK widget callbacks locate their owner through the top-level window.
         gtk_main();
         return 0;
     } catch (const std::exception& ex) {
