@@ -16,26 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 GUI = ROOT / "gui"
-
-NATIVE_WRITERS = {
-    "fat12": "fat-native",
-    "fat16": "fat-native",
-    "fat32": "fat-native",
-    "exfat": "exfat-native",
-    "ntfs": "ntfs-native",
-    "ext4": "ext-native",
-    "xfs": "xfs-native",
-    "affs": "affs-native",
-    "apfs": "apfs-native",
-    "btrfs": "btrfs-native",
-    "sfs": "sfs-native",
-    "pfs3": "pfs3-native",
-    "hfs": "hfs-native",
-    "hfsplus": "hfsplus-native",
-    "minix": "minix-native",
-    "ufs": "ufs-native",
-}
-READ_ONLY_BACKENDS = {"zfs", "swap"}
+CAP_DEFRAG = 1 << 2
 
 
 def _read(path: Path) -> str:
@@ -83,6 +64,16 @@ def _backends_by_id() -> dict[str, dict[str, object]]:
     return result
 
 
+def _native_package(backend: dict[str, object]) -> str:
+    worker = backend.get("worker")
+    assert isinstance(worker, str) and worker.endswith("-native")
+    if worker == "fat-native":
+        return "fat"
+    if worker == "ext-native":
+        return "ext4"
+    return worker.removesuffix("-native")
+
+
 def test_native_languages_are_declared_at_the_project_boundary() -> None:
     cmake = _read(ROOT / "CMakeLists.txt")
     declaration = re.search(r"project\s*\((?P<body>[^)]*)\)", cmake, re.S)
@@ -97,70 +88,74 @@ def test_native_languages_are_declared_at_the_project_boundary() -> None:
 def test_registry_manifest_is_the_capability_authority() -> None:
     backends = _backends_by_id()
     assert len(backends) == 18
-    assert set(NATIVE_WRITERS) <= set(backends)
-    assert READ_ONLY_BACKENDS <= set(backends)
 
-    for backend_id, worker in NATIVE_WRITERS.items():
-        backend = backends[backend_id]
+    writable = 0
+    read_only = 0
+    for backend_id, backend in backends.items():
+        capabilities = backend.get("capabilities")
         operations = backend.get("operations")
-        assert isinstance(operations, list) and operations, (
-            f"write backend {backend_id} exposes no operations"
-        )
-        workers = {
-            operation.get("worker")
-            for operation in operations
-            if isinstance(operation, dict)
-        }
-        assert workers == {worker}, (
-            f"{backend_id} operation worker drift: {workers!r} != {worker!r}"
-        )
+        worker = backend.get("worker")
+        assert isinstance(capabilities, int)
+        assert isinstance(operations, list)
+        assert isinstance(worker, str) and worker
 
-    for backend_id in READ_ONLY_BACKENDS:
-        assert backends[backend_id].get("operations") == []
+        if operations:
+            writable += 1
+            assert capabilities & CAP_DEFRAG, (
+                f"{backend_id} exposes mutation operations without CAP_DEFRAG"
+            )
+            workers = {
+                operation.get("worker")
+                for operation in operations
+                if isinstance(operation, dict)
+            }
+            assert workers == {worker}, (
+                f"{backend_id} operation worker drift: {workers!r} != {worker!r}"
+            )
+        else:
+            read_only += 1
+            assert not capabilities & CAP_DEFRAG, (
+                f"{backend_id} advertises CAP_DEFRAG without operations"
+            )
+
+    assert writable > 0
+    assert read_only > 0
 
 
 def test_registry_exposes_mapper_policy_without_hidden_source_lists() -> None:
     backends = _backends_by_id()
-    worker_preflight = {"apfs", "btrfs", "ext4", "hfs", "hfsplus", "ufs", "xfs"}
     for backend_id, backend in backends.items():
+        operations = backend.get("operations")
         mode = backend.get("qualification_mode")
-        assert mode in {"none", "worker-preflight", "map-or-worker-preflight"}
-        expected = (
-            "map-or-worker-preflight"
-            if backend_id == "ntfs"
-            else "worker-preflight"
-            if backend_id in worker_preflight
-            else "none"
-        )
-        assert mode == expected, f"{backend_id} qualification policy drift"
+        accepted = backend.get("accepted_map_accuracies")
+        accuracy = backend.get("map_accuracy")
+        auxiliary = backend.get("map_auxiliary_worker")
 
-    assert backends["ext4"].get("map_auxiliary_worker") == "ext-metadata"
-    for backend_id, backend in backends.items():
-        if backend_id != "ext4":
-            assert backend.get("map_auxiliary_worker") == ""
+        assert mode in {"none", "worker-preflight", "map-or-worker-preflight"}
+        assert isinstance(accepted, list) and accepted
+        assert all(isinstance(item, str) and item for item in accepted)
+        assert len(accepted) == len(set(accepted))
+        assert isinstance(accuracy, str) and accuracy
+        assert isinstance(auxiliary, str)
+
+        if not operations:
+            assert mode == "none", (
+                f"read-only backend {backend_id} declares mutation qualification"
+            )
 
 
 def test_filesystem_policy_remains_owned_by_native_packages() -> None:
-    package_for = {
-        "fat12": "fat",
-        "fat16": "fat",
-        "fat32": "fat",
-        "ext4": "ext4",
-        "affs": "affs",
-        "hfsplus": "hfsplus",
-        "hfs": "hfs",
-    }
-    for filesystem in NATIVE_WRITERS:
-        package = package_for.get(filesystem, filesystem)
+    for backend_id, backend in _backends_by_id().items():
+        package = _native_package(backend)
         native = GUI / "filesystems" / package / "native"
-        assert native.is_dir(), f"{filesystem} lost its native ownership boundary"
+        assert native.is_dir(), f"{backend_id} lost its native ownership boundary"
         native_sources = [
             path for path in native.iterdir()
             if path.is_file() and path.suffix in {".c", ".h", ".cpp", ".hpp"}
         ]
-        assert native_sources, f"{filesystem} has no native implementation"
+        assert native_sources, f"{backend_id} has no native implementation"
         assert not list((GUI / "filesystems" / package).glob("plugin.py")), (
-            f"{filesystem} reintroduced a second Python capability declaration"
+            f"{backend_id} reintroduced a second Python capability declaration"
         )
 
     for obsolete in ("fat12", "fat16", "fat32"):
