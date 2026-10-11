@@ -201,18 +201,21 @@ void validate_backend_registry(const std::vector<BackendInfo>& registry) {
                 " declares mutation qualification policy");
         }
 
-        std::vector<std::string> backend_names{backend.id};
-        backend_names.insert(
-            backend_names.end(), backend.aliases.begin(), backend.aliases.end());
-        for (const auto& raw_name : backend_names) {
-            if (raw_name.empty())
+        const std::string primary_name = lower_ascii(backend.id);
+        if (std::find(names.begin(), names.end(), primary_name) != names.end())
+            throw std::logic_error(
+                "backend registry contains duplicate id: " + primary_name);
+        names.push_back(primary_name);
+        for (const auto& raw_alias : backend.aliases) {
+            if (raw_alias.empty())
                 throw std::logic_error(
                     "backend " + backend.id + " contains an empty alias");
-            const std::string name = lower_ascii(raw_name);
-            if (std::find(names.begin(), names.end(), name) != names.end())
+            const std::string alias = lower_ascii(raw_alias);
+            if (alias == primary_name) continue;
+            if (std::find(names.begin(), names.end(), alias) != names.end())
                 throw std::logic_error(
-                    "backend registry contains duplicate id/alias: " + name);
-            names.push_back(name);
+                    "backend registry contains colliding alias: " + alias);
+            names.push_back(alias);
         }
 
         for (const auto& operation : backend.operations) {
