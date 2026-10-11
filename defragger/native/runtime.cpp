@@ -17,6 +17,18 @@ namespace fs = std::filesystem;
 namespace defragger {
 namespace {
 
+std::vector<std::string> worker_default_options(
+    std::string_view worker, std::string_view operation_name) {
+    if (operation_name == "recover") return {};
+    if (worker == "fat-native" || worker == "exfat-native") {
+        return {"--batch-clusters", "4096", "--ram-buffer", "auto"};
+    }
+    if (worker == "ext-native") {
+        return {"--batch-clusters", "4096"};
+    }
+    return {};
+}
+
 OperationSpec operation(std::string name, std::string worker,
                         std::string warning = {}) {
     std::string policy;
@@ -43,9 +55,10 @@ OperationSpec operation(std::string name, std::string worker,
     } else {
         throw std::logic_error("invalid operation declaration");
     }
+    auto defaults = worker_default_options(worker, name);
     return {std::move(name), std::move(worker), std::move(policy),
-            std::move(label), std::move(description), std::move(warning), {},
-            true, true};
+            std::move(label), std::move(description), std::move(warning),
+            std::move(defaults), {}, true, true};
 }
 
 std::vector<OperationSpec> standard_write_ops(
@@ -238,6 +251,12 @@ void validate_backend_registry(const std::vector<BackendInfo>& registry) {
                 throw std::logic_error(
                     "backend " + backend.id + " operation " + operation.name +
                     " names an unknown worker: " + operation.worker);
+            }
+            for (const auto& option : operation.default_options) {
+                if (option.empty())
+                    throw std::logic_error(
+                        "backend " + backend.id + " operation " + operation.name +
+                        " contains an empty default option");
             }
         }
     }
@@ -525,6 +544,13 @@ std::string registry_manifest_json(unsigned schema) {
             out += ",\"label\":" + json_quote(op.label);
             out += ",\"description\":" + json_quote(op.description);
             out += ",\"warning\":" + json_quote(op.warning);
+            out += ",\"default_options\":[";
+            for (std::size_t option = 0; option < op.default_options.size();
+                 ++option) {
+                if (option != 0U) out += ',';
+                out += json_quote(op.default_options[option]);
+            }
+            out += "]";
             out += ",\"unsupported_options\":[";
             for (std::size_t option = 0; option < op.unsupported_options.size();
                  ++option) {
