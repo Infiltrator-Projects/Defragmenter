@@ -65,27 +65,29 @@ def test_standard_live_reset() -> None:
     assert all(cell["fragmented"] == 0 for cell in data["cells"])
 
 
-def test_ntfs_126_legacy_live_reset() -> None:
-    data = _map()
-    LiveMapUpdater(data).reset(
-        {
-            "filesystem": "ntfs",
-            "block_size": 4096,
-            "total_blocks": 16,
-            "free_ranges": [[4, 8], [12, 16]],
-        }
-    )
-    assert [(cell["used"], cell["free"]) for cell in data["cells"]] == [
-        (4, 4),
-        (4, 4),
-    ]
-    assert data["filesystem_units"] == 16
-    assert data["filesystem_bytes"] == 16 * 4096
 
+def test_reason_only_live_reset_is_noop() -> None:
+    data = _map()
+    before = [dict(cell) for cell in data["cells"]]
+    LiveMapUpdater(data).reset({"reason": "authoritative post-recovery map"})
+    assert data["cells"] == before
+
+
+def test_live_reset_rejects_missing_used_ranges() -> None:
+    data = _map()
+    try:
+        LiveMapUpdater(data).reset(
+            {"unit_size": 4096, "filesystem_units": 16}
+        )
+    except ValueError as error:
+        assert "used-range" in str(error)
+    else:
+        raise AssertionError("missing used_ranges was accepted")
 
 def main() -> None:
     test_standard_live_reset()
-    test_ntfs_126_legacy_live_reset()
+    test_reason_only_live_reset_is_noop()
+    test_live_reset_rejects_missing_used_ranges()
     print("NTFS live-map reset regression tests passed")
 
 

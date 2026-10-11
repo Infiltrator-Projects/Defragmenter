@@ -77,15 +77,15 @@ Json parse_worker_json(const CommandResult& result, const char* action) {
     return parsed;
 }
 
-CommandResult worker(
-    const BackendInfo& backend,
+CommandResult worker_program(
+    std::string_view program_id,
     const std::string& mode,
     const std::string& path,
     const std::vector<std::string>& options = {},
     std::size_t output_limit = 64U * 1024U * 1024U,
     std::chrono::milliseconds timeout = std::chrono::milliseconds::zero()) {
     std::vector<std::string> command{
-        resolve_program(backend.worker), mode, path};
+        resolve_program(program_id), mode, path};
     command.insert(command.end(), options.begin(), options.end());
     CommandResult result = run_capture(command, output_limit, timeout,
         [](const std::string& line) {
@@ -106,6 +106,18 @@ CommandResult worker(
     return result;
 }
 
+
+CommandResult worker(
+    const BackendInfo& backend,
+    const std::string& mode,
+    const std::string& path,
+    const std::vector<std::string>& options = {},
+    std::size_t output_limit = 64U * 1024U * 1024U,
+    std::chrono::milliseconds timeout = std::chrono::milliseconds::zero()) {
+    return worker_program(
+        backend.worker, mode, path, options, output_limit, timeout);
+}
+
 void analysis_phase(const char* phase) {
     const Json event(Json::Object{{"phase", Json(phase)}});
     std::fprintf(stderr, "@@ANALYSIS %s\n", event.dump().c_str());
@@ -116,13 +128,6 @@ struct MutationQualification {
     bool qualified = false;
     std::string reason;
 };
-
-bool backend_has_writer_preflight(const BackendInfo& backend) {
-    return backend.id == "apfs" || backend.id == "btrfs" ||
-           backend.id == "ext4" || backend.id == "hfs" ||
-           backend.id == "hfsplus" || backend.id == "ntfs" ||
-           backend.id == "ufs" || backend.id == "xfs";
-}
 
 std::string concise_child_detail(const CommandResult& result) {
     std::string detail = !result.standard_error.empty()
@@ -322,11 +327,10 @@ Json map_ext(const BackendInfo& backend, const std::string& path,
     const std::uint64_t size = required_u64(payload, "block_size");
     const std::uint64_t total = required_u64(payload, "total_blocks");
 
-    const BackendInfo metadata_backend{
-        "ext-metadata", "EXT metadata", {}, 0U, "exact",
-        "ext-metadata", MapAdapter::NativeMap, {}};
+    if (backend.map_auxiliary_worker.empty())
+        throw std::logic_error("EXT backend omitted its metadata worker");
     Json metadata = parse_worker_json(
-        worker(metadata_backend, "analyse-json", path),
+        worker_program(backend.map_auxiliary_worker, "analyse-json", path),
         "native EXT metadata classifier");
     if (required_u64(metadata, "block_size") != size ||
         required_u64(metadata, "total_blocks") != total) {
@@ -1009,9 +1013,14 @@ Json map_backend(const BackendInfo& backend, const std::string& path,
     if ((backend.capabilities & CAP_DEFRAG) != 0U) {
         MutationQualification defrag{true, {}};
         MutationQualification growth{true, {}};
-        if (backend_has_writer_preflight(backend) &&
-            !(backend.id == "ntfs" && result.find("defrag_qualified") &&
-              result.find("growth_qualified"))) {
+        const bool map_reports_qualification =
+            result.find("defrag_qualified") != nullptr &&
+            result.find("growth_qualified") != nullptr;
+        const bool run_preflight =
+            backend.qualification_mode == QualificationMode::WorkerPreflight ||
+            (backend.qualification_mode == QualificationMode::MapOrWorkerPreflight &&
+             !map_reports_qualification);
+        if (run_preflight) {
             analysis_phase("Checking Defragment availability (up to 60 seconds)");
             defrag = mutation_qualification(
                 backend, path, "preflight-defrag");

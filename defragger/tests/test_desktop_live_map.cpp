@@ -33,7 +33,14 @@ int main() {
             true);
         assert(false);
     } catch (const std::runtime_error&) { assert(Json(cells).dump() == Json(before).dump()); }
-    desktop_live_reset(map, cells, Json::parse(R"({"filesystem_units":8,"block_size":4096,"free_ranges":[[0,2],[4,6]]})"));
+    before = cells;
+    desktop_live_reset(
+        map, cells,
+        Json::parse(R"({"reason":"authoritative post-recovery map"})"));
+    assert(Json(cells).dump() == Json(before).dump());
+    desktop_live_reset(
+        map, cells,
+        Json::parse(R"({"filesystem_units":8,"unit_size":4096,"used_ranges":[[0,8192],[16384,8192]]})"));
     assert(cells[0].at("used").unsigned_or() == 2);
     assert(cells[1].at("used").unsigned_or() == 2);
     desktop_live_cells(map, cells, Json::parse(R"({"cells":[{"i":0,"start":0,"end":3,"used":3,"free":1,"fragmented":1,"directory":0,"bad":0}],"fragmented_files":12})"));

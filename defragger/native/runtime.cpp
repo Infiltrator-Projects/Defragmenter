@@ -187,6 +187,7 @@ const std::vector<BackendInfo>& backend_registry() {
                 "apfs-native",
                 "APFS writing is offline and fail-closed to the qualified one-CIB, unencrypted, snapshot-free flat-tree subset; validated older descriptor-ring checkpoint history is retained unchanged.",
                 "APFS Growth Defrag leaves an exact 10% free-block reserve after each supported regular-file data stream.")});
+        result.back().qualification_mode = QualificationMode::WorkerPreflight;
         result.push_back({
             "btrfs", "Btrfs", {"btrfs"}, write, "exact",
             "btrfs-native", MapAdapter::NativeMap,
@@ -194,6 +195,7 @@ const std::vector<BackendInfo>& backend_registry() {
                 "btrfs-native",
                 "Btrfs writing is offline and fail-closed to the qualified single-device, CRC32C, level-0 mixed data/metadata subset, including relocation and verification of ordinary checksum-tree-protected regular-file extents.",
                 "Btrfs Growth Defrag leaves an exact 10% free-sector reserve after each supported regular file.")});
+        result.back().qualification_mode = QualificationMode::WorkerPreflight;
         result.push_back({
             "exfat", "exFAT", {"exfat"}, write, "exact",
             "exfat-native", MapAdapter::Exfat,
@@ -204,6 +206,8 @@ const std::vector<BackendInfo>& backend_registry() {
         result.push_back({
             "ext4", "ext2/3/4", {"ext2", "ext3", "ext4"}, write, "exact",
             "ext-native", MapAdapter::Ext, standard_write_ops("ext-native")});
+        result.back().qualification_mode = QualificationMode::WorkerPreflight;
+        result.back().map_auxiliary_worker = "ext-metadata";
         for (const int bits : {12, 16, 32}) {
             const std::string id = "fat" + std::to_string(bits);
             result.push_back({
@@ -219,6 +223,7 @@ const std::vector<BackendInfo>& backend_registry() {
                 "hfs-native",
                 "Classic HFS writing uses Defragmenter's offline first-party native C engine and relocates complete regular-file forks across both inline and Extents Overflow records while preserving validated B-tree topology.",
                 "Classic HFS Growth Defrag leaves a 10% free allocation-block reserve after each supported non-empty file fork.")});
+        result.back().qualification_mode = QualificationMode::WorkerPreflight;
         result.push_back({
             "hfsplus", "Apple HFS+/HFSX", {"hfsplus", "hfs+", "hfsx"},
             write, "exact", "hfsplus-native", MapAdapter::HfsPlus,
@@ -226,6 +231,7 @@ const std::vector<BackendInfo>& backend_registry() {
                 "hfsplus-native",
                 "HFS+/HFSX writing uses Defragmenter's offline first-party native C raw engine.",
                 "HFS+/HFSX Growth Defrag uses the native C raw engine and leaves an exact 10% free allocation-block reserve after each movable fork.")});
+        result.back().qualification_mode = QualificationMode::WorkerPreflight;
         result.push_back({
             "minix", "Minix Filesystem", {"minix", "minix2", "minix3"},
             write, "exact", "minix-native", MapAdapter::NativeMap,
@@ -240,6 +246,7 @@ const std::vector<BackendInfo>& backend_registry() {
                 "ntfs-native",
                 "NTFS writing uses Defragmenter's offline native C raw engine. No NTFS filesystem driver, mount, filesystem ioctl or external filesystem utility is used.",
                 "NTFS Growth Defrag uses the same native C raw engine and leaves an exact 10% free-cluster reserve after every supported regular-file stream.")});
+        result.back().qualification_mode = QualificationMode::MapOrWorkerPreflight;
         result.push_back({
             "pfs3", "Amiga PFS3", {"pfs3", "pfs", "professionalfilesystem"},
             write, "exact-allocation", "pfs3-native", MapAdapter::NativeMap,
@@ -264,6 +271,7 @@ const std::vector<BackendInfo>& backend_registry() {
                 "ufs-native",
                 "UFS1/UFS2 writing uses Defragmenter's offline first-party native C engine and is fail-closed to clean, non-journalled, snapshot-free filesystems whose regular-file allocation is fully understood.",
                 "UFS Growth Defrag uses the same staged native engine and leaves an exact 10% free-fragment reserve after every supported regular file.")});
+        result.back().qualification_mode = QualificationMode::WorkerPreflight;
         result.push_back({
             "xfs", "XFS", {"xfs"}, write, "exact",
             "xfs-native", MapAdapter::Xfs,
@@ -271,6 +279,7 @@ const std::vector<BackendInfo>& backend_registry() {
                 "xfs-native",
                 "XFS writing uses Defragmenter's offline native C raw engine. No XFS kernel driver, mount, filesystem ioctl or external repair tool is used.",
                 "XFS Growth Defrag uses the native C raw engine, requires staging space, and preserves an exact 10% free run after every supported regular file.")});
+        result.back().qualification_mode = QualificationMode::WorkerPreflight;
         result.push_back({
             "zfs", "ZFS/OpenZFS Member", {"zfs", "zfs_member"},
             read, "exact-bounded", "zfs-native", MapAdapter::NativeMap, {}});

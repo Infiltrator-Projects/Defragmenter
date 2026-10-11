@@ -72,10 +72,11 @@ def main() -> None:
         assert mapped["details"]["metadata_basis"].startswith("native C EXT")
         assert all(int(cell["bad"]) <= int(cell["used"]) for cell in mapped["cells"])
 
-    mapper_source = (ROOT / "native" / "map.cpp").read_text()
-    assert '"ext-metadata"' in mapper_source
-    assert 'overlay_ranges(result.at("cells").array()' in mapper_source
-    assert '"bad"' in mapper_source
+    mapper_source = (ROOT / "native" / "map.cpp").read_text(encoding="utf-8")
+    runtime_source = (ROOT / "native" / "runtime.cpp").read_text(encoding="utf-8")
+    assert '"ext-metadata"' in runtime_source
+    assert "map_auxiliary_worker" in mapper_source
+    assert "metadata_backend" not in mapper_source
     print("EXT metadata/reserved allocation-map classification tests passed")
 
 

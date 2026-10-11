@@ -139,11 +139,12 @@ void validate_patched_cell_order(const std::vector<Json>& cells,
 
 void desktop_live_reset(Json& map, std::vector<Json>& cells, const Json& payload) {
     validate_cells(cells);
+    if (payload.find("reason") != nullptr &&
+        payload.find("filesystem_units") == nullptr)
+        return;
     auto unit = number(payload, "unit_size");
-    if (!unit) unit = number(payload, "block_size");
     if (!unit) unit = unit_size(map);
     auto total = number(payload, "filesystem_units");
-    if (!total) total = number(payload, "total_blocks");
     if (!total || total > addition(number(cells.back(), "end"), 1))
         throw std::runtime_error("Invalid live reset filesystem extent");
     auto changed = cells;
@@ -181,30 +182,15 @@ void desktop_live_reset(Json& map, std::vector<Json>& cells, const Json& payload
             ++cell;
         }
     };
-    if (const auto* used = payload.find("used_ranges"); used && used->is_array()) {
-        if (used->array().size() > 1048576) throw std::runtime_error("Too many used ranges");
-        for (const auto& range : used->array()) {
-            if (!range.is_array() || range.array().size() != 2) continue;
-            mark(pair_value(range, 0), pair_value(range, 1));
-        }
-    } else {
-        std::vector<std::pair<std::uint64_t, std::uint64_t>> free_ranges;
-        if (const auto* free = payload.find("free_ranges"); free && free->is_array()) {
-            if (free->array().size() > 1048576) throw std::runtime_error("Too many free ranges");
-            for (const auto& range : free->array()) {
-                if (!range.is_array() || range.array().size() != 2) continue;
-                auto begin = std::min(total, pair_value(range, 0));
-                auto end = std::min(total, pair_value(range, 1));
-                free_ranges.emplace_back(begin, std::max(begin, end));
-            }
-        }
-        std::sort(free_ranges.begin(), free_ranges.end());
-        std::uint64_t cursor = 0;
-        for (const auto& [begin, end] : free_ranges) {
-            if (begin > cursor) mark(product(cursor, unit), product(begin - cursor, unit));
-            cursor = std::max(cursor, end);
-        }
-        if (cursor < total) mark(product(cursor, unit), product(total - cursor, unit));
+    const auto* used = payload.find("used_ranges");
+    if (used == nullptr || !used->is_array())
+        throw std::runtime_error("Live reset has no used-range list");
+    if (used->array().size() > 1048576)
+        throw std::runtime_error("Too many used ranges");
+    for (const auto& range : used->array()) {
+        if (!range.is_array() || range.array().size() != 2)
+            throw std::runtime_error("Invalid live reset used range");
+        mark(pair_value(range, 0), pair_value(range, 1));
     }
     auto updated = map;
     updated.object()["filesystem_units"] = Json::unsigned_integer(total);

@@ -88,21 +88,10 @@ class LiveMapUpdater:
             index += 1
 
     def reset(self, payload: dict[str, Any]) -> None:
-        # Standard workers use unit_size/filesystem_units/used_ranges.  NTFS
-        # 1.8.0-126 emitted the equivalent block_size/total_blocks/free_ranges
-        # names.  Accept that older event shape at this filesystem-neutral
-        # boundary so a valid completed relocation never produces a false GUI
-        # live-map error while newer workers converge on the standard schema.
-        unit_size = int(
-            payload.get("unit_size")
-            or payload.get("block_size")
-            or self._unit_size()
-        )
-        filesystem_units = int(
-            payload.get("filesystem_units")
-            or payload.get("total_blocks")
-            or 0
-        )
+        if "reason" in payload and "filesystem_units" not in payload:
+            return
+        unit_size = int(payload.get("unit_size") or self._unit_size())
+        filesystem_units = int(payload.get("filesystem_units") or 0)
         if filesystem_units <= 0:
             raise ValueError("live reset has no filesystem unit count")
         for cell in self.cells:
@@ -143,31 +132,12 @@ class LiveMapUpdater:
                 index += 1
 
         used_ranges = payload.get("used_ranges")
-        if isinstance(used_ranges, list):
-            for entry in used_ranges:
-                if isinstance(entry, list) and len(entry) == 2:
-                    mark_used(int(entry[0]), int(entry[1]))
-        else:
-            # Legacy NTFS free_ranges are [start_unit, end_unit) intervals.
-            # Complement them to reconstruct the standard used byte ranges.
-            free_ranges: list[tuple[int, int]] = []
-            for entry in payload.get("free_ranges", []):
-                if not isinstance(entry, list) or len(entry) != 2:
-                    continue
-                start = max(0, min(filesystem_units, int(entry[0])))
-                end = max(start, min(filesystem_units, int(entry[1])))
-                free_ranges.append((start, end))
-            free_ranges.sort()
-            cursor = 0
-            for start, end in free_ranges:
-                if start > cursor:
-                    mark_used(cursor * unit_size, (start - cursor) * unit_size)
-                cursor = max(cursor, end)
-            if cursor < filesystem_units:
-                mark_used(
-                    cursor * unit_size,
-                    (filesystem_units - cursor) * unit_size,
-                )
+        if not isinstance(used_ranges, list):
+            raise ValueError("live reset has no used-range list")
+        for entry in used_ranges:
+            if not isinstance(entry, list) or len(entry) != 2:
+                raise ValueError("invalid live reset used range")
+            mark_used(int(entry[0]), int(entry[1]))
 
         self.map_data["filesystem_units"] = filesystem_units
         self.map_data["filesystem_bytes"] = filesystem_units * unit_size

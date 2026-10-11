@@ -160,6 +160,25 @@ def test_production_control_plane_is_native() -> None:
             )
 
 
+
+def test_mapper_qualification_policy_is_registry_owned() -> None:
+    runtime = _read(ROOT / "native" / "runtime.cpp")
+    mapper = _read(ROOT / "native" / "map.cpp")
+    assert "QualificationMode::WorkerPreflight" in runtime
+    assert "QualificationMode::MapOrWorkerPreflight" in runtime
+    assert "backend_has_writer_preflight" not in mapper
+    assert 'backend.id == "ntfs"' not in mapper
+    assert "map_auxiliary_worker" in mapper
+    assert "metadata_backend" not in mapper
+
+
+def test_live_reset_protocol_has_one_data_schema() -> None:
+    native = _read(ROOT / "native" / "desktop_live_map.cpp")
+    assert 'number(payload, "block_size")' not in native
+    assert 'number(payload, "total_blocks")' not in native
+    assert 'payload.find("free_ranges")' not in native
+
+
 def main() -> None:
     tests = [
         value for name, value in sorted(globals().items())

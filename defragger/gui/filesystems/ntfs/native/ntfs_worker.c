@@ -358,9 +358,9 @@ static int analyse_json(const char *path, bool qualify, char **error) {
 }
 
 static void emit_live_reset(const NtfsVolume *volume, const NtfsLayout *layout) {
-    printf("@@LIVE_RESET {\"filesystem\":\"ntfs\",\"block_size\":%u,\"total_blocks\":%" PRIu64 ",\"free_ranges\":",
+    printf("@@LIVE_RESET {\"filesystem\":\"ntfs\",\"unit_size\":%u,\"filesystem_units\":%" PRIu64 ",\"used_ranges\":",
            volume->cluster_size, volume->total_clusters);
-    emit_bitmap_ranges(layout, volume->total_clusters, true);
+    emit_bitmap_ranges(layout, volume->total_clusters, false);
     fputs("}\n", stdout); fflush(stdout);
 }
 
