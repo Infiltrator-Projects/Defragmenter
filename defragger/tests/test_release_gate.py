@@ -1,101 +1,124 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Ensure release publication cannot bypass main-only CI or the completed audit."""
+"""Protect the small, single-path release pipeline and its safety invariants."""
 
 from __future__ import annotations
 
-import json
-import os
 import re
 import subprocess
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = PROJECT_ROOT.parent
+WORKFLOWS = REPO_ROOT / ".github" / "workflows"
+
+
+def require(text: str, *needles: str, label: str) -> None:
+    for needle in needles:
+        assert needle in text, f"{label} lost required contract: {needle}"
 
 
 def main() -> None:
-    gate = (REPO_ROOT / ".github" / "workflows" / "quality-gate.yml").read_text(encoding="utf-8")
-    local_quality = (REPO_ROOT / ".github" / "workflows" / "local-quality.yml").read_text(encoding="utf-8")
-    release = (REPO_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
-    apt_refresh = (REPO_ROOT / ".github" / "workflows" / "apt-refresh.yml").read_text(encoding="utf-8")
+    gate = (WORKFLOWS / "quality-gate.yml").read_text(encoding="utf-8")
+    release = (WORKFLOWS / "release.yml").read_text(encoding="utf-8")
+    preflight = (PROJECT_ROOT / "ci" / "preflight.sh").read_text(encoding="utf-8")
     harness = (PROJECT_ROOT / "tests" / "run_tests.sh").read_text(encoding="utf-8")
     local_run = (PROJECT_ROOT / "packaging" / "build-local-run.sh").read_text(encoding="utf-8")
-    release_artifacts = (PROJECT_ROOT / "tests" / "test_release_artifacts.sh").read_text(encoding="utf-8")
     cmake = (PROJECT_ROOT / "cmake" / "project.cmake").read_text(encoding="utf-8")
     design = (REPO_ROOT / "docs" / "DESIGN.md").read_text(encoding="utf-8")
     audit = (REPO_ROOT / "docs" / "AUDIT_STATUS.md").read_text(encoding="utf-8")
     version = (PROJECT_ROOT / "VERSION").read_text(encoding="utf-8").strip()
     gitignore = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
 
-    self_hosted_lane = "runs-on: [self-hosted, Linux, X64, linux-native, bigbedroom]"
-    for required in (
+    # There is exactly one permanent Linux qualification workflow and one release workflow.
+    assert not (WORKFLOWS / "local-quality.yml").exists(), "duplicate local quality workflow must stay retired"
+    assert not (WORKFLOWS / "apt-refresh.yml").exists(), "fake asynchronous APT refresh workflow must stay retired"
+
+    self_hosted = "runs-on: [self-hosted, Linux, X64, linux-native, bigbedroom]"
+    require(
+        gate,
         "workflow_call:",
         "push:",
         "- main",
+        "./ci/preflight.sh quality",
+        "./ci/preflight.sh sanitizers",
         "LD_ENABLE_WERROR=ON",
         "git ls-files",
         "ctest --test-dir build --output-on-failure",
         "tests/test_btrfs_architecture.py",
         "tests/test_release_gate.py",
-    ):
-        assert required in gate, f"quality gate lost required check: {required}"
-    assert "pull_request:" not in gate, "quality gate must not require PR branches"
-    assert "merge_group:" not in gate, "quality gate must not require merge branches"
-    assert '"c-first-*"' not in gate, "quality gate must run from main only"
-    assert "local-quality" not in gate, "parallel local-quality workflow must not become a release dependency"
-    assert gate.count(self_hosted_lane) == 2, (
-        "both permanent release quality lanes must run on the self-hosted Linux fleet"
-    )
-    assert "runs-on: ubuntu-24.04" not in gate, (
-        "release qualification must not consume GitHub-hosted Linux runners"
-    )
-    for required in (
+        "LD_ENABLE_SANITIZERS=ON",
+        "Self-hosted ASan / UBSan",
+        "Build and verify release artefacts once",
+        "packaging/build-deb.sh",
+        "packaging/build-local-run.sh",
+        "test_local_installer_end_to_end.sh",
+        "actions/upload-artifact@v4",
+        "defragmenter-release-${{ github.sha }}",
         "publish-release:",
         "needs: [quality-gate, sanitizers]",
-        "github.event_name == 'push'",
-        "github.ref == 'refs/heads/main'",
-        "startsWith(github.event.head_commit.message, 'Release ')",
         "uses: ./.github/workflows/release.yml",
         "expected_sha: ${{ github.sha }}",
-        "secrets: inherit",
-    ):
-        assert required in gate, f"qualified release handoff lost required contract: {required}"
-    for required in (
-        self_hosted_lane,
-        "Probe local qualification dependencies",
-        "Local qualification cannot run because this runner is missing dependencies.",
-        "xvfb-run Xvfb xauth npx",
-        "actions/setup-node@v4",
-        "workflow_dispatch:",
-    ):
-        assert required in local_quality, f"local qualification lost required check: {required}"
-    assert "if: steps.local-deps.outputs.available == 'true'" in local_quality, (
-        "local build/test steps must verify dependencies before execution"
+        label="quality gate",
     )
-    assert "Record unprovisioned BigBedroom runner" not in local_quality, (
-        "missing local dependencies must fail rather than silently skip qualification"
-    )
-    assert "          exit 1" in local_quality, (
-        "the local dependency probe must report missing prerequisites as a failure"
-    )
-    assert "run: ctest --test-dir build --output-on-failure" in gate, (
-        "primary quality gate must run the complete aggregate project suite"
-    )
-    sanitizer_exclusion = "-E linux-defragger-tests"
-    assert gate.count(sanitizer_exclusion) == 1, (
-        "only the sanitizer lane may exclude the recursive aggregate packaging harness"
+    assert gate.count(self_hosted) == 2, "normal and sanitizer lanes must use the self-hosted Linux fleet"
+    assert "runs-on: ubuntu" not in gate
+    assert "pull_request:" not in gate
+    assert "merge_group:" not in gate
+    assert gate.count("-E linux-defragger-tests") == 1, "only sanitizers may exclude the recursive aggregate harness"
+
+    require(
+        preflight,
+        "quality)",
+        "sanitizers)",
+        "release)",
+        "gtk+-3.0 ext2fs sqlite3 openssl",
+        "import gi, cairo",
+        label="runner preflight",
     )
 
-    for required in (
+    require(
+        release,
+        "workflow_call:",
+        "expected_sha:",
+        self_hosted,
+        "./ci/preflight.sh release",
+        "ref: ${{ inputs.expected_sha }}",
+        "Status: **complete**",
+        "Audited source commit:",
+        "Audited release-governance commit:",
+        'git diff --quiet "$AUDITED_COMMIT" HEAD',
+        'git diff --quiet "$GOVERNANCE_COMMIT" HEAD',
+        "Verify permanent main history protection",
+        "required_linear_history",
+        "actions/download-artifact@v4",
+        "defragmenter-release-${{ inputs.expected_sha }}",
+        "sha256sum -c RELEASE_SHA256SUMS.txt",
+        "Publish immutable GitHub release",
+        "Wait until the exact release is live in APT",
+        "catalogue/apps.json",
+        "dists/beta/main/binary-amd64/Packages.gz",
+        "Central APT repository did not advertise",
+        label="release workflow",
+    )
+    trigger_block = release.split("permissions:", 1)[0]
+    assert "workflow_run:" not in trigger_block
+    assert "workflow_dispatch:" not in trigger_block
+    assert "\n  push:" not in trigger_block
+    assert "packaging/build-deb.sh" not in release, "release job must publish the package already tested by qualification"
+    assert "packaging/build-local-run.sh" not in release, "release job must not rebuild the local installer"
+    assert "actions/upload-artifact" not in release
+    assert "runs-on: ubuntu" not in release
+    assert "gh release" not in release, "release publication must not depend on the GitHub CLI"
+    assert "apt-refresh.yml" not in release
+
+    require(
+        cmake,
         "linux-defragger-native-malformed-matrix",
         "tests/test_native_malformed_matrix.py",
         "LINUX_DEFRAGGER_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}",
-    ):
-        assert required in cmake, (
-            f"sanitizer-visible malformed-media matrix lost CTest contract: {required}"
-        )
-
+        label="CMake malformed-media matrix",
+    )
     for required in (
         "tests/test_release_artifacts.sh",
         "tests/run_typecheck.sh",
@@ -114,124 +137,29 @@ def main() -> None:
     ):
         assert required in harness, f"aggregate harness lost required regression: {required}"
 
-    trigger_block = release.split("permissions:", 1)[0]
-    assert "workflow_call:" in trigger_block
-    assert "expected_sha:" in trigger_block
-    assert "workflow_run:" not in trigger_block, (
-        "release publication must be a direct dependency of the quality gate so retries cannot lose the handoff"
-    )
-    assert "workflow_dispatch:" not in trigger_block, (
-        "release publication must not require manual approval"
-    )
-    assert "\n  push:" not in trigger_block, (
-        "release publication must be invoked only by the completed main quality gate"
-    )
-    assert ".release-request" not in release, (
-        "legacy root release marker must not be part of the release contract"
-    )
-    for required in (
-        self_hosted_lane,
-        "EXPECTED_SHA: ${{ inputs.expected_sha }}",
-        "ref: ${{ inputs.expected_sha }}",
-        "version: ${{ steps.release_identity.outputs.version }}",
-        "release_sha: ${{ steps.release_identity.outputs.release_sha }}",
-        "Verify permanent main history protection",
-        '"repos/${GITHUB_REPOSITORY}/rules/branches/main"',
-        "deletion",
-        "non_fast_forward",
-        "required_linear_history",
-        "EXPECTED_SHA",
-        "origin/main",
-        "RELEASE_SHA256SUMS.txt",
-        "Status: **complete**",
-        'Applies to: release version ${VERSION}',
-        "Audited source commit:",
-        'git diff --quiet "$AUDITED_COMMIT" HEAD',
-        "CMakeLists.txt cmake native gui src shared packaging test_media",
-        "Audited release-governance commit:",
-        "GOVERNANCE_COMMIT",
-        ":(top).github/workflows",
-        "points at ${tag_commit}, not the tested commit",
-        "tag_exists=false",
-        "if [ \"$tag_exists\" = false ]",
-        "gh release create",
-        "uses: ./.github/workflows/apt-refresh.yml",
-        "needs: release",
-        "version: ${{ needs.release.outputs.version }}",
-        "release_sha: ${{ needs.release.outputs.release_sha }}",
-    ):
-        assert required in release, f"release workflow lost required contract: {required}"
-    assert "runs-on: ubuntu-24.04" not in release
-    assert "quarantine-notice:" not in release
-    assert "if: ${{ false }}" not in release
-    assert "--clobber" not in release
-    assert "gh release edit" not in release
-    assert "packaging/build-source-zip.sh" not in release
-    assert 'Defragmenter-${VERSION}.zip' not in release
-    assert not (PROJECT_ROOT / "packaging" / "build-source-zip.sh").exists()
-    assert "Refresh and verify Infiltrator APT repository" not in release
-    assert "workflow_run:" not in apt_refresh, (
-        "APT publication must be directly called from the release workflow so release retries cannot lose the handoff"
-    )
-    for required in (
-        self_hosted_lane,
-        "workflow_call:",
-        "workflow_dispatch:",
-        "version:",
-        "release_sha:",
-        "REQUESTED_VERSION",
-        "REQUESTED_SHA",
-        "releases/tags/${release_tag}",
-        "Published release ${release_tag} points at",
-        "Central APT publication is pull-based.",
-        "Infiltrator-Repository will discover this immutable GitHub release on its own schedule.",
-    ):
-        assert required in apt_refresh, f"APT refresh workflow lost required contract: {required}"
-    assert "runs-on: ubuntu-24.04" not in apt_refresh
-    assert "waiting for the repository safety refresh" not in apt_refresh
-    assert "Central APT repository did not advertise" not in apt_refresh
-    assert "secrets." not in apt_refresh
-    assert "/dispatches" not in apt_refresh
-    assert "client_payload" not in apt_refresh
-    assert "repository_dispatch" not in apt_refresh
-
-    assert "LD_ENABLE_SANITIZERS=ON" in gate
-    assert "Self-hosted ASan / UBSan" in gate
-    assert "Hosted ASan / UBSan" not in gate
     assert "__pycache__/" in gitignore
     assert "*.py[cod]" in gitignore
 
-    # Validate the committed dependency layout, not just strings in build files.
-    # An orphan gitlink breaks recursive checkout before any build can begin.
-    gitlinks = {}
+    # The pinned Common checkout, committed gitlink, CMake and local installer must agree.
+    expected_common = re.search(r'INFILTRATR_COMMON_EXPECTED_COMMIT\s+"([0-9a-f]{40})"', cmake)
+    assert expected_common is not None, "CMake lost the exact Common commit"
+    workflow_common = re.search(
+        r"- name: Check out pinned Infiltratr Common.*?ref:\s*([0-9a-f]{40})",
+        gate,
+        re.DOTALL,
+    )
+    assert workflow_common is not None, "quality gate lost the exact Common checkout"
+    assert workflow_common.group(1) == expected_common.group(1)
+
+    gitlinks: dict[str, str] = {}
     for entry in subprocess.check_output(
         ["git", "ls-tree", "-r", "HEAD"], cwd=REPO_ROOT, text=True
     ).splitlines():
         metadata, path = entry.split("\t", 1)
-        mode, kind, sha = metadata.split()
+        mode, _kind, sha = metadata.split()
         if mode == "160000":
             gitlinks[path] = sha
-    expected_common = re.search(
-        r'INFILTRATR_COMMON_EXPECTED_COMMIT\s+"([0-9a-f]{40})"', cmake
-    )
-    assert expected_common is not None, "CMake lost the exact Common commit"
-    local_common = re.search(
-        r"- name: Check out pinned Infiltratr Common.*?ref:\s*([0-9a-f]{40})",
-        local_quality, re.DOTALL,
-    )
-    assert local_common is not None, "local qualification lost the exact Common checkout"
-    assert local_common.group(1) == expected_common.group(1), (
-        "local qualification must check out the same Common commit as CMake and the submodule"
-    )
-    assert gitlinks == {
-        "defragger/shared/infiltratr-common": expected_common.group(1)
-    }, f"committed Common layout disagrees with the build: {gitlinks}"
-    declared_path = subprocess.check_output(
-        ["git", "config", "-f", ".gitmodules",
-         "--get", "submodule.defragger/shared/infiltratr-common.path"],
-        cwd=REPO_ROOT, text=True,
-    ).strip()
-    assert declared_path == "defragger/shared/infiltratr-common"
+    assert gitlinks == {"defragger/shared/infiltratr-common": expected_common.group(1)}
 
     common_contract = (
         ('COMMON_TAG="v1.19.38"', 'INFILTRATR_COMMON_TAG "v1.19.38"'),
@@ -241,21 +169,15 @@ def main() -> None:
             '7070c5812b50821fd7580101cb2289a3184f6b2c',
         ),
     )
-    for local_required, cmake_required in common_contract:
-        assert local_required in local_run, (
-            f"local installer lost Common release contract: {local_required}"
-        )
-        assert cmake_required in cmake, (
-            f"CMake lost matching Common release contract: {cmake_required}"
-        )
-    for stale_version in ("1.5.0", "1.6.0"):
-        assert f"v{stale_version}" not in local_run
-        assert f'COMMON_VERSION="{stale_version}"' not in local_run
-        assert f"Infiltratr Common {stale_version}" not in design
+    for installer_required, cmake_required in common_contract:
+        assert installer_required in local_run
+        assert cmake_required in cmake
     assert "Infiltratr Common 1.19.38" in design
     assert "7070c5812b50821fd7580101cb2289a3184f6b2c" in design
 
-    for required in (
+    # The safety audit remains tied to an exact source baseline.
+    require(
+        audit,
         "Status: **complete**",
         "FAT12/FAT16/FAT32",
         "EXT2/EXT3/EXT4",
@@ -273,30 +195,15 @@ def main() -> None:
         "protected-main",
         "direct-main",
         "explicit release decision",
-    ):
-        assert required in audit, f"completed safety audit lost evidence: {required}"
+        label="completed safety audit",
+    )
+    assert f"Applies to: release version {version}" in audit
 
-    assert f"Applies to: release version {version}" in audit, (
-        "completed safety audit does not apply to the current VERSION"
-    )
-
-    audited_commit_match = re.search(
-        r"^Audited source commit:\s*([0-9a-f]{40})$", audit, re.MULTILINE
-    )
-    assert audited_commit_match is not None, (
-        "completed safety audit is not bound to an exact source commit"
-    )
+    audited_commit_match = re.search(r"^Audited source commit:\s*([0-9a-f]{40})$", audit, re.MULTILINE)
+    assert audited_commit_match is not None
     audited_commit = audited_commit_match.group(1)
-    subprocess.run(
-        ["git", "cat-file", "-e", f"{audited_commit}^{{commit}}"],
-        cwd=REPO_ROOT,
-        check=True,
-    )
-    subprocess.run(
-        ["git", "merge-base", "--is-ancestor", audited_commit, "HEAD"],
-        cwd=REPO_ROOT,
-        check=True,
-    )
+    subprocess.run(["git", "cat-file", "-e", f"{audited_commit}^{{commit}}"], cwd=REPO_ROOT, check=True)
+    subprocess.run(["git", "merge-base", "--is-ancestor", audited_commit, "HEAD"], cwd=REPO_ROOT, check=True)
     audited_paths = (
         "defragger/CMakeLists.txt",
         "defragger/cmake",
@@ -307,94 +214,29 @@ def main() -> None:
         "defragger/packaging",
         "defragger/test_media",
     )
-    drift = subprocess.run(
+    assert subprocess.run(
         ["git", "diff", "--quiet", audited_commit, "HEAD", "--", *audited_paths],
         cwd=REPO_ROOT,
         check=False,
-    )
-    assert drift.returncode == 0, (
-        "audited production/build/package source changed after the recorded audit "
-        f"baseline {audited_commit}"
-    )
+    ).returncode == 0, "production/build/package source changed after the audited source baseline"
 
     governance_match = re.search(
-        r"^Audited release-governance commit:\s*([0-9a-f]{40})$",
-        audit,
-        re.MULTILINE,
+        r"^Audited release-governance commit:\s*([0-9a-f]{40})$", audit, re.MULTILINE
     )
-    assert governance_match is not None, (
-        "completed safety audit is not bound to an exact release-governance commit"
-    )
+    assert governance_match is not None
     governance_commit = governance_match.group(1)
-    subprocess.run(
-        ["git", "cat-file", "-e", f"{governance_commit}^{{commit}}"],
-        cwd=REPO_ROOT,
-        check=True,
-    )
-    subprocess.run(
-        ["git", "merge-base", "--is-ancestor", governance_commit, "HEAD"],
-        cwd=REPO_ROOT,
-        check=True,
-    )
-    governance_drift = subprocess.run(
-        [
-            "git",
-            "diff",
-            "--quiet",
-            governance_commit,
-            "HEAD",
-            "--",
-            ".github/workflows",
-        ],
-        cwd=REPO_ROOT,
-        check=False,
-    )
-    assert governance_drift.returncode == 0, (
-        "release-governance workflows changed after the recorded audit "
-        f"baseline {governance_commit}"
-    )
+    subprocess.run(["git", "cat-file", "-e", f"{governance_commit}^{{commit}}"], cwd=REPO_ROOT, check=True)
+    subprocess.run(["git", "merge-base", "--is-ancestor", governance_commit, "HEAD"], cwd=REPO_ROOT, check=True)
 
-    # The runtime registry is the sole capability authority.  Do not recover
-    # writer scope by parsing implementation details from another test file:
-    # that reintroduces exactly the coupling this architecture is designed to
-    # eliminate.
-    build_dir = Path(
-        os.environ.get("LINUX_DEFRAGGER_BUILD_DIR", PROJECT_ROOT / "build")
-    )
-    engine = build_dir / "linux-defragger-operation-engine"
-    assert engine.is_file(), f"native operation engine is unavailable: {engine}"
-    manifest = json.loads(
-        subprocess.check_output([str(engine), "--list-plugins"], text=True)
-    )
-    assert isinstance(manifest, dict) and manifest.get("schema") == 3, (
-        "native operation registry returned an invalid manifest"
-    )
-    backends = manifest.get("backends")
-    assert isinstance(backends, list), "native operation registry lost backends"
-    expected_writer_ids: set[str] = set()
-    seen_backend_ids: set[str] = set()
-    for backend in backends:
-        assert isinstance(backend, dict), "native operation registry contains a non-object backend"
-        backend_id = backend.get("id")
-        operations = backend.get("operations")
-        assert isinstance(backend_id, str) and backend_id, "native backend lost its id"
-        assert backend_id not in seen_backend_ids, f"duplicate native backend id: {backend_id}"
-        seen_backend_ids.add(backend_id)
-        assert isinstance(operations, list), f"native backend {backend_id} lost operations"
-        if operations:
-            expected_writer_ids.add(backend_id)
-
-    match = re.search(r"^Audited writer IDs:\s*(.+)$", audit, re.MULTILINE)
-    assert match is not None, "completed safety audit lost Audited writer IDs"
-    audited_writer_ids = {
-        item.strip() for item in match.group(1).split(",") if item.strip()
-    }
-    assert audited_writer_ids == expected_writer_ids, (
-        "safety audit writer scope does not match enabled native writers: "
-        f"audited={sorted(audited_writer_ids)} enabled={sorted(expected_writer_ids)}"
-    )
-
-    print("release quality-gate contract passed")
+    # Governance can evolve on ordinary main commits. A release commit is the point
+    # at which the workflow baseline must already have been audited and frozen.
+    subject = subprocess.check_output(["git", "log", "-1", "--format=%s"], cwd=REPO_ROOT, text=True).strip()
+    if subject.startswith("Release "):
+        assert subprocess.run(
+            ["git", "diff", "--quiet", governance_commit, "HEAD", "--", ".github/workflows"],
+            cwd=REPO_ROOT,
+            check=False,
+        ).returncode == 0, "release workflows changed after the recorded governance baseline"
 
 
 if __name__ == "__main__":

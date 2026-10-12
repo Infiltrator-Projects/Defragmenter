@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: quality-gate-v4-${{ github.ref }}
+  group: quality-gate-v5-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -44,6 +44,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      - name: Verify self-hosted runner contract
+        run: ./ci/preflight.sh quality
 
       - name: Reject tracked generated state
         shell: bash
@@ -85,7 +88,7 @@ jobs:
           LINUX_DEFRAGGER_BUILD_DIR: ${{ github.workspace }}/defragger/build
         run: ctest --test-dir build --output-on-failure
 
-      - name: Enforce remaining architecture and release invariants
+      - name: Enforce architecture and release invariants
         env:
           PYTHONDONTWRITEBYTECODE: "1"
           PYTHONPATH: ${{ github.workspace }}/defragger/gui:${{ github.workspace }}/defragger/tests
@@ -93,6 +96,41 @@ jobs:
         run: |
           python3 tests/test_btrfs_architecture.py
           python3 tests/test_release_gate.py
+
+      - name: Build and verify release artefacts once
+        if: >-
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          startsWith(github.event.head_commit.message, 'Release ')
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./tests/test_release_artifacts.sh
+          VERSION=$(tr -d '\r\n' < VERSION)
+          LD_BUILD_TESTING=OFF ./packaging/build-deb.sh
+          ./packaging/build-local-run.sh "Defragmenter-${VERSION}-local-folder.run"
+          DEB="Defragmenter-${VERSION}-amd64.deb"
+          RUN="Defragmenter-${VERSION}-local-folder.run"
+          test -f "$DEB"
+          test -f "$RUN"
+          test "$(dpkg-deb -f "$DEB" Version)" = "$VERSION"
+          ./tests/test_local_installer_end_to_end.sh "./${RUN}"
+          sha256sum "$DEB" "$RUN" > RELEASE_SHA256SUMS.txt
+
+      - name: Preserve exact tested release artefacts
+        if: >-
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          startsWith(github.event.head_commit.message, 'Release ')
+        uses: actions/upload-artifact@v4
+        with:
+          name: defragmenter-release-${{ github.sha }}
+          path: |
+            defragger/Defragmenter-*-amd64.deb
+            defragger/Defragmenter-*-local-folder.run
+            defragger/RELEASE_SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 1
 
   sanitizers:
     name: Self-hosted ASan / UBSan
@@ -117,6 +155,9 @@ jobs:
           path: defragger/shared/infiltratr-common
           fetch-depth: 1
           submodules: false
+
+      - name: Verify self-hosted sanitizer runner contract
+        run: ./ci/preflight.sh sanitizers
 
       - name: Build with AddressSanitizer and UndefinedBehaviorSanitizer
         run: |

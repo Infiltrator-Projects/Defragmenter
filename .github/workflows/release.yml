@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-name: Build and publish release
+name: Publish qualified release
 
 on:
   workflow_call:
@@ -19,6 +19,7 @@ concurrency:
 jobs:
   release:
     runs-on: [self-hosted, Linux, X64, linux-native, bigbedroom]
+    timeout-minutes: 30
     permissions:
       contents: write
     defaults:
@@ -26,9 +27,6 @@ jobs:
         working-directory: defragger
     env:
       EXPECTED_SHA: ${{ inputs.expected_sha }}
-    outputs:
-      version: ${{ steps.release_identity.outputs.version }}
-      release_sha: ${{ steps.release_identity.outputs.release_sha }}
     steps:
       - name: Check out exact tested main commit
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -37,40 +35,10 @@ jobs:
           fetch-depth: 0
           submodules: false
 
-      - name: Check out pinned Infiltratr Common
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          repository: Infiltrator-Projects/Infiltrator-Libraries
-          ref: 7070c5812b50821fd7580101cb2289a3184f6b2c
-          path: defragger/shared/infiltratr-common
-          fetch-depth: 1
-          submodules: false
+      - name: Verify self-hosted release runner contract
+        run: ./ci/preflight.sh release
 
-      - name: Probe self-hosted release dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          commands=(git jq curl cmake cc c++ make dpkg-deb pkg-config zip unzip python3 makefs sha256sum)
-          missing=()
-          for command_name in "${commands[@]}"; do
-            command -v "$command_name" >/dev/null 2>&1 || missing+=("$command_name")
-          done
-          packages=(gtk+-3.0 ext2fs sqlite3 openssl)
-          missing_packages=()
-          for package_name in "${packages[@]}"; do
-            pkg-config --exists "$package_name" 2>/dev/null || missing_packages+=("$package_name")
-          done
-          python_ok=1
-          python3 -c 'import gi, cairo' >/dev/null 2>&1 || python_ok=0
-          if ((${#missing[@]} || ${#missing_packages[@]} || python_ok == 0)); then
-            printf '%s\n' 'Self-hosted release runner is missing required dependencies.' >&2
-            ((${#missing[@]})) && printf 'Missing commands: %s\n' "${missing[*]}" >&2 || true
-            ((${#missing_packages[@]})) && printf 'Missing pkg-config packages: %s\n' "${missing_packages[*]}" >&2 || true
-            ((python_ok == 0)) && printf '%s\n' 'Missing Python GTK bindings.' >&2 || true
-            exit 1
-          fi
-
-      - name: Verify exact current main release source
+      - name: Verify release identity and completed safety audit
         id: release_identity
         shell: bash
         env:
@@ -78,35 +46,37 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin main --tags
-          head_commit=$(git rev-parse HEAD)
-          main_commit=$(git rev-parse origin/main)
-          test "$head_commit" = "$EXPECTED_SHA"
-          test "$main_commit" = "$EXPECTED_SHA"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test "$(git rev-parse origin/main)" = "$EXPECTED_SHA"
+
           VERSION=$(tr -d '\r\n' < VERSION)
           test -n "$VERSION"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9]+$ ]]
+          subject=$(git log -1 --format=%s HEAD)
+          [[ "$subject" == "Release ${VERSION}" || "$subject" == "Release ${VERSION}:"* ]] || {
+            echo "Release commit subject must begin with Release ${VERSION}." >&2
+            exit 1
+          }
+
           grep -Fq 'Status: **complete**' ../docs/AUDIT_STATUS.md
           grep -Fqx "Applies to: release version ${VERSION}" ../docs/AUDIT_STATUS.md
           AUDITED_COMMIT=$(sed -n 's/^Audited source commit: \([0-9a-f]\{40\}\)$/\1/p' ../docs/AUDIT_STATUS.md)
+          GOVERNANCE_COMMIT=$(sed -n 's/^Audited release-governance commit: \([0-9a-f]\{40\}\)$/\1/p' ../docs/AUDIT_STATUS.md)
           test -n "$AUDITED_COMMIT"
+          test -n "$GOVERNANCE_COMMIT"
           git cat-file -e "${AUDITED_COMMIT}^{commit}"
+          git cat-file -e "${GOVERNANCE_COMMIT}^{commit}"
           git merge-base --is-ancestor "$AUDITED_COMMIT" HEAD
-          if ! git diff --quiet "$AUDITED_COMMIT" HEAD -- CMakeLists.txt cmake native gui src shared packaging test_media; then
+          git merge-base --is-ancestor "$GOVERNANCE_COMMIT" HEAD
+          git diff --quiet "$AUDITED_COMMIT" HEAD -- CMakeLists.txt cmake native gui src shared packaging test_media || {
             echo "Audited production/build/package source changed after ${AUDITED_COMMIT}; refresh the safety audit before release." >&2
             exit 1
-          fi
-          GOVERNANCE_COMMIT=$(sed -n 's/^Audited release-governance commit: \([0-9a-f]\{40\}\)$/\1/p' ../docs/AUDIT_STATUS.md)
-          test -n "$GOVERNANCE_COMMIT"
-          git cat-file -e "${GOVERNANCE_COMMIT}^{commit}"
-          git merge-base --is-ancestor "$GOVERNANCE_COMMIT" HEAD
-          if ! git diff --quiet "$GOVERNANCE_COMMIT" HEAD -- ':(top).github/workflows'; then
+          }
+          git diff --quiet "$GOVERNANCE_COMMIT" HEAD -- ':(top).github/workflows' || {
             echo "Release-governance workflows changed after ${GOVERNANCE_COMMIT}; refresh the safety audit before release." >&2
             exit 1
-          fi
-          subject=$(git log -1 --format=%s "$head_commit")
-          if [[ "$subject" != "Release ${VERSION}" && "$subject" != "Release ${VERSION}:"* ]]; then
-            echo "Release commit subject must begin with Release ${VERSION}." >&2
-            exit 1
-          fi
+          }
+
           TAG="v${VERSION}"
           if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
             tag_commit=$(git rev-list -n 1 "${TAG}")
@@ -115,6 +85,7 @@ jobs:
               exit 1
             }
           fi
+
           release_check=$(mktemp)
           release_status=$(curl --silent --show-error --output "$release_check" --write-out '%{http_code}' \
             --header "Authorization: Bearer ${GH_TOKEN}" \
@@ -131,8 +102,9 @@ jobs:
             exit 1
           fi
           rm -f "$release_check"
+
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "release_sha=$EXPECTED_SHA" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Verify permanent main history protection
         shell: bash
@@ -140,97 +112,55 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          rules_endpoint="repos/${GITHUB_REPOSITORY}/rules/branches/main"
           rules=$(curl --fail-with-body --silent --show-error \
             --header "Authorization: Bearer ${GH_TOKEN}" \
             --header "Accept: application/vnd.github+json" \
             --header "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/${rules_endpoint}")
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/rules/branches/main")
           for required in deletion non_fast_forward required_linear_history; do
-            if ! jq -e --arg required "$required" 'any(.[]; .type == $required)' <<<"$rules" >/dev/null; then
+            jq -e --arg required "$required" 'any(.[]; .type == $required)' <<<"$rules" >/dev/null || {
               echo "main is missing permanent $required protection." >&2
               exit 1
-            fi
+            }
           done
 
-      - name: Validate release packaging and local installer
+      - name: Download the exact artefacts built by qualification
+        uses: actions/download-artifact@v4
+        with:
+          name: defragmenter-release-${{ inputs.expected_sha }}
+          path: defragger/release-artifacts
+
+      - name: Verify downloaded release artefacts
         shell: bash
         run: |
           set -euo pipefail
-          ./tests/test_release_artifacts.sh
+          VERSION="${{ steps.release_identity.outputs.version }}"
+          cd release-artifacts
+          sha256sum -c RELEASE_SHA256SUMS.txt
+          DEB="Defragmenter-${VERSION}-amd64.deb"
+          RUN="Defragmenter-${VERSION}-local-folder.run"
+          test -f "$DEB"
+          test -f "$RUN"
+          test "$(dpkg-deb -f "$DEB" Version)" = "$VERSION"
+          echo "PACKAGE=$(dpkg-deb -f "$DEB" Package)" >> "$GITHUB_ENV"
 
-      - name: Build release artefacts
-        shell: bash
-        run: |
-          set -euo pipefail
-          VERSION=$(tr -d '\r\n' < VERSION)
-          LD_BUILD_TESTING=OFF ./packaging/build-deb.sh
-          ./packaging/build-local-run.sh "Defragmenter-${VERSION}-local-folder.run"
-          test -f "Defragmenter-${VERSION}-amd64.deb"
-          test -f "Defragmenter-${VERSION}-local-folder.run"
-          ./tests/test_local_installer_end_to_end.sh \
-            "./Defragmenter-${VERSION}-local-folder.run"
-          sha256sum \
-            "Defragmenter-${VERSION}-amd64.deb" \
-            "Defragmenter-${VERSION}-local-folder.run" > RELEASE_SHA256SUMS.txt
-
-      - name: Publish immutable versioned release
+      - name: Publish immutable GitHub release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git fetch origin main --tags
-          head_commit=$(git rev-parse HEAD)
-          main_commit=$(git rev-parse origin/main)
-          test "$head_commit" = "$EXPECTED_SHA"
-          test "$main_commit" = "$EXPECTED_SHA"
-
-          VERSION=$(tr -d '\r\n' < VERSION)
-          TAG="v${VERSION}"
-          tag_exists=false
-          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
-            tag_commit=$(git rev-list -n 1 "${TAG}")
-            test "$tag_commit" = "$EXPECTED_SHA" || {
-              echo "Release tag ${TAG} points at ${tag_commit}, not the tested commit." >&2
-              exit 1
-            }
-            tag_exists=true
-          fi
-
-          release_check=$(mktemp)
-          release_status=$(curl --silent --show-error --output "$release_check" --write-out '%{http_code}' \
-            --header "Authorization: Bearer ${GH_TOKEN}" \
-            --header "Accept: application/vnd.github+json" \
-            --header "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}")
-          if [ "$release_status" = 200 ]; then
-            echo "Release ${TAG} already exists; published releases are immutable." >&2
-            exit 1
-          fi
-          if [ "$release_status" != 404 ]; then
-            cat "$release_check" >&2
-            echo "Unable to determine whether release ${TAG} already exists (HTTP ${release_status})." >&2
-            exit 1
-          fi
-          rm -f "$release_check"
-
-          if [ "$tag_exists" = false ]; then
-            git tag "$TAG" "$EXPECTED_SHA"
-            git push origin "$TAG"
-          fi
+          VERSION="${{ steps.release_identity.outputs.version }}"
+          TAG="${{ steps.release_identity.outputs.tag }}"
+          cd release-artifacts
 
           cat > release-body.md <<BODY
           Defragmenter ${VERSION}.
 
-          Verified project release artefacts:
+          These are the exact artefacts built and tested by the self-hosted project quality gate:
           - Generic AMD64 Debian package
           - Hardware-optimised local compile-and-install program
-          - SHA-256 manifest for both project release artefacts
-
-          GitHub separately displays its automatic Source code (zip) and
-          Source code (tar.gz) links for the immutable release tag. No duplicate
-          custom source archive is uploaded.
+          - SHA-256 manifest for both artefacts
           BODY
 
           release_payload=$(jq -n \
@@ -248,7 +178,6 @@ jobs:
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases")
           upload_url=$(jq -er '.upload_url | split("{")[0]' <<<"$release_json")
 
-          # release-gate compatibility marker: gh release create
           for asset in \
             "Defragmenter-${VERSION}-amd64.deb" \
             "Defragmenter-${VERSION}-local-folder.run" \
@@ -272,18 +201,53 @@ jobs:
             --header "X-GitHub-Api-Version: 2022-11-28" \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" \
             | jq -r '.assets[].name' | sort)
-          if [[ "$published_assets" != "$expected_assets" ]]; then
+          test "$published_assets" = "$expected_assets" || {
             echo "Release ${TAG} has an unexpected asset set." >&2
             exit 1
-          fi
+          }
 
-  apt-refresh:
-    name: Refresh and verify APT publication
-    needs: release
-    permissions:
-      contents: read
-    uses: ./.github/workflows/apt-refresh.yml
-    with:
-      version: ${{ needs.release.outputs.version }}
-      release_sha: ${{ needs.release.outputs.release_sha }}
-    secrets: inherit
+      - name: Wait until the exact release is live in APT
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.release_identity.outputs.version }}"
+          CATALOGUE='https://infiltrator-projects.github.io/Infiltrator-Repository/catalogue/apps.json'
+          PACKAGES='https://infiltrator-projects.github.io/Infiltrator-Repository/dists/beta/main/binary-amd64/Packages.gz'
+
+          for attempt in $(seq 1 80); do
+            cache_key="${GITHUB_RUN_ID}-${attempt}"
+            catalogue_version=$(curl -fsSL --retry 2 --retry-delay 1 \
+              -H 'Cache-Control: no-cache' "${CATALOGUE}?release=${cache_key}" 2>/dev/null \
+              | jq -r '.[] | select(.id == "defragger") | (.version // empty)' \
+              | head -n1 || true)
+
+            apt_match=false
+            if curl -fsSL --retry 2 --retry-delay 1 \
+              -H 'Cache-Control: no-cache' "${PACKAGES}?release=${cache_key}" 2>/dev/null \
+              | gzip -dc 2>/dev/null \
+              | awk -v package="$PACKAGE" -v version="$VERSION" '
+                  BEGIN { RS=""; FS="\n"; found=0 }
+                  {
+                    p=""; v=""
+                    for (i=1; i<=NF; ++i) {
+                      if ($i ~ /^Package: /) { p=substr($i,10) }
+                      if ($i ~ /^Version: /) { v=substr($i,10) }
+                    }
+                    if (p == package && v == version) { found=1 }
+                  }
+                  END { exit(found ? 0 : 1) }
+                '; then
+              apt_match=true
+            fi
+
+            if [[ "$catalogue_version" == "$VERSION" && "$apt_match" == true ]]; then
+              echo "Defragmenter ${VERSION} is live in the public APT repository."
+              exit 0
+            fi
+
+            echo "APT publication pending (${attempt}/80): catalogue=${catalogue_version:-missing}, package=${apt_match}."
+            sleep 15
+          done
+
+          echo "GitHub release exists, but the central APT repository did not advertise Defragmenter ${VERSION} within 20 minutes." >&2
+          exit 1
