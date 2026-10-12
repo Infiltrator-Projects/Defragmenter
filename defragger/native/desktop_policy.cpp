@@ -104,14 +104,21 @@ DesktopControls desktop_controls(const DesktopVolume* v, bool busy,
     out.analyse = true;
     out.unmount = v->mounted && !v->image;
     const auto* backend = backend_by_fstype(v->filesystem);
-    if (!backend || !v->verified || v->readonly || v->mounted) return out;
-    out.defrag = v->exact_analysis && v->defrag_qualified &&
-                 !journal_exists && operation_for(*backend, "defrag");
-    out.growth_defrag =
-        v->exact_analysis && v->growth_qualified &&
-        !journal_exists && operation_for(*backend, "growth-defrag");
-    // Recovery must remain available after restart even before a fresh map is
-    // produced; the journal and worker rebind the exact target identity.
+    if (!backend) return out;
+
+    /*
+     * Operation buttons are entry points, not the mutation authority.  Keep
+     * supported Defragment/Growth Defrag controls clickable while idle so a
+     * rejected exact layout, stale journal, mounted volume or missing analysis
+     * produces the precise desktop_mutation() explanation instead of a dead
+     * button.  The destructive path still re-checks every prerequisite before
+     * it can construct an operation-engine command.
+     */
+    out.defrag = operation_for(*backend, "defrag") != nullptr;
+    out.growth_defrag = operation_for(*backend, "growth-defrag") != nullptr;
+
+    if (!v->verified || v->readonly || v->mounted) return out;
+    // Recovery remains actionable only when the durable journal exists.
     out.recover = journal_exists && operation_for(*backend, "recover");
     return out;
 }
