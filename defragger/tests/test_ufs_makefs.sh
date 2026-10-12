@@ -55,10 +55,12 @@ assert payload["filesystem_bytes"] > 0
 assert payload["free_bytes"] > 0
 assert payload["used_bytes"] > 0
 assert payload["free_bytes"] + payload["used_bytes"] == payload["filesystem_bytes"]
-assert payload["unknown_bytes"] == payload["total_bytes"] - payload["filesystem_bytes"]
+assert payload["unknown_bytes"] == 0
+assert payload["outside_bytes"] == payload["total_bytes"] - payload["filesystem_bytes"]
 assert sum(cell["free"] for cell in payload["cells"]) * payload["unit_size"] == payload["free_bytes"]
 assert sum(cell["used"] for cell in payload["cells"]) * payload["unit_size"] == payload["used_bytes"]
-assert sum(cell["unknown"] for cell in payload["cells"]) * payload["unit_size"] == payload["unknown_bytes"]
+assert sum(cell["unknown"] for cell in payload["cells"]) == 0
+assert sum(cell.get("outside", 0) for cell in payload["cells"]) * payload["unit_size"] == payload["outside_bytes"]
 PY
 
     JOURNAL="$WORK/ufs${version}.journal"
