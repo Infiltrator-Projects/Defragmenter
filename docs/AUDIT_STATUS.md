@@ -6,7 +6,7 @@ Completed: 2026-10-12
 
 Applies to: release version 1.8.0-258
 Audited source commit: 1862b97bee9d237c32a41efcd94b7873ccb21017
-Audited release-governance commit: 25a5e7709a16d1cd5520ba62974273db5594468b
+Audited release-governance commit: 14c613994812e1d27b811ddf08623291577c3d02
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
