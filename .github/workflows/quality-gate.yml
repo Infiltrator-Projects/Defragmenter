@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: quality-gate-v6-${{ github.ref }}
+  group: quality-gate-v7-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -20,6 +20,8 @@ jobs:
     name: Self-hosted project quality gate
     runs-on: [self-hosted, Linux, X64, linux-native, bigbedroom]
     timeout-minutes: 45
+    outputs:
+      release_intent: ${{ steps.release_intent.outputs.release }}
     defaults:
       run:
         working-directory: defragger
@@ -42,6 +44,24 @@ jobs:
 
       - name: Verify self-hosted runner contract
         run: ./ci/preflight.sh quality
+
+      - name: Detect explicit release intent
+        id: release_intent
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          release=false
+          before="$BEFORE_SHA"
+          if [[ -z "$before" || "$before" =~ ^0+$ ]] || ! git -C "$GITHUB_WORKSPACE" cat-file -e "${before}^{commit}" 2>/dev/null; then
+            before="${GITHUB_SHA}^"
+          fi
+          if ! git -C "$GITHUB_WORKSPACE" diff --quiet "$before" "$GITHUB_SHA" -- defragger/VERSION; then
+            release=true
+          fi
+          echo "release=$release" >> "$GITHUB_OUTPUT"
 
       - name: Reject tracked generated state
         shell: bash
@@ -93,10 +113,7 @@ jobs:
           python3 tests/test_release_gate.py
 
       - name: Build and verify release artefacts once
-        if: >-
-          github.event_name == 'push' &&
-          github.ref == 'refs/heads/main' &&
-          startsWith(github.event.head_commit.message, 'Release ')
+        if: steps.release_intent.outputs.release == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -113,10 +130,7 @@ jobs:
           sha256sum "$DEB" "$RUN" > RELEASE_SHA256SUMS.txt
 
       - name: Preserve exact tested release artefacts
-        if: >-
-          github.event_name == 'push' &&
-          github.ref == 'refs/heads/main' &&
-          startsWith(github.event.head_commit.message, 'Release ')
+        if: steps.release_intent.outputs.release == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: defragmenter-release-${{ github.sha }}
@@ -172,10 +186,7 @@ jobs:
   publish-release:
     name: Publish qualified release
     needs: [quality-gate, sanitizers]
-    if: >-
-      github.event_name == 'push' &&
-      github.ref == 'refs/heads/main' &&
-      startsWith(github.event.head_commit.message, 'Release ')
+    if: needs.quality-gate.outputs.release_intent == 'true'
     permissions:
       contents: write
     uses: ./.github/workflows/release.yml
