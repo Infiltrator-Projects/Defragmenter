@@ -4,7 +4,7 @@ Status: **complete**
 
 Completed: 2026-10-12
 
-Applies to: release version 1.8.0-257
+Applies to: release version 1.8.0-258
 Audited source commit: 1862b97bee9d237c32a41efcd94b7873ccb21017
 Audited release-governance commit: 25a5e7709a16d1cd5520ba62974273db5594468b
 
