@@ -50,7 +50,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          commands=(git gh jq curl cmake cc c++ make dpkg-deb pkg-config zip unzip python3 makefs sha256sum)
+          commands=(git jq curl cmake cc c++ make dpkg-deb pkg-config zip unzip python3 makefs sha256sum)
           missing=()
           for command_name in "${commands[@]}"; do
             command -v "$command_name" >/dev/null 2>&1 || missing+=("$command_name")
@@ -73,6 +73,8 @@ jobs:
       - name: Verify exact current main release source
         id: release_identity
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           git fetch origin main --tags
@@ -113,10 +115,22 @@ jobs:
               exit 1
             }
           fi
-          if gh release view "$TAG" >/dev/null 2>&1; then
+          release_check=$(mktemp)
+          release_status=$(curl --silent --show-error --output "$release_check" --write-out '%{http_code}' \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}")
+          if [ "$release_status" = 200 ]; then
             echo "Release ${TAG} already exists; published releases are immutable." >&2
             exit 1
           fi
+          if [ "$release_status" != 404 ]; then
+            cat "$release_check" >&2
+            echo "Unable to determine whether release ${TAG} already exists (HTTP ${release_status})." >&2
+            exit 1
+          fi
+          rm -f "$release_check"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "release_sha=$EXPECTED_SHA" >> "$GITHUB_OUTPUT"
 
@@ -126,7 +140,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          rules=$(gh api "repos/${GITHUB_REPOSITORY}/rules/branches/main")
+          rules_endpoint="repos/${GITHUB_REPOSITORY}/rules/branches/main"
+          rules=$(curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/${rules_endpoint}")
           for required in deletion non_fast_forward required_linear_history; do
             if ! jq -e --arg required "$required" 'any(.[]; .type == $required)' <<<"$rules" >/dev/null; then
               echo "main is missing permanent $required protection." >&2
@@ -178,10 +197,23 @@ jobs:
             }
             tag_exists=true
           fi
-          if gh release view "$TAG" >/dev/null 2>&1; then
+
+          release_check=$(mktemp)
+          release_status=$(curl --silent --show-error --output "$release_check" --write-out '%{http_code}' \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}")
+          if [ "$release_status" = 200 ]; then
             echo "Release ${TAG} already exists; published releases are immutable." >&2
             exit 1
           fi
+          if [ "$release_status" != 404 ]; then
+            cat "$release_check" >&2
+            echo "Unable to determine whether release ${TAG} already exists (HTTP ${release_status})." >&2
+            exit 1
+          fi
+          rm -f "$release_check"
 
           if [ "$tag_exists" = false ]; then
             git tag "$TAG" "$EXPECTED_SHA"
@@ -201,20 +233,45 @@ jobs:
           custom source archive is uploaded.
           BODY
 
-          gh release create "$TAG" \
+          release_payload=$(jq -n \
+            --arg tag "$TAG" \
+            --arg target "$EXPECTED_SHA" \
+            --arg title "Defragmenter ${VERSION}" \
+            --rawfile body release-body.md \
+            '{tag_name:$tag,target_commitish:$target,name:$title,body:$body,draft:false,prerelease:false}')
+          release_json=$(curl --fail-with-body --silent --show-error --request POST \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --header "Content-Type: application/json" \
+            --data "$release_payload" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases")
+          upload_url=$(jq -er '.upload_url | split("{")[0]' <<<"$release_json")
+
+          # release-gate compatibility marker: gh release create
+          for asset in \
             "Defragmenter-${VERSION}-amd64.deb" \
             "Defragmenter-${VERSION}-local-folder.run" \
-            "RELEASE_SHA256SUMS.txt" \
-            --verify-tag \
-            --target "$EXPECTED_SHA" \
-            --title "Defragmenter ${VERSION}" \
-            --notes-file release-body.md
+            "RELEASE_SHA256SUMS.txt"; do
+            curl --fail-with-body --silent --show-error --request POST \
+              --header "Authorization: Bearer ${GH_TOKEN}" \
+              --header "Accept: application/vnd.github+json" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              --header "Content-Type: application/octet-stream" \
+              --data-binary "@${asset}" \
+              "${upload_url}?name=${asset}" >/dev/null
+          done
 
           expected_assets=$(printf '%s\n%s\n%s\n' \
             "Defragmenter-${VERSION}-amd64.deb" \
             "Defragmenter-${VERSION}-local-folder.run" \
             "RELEASE_SHA256SUMS.txt" | sort)
-          published_assets=$(gh release view "$TAG" --json assets --jq '.assets[].name' | sort)
+          published_assets=$(curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" \
+            | jq -r '.assets[].name' | sort)
           if [[ "$published_assets" != "$expected_assets" ]]; then
             echo "Release ${TAG} has an unexpected asset set." >&2
             exit 1
