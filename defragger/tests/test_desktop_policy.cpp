@@ -19,15 +19,10 @@ int main() {
     assert(labelled.front().label == "LD_FAT12");
     assert(!labelled.front().mounted);
 
-    /*
-     * Idle operation controls stay clickable for supported backends so the
-     * action path can explain an unmet prerequisite.  desktop_mutation(), not
-     * widget sensitivity, remains the destructive authorisation boundary.
-     */
     auto controls = desktop_controls(&v, false, false, false);
     assert(controls.analyse);
-    assert(controls.defrag);
-    assert(controls.growth_defrag);
+    assert(!controls.defrag);
+    assert(!controls.growth_defrag);
     assert(!controls.recover);
 
     try {
@@ -45,6 +40,13 @@ int main() {
     assert(!v.verified);
     desktop_verify_identity(v, "ext4");
     assert(v.verified);
+
+    /*
+     * Once identity is verified and the target is writable and offline,
+     * supported operations stay clickable even when exact qualification has
+     * not authorised a write.  desktop_mutation() remains the fail-closed
+     * authority and supplies the precise rejection reason.
+     */
     controls = desktop_controls(&v, false, false, false);
     assert(controls.defrag);
     assert(controls.growth_defrag);
@@ -108,8 +110,8 @@ int main() {
     v.mounted = true;
     controls = desktop_controls(&v, false, false, false);
     assert(controls.unmount);
-    assert(controls.defrag);
-    assert(controls.growth_defrag);
+    assert(!controls.defrag);
+    assert(!controls.growth_defrag);
     assert(!controls.recover);
     try {
         (void)desktop_mutation(v, "defrag", "/tmp/engine", journal, 512, false);
