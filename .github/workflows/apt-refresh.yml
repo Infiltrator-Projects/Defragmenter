@@ -32,12 +32,17 @@ concurrency:
 
 jobs:
   refresh:
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64, linux-native, bigbedroom]
     env:
       APP_ID: defragger
       REQUESTED_VERSION: ${{ inputs.version }}
       REQUESTED_SHA: ${{ inputs.release_sha }}
     steps:
+      - name: Provision self-hosted publication dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl jq
+
       - name: Resolve immutable release identity
         env:
           GH_TOKEN: ${{ github.token }}
