@@ -4,9 +4,9 @@ Status: **complete**
 
 Completed: 2026-10-12
 
-Applies to: release version 1.8.0-258
+Applies to: release version 1.8.0-259
 Audited source commit: 1862b97bee9d237c32a41efcd94b7873ccb21017
-Audited release-governance commit: 8f6bfdee7439598cab9860b2191602e79236c3dc
+Audited release-governance commit: eead173dcbca22a5d0b7ab11ec5009370a10f523
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
@@ -37,4 +37,4 @@ ZFS/OpenZFS and Linux swap remain analysis-only by design.
 
 The repository uses the `direct-main` development model. The active `protected-main` history contract, exact audited source/governance baselines and self-hosted **Project quality gate** collectively guard publication.
 
-Ordinary main commits never publish. An **explicit release decision** is represented by a commit whose subject begins `Release <version>`. The exact head must pass the self-hosted full-suite and ASan/UBSan lanes before immutable release publication and APT refresh.
+Ordinary main commits never publish. An **explicit release decision** is represented by a commit whose subject begins `Release <version>`. The exact head must pass the self-hosted full-suite and ASan/UBSan lanes, publish only those already-tested artefacts, and verify the exact version is live in the public APT repository before the release workflow is green.
