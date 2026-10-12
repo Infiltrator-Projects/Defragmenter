@@ -128,7 +128,9 @@ The exact release revision must satisfy the project quality gate. The current wr
 
 Release artifacts are built from the exact qualified `main` revision. Published tags and assets are immutable identities. The Debian package/native installer, Common pin, audit source baseline and release-governance baseline are checked as part of publication rather than treated as post-release bookkeeping.
 
-Publication is part of the quality-gate dependency graph rather than an event-only afterthought: the release reusable workflow depends directly on both permanent GitHub-hosted lanes — the full project quality gate and the ASan/UBSan lane — while the self-hosted local-quality workflow remains optional parallel evidence on main pushes and can also be run manually. The APT refresh reusable workflow depends directly on successful immutable release publication. This preserves the dependency across GitHub job retries, while exact-SHA checks and the explicit `Release <version>` commit requirement prevent an unrelated successful run from publishing artifacts.
+A change to `defragger/VERSION` on protected `main` is the explicit release decision; human commit-message wording is not part of the control plane. The permanent self-hosted full-suite and ASan/UBSan lanes must both pass before publication can run. Qualification builds the release artefacts once and hands those exact SHA-bound files to the thin reusable publication workflow; publication never rebuilds them.
+
+GitHub Actions only orchestrates checkout, permissions, artefact handoff and ordering. `defragger/ci/release.sh` owns the testable release procedure: audited source/governance verification, protected-main verification, restartable GitHub publication, exact asset-set/digest verification and the downstream APT observation. Public APT propagation is deliberately observational and retryable, so repository or CDN delay can be reported without invalidating an already verified immutable GitHub release.
 
 ## Specialist documents
 
