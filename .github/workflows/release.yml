@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   release:
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64, linux-native, bigbedroom]
     permissions:
       contents: write
     defaults:
@@ -30,6 +30,16 @@ jobs:
       version: ${{ steps.release_identity.outputs.version }}
       release_sha: ${{ steps.release_identity.outputs.release_sha }}
     steps:
+      - name: Provision self-hosted release dependencies
+        working-directory: ${{ github.workspace }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git gh jq curl build-essential cmake dpkg-dev pkg-config zip unzip \
+            python3 python3-gi python3-cairo \
+            gir1.2-gtk-3.0 libgtk-3-dev policykit-1 udisks2 util-linux makefs \
+            libsqlite3-dev libssl-dev
+
       - name: Check out exact tested main commit
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -100,14 +110,6 @@ jobs:
               exit 1
             fi
           done
-
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential cmake dpkg-dev pkg-config python3 python3-gi python3-cairo \
-            gir1.2-gtk-3.0 libgtk-3-dev policykit-1 udisks2 util-linux makefs \
-            libsqlite3-dev libssl-dev
 
       - name: Validate release packaging and local installer
         shell: bash
