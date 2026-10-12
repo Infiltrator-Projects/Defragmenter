@@ -22,11 +22,25 @@ bool flag(const Json& obj, std::string_view key) {
     const auto text = field->string_or();
     return field->unsigned_or() != 0 || text == "true" || text == "1" || text == "yes";
 }
+std::string lower_ascii(std::string text) {
+    std::transform(text.begin(), text.end(), text.begin(),
+                   [](unsigned char ch) {
+                       return static_cast<char>(std::tolower(ch));
+                   });
+    return text;
+}
+std::string filesystem_from_test_media_label(std::string_view label) {
+    constexpr std::string_view prefix = "LD_";
+    if (label.size() <= prefix.size() || label.substr(0, prefix.size()) != prefix)
+        return {};
+
+    std::string candidate = lower_ascii(std::string(label.substr(prefix.size())));
+    const auto* backend = backend_by_fstype(candidate);
+    return backend == nullptr ? std::string{} : candidate;
+}
 void visit(const Json& node, std::vector<DesktopVolume>& result) {
     if (!node.is_object()) return;
-    std::string filesystem = value(node, "fstype");
-    std::transform(filesystem.begin(), filesystem.end(), filesystem.begin(),
-                   [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+    std::string filesystem = lower_ascii(value(node, "fstype"));
 
     const std::string filesystem_label = value(node, "label");
     const std::string partition_label = value(node, "partlabel");
@@ -36,29 +50,13 @@ void visit(const Json& node, std::vector<DesktopVolume>& result) {
     if (filesystem.empty()) {
         /*
          * Test Media intentionally includes formats that lsblk/blkid may not
-         * identify on every host.  Its LD_* GPT labels are discovery hints
-         * only; the native analyser still has to prove the real filesystem
-         * identity before any write is enabled.
+         * identify on every host. Its LD_<registry-id-or-alias> GPT labels are
+         * discovery hints only; the native analyser still has to prove the real
+         * filesystem identity before any write is enabled. Keep the label
+         * convention tied to the registry instead of maintaining a second
+         * filesystem catalogue here.
          */
-        static const std::pair<const char*, const char*> labelled_filesystems[] = {
-            {"LD_FAT12", "fat12"}, {"LD_FAT16", "fat16"},
-            {"LD_FAT32", "fat32"}, {"LD_EXFAT", "exfat"},
-            {"LD_NTFS", "ntfs"}, {"LD_EXT2", "ext2"},
-            {"LD_EXT3", "ext3"}, {"LD_EXT4", "ext4"},
-            {"LD_XFS", "xfs"}, {"LD_BTRFS", "btrfs"},
-            {"LD_OFS", "ofs"}, {"LD_FFS", "ffs"},
-            {"LD_SFS", "sfs"}, {"LD_PFS3", "pfs3"},
-            {"LD_HFS", "hfs"}, {"LD_HFSPLUS", "hfsplus"},
-            {"LD_MINIX", "minix"}, {"LD_UFS", "ufs"},
-            {"LD_ZFS", "zfs"}, {"LD_APFS", "apfs"},
-            {"LD_SWAP", "swap"},
-        };
-        for (const auto& [label, id] : labelled_filesystems) {
-            if (discovery_label == label) {
-                filesystem = id;
-                break;
-            }
-        }
+        filesystem = filesystem_from_test_media_label(discovery_label);
     }
     const bool generic_fat = filesystem == "fat" || filesystem == "vfat" || filesystem == "msdos";
     if ((backend_by_fstype(filesystem) || generic_fat) && !value(node, "path").empty()) {
@@ -167,12 +165,12 @@ void desktop_verify_identity(DesktopVolume& v, std::string_view detected) {
 
     /*
      * Store the registry's canonical lower-case identity rather than the
-     * worker's display spelling (for example FAT16).  Discovery aliases such
+     * worker's display spelling (for example FAT16). Discovery aliases such
      * as vfat are allowed to resolve to the exact FAT width proven by the
      * native analyser.
      */
     v.filesystem = actual->id;
-    // Identity verification alone never authorises a raw write.  A fresh
+    // Identity verification alone never authorises a raw write. A fresh
     // exact allocation analysis must establish that separately.
     v.exact_analysis = false;
     v.defrag_qualified = false;
