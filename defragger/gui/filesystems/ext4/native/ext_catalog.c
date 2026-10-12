@@ -110,11 +110,30 @@ static int scan_free_ranges(ExtFs *fs, const ExtGeometry *geometry,
 typedef struct {
     const ExtGeometry *geometry;
     ExtCatalogue *catalogue;
+    uint32_t total_inodes;
+    uint32_t last_progress_inode;
 } ScanContext;
+
+static void report_scan_progress(ScanContext *context, uint32_t inode)
+{
+    if (context->total_inodes == 0U)
+        return;
+    if (inode < context->last_progress_inode + 4096U &&
+        inode != context->total_inodes)
+        return;
+    context->last_progress_inode = inode;
+    (void)fprintf(stderr,
+        "@@ANALYSIS {\"phase\":\"Scanning EXT inode catalogue\","
+        "\"completed\":%u,\"total\":%u}\n",
+        inode, context->total_inodes);
+    (void)fflush(stderr);
+}
+
 static int scan_inode(ExtFs *fs, ExtInode *inode, void *private_data,
                       char **error) {
     ScanContext *context = private_data;
     ExtCatalogue *catalogue = context->catalogue;
+    report_scan_progress(context, inode->number);
     if (inode->mode == 0U || inode->links == 0U) return 0;
     unsigned kind = (unsigned)inode->mode & LINUX_S_IFMT;
     if (kind != LINUX_S_IFREG && kind != LINUX_S_IFDIR) return 0;
@@ -174,8 +193,14 @@ int ext_scan_catalogue(const char *path, ExtGeometry *geometry,
     if (ext_validate_metadata(fs, false, error) != 0 ||
         scan_free_ranges(fs, geometry, &catalogue->free_ranges, error) != 0)
         goto done;
-    ScanContext context = {.geometry = geometry, .catalogue = catalogue};
+    ScanContext context = {
+        .geometry = geometry,
+        .catalogue = catalogue,
+        .total_inodes = ext_fs_inodes_count(fs),
+        .last_progress_inode = 0U,
+    };
     if (ext_fs_foreach_inode(fs, scan_inode, &context, error) != 0) goto done;
+    report_scan_progress(&context, context.total_inodes);
     ext_range_sort_merge(&catalogue->free_ranges);
     ext_range_sort_merge(&catalogue->fragmented_ranges);
     ext_range_sort_merge(&catalogue->directory_ranges);
