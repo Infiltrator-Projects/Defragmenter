@@ -6,11 +6,11 @@ Completed: 2026-10-12
 
 Applies to: release version 1.8.0-257
 Audited source commit: 1862b97bee9d237c32a41efcd94b7873ccb21017
-Audited release-governance commit: 628eb90439a3e2653033bdab7acfe4cca0716fd0
+Audited release-governance commit: 25a5e7709a16d1cd5520ba62974273db5594468b
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
-This document records the current release safety case for the exact audited source baseline above. Publication still requires the exact release head to pass the hosted Project quality gate and the release-governance drift checks.
+This document records the current release safety case for the exact audited source baseline above. Publication still requires the exact release head to pass the self-hosted Project quality gate and the release-governance drift checks.
 
 ## Current safety case
 
@@ -35,6 +35,6 @@ ZFS/OpenZFS and Linux swap remain analysis-only by design.
 
 ## Release controls and decision
 
-The repository uses the `direct-main` development model. The active `protected-main` history contract, exact audited source/governance baselines and hosted **Project quality gate** collectively guard publication.
+The repository uses the `direct-main` development model. The active `protected-main` history contract, exact audited source/governance baselines and self-hosted **Project quality gate** collectively guard publication.
 
-Ordinary main commits never publish. An **explicit release decision** is represented by a commit whose subject begins `Release <version>`. The exact head must pass the hosted full-suite and ASan/UBSan lanes before immutable release publication and APT refresh.
+Ordinary main commits never publish. An **explicit release decision** is represented by a commit whose subject begins `Release <version>`. The exact head must pass the self-hosted full-suite and ASan/UBSan lanes before immutable release publication and APT refresh.
