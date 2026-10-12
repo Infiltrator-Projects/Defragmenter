@@ -24,21 +24,26 @@ jobs:
       run:
         working-directory: defragger
     steps:
-      - name: Provision self-hosted build dependencies
-        working-directory: ${{ github.workspace }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            git build-essential cmake dpkg-dev pkg-config zip unzip \
-            python3 python3-gi python3-cairo \
-            gir1.2-gtk-3.0 libgtk-3-dev policykit-1 udisks2 util-linux makefs xvfb \
-            libext2fs-dev libsqlite3-dev libssl-dev
-
       - name: Check out exact main candidate
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
-          submodules: recursive
+          submodules: false
+
+      - name: Check out pinned Infiltratr Common
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: Infiltrator-Projects/Infiltrator-Libraries
+          ref: 7070c5812b50821fd7580101cb2289a3184f6b2c
+          path: defragger/shared/infiltratr-common
+          fetch-depth: 1
+          submodules: false
+
+      - name: Provide Node.js for the pinned Python type checker
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
 
       - name: Reject tracked generated state
         shell: bash
@@ -97,20 +102,21 @@ jobs:
       run:
         working-directory: defragger
     steps:
-      - name: Provision self-hosted sanitizer dependencies
-        working-directory: ${{ github.workspace }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            git build-essential cmake pkg-config python3 python3-gi python3-cairo \
-            gir1.2-gtk-3.0 libgtk-3-dev policykit-1 udisks2 util-linux makefs \
-            libext2fs-dev libsqlite3-dev libssl-dev
-
       - name: Check out exact main candidate
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
-          submodules: recursive
+          submodules: false
+
+      - name: Check out pinned Infiltratr Common
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: Infiltrator-Projects/Infiltrator-Libraries
+          ref: 7070c5812b50821fd7580101cb2289a3184f6b2c
+          path: defragger/shared/infiltratr-common
+          fetch-depth: 1
+          submodules: false
 
       - name: Build with AddressSanitizer and UndefinedBehaviorSanitizer
         run: |
