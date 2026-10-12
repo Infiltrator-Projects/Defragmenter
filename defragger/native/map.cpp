@@ -357,6 +357,24 @@ Json map_ext(const BackendInfo& backend, const std::string& path,
         set(result, "analysis_warning", *warning);
     }
 
+    const Json* defrag = payload.find("defrag_qualified");
+    const Json* growth = payload.find("growth_qualified");
+    if ((defrag == nullptr) != (growth == nullptr))
+        throw std::runtime_error("EXT analyser returned incomplete qualification");
+    if (defrag != nullptr) {
+        if (!defrag->is_bool() || !growth->is_bool())
+            throw std::runtime_error("EXT qualification is not boolean");
+        set(result, "defrag_qualified", *defrag);
+        set(result, "growth_qualified", *growth);
+    }
+    for (const auto key : {"defrag_reason", "growth_reason"}) {
+        if (const Json* value = payload.find(key)) {
+            if (!value->is_string())
+                throw std::runtime_error("EXT qualification reason is not text");
+            set(result, key, *value);
+        }
+    }
+
     auto metadata_ranges =
         pair_ranges(metadata, "metadata_ranges", total, true);
     const std::uint64_t metadata_units =
@@ -1003,9 +1021,9 @@ Json map_backend(const BackendInfo& backend, const std::string& path,
             result.find("defrag_qualified") != nullptr &&
             result.find("growth_qualified") != nullptr;
         const bool run_preflight =
-            backend.qualification_mode == QualificationMode::WorkerPreflight ||
-            (backend.qualification_mode == QualificationMode::MapOrWorkerPreflight &&
-             !map_reports_qualification);
+            !map_reports_qualification &&
+            (backend.qualification_mode == QualificationMode::WorkerPreflight ||
+             backend.qualification_mode == QualificationMode::MapOrWorkerPreflight);
         if (run_preflight) {
             analysis_phase("Checking Defragment availability (up to 60 seconds)");
             defrag = mutation_qualification(
