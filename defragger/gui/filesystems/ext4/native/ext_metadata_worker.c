@@ -25,11 +25,32 @@ typedef struct {
     bool in_run;
     uint64_t start;
     uint64_t previous;
+    uint32_t total_inodes;
+    uint32_t last_progress_inode;
 } PayloadRanges;
+
+typedef struct {
+    ExtRangeVec ranges;
+} AllocatedRanges;
 
 static void usage(FILE *stream)
 {
     (void)fprintf(stream, "Usage: %s analyse-json DEVICE\n", PROGRAM_NAME);
+}
+
+static void report_progress(PayloadRanges *payload, uint32_t inode)
+{
+    if (payload->total_inodes == 0U)
+        return;
+    if (inode < payload->last_progress_inode + 4096U &&
+        inode != payload->total_inodes)
+        return;
+    payload->last_progress_inode = inode;
+    (void)fprintf(stderr,
+        "@@ANALYSIS {\"phase\":\"Classifying EXT metadata\","
+        "\"completed\":%u,\"total\":%u}\n",
+        inode, payload->total_inodes);
+    (void)fflush(stderr);
 }
 
 static void flush_payload_run(PayloadRanges *payload)
@@ -67,6 +88,8 @@ static int collect_payload_block(ExtFs *fs, uint32_t ino, int64_t logical,
 static int collect_user_inode(ExtFs *fs, ExtInode *inode,
                               void *private_data, char **error)
 {
+    PayloadRanges *payload = private_data;
+    report_progress(payload, inode->number);
     if (inode->mode == 0U || inode->links == 0U) return 0;
     unsigned kind = (unsigned)inode->mode & LINUX_S_IFMT;
     if (kind != LINUX_S_IFREG && kind != LINUX_S_IFDIR) return 0;
@@ -74,7 +97,6 @@ static int collect_user_inode(ExtFs *fs, ExtInode *inode,
         inode->number != EXT_ROOT_INO)
         return 0;
 
-    PayloadRanges *payload = private_data;
     flush_payload_run(payload);
     if (ext_fs_iterate_payload(fs, inode, false, collect_payload_block,
                                payload, error) != 0)
@@ -83,57 +105,78 @@ static int collect_user_inode(ExtFs *fs, ExtInode *inode,
     return 0;
 }
 
-static bool payload_contains(const ExtRangeVec *ranges, size_t *index,
-                             uint64_t block)
+static int collect_allocated_run(uint64_t start, uint64_t length,
+                                 bool allocated, void *private_data,
+                                 char **error)
 {
-    while (*index < ranges->count && ranges->items[*index].end <= block)
-        (*index)++;
-    return *index < ranges->count &&
-           ranges->items[*index].start <= block &&
-           block < ranges->items[*index].end;
+    (void)error;
+    if (allocated && length != 0U) {
+        AllocatedRanges *ranges = private_data;
+        ext_range_push(&ranges->ranges, start, start + length);
+    }
+    return 0;
+}
+
+static void emit_range(bool *first, uint64_t start, uint64_t end)
+{
+    if (end <= start) return;
+    if (!*first) (void)putchar(',');
+    *first = false;
+    (void)printf("[%" PRIu64 ",%" PRIu64 "]", start, end);
 }
 
 static int emit_metadata_ranges(ExtFs *fs, char **error)
 {
-    PayloadRanges payload = {0};
+    PayloadRanges payload = {
+        .total_inodes = ext_fs_inodes_count(fs),
+    };
     if (ext_fs_foreach_inode(fs, collect_user_inode, &payload, error) != 0) {
         ext_range_free(&payload.ranges);
         return -1;
     }
     flush_payload_run(&payload);
+    report_progress(&payload, payload.total_inodes);
     ext_range_sort_merge(&payload.ranges);
 
-    bool first = true;
-    bool in_run = false;
-    uint64_t run_start = 0U;
-    size_t payload_index = 0U;
-    uint64_t total_blocks = ext_fs_blocks_count(fs);
-    uint64_t first_data = ext_fs_first_data_block(fs);
+    AllocatedRanges allocated = {0};
+    const uint64_t first_data = ext_fs_first_data_block(fs);
+    if (first_data != 0U)
+        ext_range_push(&allocated.ranges, 0U, first_data);
+    if (ext_fs_foreach_block_run(fs, collect_allocated_run,
+                                 &allocated, error) != 0) {
+        ext_range_free(&payload.ranges);
+        ext_range_free(&allocated.ranges);
+        return -1;
+    }
+    ext_range_sort_merge(&allocated.ranges);
 
+    bool first = true;
+    size_t payload_index = 0U;
     (void)putchar('[');
-    for (uint64_t block = 0U; block < total_blocks; ++block) {
-        bool allocated = block < first_data;
-        if (!allocated &&
-            ext_fs_block_allocated(fs, block, &allocated, error) != 0) {
-            ext_range_free(&payload.ranges);
-            return -1;
+    for (size_t allocated_index = 0U;
+         allocated_index < allocated.ranges.count; ++allocated_index) {
+        const ExtRange span = allocated.ranges.items[allocated_index];
+        uint64_t cursor = span.start;
+        while (payload_index < payload.ranges.count &&
+               payload.ranges.items[payload_index].end <= cursor)
+            payload_index++;
+        size_t check = payload_index;
+        while (check < payload.ranges.count &&
+               payload.ranges.items[check].start < span.end) {
+            const ExtRange used = payload.ranges.items[check];
+            if (used.start > cursor)
+                emit_range(&first, cursor,
+                           used.start < span.end ? used.start : span.end);
+            if (used.end > cursor) cursor = used.end;
+            if (cursor >= span.end) break;
+            check++;
         }
-        bool marked = allocated &&
-            !payload_contains(&payload.ranges, &payload_index, block);
-        if (marked && !in_run) {
-            run_start = block;
-            in_run = true;
-        }
-        if (in_run && (!marked || block + 1U == total_blocks)) {
-            uint64_t run_end = marked ? block + 1U : block;
-            if (!first) (void)putchar(',');
-            first = false;
-            (void)printf("[%" PRIu64 ",%" PRIu64 "]", run_start, run_end);
-            in_run = false;
-        }
+        if (cursor < span.end)
+            emit_range(&first, cursor, span.end);
     }
     (void)putchar(']');
     ext_range_free(&payload.ranges);
+    ext_range_free(&allocated.ranges);
     return 0;
 }
 
