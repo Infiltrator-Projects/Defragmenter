@@ -53,15 +53,10 @@ int main()
     CHECK(!volume.readonly);
     CHECK(!volume.verified);
 
-    /*
-     * Supported idle operations remain clickable even before qualification.
-     * Clicking is allowed to explain why an operation cannot proceed; the
-     * mutation builder remains the fail-closed authority for actual writes.
-     */
     auto controls = defragger::desktop_controls(&volume, false, false, false);
     CHECK(controls.analyse);
-    CHECK(controls.defrag);
-    CHECK(controls.growth_defrag);
+    CHECK(!controls.defrag);
+    CHECK(!controls.growth_defrag);
     CHECK(!controls.recover);
     CHECK(!controls.stop);
 
@@ -70,6 +65,17 @@ int main()
     CHECK(!volume.exact_analysis);
     CHECK(!volume.defrag_qualified);
     CHECK(!volume.growth_qualified);
+
+    /*
+     * Once native identity has been proved for a writable offline target,
+     * supported operations remain clickable even before writer qualification.
+     * The mutation builder still owns fail-closed write authorisation.
+     */
+    controls = defragger::desktop_controls(&volume, false, false, false);
+    CHECK(controls.analyse);
+    CHECK(controls.defrag);
+    CHECK(controls.growth_defrag);
+    CHECK(!controls.recover);
 
     volume.exact_analysis = true;
     volume.defrag_qualified = true;
@@ -97,8 +103,8 @@ int main()
     controls = defragger::desktop_controls(&volume, false, false, true);
     CHECK(controls.analyse);
     CHECK(controls.unmount);
-    CHECK(controls.defrag);
-    CHECK(controls.growth_defrag);
+    CHECK(!controls.defrag);
+    CHECK(!controls.growth_defrag);
     CHECK(!controls.recover);
 
     /* Test Media discovery labels are registry IDs/aliases, not a second catalogue. */
