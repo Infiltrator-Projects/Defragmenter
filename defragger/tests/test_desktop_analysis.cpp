@@ -96,6 +96,23 @@ int main()
     CHECK(!controls.growth_defrag);
     CHECK(!controls.recover);
 
+    /* Test Media discovery labels are registry IDs/aliases, not a second catalogue. */
+    const Json labelled = Json::parse(R"({
+        "blockdevices": [
+            {"path":"/dev/fat12","fstype":null,"partlabel":"LD_FAT12","size":1024,"ro":false,"mountpoints":[null]},
+            {"path":"/dev/ext2","fstype":null,"partlabel":"LD_EXT2","size":1024,"ro":false,"mountpoints":[null]},
+            {"path":"/dev/ofs","fstype":null,"partlabel":"LD_OFS","size":1024,"ro":false,"mountpoints":[null]},
+            {"path":"/dev/hfsplus","fstype":null,"partlabel":"LD_HFSPLUS","size":1024,"ro":false,"mountpoints":[null]},
+            {"path":"/dev/unknown","fstype":null,"partlabel":"LD_NOT_A_FILESYSTEM","size":1024,"ro":false,"mountpoints":[null]}
+        ]
+    })");
+    const auto labelled_volumes = defragger::desktop_discover(labelled);
+    CHECK(labelled_volumes.size() == 4U);
+    CHECK(labelled_volumes[0].filesystem == "fat12");
+    CHECK(labelled_volumes[1].filesystem == "ext2");
+    CHECK(labelled_volumes[2].filesystem == "ofs");
+    CHECK(labelled_volumes[3].filesystem == "hfsplus");
+
     /* The runtime registry, not GTK, remains the capability authority. */
     const auto* backend = defragger::backend_by_fstype("ntfs");
     CHECK(backend != nullptr);
