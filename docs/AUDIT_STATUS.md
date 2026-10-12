@@ -5,7 +5,7 @@ Status: **complete**
 Completed: 2026-10-13
 
 Applies to: audited source and release-governance baselines below
-Audited source commit: 1862b97bee9d237c32a41efcd94b7873ccb21017
+Audited source commit: f9457febe3ef3b9210916ac5ea9557aaa57a31f5
 Audited release-governance commit: b03aa5d0bed56c416b195c776fe4dd85f19e9fc9
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
@@ -39,4 +39,4 @@ The repository uses the `direct-main` development model. The active `protected-m
 
 Ordinary main commits never publish. A change to `defragger/VERSION` on protected `main` is the explicit release decision; commit-message wording is not part of the control plane. The exact head must pass the self-hosted full-suite and ASan/UBSan lanes. Release artefacts are built once by that qualified head and publication can only publish or resume those exact SHA-bound artefacts after checksum, audit-baseline and protected-history verification.
 
-GitHub release correctness is independent of downstream APT propagation. Publication succeeds only after the GitHub release and asset digests are exact; the public APT visibility check is observational and retryable, so repository/CDN delay cannot invalidate an otherwise verified immutable release.
+GitHub release correctness is independent of downstream APT propagation. Publication succeeds only after the GitHub release and asset digests are exact; the public APT visibility check is observational and retryable, so repository/CDN delay cannot invalidate an otherwise verified immutable GitHub release.
