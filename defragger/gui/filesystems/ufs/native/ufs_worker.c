@@ -244,8 +244,8 @@ static int print_exact_map(const char *path, uint64_t requested_cells)
         "\"filesystem\":\"ufs\",\"map_accuracy\":\"exact\","
         "\"unit_size\":%u,\"total_units\":%llu,\"cell_count\":%llu,"
         "\"total_bytes\":%llu,\"filesystem_bytes\":%llu,"
-        "\"free_bytes\":%llu,\"used_bytes\":%llu,\"unknown_bytes\":%llu,"
-        "\"regular_files\":%llu,\"directories\":%llu,"
+        "\"free_bytes\":%llu,\"used_bytes\":%llu,\"unknown_bytes\":0,"
+        "\"outside_bytes\":%llu,\"regular_files\":%llu,\"directories\":%llu,"
         "\"fragmented_files\":%llu,\"fragmented_directories\":%llu,"
         "\"cells\":[",
         summary->fragment_size,
@@ -266,7 +266,8 @@ static int print_exact_map(const char *path, uint64_t requested_cells)
         if (index != 0U) (void)putchar(',');
         (void)printf(
             "{\"start\":%llu,\"end\":%llu,\"free\":%llu,\"used\":%llu,"
-            "\"unknown\":%llu,\"bad\":0,\"fragmented\":%llu,\"directory\":%llu}",
+            "\"unknown\":0,\"outside\":%llu,\"bad\":0,"
+            "\"fragmented\":%llu,\"directory\":%llu}",
             (unsigned long long)cells[index].start,
             (unsigned long long)cells[index].end,
             (unsigned long long)cells[index].free_count,
