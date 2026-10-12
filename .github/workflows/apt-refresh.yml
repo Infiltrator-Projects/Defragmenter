@@ -38,10 +38,18 @@ jobs:
       REQUESTED_VERSION: ${{ inputs.version }}
       REQUESTED_SHA: ${{ inputs.release_sha }}
     steps:
-      - name: Provision self-hosted publication dependencies
+      - name: Probe self-hosted publication dependencies
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y curl jq
+          set -euo pipefail
+          command -v curl >/dev/null 2>&1 || {
+            echo 'Self-hosted APT runner is missing curl.' >&2
+            exit 1
+          }
+          command -v jq >/dev/null 2>&1 || {
+            echo 'Self-hosted APT runner is missing jq.' >&2
+            exit 1
+          }
 
       - name: Resolve immutable release identity
         env:
