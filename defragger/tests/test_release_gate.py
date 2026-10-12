@@ -98,7 +98,7 @@ def main() -> None:
         "Wait until the exact release is live in APT",
         "catalogue/apps.json",
         "dists/beta/main/binary-amd64/Packages.gz",
-        "Central APT repository did not advertise",
+        "central APT repository did not advertise",
         label="release workflow",
     )
     trigger_block = release.split("permissions:", 1)[0]
