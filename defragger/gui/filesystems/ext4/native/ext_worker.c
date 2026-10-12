@@ -141,7 +141,7 @@ static int parse_u64(const char *text, uint64_t *value) {
 static int journal_load(const char *path, ExtJournal *state, char **error) {
     memset(state, 0, sizeof(*state));
     FILE *file = fopen(path, "r");
-    if (file == NULL) { ext_set_error(error, "cannot open EXT recovery journal: %s", strerror(errno)); return -1; }
+    if (file == NULL) { ext_set_error(error, "cannot open EXT recovery journal: %s", path, strerror(errno)); return -1; }
     char *line = NULL; size_t capacity = 0;
     if (getline(&line, &capacity, file) < 0) goto invalid;
     infiltratr_trim_line_end(line);
@@ -527,17 +527,25 @@ static int analyse_json(const char *path, char **error) {
     ExtGeometry geometry; ExtCatalogue catalogue;
     if (ext_scan_catalogue(path, &geometry, &catalogue, error) != 0)
         return -1;
+    const bool mounted = ld_path_is_mounted(path);
     char uuid[33]; uuid_hex(geometry.uuid, uuid);
     printf("{\"filesystem\":\"%s\",\"block_size\":%u,\"total_blocks\":%" PRIu64
            ",\"physical_blocks\":%" PRIu64 ",\"free_blocks\":%" PRIu64
            ",\"uuid\":\"%s\",\"regular_files\":%" PRIu64
            ",\"directories\":%" PRIu64 ",\"fragmented_files\":%" PRIu64
            ",\"fragmented_directories\":%" PRIu64 ",\"inodes_scanned\":%" PRIu64
-           ",\"malformed_inodes\":%" PRIu64 ",\"growth_10_satisfied\":%s,\"free_ranges\":",
+           ",\"malformed_inodes\":%" PRIu64 ",\"growth_10_satisfied\":%s",
            geometry.filesystem, geometry.block_size, geometry.total_blocks, geometry.physical_blocks,
            geometry.free_blocks, uuid, catalogue.regular_files, catalogue.directories,
            catalogue.fragmented_files, catalogue.fragmented_directories, catalogue.inodes_scanned,
            catalogue.malformed_inodes, catalogue.growth_10_satisfied ? "true" : "false");
+    if (mounted) {
+        fputs(",\"defrag_qualified\":false,\"growth_qualified\":false"
+              ",\"defrag_reason\":\"Unmount the filesystem before Defragment qualification.\""
+              ",\"growth_reason\":\"Unmount the filesystem before Growth Defrag qualification.\"",
+              stdout);
+    }
+    fputs(",\"free_ranges\":", stdout);
     emit_ranges(&catalogue.free_ranges); fputs(",\"fragmented_ranges\":", stdout);
     emit_ranges(&catalogue.fragmented_ranges); fputs(",\"directory_ranges\":", stdout);
     emit_ranges(&catalogue.directory_ranges);
