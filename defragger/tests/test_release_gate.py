@@ -4,7 +4,8 @@
 
 from __future__ import annotations
 
-import ast
+import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -24,7 +25,6 @@ def main() -> None:
     cmake = (PROJECT_ROOT / "cmake" / "project.cmake").read_text(encoding="utf-8")
     design = (REPO_ROOT / "docs" / "DESIGN.md").read_text(encoding="utf-8")
     audit = (REPO_ROOT / "docs" / "AUDIT_STATUS.md").read_text(encoding="utf-8")
-    architecture = (PROJECT_ROOT / "tests" / "test_architecture.py").read_text(encoding="utf-8")
     version = (PROJECT_ROOT / "VERSION").read_text(encoding="utf-8").strip()
     gitignore = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
 
@@ -348,23 +348,41 @@ def main() -> None:
         f"baseline {governance_commit}"
     )
 
-    writer_assignment = None
-    for node in ast.parse(architecture).body:
-        if isinstance(node, ast.Assign) and any(
-            isinstance(target, ast.Name) and target.id == "NATIVE_WRITERS"
-            for target in node.targets
-        ):
-            writer_assignment = ast.literal_eval(node.value)
-            break
-    assert isinstance(writer_assignment, dict), (
-        "cannot determine authoritative native writer set from architecture test"
+    # The runtime registry is the sole capability authority.  Do not recover
+    # writer scope by parsing implementation details from another test file:
+    # that reintroduces exactly the coupling this architecture is designed to
+    # eliminate.
+    build_dir = Path(
+        os.environ.get("LINUX_DEFRAGGER_BUILD_DIR", PROJECT_ROOT / "build")
     )
+    engine = build_dir / "linux-defragger-operation-engine"
+    assert engine.is_file(), f"native operation engine is unavailable: {engine}"
+    manifest = json.loads(
+        subprocess.check_output([str(engine), "--list-plugins"], text=True)
+    )
+    assert isinstance(manifest, dict) and manifest.get("schema") == 3, (
+        "native operation registry returned an invalid manifest"
+    )
+    backends = manifest.get("backends")
+    assert isinstance(backends, list), "native operation registry lost backends"
+    expected_writer_ids: set[str] = set()
+    seen_backend_ids: set[str] = set()
+    for backend in backends:
+        assert isinstance(backend, dict), "native operation registry contains a non-object backend"
+        backend_id = backend.get("id")
+        operations = backend.get("operations")
+        assert isinstance(backend_id, str) and backend_id, "native backend lost its id"
+        assert backend_id not in seen_backend_ids, f"duplicate native backend id: {backend_id}"
+        seen_backend_ids.add(backend_id)
+        assert isinstance(operations, list), f"native backend {backend_id} lost operations"
+        if operations:
+            expected_writer_ids.add(backend_id)
+
     match = re.search(r"^Audited writer IDs:\s*(.+)$", audit, re.MULTILINE)
     assert match is not None, "completed safety audit lost Audited writer IDs"
     audited_writer_ids = {
         item.strip() for item in match.group(1).split(",") if item.strip()
     }
-    expected_writer_ids = set(writer_assignment)
     assert audited_writer_ids == expected_writer_ids, (
         "safety audit writer scope does not match enabled native writers: "
         f"audited={sorted(audited_writer_ids)} enabled={sorted(expected_writer_ids)}"
