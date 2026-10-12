@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: quality-gate-v5-${{ github.ref }}
+  group: quality-gate-v6-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -31,14 +31,9 @@ jobs:
           fetch-depth: 0
           submodules: false
 
-      - name: Check out pinned Infiltratr Common
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          repository: Infiltrator-Projects/Infiltrator-Libraries
-          ref: 7070c5812b50821fd7580101cb2289a3184f6b2c
-          path: defragger/shared/infiltratr-common
-          fetch-depth: 1
-          submodules: false
+      - name: Materialize pinned Infiltratr Common gitlink
+        shell: bash
+        run: git -C "$GITHUB_WORKSPACE" submodule update --init --depth 1 -- defragger/shared/infiltratr-common
 
       - name: Provide Node.js for the pinned Python type checker
         uses: actions/setup-node@v4
@@ -147,14 +142,9 @@ jobs:
           fetch-depth: 0
           submodules: false
 
-      - name: Check out pinned Infiltratr Common
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          repository: Infiltrator-Projects/Infiltrator-Libraries
-          ref: 7070c5812b50821fd7580101cb2289a3184f6b2c
-          path: defragger/shared/infiltratr-common
-          fetch-depth: 1
-          submodules: false
+      - name: Materialize pinned Infiltratr Common gitlink
+        shell: bash
+        run: git -C "$GITHUB_WORKSPACE" submodule update --init --depth 1 -- defragger/shared/infiltratr-common
 
       - name: Verify self-hosted sanitizer runner contract
         run: ./ci/preflight.sh sanitizers

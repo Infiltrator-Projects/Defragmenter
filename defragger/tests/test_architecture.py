@@ -191,8 +191,12 @@ def test_common_is_a_versioned_dependency_not_copied_source() -> None:
     common = ROOT / "shared" / "infiltratr-common"
     assert common.is_dir()
     assert _read(common / "VERSION").strip() == "1.19.38"
-    gitmodules = _read(ROOT / ".gitmodules")
-    assert "shared/infiltratr-common" in gitmodules
+
+    # One repository-level declaration owns the gitlink. Do not mirror
+    # .gitmodules inside the application directory.
+    assert not (ROOT / ".gitmodules").exists()
+    gitmodules = _read(ROOT.parent / ".gitmodules")
+    assert "defragger/shared/infiltratr-common" in gitmodules
     assert "Infiltrator-Libraries.git" in gitmodules
 
     cmake = _cmake_source()

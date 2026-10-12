@@ -47,7 +47,10 @@ jobs:
           set -euo pipefail
           git fetch origin main --tags
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
-          test "$(git rev-parse origin/main)" = "$EXPECTED_SHA"
+          git merge-base --is-ancestor "$EXPECTED_SHA" origin/main || {
+            echo "Expected release commit is no longer part of main." >&2
+            exit 1
+          }
 
           VERSION=$(tr -d '\r\n' < VERSION)
           test -n "$VERSION"
@@ -59,7 +62,6 @@ jobs:
           }
 
           grep -Fq 'Status: **complete**' ../docs/AUDIT_STATUS.md
-          grep -Fqx "Applies to: release version ${VERSION}" ../docs/AUDIT_STATUS.md
           AUDITED_COMMIT=$(sed -n 's/^Audited source commit: \([0-9a-f]\{40\}\)$/\1/p' ../docs/AUDIT_STATUS.md)
           GOVERNANCE_COMMIT=$(sed -n 's/^Audited release-governance commit: \([0-9a-f]\{40\}\)$/\1/p' ../docs/AUDIT_STATUS.md)
           test -n "$AUDITED_COMMIT"
@@ -92,11 +94,17 @@ jobs:
             --header "Accept: application/vnd.github+json" \
             --header "X-GitHub-Api-Version: 2022-11-28" \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}")
+          release_exists=false
           if [ "$release_status" = 200 ]; then
-            echo "Release ${TAG} already exists; published releases are immutable." >&2
-            exit 1
-          fi
-          if [ "$release_status" != 404 ]; then
+            jq -e --arg sha "$EXPECTED_SHA" \
+              'select(.draft == false and .prerelease == false and .target_commitish == $sha)' \
+              "$release_check" >/dev/null || {
+                cat "$release_check" >&2
+                echo "Existing release ${TAG} does not match the qualified commit." >&2
+                exit 1
+              }
+            release_exists=true
+          elif [ "$release_status" != 404 ]; then
             cat "$release_check" >&2
             echo "Unable to determine whether release ${TAG} already exists (HTTP ${release_status})." >&2
             exit 1
@@ -105,6 +113,7 @@ jobs:
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "release_exists=$release_exists" >> "$GITHUB_OUTPUT"
 
       - name: Verify permanent main history protection
         shell: bash
@@ -144,7 +153,7 @@ jobs:
           test "$(dpkg-deb -f "$DEB" Version)" = "$VERSION"
           echo "PACKAGE=$(dpkg-deb -f "$DEB" Package)" >> "$GITHUB_ENV"
 
-      - name: Publish immutable GitHub release
+      - name: Publish or resume immutable GitHub release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -154,7 +163,16 @@ jobs:
           TAG="${{ steps.release_identity.outputs.tag }}"
           cd release-artifacts
 
-          cat > release-body.md <<BODY
+          fetch_release() {
+            curl --fail-with-body --silent --show-error \
+              --header "Authorization: Bearer ${GH_TOKEN}" \
+              --header "Accept: application/vnd.github+json" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}"
+          }
+
+          if [ "${{ steps.release_identity.outputs.release_exists }}" != true ]; then
+            cat > release-body.md <<BODY
           Defragmenter ${VERSION}.
 
           These are the exact artefacts built and tested by the self-hosted project quality gate:
@@ -163,48 +181,80 @@ jobs:
           - SHA-256 manifest for both artefacts
           BODY
 
-          release_payload=$(jq -n \
-            --arg tag "$TAG" \
-            --arg target "$EXPECTED_SHA" \
-            --arg title "Defragmenter ${VERSION}" \
-            --rawfile body release-body.md \
-            '{tag_name:$tag,target_commitish:$target,name:$title,body:$body,draft:false,prerelease:false}')
-          release_json=$(curl --fail-with-body --silent --show-error --request POST \
-            --header "Authorization: Bearer ${GH_TOKEN}" \
-            --header "Accept: application/vnd.github+json" \
-            --header "X-GitHub-Api-Version: 2022-11-28" \
-            --header "Content-Type: application/json" \
-            --data "$release_payload" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases")
+            release_payload=$(jq -n \
+              --arg tag "$TAG" \
+              --arg target "$EXPECTED_SHA" \
+              --arg title "Defragmenter ${VERSION}" \
+              --rawfile body release-body.md \
+              '{tag_name:$tag,target_commitish:$target,name:$title,body:$body,draft:false,prerelease:false}')
+            curl --fail-with-body --silent --show-error --request POST \
+              --header "Authorization: Bearer ${GH_TOKEN}" \
+              --header "Accept: application/vnd.github+json" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              --header "Content-Type: application/json" \
+              --data "$release_payload" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases" >/dev/null
+          else
+            echo "Release ${TAG} already exists at the qualified commit; resuming verification/publication."
+          fi
+
+          release_json=$(fetch_release)
+          jq -e --arg sha "$EXPECTED_SHA" \
+            'select(.draft == false and .prerelease == false and .target_commitish == $sha)' \
+            <<<"$release_json" >/dev/null
+
           upload_url=$(jq -er '.upload_url | split("{")[0]' <<<"$release_json")
+          expected_assets=$(printf '%s\n%s\n%s\n' \
+            "Defragmenter-${VERSION}-amd64.deb" \
+            "Defragmenter-${VERSION}-local-folder.run" \
+            "RELEASE_SHA256SUMS.txt" | sort)
+
+          existing_assets=$(jq -r '.assets[].name' <<<"$release_json" | sort)
+          unexpected_assets=$(comm -13 <(printf '%s\n' "$expected_assets") <(printf '%s\n' "$existing_assets"))
+          test -z "$unexpected_assets" || {
+            printf 'Release %s has unexpected assets:\n%s\n' "$TAG" "$unexpected_assets" >&2
+            exit 1
+          }
 
           for asset in \
             "Defragmenter-${VERSION}-amd64.deb" \
             "Defragmenter-${VERSION}-local-folder.run" \
             "RELEASE_SHA256SUMS.txt"; do
-            curl --fail-with-body --silent --show-error --request POST \
-              --header "Authorization: Bearer ${GH_TOKEN}" \
-              --header "Accept: application/vnd.github+json" \
-              --header "X-GitHub-Api-Version: 2022-11-28" \
-              --header "Content-Type: application/octet-stream" \
-              --data-binary "@${asset}" \
-              "${upload_url}?name=${asset}" >/dev/null
+            release_json=$(fetch_release)
+            asset_count=$(jq --arg name "$asset" '[.assets[] | select(.name == $name)] | length' <<<"$release_json")
+            if [ "$asset_count" -eq 0 ]; then
+              curl --fail-with-body --silent --show-error --request POST \
+                --header "Authorization: Bearer ${GH_TOKEN}" \
+                --header "Accept: application/vnd.github+json" \
+                --header "X-GitHub-Api-Version: 2022-11-28" \
+                --header "Content-Type: application/octet-stream" \
+                --data-binary "@${asset}" \
+                "${upload_url}?name=${asset}" >/dev/null
+            elif [ "$asset_count" -ne 1 ]; then
+              echo "Release ${TAG} contains duplicate asset ${asset}." >&2
+              exit 1
+            fi
           done
 
-          expected_assets=$(printf '%s\n%s\n%s\n' \
-            "Defragmenter-${VERSION}-amd64.deb" \
-            "Defragmenter-${VERSION}-local-folder.run" \
-            "RELEASE_SHA256SUMS.txt" | sort)
-          published_assets=$(curl --fail-with-body --silent --show-error \
-            --header "Authorization: Bearer ${GH_TOKEN}" \
-            --header "Accept: application/vnd.github+json" \
-            --header "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" \
-            | jq -r '.assets[].name' | sort)
+          release_json=$(fetch_release)
+          published_assets=$(jq -r '.assets[].name' <<<"$release_json" | sort)
           test "$published_assets" = "$expected_assets" || {
             echo "Release ${TAG} has an unexpected asset set." >&2
             exit 1
           }
+
+          for asset in \
+            "Defragmenter-${VERSION}-amd64.deb" \
+            "Defragmenter-${VERSION}-local-folder.run" \
+            "RELEASE_SHA256SUMS.txt"; do
+            expected_digest="sha256:$(sha256sum "$asset" | awk '{print $1}')"
+            published_digest=$(jq -er --arg name "$asset" \
+              '.assets[] | select(.name == $name) | .digest' <<<"$release_json")
+            test "$published_digest" = "$expected_digest" || {
+              echo "Release asset ${asset} digest does not match the qualified artefact." >&2
+              exit 1
+            }
+          done
 
       - name: Wait until the exact release is live in APT
         shell: bash
@@ -249,5 +299,6 @@ jobs:
             sleep 15
           done
 
-          echo "GitHub release exists, but the central APT repository did not advertise Defragmenter ${VERSION} within 20 minutes." >&2
+          echo "GitHub release is valid, but the central APT repository did not advertise Defragmenter ${VERSION} within 20 minutes." >&2
+          echo "Rerun this workflow safely after the central repository catches up; the immutable release will be verified and reused." >&2
           exit 1

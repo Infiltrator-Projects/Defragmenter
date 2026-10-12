@@ -1,5 +1,0 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Project-local mirror of the repository submodule declaration.
-[submodule "defragger/shared/infiltratr-common"]
-	path = defragger/shared/infiltratr-common
-	url = https://github.com/Infiltrator-Projects/Infiltrator-Libraries.git

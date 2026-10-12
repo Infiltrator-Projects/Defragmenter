@@ -18,6 +18,12 @@ def require(text: str, *needles: str, label: str) -> None:
         assert needle in text, f"{label} lost required contract: {needle}"
 
 
+def _cmake_value(cmake: str, name: str) -> str:
+    match = re.search(rf'{re.escape(name)}\s+"([^"]+)"', cmake)
+    assert match is not None, f"CMake lost {name}"
+    return match.group(1)
+
+
 def main() -> None:
     gate = (WORKFLOWS / "quality-gate.yml").read_text(encoding="utf-8")
     release = (WORKFLOWS / "release.yml").read_text(encoding="utf-8")
@@ -27,10 +33,9 @@ def main() -> None:
     cmake = (PROJECT_ROOT / "cmake" / "project.cmake").read_text(encoding="utf-8")
     design = (REPO_ROOT / "docs" / "DESIGN.md").read_text(encoding="utf-8")
     audit = (REPO_ROOT / "docs" / "AUDIT_STATUS.md").read_text(encoding="utf-8")
-    version = (PROJECT_ROOT / "VERSION").read_text(encoding="utf-8").strip()
     gitignore = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
 
-    # There is exactly one permanent Linux qualification workflow and one release workflow.
+    # There is one permanent Linux qualification workflow and one publication workflow.
     assert not (WORKFLOWS / "local-quality.yml").exists(), "duplicate local quality workflow must stay retired"
     assert not (WORKFLOWS / "apt-refresh.yml").exists(), "fake asynchronous APT refresh workflow must stay retired"
 
@@ -40,6 +45,8 @@ def main() -> None:
         "workflow_call:",
         "push:",
         "- main",
+        "Materialize pinned Infiltratr Common gitlink",
+        "submodule update --init --depth 1",
         "./ci/preflight.sh quality",
         "./ci/preflight.sh sanitizers",
         "LD_ENABLE_WERROR=ON",
@@ -65,6 +72,7 @@ def main() -> None:
     assert "runs-on: ubuntu" not in gate
     assert "pull_request:" not in gate
     assert "merge_group:" not in gate
+    assert "repository: Infiltrator-Projects/Infiltrator-Libraries" not in gate
     assert gate.count("-E linux-defragger-tests") == 1, "only sanitizers may exclude the recursive aggregate harness"
 
     require(
@@ -89,16 +97,19 @@ def main() -> None:
         "Audited release-governance commit:",
         'git diff --quiet "$AUDITED_COMMIT" HEAD',
         'git diff --quiet "$GOVERNANCE_COMMIT" HEAD',
+        'git merge-base --is-ancestor "$EXPECTED_SHA" origin/main',
         "Verify permanent main history protection",
         "required_linear_history",
         "actions/download-artifact@v4",
         "defragmenter-release-${{ inputs.expected_sha }}",
         "sha256sum -c RELEASE_SHA256SUMS.txt",
-        "Publish immutable GitHub release",
+        "Publish or resume immutable GitHub release",
+        "release_exists",
+        ".digest",
         "Wait until the exact release is live in APT",
         "catalogue/apps.json",
         "dists/beta/main/binary-amd64/Packages.gz",
-        "central APT repository did not advertise",
+        "Rerun this workflow safely",
         label="release workflow",
     )
     trigger_block = release.split("permissions:", 1)[0]
@@ -111,6 +122,8 @@ def main() -> None:
     assert "runs-on: ubuntu" not in release
     assert "gh release" not in release, "release publication must not depend on the GitHub CLI"
     assert "apt-refresh.yml" not in release
+    assert 'test "$(git rev-parse origin/main)" = "$EXPECTED_SHA"' not in release
+    assert "already exists; published releases are immutable" not in release
 
     require(
         cmake,
@@ -140,16 +153,10 @@ def main() -> None:
     assert "__pycache__/" in gitignore
     assert "*.py[cod]" in gitignore
 
-    # The pinned Common checkout, committed gitlink, CMake and local installer must agree.
-    expected_common = re.search(r'INFILTRATR_COMMON_EXPECTED_COMMIT\s+"([0-9a-f]{40})"', cmake)
-    assert expected_common is not None, "CMake lost the exact Common commit"
-    workflow_common = re.search(
-        r"- name: Check out pinned Infiltratr Common.*?ref:\s*([0-9a-f]{40})",
-        gate,
-        re.DOTALL,
-    )
-    assert workflow_common is not None, "quality gate lost the exact Common checkout"
-    assert workflow_common.group(1) == expected_common.group(1)
+    # The committed gitlink, CMake contract and local installer must agree.
+    common_tag = _cmake_value(cmake, "INFILTRATR_COMMON_TAG")
+    common_version = _cmake_value(cmake, "INFILTRATR_COMMON_EXPECTED_VERSION")
+    common_commit = _cmake_value(cmake, "INFILTRATR_COMMON_EXPECTED_COMMIT")
 
     gitlinks: dict[str, str] = {}
     for entry in subprocess.check_output(
@@ -159,26 +166,27 @@ def main() -> None:
         mode, _kind, sha = metadata.split()
         if mode == "160000":
             gitlinks[path] = sha
-    assert gitlinks == {"defragger/shared/infiltratr-common": expected_common.group(1)}
+    assert gitlinks == {"defragger/shared/infiltratr-common": common_commit}
 
-    common_contract = (
-        ('COMMON_TAG="v1.19.38"', 'INFILTRATR_COMMON_TAG "v1.19.38"'),
-        ('COMMON_VERSION="1.19.38"', 'INFILTRATR_COMMON_EXPECTED_VERSION "1.19.38"'),
-        (
-            'COMMON_COMMIT="7070c5812b50821fd7580101cb2289a3184f6b2c"',
-            '7070c5812b50821fd7580101cb2289a3184f6b2c',
-        ),
+    require(
+        local_run,
+        f'COMMON_TAG="{common_tag}"',
+        f'COMMON_VERSION="{common_version}"',
+        f'COMMON_COMMIT="{common_commit}"',
+        label="local Common contract",
     )
-    for installer_required, cmake_required in common_contract:
-        assert installer_required in local_run
-        assert cmake_required in cmake
-    assert "Infiltratr Common 1.19.38" in design
-    assert "7070c5812b50821fd7580101cb2289a3184f6b2c" in design
+    assert f"Infiltratr Common {common_version}" in design
+    assert common_commit in design
 
-    # The safety audit remains tied to an exact source baseline.
+    # The safety audit remains tied to exact source/governance baselines rather
+    # than to a package version. Version-only release commits must not require a
+    # fake re-audit when the audited code and governance have not changed.
     require(
         audit,
         "Status: **complete**",
+        "Audited source commit:",
+        "Audited release-governance commit:",
+        "audited source and release-governance baselines",
         "FAT12/FAT16/FAT32",
         "EXT2/EXT3/EXT4",
         "NTFS",
@@ -197,7 +205,7 @@ def main() -> None:
         "explicit release decision",
         label="completed safety audit",
     )
-    assert f"Applies to: release version {version}" in audit
+    assert "Applies to: release version" not in audit
 
     audited_commit_match = re.search(r"^Audited source commit:\s*([0-9a-f]{40})$", audit, re.MULTILINE)
     assert audited_commit_match is not None
@@ -228,7 +236,7 @@ def main() -> None:
     subprocess.run(["git", "cat-file", "-e", f"{governance_commit}^{{commit}}"], cwd=REPO_ROOT, check=True)
     subprocess.run(["git", "merge-base", "--is-ancestor", governance_commit, "HEAD"], cwd=REPO_ROOT, check=True)
 
-    # Governance can evolve on ordinary main commits. A release commit is the point
+    # Governance may evolve on ordinary main commits. A release commit is the point
     # at which the workflow baseline must already have been audited and frozen.
     subject = subprocess.check_output(["git", "log", "-1", "--format=%s"], cwd=REPO_ROOT, text=True).strip()
     if subject.startswith("Release "):
