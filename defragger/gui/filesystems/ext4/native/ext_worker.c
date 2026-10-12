@@ -141,7 +141,7 @@ static int parse_u64(const char *text, uint64_t *value) {
 static int journal_load(const char *path, ExtJournal *state, char **error) {
     memset(state, 0, sizeof(*state));
     FILE *file = fopen(path, "r");
-    if (file == NULL) { ext_set_error(error, "cannot open EXT recovery journal: %s", path, strerror(errno)); return -1; }
+    if (file == NULL) { ext_set_error(error, "cannot open EXT recovery journal %s: %s", path, strerror(errno)); return -1; }
     char *line = NULL; size_t capacity = 0;
     if (getline(&line, &capacity, file) < 0) goto invalid;
     infiltratr_trim_line_end(line);
