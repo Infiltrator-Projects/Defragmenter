@@ -28,6 +28,7 @@ def main() -> None:
     version = (PROJECT_ROOT / "VERSION").read_text(encoding="utf-8").strip()
     gitignore = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
 
+    self_hosted_lane = "runs-on: [self-hosted, Linux, X64, linux-native, bigbedroom]"
     for required in (
         "workflow_call:",
         "push:",
@@ -42,12 +43,12 @@ def main() -> None:
     assert "pull_request:" not in gate, "quality gate must not require PR branches"
     assert "merge_group:" not in gate, "quality gate must not require merge branches"
     assert '"c-first-*"' not in gate, "quality gate must run from main only"
-    assert "local-quality" not in gate, "home-runner qualification must not gate hosted release publication"
-    assert "runs-on: ubuntu-24.04" in gate, (
-        "primary release quality gate must run on GitHub-hosted Linux"
+    assert "local-quality" not in gate, "parallel local-quality workflow must not become a release dependency"
+    assert gate.count(self_hosted_lane) == 2, (
+        "both permanent release quality lanes must run on the self-hosted Linux fleet"
     )
-    assert "runs-on: [self-hosted, Linux, X64, linux-native, bigbedroom]" not in gate, (
-        "primary release quality gate must not depend on the optional home runner"
+    assert "runs-on: ubuntu-24.04" not in gate, (
+        "release qualification must not consume GitHub-hosted Linux runners"
     )
     for required in (
         "publish-release:",
@@ -61,7 +62,7 @@ def main() -> None:
     ):
         assert required in gate, f"qualified release handoff lost required contract: {required}"
     for required in (
-        "runs-on: [self-hosted, Linux, X64, linux-native, bigbedroom]",
+        self_hosted_lane,
         "Probe local qualification dependencies",
         "Local qualification cannot run because this runner is missing dependencies.",
         "xvfb-run Xvfb xauth npx",
@@ -129,6 +130,7 @@ def main() -> None:
         "legacy root release marker must not be part of the release contract"
     )
     for required in (
+        self_hosted_lane,
         "EXPECTED_SHA: ${{ inputs.expected_sha }}",
         "ref: ${{ inputs.expected_sha }}",
         "version: ${{ steps.release_identity.outputs.version }}",
@@ -159,6 +161,7 @@ def main() -> None:
         "release_sha: ${{ needs.release.outputs.release_sha }}",
     ):
         assert required in release, f"release workflow lost required contract: {required}"
+    assert "runs-on: ubuntu-24.04" not in release
     assert "quarantine-notice:" not in release
     assert "if: ${{ false }}" not in release
     assert "--clobber" not in release
@@ -171,6 +174,7 @@ def main() -> None:
         "APT publication must be directly called from the release workflow so release retries cannot lose the handoff"
     )
     for required in (
+        self_hosted_lane,
         "workflow_call:",
         "workflow_dispatch:",
         "version:",
@@ -183,6 +187,7 @@ def main() -> None:
         "Infiltrator-Repository will discover this immutable GitHub release on its own schedule.",
     ):
         assert required in apt_refresh, f"APT refresh workflow lost required contract: {required}"
+    assert "runs-on: ubuntu-24.04" not in apt_refresh
     assert "waiting for the repository safety refresh" not in apt_refresh
     assert "Central APT repository did not advertise" not in apt_refresh
     assert "secrets." not in apt_refresh
@@ -191,7 +196,8 @@ def main() -> None:
     assert "repository_dispatch" not in apt_refresh
 
     assert "LD_ENABLE_SANITIZERS=ON" in gate
-    assert "Hosted ASan / UBSan" in gate
+    assert "Self-hosted ASan / UBSan" in gate
+    assert "Hosted ASan / UBSan" not in gate
     assert "__pycache__/" in gitignore
     assert "*.py[cod]" in gitignore
 
