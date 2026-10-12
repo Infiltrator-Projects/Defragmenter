@@ -104,21 +104,19 @@ DesktopControls desktop_controls(const DesktopVolume* v, bool busy,
     out.analyse = true;
     out.unmount = v->mounted && !v->image;
     const auto* backend = backend_by_fstype(v->filesystem);
-    if (!backend) return out;
+    if (!backend || !v->verified || v->readonly || v->mounted) return out;
 
     /*
-     * Operation buttons are entry points, not the mutation authority.  Keep
-     * supported Defragment/Growth Defrag controls clickable while idle so a
-     * rejected exact layout, stale journal, mounted volume or missing analysis
-     * produces the precise desktop_mutation() explanation instead of a dead
-     * button.  The destructive path still re-checks every prerequisite before
-     * it can construct an operation-engine command.
+     * Once native identity has been proved and the target is writable and
+     * unmounted, operation controls are entry points rather than the mutation
+     * authority.  Keep supported Defragment/Growth Defrag controls clickable
+     * even when exact writer qualification rejected this layout or a journal
+     * needs recovery, so desktop_mutation() can report the precise reason
+     * instead of presenting an unexplained dead button.  The destructive path
+     * still re-checks every prerequisite before constructing an engine command.
      */
     out.defrag = operation_for(*backend, "defrag") != nullptr;
     out.growth_defrag = operation_for(*backend, "growth-defrag") != nullptr;
-
-    if (!v->verified || v->readonly || v->mounted) return out;
-    // Recovery remains actionable only when the durable journal exists.
     out.recover = journal_exists && operation_for(*backend, "recover");
     return out;
 }
