@@ -53,10 +53,15 @@ int main()
     CHECK(!volume.readonly);
     CHECK(!volume.verified);
 
+    /*
+     * Supported idle operations remain clickable even before qualification.
+     * Clicking is allowed to explain why an operation cannot proceed; the
+     * mutation builder remains the fail-closed authority for actual writes.
+     */
     auto controls = defragger::desktop_controls(&volume, false, false, false);
     CHECK(controls.analyse);
-    CHECK(!controls.defrag);
-    CHECK(!controls.growth_defrag);
+    CHECK(controls.defrag);
+    CHECK(controls.growth_defrag);
     CHECK(!controls.recover);
     CHECK(!controls.stop);
 
@@ -84,16 +89,16 @@ int main()
 
     controls = defragger::desktop_controls(&volume, false, false, true);
     CHECK(controls.analyse);
-    CHECK(!controls.defrag);
-    CHECK(!controls.growth_defrag);
+    CHECK(controls.defrag);
+    CHECK(controls.growth_defrag);
     CHECK(controls.recover);
 
     volume.mounted = true;
     controls = defragger::desktop_controls(&volume, false, false, true);
     CHECK(controls.analyse);
     CHECK(controls.unmount);
-    CHECK(!controls.defrag);
-    CHECK(!controls.growth_defrag);
+    CHECK(controls.defrag);
+    CHECK(controls.growth_defrag);
     CHECK(!controls.recover);
 
     /* Test Media discovery labels are registry IDs/aliases, not a second catalogue. */
