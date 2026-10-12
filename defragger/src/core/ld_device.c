@@ -37,7 +37,10 @@ static bool ld_add_related_device(LdRelatedDevice *devices, size_t *count,
         if (exact_mapping) devices[index].exact_mapping = true;
         return true;
     }
-    if (*count >= LD_MAX_RELATED_DEVICES) return false;
+    if (*count >= LD_MAX_RELATED_DEVICES) {
+        errno = EOVERFLOW;
+        return false;
+    }
     devices[*count] = (LdRelatedDevice){
         .value = value,
         .exact_mapping = exact_mapping,
@@ -66,55 +69,101 @@ static bool ld_parse_device_number(const char *text, dev_t *result) {
 
 static bool ld_read_sysfs_device(const char *path, dev_t *result) {
     char text[64];
-    return infiltratr_read_text_file(path, text, sizeof(text)) &&
-           ld_parse_device_number(text, result);
+    if (!infiltratr_read_text_file(path, text, sizeof(text))) return false;
+    if (!ld_parse_device_number(text, result)) {
+        errno = EIO;
+        return false;
+    }
+    return true;
 }
 
 static bool ld_resolve_sysfs_device(dev_t device, char *path, size_t size) {
     char link_path[PATH_MAX];
     int length = snprintf(link_path, sizeof(link_path), "/sys/dev/block/%u:%u",
                           major(device), minor(device));
-    if (length < 0 || (size_t)length >= sizeof(link_path)) return false;
+    if (length < 0) {
+        errno = EIO;
+        return false;
+    }
+    if ((size_t)length >= sizeof(link_path)) {
+        errno = ENAMETOOLONG;
+        return false;
+    }
     return infiltratr_realpath_copy(link_path, path, size);
 }
 
 static bool ld_collect_sysfs_directory(const char *path,
                                        LdRelatedDevice *devices,
-                                       size_t *count, bool exact_mapping) {
+                                       size_t *count, bool exact_mapping,
+                                       bool require_device_entries) {
     DIR *directory = opendir(path);
-    if (directory == NULL) return true;
-    struct dirent *entry = NULL;
-    bool complete = true;
-    while ((entry = readdir(directory)) != NULL) {
-        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) continue;
-        char device_path[PATH_MAX];
-        int length = snprintf(device_path, sizeof(device_path), "%s/%s/dev",
-                              path, entry->d_name);
-        if (length < 0 || (size_t)length >= sizeof(device_path)) {
-            complete = false;
+    if (directory == NULL) return false;
+
+    int failure = 0;
+    for (;;) {
+        errno = 0;
+        struct dirent *entry = readdir(directory);
+        if (entry == NULL) {
+            if (errno != 0) failure = errno;
             break;
         }
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, ".."))
+            continue;
+
+        char device_path[PATH_MAX];
+        const int length = snprintf(device_path, sizeof(device_path), "%s/%s/dev",
+                                    path, entry->d_name);
+        if (length < 0) {
+            failure = EIO;
+            break;
+        }
+        if ((size_t)length >= sizeof(device_path)) {
+            failure = ENAMETOOLONG;
+            break;
+        }
+
         dev_t related = 0;
-        if (ld_read_sysfs_device(device_path, &related) &&
-            !ld_add_related_device(devices, count, related, exact_mapping)) {
-            complete = false;
+        if (!ld_read_sysfs_device(device_path, &related)) {
+            if (require_device_entries) {
+                failure = errno == 0 ? EIO : errno;
+                break;
+            }
+            continue;
+        }
+        if (!ld_add_related_device(devices, count, related, exact_mapping)) {
+            failure = errno == 0 ? EOVERFLOW : errno;
             break;
         }
     }
-    closedir(directory);
-    return complete;
+
+    (void)closedir(directory);
+    if (failure != 0) {
+        errno = failure;
+        return false;
+    }
+    return true;
 }
 
 static bool ld_add_parent_device(const char *sysfs_path,
                                  LdRelatedDevice *devices, size_t *count) {
     char parent_path[PATH_MAX];
     int length = snprintf(parent_path, sizeof(parent_path), "%s", sysfs_path);
-    if (length < 0 || (size_t)length >= sizeof(parent_path)) return false;
+    if (length < 0) {
+        errno = EIO;
+        return false;
+    }
+    if ((size_t)length >= sizeof(parent_path)) {
+        errno = ENAMETOOLONG;
+        return false;
+    }
     char *separator = strrchr(parent_path, '/');
     if (separator == NULL) return true;
     *separator = '\0';
     size_t used = strlen(parent_path);
-    if (used + sizeof("/dev") > sizeof(parent_path)) return false;
+    if (used + sizeof("/dev") > sizeof(parent_path)) {
+        errno = ENAMETOOLONG;
+        return false;
+    }
     memcpy(parent_path + used, "/dev", sizeof("/dev"));
     dev_t parent = 0;
     if (ld_read_sysfs_device(parent_path, &parent) &&
@@ -137,7 +186,8 @@ static bool ld_collect_related_devices(dev_t target,
     for (size_t index = 0; index < *count; ++index) {
         char sysfs_path[PATH_MAX];
         if (!ld_resolve_sysfs_device(devices[index].value,
-                                     sysfs_path, sizeof(sysfs_path))) continue;
+                                     sysfs_path, sizeof(sysfs_path)))
+            return false;
 
         if (!devices[index].relations_scanned) {
             devices[index].relations_scanned = true;
@@ -148,15 +198,24 @@ static bool ld_collect_related_devices(dev_t target,
                 const char *name = relation == 0 ? "holders" : "slaves";
                 int length = snprintf(relation_path, sizeof(relation_path), "%s/%s",
                                       sysfs_path, name);
-                if (length < 0 || (size_t)length >= sizeof(relation_path)) return false;
-                if (!ld_collect_sysfs_directory(relation_path, devices, count, true))
+                if (length < 0) {
+                    errno = EIO;
+                    return false;
+                }
+                if ((size_t)length >= sizeof(relation_path)) {
+                    errno = ENAMETOOLONG;
+                    return false;
+                }
+                if (!ld_collect_sysfs_directory(relation_path, devices, count,
+                                                true, true))
                     return false;
             }
         }
 
         if (devices[index].exact_mapping && !devices[index].children_scanned) {
             devices[index].children_scanned = true;
-            if (!ld_collect_sysfs_directory(sysfs_path, devices, count, true))
+            if (!ld_collect_sysfs_directory(sysfs_path, devices, count,
+                                            true, false))
                 return false;
         }
     }
@@ -184,7 +243,7 @@ bool ld_device_number_is_mounted(dev_t device_number) {
     LdRelatedDevice related[LD_MAX_RELATED_DEVICES];
     size_t related_count = 0;
     if (!ld_collect_related_devices(device_number, related, &related_count))
-        ld_die("block-device topology is too large to validate safely");
+        ld_die_errno("validate block-device topology");
 
     FILE *file = fopen("/proc/self/mountinfo", "r");
     if (file == NULL) ld_die_errno("open /proc/self/mountinfo");
@@ -459,7 +518,7 @@ int ld_block_device_has_system_use(const char *path, bool *in_use) {
     LdRelatedDevice related[LD_MAX_RELATED_DEVICES];
     size_t related_count = 0U;
     if (!ld_collect_related_devices(target.st_rdev, related, &related_count)) {
-        errno = EOVERFLOW;
+        if (errno == 0) errno = EIO;
         return -1;
     }
 

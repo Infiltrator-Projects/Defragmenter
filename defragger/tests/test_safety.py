@@ -97,6 +97,23 @@ def test_root_owned_journal_namespace() -> None:
         else:
             os.environ["XDG_STATE_HOME"] = old_xdg
 
+
+def test_native_block_topology_fail_closed_contract() -> None:
+    source = (ROOT / "src" / "core" / "ld_device.c").read_text(encoding="utf-8")
+
+    # Raw-write safety must never interpret an unreadable sysfs relationship
+    # directory or unresolved related block node as proof that the target is
+    # unmounted.  These exact policy assertions prevent the fail-open form from
+    # silently returning during later topology refactors.
+    assert "if (directory == NULL) return false;" in source
+    assert "sysfs_path, sizeof(sysfs_path)))\n            return false;" in source
+    assert "true, true))\n                    return false;" in source
+    assert 'ld_die_errno("validate block-device topology")' in source
+    assert "if (errno == 0) errno = EIO;" in source
+    assert "if (directory == NULL) return true;" not in source
+    assert "sysfs_path, sizeof(sysfs_path))) continue;" not in source
+
+
 def test_native_privileged_helper_contract() -> None:
     source = (ROOT / "native" / "privileged_helper.cpp").read_text(encoding="utf-8")
     engine = (ROOT / "native" / "operation_engine.cpp").read_text(encoding="utf-8")
@@ -130,5 +147,6 @@ if __name__ == "__main__":
     test_block_topology()
     test_regular_image_mount_source()
     test_root_owned_journal_namespace()
+    test_native_block_topology_fail_closed_contract()
     test_native_privileged_helper_contract()
     print("mount-topology and native privileged-helper safety tests passed")
