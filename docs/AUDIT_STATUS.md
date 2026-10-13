@@ -5,8 +5,8 @@ Status: **complete**
 Completed: 2026-10-13
 
 Applies to: audited source and release-governance baselines below
-Audited source commit: 13e7f3ef44eb5ecc2f2ef4193b736a453d87779b
-Audited release-governance commit: a6b508415f7d005d1edfe8d566b58af823db7bf3
+Audited source commit: 4d5cddf77215cdd78096191c560b70b0c77d85ec
+Audited release-governance commit: 0262c995a8daac204e20fe3c1a201b96bce5844a
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
@@ -39,4 +39,4 @@ The repository uses the `direct-main` development model. The active `protected-m
 
 Ordinary main commits never publish. A change to `defragger/VERSION` on protected `main` is the explicit release decision; commit-message wording is not part of the control plane. The exact head must pass the self-hosted full-suite and ASan/UBSan lanes. Release artefacts are built once by that qualified head and publication can only publish or resume those exact SHA-bound artefacts after checksum, audit-baseline and protected-history verification.
 
-GitHub release correctness is independent of downstream APT propagation. Publication succeeds only after the GitHub release and asset digests are exact; the public APT visibility check is observational and retryable, so repository/CDN delay cannot invalidate an otherwise verified immutable GitHub release.
+GitHub release correctness is independent of downstream APT propagation. Publication succeeds only after the GitHub release and all three expected asset identities/digests are exact; the public APT visibility check is observational and retryable. The project publisher treats version identity as write-once and rejects tag, target or asset drift rather than relying on GitHub's separate platform-level immutable-release setting.
