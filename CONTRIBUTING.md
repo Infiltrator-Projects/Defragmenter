@@ -44,4 +44,4 @@ Comments should preserve information expensive to reconstruct: on-disk units, ow
 
 ## Repository discipline
 
-`main` is the authoritative development and release branch. Keep commits focused. Published tags/releases are immutable identities, and release publication is bound to the exact qualified commit.
+`main` is the authoritative development and release branch. Keep commits focused. Published version identities are write-once project contracts: do not move tags, retarget releases or replace qualified assets. Publication is bound to the exact qualified commit and verifies that contract before succeeding.
