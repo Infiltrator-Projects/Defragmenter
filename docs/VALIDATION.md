@@ -18,7 +18,7 @@ The project quality gate combines:
 - GUI/service and typed worker-protocol tests, plus C++ mapper contract checks and real-fixture parity against native filesystem analysis;
 - architecture/Common/release-contract tests;
 - AddressSanitizer and UndefinedBehaviorSanitizer qualification;
-- local-installer construction plus Debian packaging-contract/version checks from the exact tested source; the final `.deb` and release `.run` artifacts are rebuilt and revalidated by the release workflow from that same qualified commit.
+- local-installer construction plus Debian packaging-contract/version checks from the exact tested source; the final `.deb` and release `.run` artefacts are built and validated once by qualification, preserved as SHA-bound workflow artefacts, and handed unchanged to the publication workflow, which must not rebuild them.
 
 Automated checks cover ordinary behaviour, important boundaries, malformed/error cases and release/package contracts appropriate to the affected subsystem.
 
