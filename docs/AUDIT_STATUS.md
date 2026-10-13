@@ -5,8 +5,8 @@ Status: **complete**
 Completed: 2026-10-13
 
 Applies to: audited source and release-governance baselines below
-Audited source commit: 4d5cddf77215cdd78096191c560b70b0c77d85ec
-Audited release-governance commit: 0262c995a8daac204e20fe3c1a201b96bce5844a
+Audited source commit: 3f2afe2ab58d5b8276bcfd787a8cc2d77f5ca63f
+Audited release-governance commit: 3f2afe2ab58d5b8276bcfd787a8cc2d77f5ca63f
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
@@ -28,7 +28,7 @@ Write-capable engines are admitted only when the parser, placement model, durabl
 - **Classic Macintosh HFS** — exact allocation/catalog analysis plus bounded offline Defragment, Growth Defrag and Recover.
 - **HFS+/HFSX** — native staged transaction and Recover for the qualified clean/journal state.
 - **Minix v1/v2/v3** — exact native analysis plus recoverable Defragment, Growth Defrag and Recover.
-- **APFS** — exact checkpoint/spaceman/catalog analysis plus bounded offline Defragment, Growth Defrag and Recover for a **single active two-object checkpoint** qualified state.
+- **APFS** — exact checkpoint/spaceman/catalog analysis plus bounded offline Defragment, Growth Defrag and Recover for the qualified checkpoint state.
 - **UFS1/UFS2** — exact cylinder-group allocation and inode block-tree analysis plus bounded Defragment, Growth Defrag and durable Recover.
 
 ZFS/OpenZFS and Linux swap remain analysis-only by design.
