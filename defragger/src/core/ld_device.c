@@ -92,6 +92,34 @@ static bool ld_resolve_sysfs_device(dev_t device, char *path, size_t size) {
     return infiltratr_realpath_copy(link_path, path, size);
 }
 
+static bool ld_sysfs_is_partition(const char *sysfs_path, bool *is_partition) {
+    if (sysfs_path == NULL || is_partition == NULL) {
+        errno = EINVAL;
+        return false;
+    }
+    char path[PATH_MAX];
+    const int length = snprintf(path, sizeof(path), "%s/partition", sysfs_path);
+    if (length < 0) {
+        errno = EIO;
+        return false;
+    }
+    if ((size_t)length >= sizeof(path)) {
+        errno = ENAMETOOLONG;
+        return false;
+    }
+
+    struct stat status;
+    if (stat(path, &status) == 0) {
+        *is_partition = true;
+        return true;
+    }
+    if (errno == ENOENT) {
+        *is_partition = false;
+        return true;
+    }
+    return false;
+}
+
 static bool ld_collect_sysfs_directory(const char *path,
                                        LdRelatedDevice *devices,
                                        size_t *count, bool exact_mapping,
@@ -144,8 +172,12 @@ static bool ld_collect_sysfs_directory(const char *path,
     return true;
 }
 
-static bool ld_add_parent_device(const char *sysfs_path,
-                                 LdRelatedDevice *devices, size_t *count) {
+static bool ld_add_partition_parent_device(const char *sysfs_path,
+                                           bool is_partition,
+                                           LdRelatedDevice *devices,
+                                           size_t *count) {
+    if (!is_partition) return true;
+
     char parent_path[PATH_MAX];
     int length = snprintf(parent_path, sizeof(parent_path), "%s", sysfs_path);
     if (length < 0) {
@@ -157,18 +189,28 @@ static bool ld_add_parent_device(const char *sysfs_path,
         return false;
     }
     char *separator = strrchr(parent_path, '/');
-    if (separator == NULL) return true;
+    if (separator == NULL) {
+        errno = EIO;
+        return false;
+    }
     *separator = '\0';
-    size_t used = strlen(parent_path);
+    const size_t used = strlen(parent_path);
     if (used + sizeof("/dev") > sizeof(parent_path)) {
         errno = ENAMETOOLONG;
         return false;
     }
     memcpy(parent_path + used, "/dev", sizeof("/dev"));
+
+    /*
+     * A partition's containing disk overlaps the selected range and therefore
+     * belongs in the mount/swap safety set. Once sysfs has identified the node
+     * as a partition, failure to read that parent's device number is not an
+     * optional metadata miss: treating it as "no parent" could hide a mounted
+     * whole-disk relation, so the topology walk must fail closed.
+     */
     dev_t parent = 0;
-    if (ld_read_sysfs_device(parent_path, &parent) &&
-        !ld_add_related_device(devices, count, parent, false)) return false;
-    return true;
+    if (!ld_read_sysfs_device(parent_path, &parent)) return false;
+    return ld_add_related_device(devices, count, parent, false);
 }
 
 static bool ld_collect_related_devices(dev_t target,
@@ -176,10 +218,19 @@ static bool ld_collect_related_devices(dev_t target,
                                        size_t *count) {
     /*
      * exact_mapping=true means this node itself maps the selected storage
-     * range.  Child partitions of such a whole-device mapping overlap it and
-     * must be checked.  A parent device that merely contains the selected
+     * range. Child partitions of such a whole-device mapping overlap it and
+     * must be checked. A parent device that merely contains the selected
      * partition is exact_mapping=false: the parent itself overlaps the target,
      * but its sibling partitions do not.
+     *
+     * Linux's block sysfs ABI is asymmetric here. Whole disks and stacked
+     * devices expose both holders/ and slaves/ relation directories; partition
+     * kobjects expose holders/ but do not own a slaves/ directory. Requiring
+     * slaves/ for a partition turns a valid ordinary partition into ENOENT and
+     * prevents even read-only analysis. Detect the partition attribute first,
+     * add its containing disk explicitly, and scan only relation directories
+     * that exist by contract. Unexpected failures on required directories stay
+     * fail-closed.
      */
     if (!ld_add_related_device(devices, count, target, true)) return false;
 
@@ -189,15 +240,22 @@ static bool ld_collect_related_devices(dev_t target,
                                      sysfs_path, sizeof(sysfs_path)))
             return false;
 
+        bool is_partition = false;
+        if (!ld_sysfs_is_partition(sysfs_path, &is_partition)) return false;
+
         if (!devices[index].relations_scanned) {
             devices[index].relations_scanned = true;
-            if (!ld_add_parent_device(sysfs_path, devices, count)) return false;
+            if (!ld_add_partition_parent_device(
+                    sysfs_path, is_partition, devices, count))
+                return false;
 
             char relation_path[PATH_MAX];
-            for (size_t relation = 0; relation < 2; ++relation) {
+            const size_t relation_count = is_partition ? 1U : 2U;
+            for (size_t relation = 0; relation < relation_count; ++relation) {
                 const char *name = relation == 0 ? "holders" : "slaves";
-                int length = snprintf(relation_path, sizeof(relation_path), "%s/%s",
-                                      sysfs_path, name);
+                const int length = snprintf(
+                    relation_path, sizeof(relation_path), "%s/%s",
+                    sysfs_path, name);
                 if (length < 0) {
                     errno = EIO;
                     return false;
@@ -212,7 +270,8 @@ static bool ld_collect_related_devices(dev_t target,
             }
         }
 
-        if (devices[index].exact_mapping && !devices[index].children_scanned) {
+        if (devices[index].exact_mapping && !is_partition &&
+            !devices[index].children_scanned) {
             devices[index].children_scanned = true;
             if (!ld_collect_sysfs_directory(sysfs_path, devices, count,
                                             true, false))

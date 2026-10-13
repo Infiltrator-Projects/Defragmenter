@@ -15,6 +15,22 @@ if(BUILD_TESTING)
     add_test(NAME linux-defragger-helper-policy
         COMMAND linux-defragger-helper-policy-test)
 
+    add_executable(linux-defragger-device-topology-test
+        tests/test_device_topology.c)
+    target_include_directories(linux-defragger-device-topology-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
+        "${LD_GENERATED_DIR}")
+    target_compile_options(linux-defragger-device-topology-test PRIVATE
+        ${LD_WARNING_FLAGS})
+    target_compile_definitions(linux-defragger-device-topology-test PRIVATE
+        _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+    target_link_libraries(linux-defragger-device-topology-test PRIVATE
+        linux-defragger-core)
+    add_test(NAME linux-defragger-device-topology
+        COMMAND linux-defragger-device-topology-test)
+    set_tests_properties(linux-defragger-device-topology PROPERTIES
+        SKIP_RETURN_CODE 77)
+
     # Python is an independent test-driver language only. No Python application
     # model, GTK compatibility layer or product control plane is qualified here.
     find_package(Python3 REQUIRED COMPONENTS Interpreter)

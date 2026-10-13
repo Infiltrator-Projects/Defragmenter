@@ -31,8 +31,13 @@ OUTPUT=${1:-"$ROOT/Defragmenter-${VERSION}-local-folder.run"}
 TEMPLATE="$ROOT/packaging/local-run-header.sh.in"
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/linux-defragger-run-build.XXXXXX")
 COMMON_DIR="$ROOT/shared/infiltratr-common"
-COMMON_VERSION="1.19.38"
-COMMON_COMMIT="7070c5812b50821fd7580101cb2289a3184f6b2c"
+COMMON_COMMIT=$(git -C "$REPO_ROOT" rev-parse \
+    HEAD:defragger/shared/infiltratr-common 2>/dev/null) || \
+    fail 'HEAD does not contain the Infiltratr Common gitlink'
+[ "${#COMMON_COMMIT}" -eq 40 ] || fail 'Infiltratr Common gitlink is not a commit object'
+case "$COMMON_COMMIT" in
+    *[!0-9a-f]*) fail 'Infiltratr Common gitlink is not a commit object' ;;
+esac
 cleanup() {
     rm -rf "$WORK"
 }
@@ -41,16 +46,15 @@ trap cleanup EXIT HUP INT TERM
 if [ ! -f "$COMMON_DIR/VERSION" ]; then
     git -C "$REPO_ROOT" submodule update --init --depth 1 -- \
         defragger/shared/infiltratr-common || \
-        fail "unable to initialise Infiltratr Common ${COMMON_VERSION}"
+        fail "unable to initialise Infiltratr Common at ${COMMON_COMMIT}"
 fi
 [ -e "$COMMON_DIR/.git" ] || \
     fail 'Infiltratr Common must be a checked-out Git submodule'
-ACTUAL_COMMON_VERSION=$(tr -d '\r\n' <"$COMMON_DIR/VERSION")
-[ "$ACTUAL_COMMON_VERSION" = "$COMMON_VERSION" ] || \
-    fail "Infiltratr Common ${COMMON_VERSION} is required; found ${ACTUAL_COMMON_VERSION}"
+COMMON_VERSION=$(tr -d '\r\n' <"$COMMON_DIR/VERSION")
+[ -n "$COMMON_VERSION" ] || fail 'Infiltratr Common VERSION is empty'
 ACTUAL_COMMON_COMMIT=$(git -C "$COMMON_DIR" rev-parse HEAD)
 [ "$ACTUAL_COMMON_COMMIT" = "$COMMON_COMMIT" ] || \
-    fail "Infiltratr Common commit mismatch: ${ACTUAL_COMMON_COMMIT}"
+    fail "Infiltratr Common gitlink mismatch: expected ${COMMON_COMMIT}, found ${ACTUAL_COMMON_COMMIT}"
 git -C "$COMMON_DIR" diff --quiet || fail 'Infiltratr Common has tracked working-tree changes'
 git -C "$COMMON_DIR" diff --cached --quiet || fail 'Infiltratr Common has staged changes'
 
@@ -68,13 +72,15 @@ mkdir -p "$STAGE"
 
 # Git, not a hand-maintained exclusion list, is the source inventory authority.
 # The superproject archive intentionally contains only the Common gitlink; the
-# exact pinned Common commit is archived separately into that location.
+# exact pinned Common commit is archived separately into that location. CMake
+# remains the executable authority for the supported Common API/version; this
+# packager only preserves the dependency identity already recorded by HEAD.
 git -C "$REPO_ROOT" archive --format=tar HEAD defragger | tar -xf - -C "$STAGE"
 mv "$STAGE/defragger" "$STAGE/$PAYLOAD_BASENAME"
 COMMON_STAGE="$STAGE/$PAYLOAD_BASENAME/shared/infiltratr-common"
 rm -rf "$COMMON_STAGE"
 mkdir -p "$COMMON_STAGE"
-git -C "$COMMON_DIR" archive --format=tar HEAD | tar -xf - -C "$COMMON_STAGE"
+git -C "$COMMON_DIR" archive --format=tar "$COMMON_COMMIT" | tar -xf - -C "$COMMON_STAGE"
 
 # Python remains independent qualification/test tooling only. The local source
 # installer builds production C/C++ with BUILD_TESTING=OFF, so test drivers are
