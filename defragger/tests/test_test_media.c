@@ -678,16 +678,22 @@ int main(void) {
     CHECK(test_pfs3_formatter_and_payload() == 0);
     CHECK(test_apfs_formatter_and_payload() == 0);
 
+    /*
+     * Transport is descriptive metadata only. A selected Test Media disk is
+     * admitted or rejected by the whole-disk, system-use, writable, capacity,
+     * stable-identity and explicit destructive-confirmation checks around this
+     * policy point, so fixed, virtual and unclassified transports are valid.
+     */
     CHECK(ldtm_transport_is_field_media(0, "mmc") == 1);
     CHECK(ldtm_transport_is_field_media(0, "usb") == 1);
     CHECK(ldtm_transport_is_field_media(0, "sd") == 1);
     CHECK(ldtm_transport_is_field_media(1, "unknown") == 1);
-    CHECK(ldtm_transport_is_field_media(0, "nvme") == 0);
-    CHECK(ldtm_transport_is_field_media(0, "sata") == 0);
-    CHECK(ldtm_transport_is_field_media(0, "sas") == 0);
-    CHECK(ldtm_transport_is_field_media(0, "virtio") == 0);
-    CHECK(ldtm_transport_is_field_media(0, "") == 0);
-    CHECK(ldtm_transport_is_field_media(0, NULL) == 0);
+    CHECK(ldtm_transport_is_field_media(0, "nvme") == 1);
+    CHECK(ldtm_transport_is_field_media(0, "sata") == 1);
+    CHECK(ldtm_transport_is_field_media(0, "sas") == 1);
+    CHECK(ldtm_transport_is_field_media(0, "virtio") == 1);
+    CHECK(ldtm_transport_is_field_media(0, "") == 1);
+    CHECK(ldtm_transport_is_field_media(0, NULL) == 1);
 
     CHECK(ldtm_build_sfdisk_script(script, sizeof(script)) == 0);
     CHECK(strstr(script, "label: gpt") != NULL);

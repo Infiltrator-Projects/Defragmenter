@@ -205,17 +205,22 @@ int ldtm_build_sfdisk_script(char *buffer, size_t capacity) {
 
 int ldtm_transport_is_field_media(int removable, const char *transport) {
     /*
-     * RM is authoritative when the kernel exposes it.  Some USB mass-storage
-     * devices report RM=0, so also accept transports that are physically
-     * removable by design.  Internal NVMe/SATA/SAS/virtio devices require a
-     * future explicit non-removable override rather than silently becoming
-     * destructive Test Media candidates.
+     * Transport class is discovery metadata, not a destructive-write safety
+     * authority. Test Media already requires a whole writable disk, rejects
+     * active system storage, requires sufficient capacity and a stable
+     * serial/WWN identity, and binds destructive Build to an exact typed
+     * device confirmation plus SHA-256 fingerprint revalidation immediately
+     * before repartitioning. A fixed or virtual secondary disk is therefore a
+     * valid deliberate test target; RM/TRAN must not veto that explicit choice.
+     *
+     * The historical function name is retained because both the GTK selector
+     * and privileged worker use this shared policy point. Its result now means
+     * "transport does not disqualify this test-media target" rather than
+     * "physically removable medium".
      */
-    if (removable != 0) return 1;
-    if (transport == NULL || *transport == '\0') return 0;
-    return strcmp(transport, "usb") == 0 ||
-           strcmp(transport, "mmc") == 0 ||
-           strcmp(transport, "sd") == 0;
+    (void)removable;
+    (void)transport;
+    return 1;
 }
 
 int ldtm_decode_hex_byte(char high, char low, unsigned char *value) {
