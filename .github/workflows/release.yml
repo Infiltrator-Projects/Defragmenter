@@ -52,7 +52,7 @@ jobs:
           name: defragmenter-release-${{ inputs.expected_sha }}
           path: defragger/release-artifacts
 
-      - name: Publish or resume immutable GitHub release
+      - name: Publish or resume exact GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: ./ci/release.sh publish "$EXPECTED_SHA" release-artifacts
