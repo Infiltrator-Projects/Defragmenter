@@ -15,41 +15,13 @@ if(BUILD_TESTING)
     add_test(NAME linux-defragger-helper-policy
         COMMAND linux-defragger-helper-policy-test)
 
-    find_program(LD_PYTHON3_EXECUTABLE NAMES python3 REQUIRED)
-
-    add_test(
-        NAME linux-defragger-gui-models
-        COMMAND "${LD_PYTHON3_EXECUTABLE}"
-                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_gui_models.py")
-    add_test(
-        NAME linux-defragger-gui-services
-        COMMAND "${LD_PYTHON3_EXECUTABLE}"
-                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_gui_services.py")
+    # Python is an independent test-driver language only. No Python application
+    # model, GTK compatibility layer or product control plane is qualified here.
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
     add_test(
         NAME linux-defragger-system-update-contract
-        COMMAND "${LD_PYTHON3_EXECUTABLE}"
+        COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_update_service.py")
-    add_test(
-        NAME linux-defragger-gui-volume-identity
-        COMMAND "${LD_PYTHON3_EXECUTABLE}"
-                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_gui_volume_identity.py")
-    add_test(
-        NAME linux-defragger-gui-ext-display-identity
-        COMMAND "${LD_PYTHON3_EXECUTABLE}"
-                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_ext_display_identity.py")
-    add_test(
-        NAME linux-defragger-about-gold-standard
-        COMMAND "${LD_PYTHON3_EXECUTABLE}"
-                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_about_gold_standard.py")
-
-    set_tests_properties(
-        linux-defragger-gui-models
-        linux-defragger-gui-services
-        linux-defragger-system-update-contract
-        linux-defragger-gui-volume-identity
-        linux-defragger-gui-ext-display-identity
-        linux-defragger-about-gold-standard
-        PROPERTIES
-        ENVIRONMENT
-            "PYTHONDONTWRITEBYTECODE=1;PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/gui")
+    set_tests_properties(linux-defragger-system-update-contract PROPERTIES
+        ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1")
 endif()
