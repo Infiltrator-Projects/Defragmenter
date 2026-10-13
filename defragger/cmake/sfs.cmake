@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 # Amiga Smart File System (SFS0) raw allocation analysis and offline relocation.
-# Filesystem parsing, staging, commit and recovery are native C; Python is a thin GUI adapter.
+# Filesystem parsing, staging, commit and recovery are native C; the installed
+# GTK application consumes the native worker protocol directly.
 add_library(linux-defragger-sfs-native STATIC
     gui/filesystems/sfs/native/sfs_native.c)
 target_include_directories(linux-defragger-sfs-native PUBLIC

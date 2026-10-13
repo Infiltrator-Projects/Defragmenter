@@ -28,8 +28,8 @@ typedef enum {
 
 /*
  * Validated BIOS Parameter Block geometry.  The same parser feeds native
- * probing, the Python-facing identify command and the writable volume loader,
- * so those paths cannot disagree about the FAT width or data boundary.
+ * probing, mapper identity and the writable volume loader, so those paths
+ * cannot disagree about the FAT width or data boundary.
  */
 typedef struct {
     FatType fat_type;

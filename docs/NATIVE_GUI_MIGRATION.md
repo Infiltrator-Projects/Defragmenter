@@ -6,8 +6,8 @@ The migration is complete for the installed product. `/usr/bin/linux-defragger` 
 
 - C++ GTK owns the production window, volume selection, image opening, analysis, unmount, Defragment, Growth Defrag, Recover, safe Stop, activity output, allocation view, Test Media launch and About.
 - Native device discovery and first-party probing establish filesystem identity before mutation is offered.
-- Read-only analysis runs without administrator privileges when the target is readable; mutation uses the reusable `pkexec` privileged-helper protocol.
-- The helper accepts only the documented mutation argument schema, confines journals to the root-owned per-user state directory and launches privileged children with a minimal fixed environment.
+- Read-only analysis runs without administrator privileges when the target is readable; physical-device analysis escalates only the exact bounded mapper request when raw read access is unavailable. Mutation uses the reusable `pkexec` privileged-helper protocol.
+- The helper accepts only the documented mapper, mutation and unmount argument schemas, refuses user-writable `/dev` subtrees, confines journals to the root-owned per-user state directory and launches privileged children with a minimal fixed environment.
 - The installed launcher and packaging tests explicitly reject a Python GTK runtime dependency.
 - Retained files under `gui/` are source/test compatibility material and are not installed as the production application.
 

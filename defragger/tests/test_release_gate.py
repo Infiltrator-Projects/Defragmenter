@@ -14,6 +14,10 @@ WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 RELEASE_SCRIPT = PROJECT_ROOT / "ci" / "release.sh"
 AUDIT_FILE = REPO_ROOT / "docs" / "AUDIT_STATUS.md"
 
+SETUP_NODE_ACTION = "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
+UPLOAD_ARTIFACT_ACTION = "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
+DOWNLOAD_ARTIFACT_ACTION = "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
+
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
@@ -76,8 +80,15 @@ def main() -> None:
     assert "head_commit.message" not in gate
     assert "startsWith(" not in gate
 
+    # Third-party workflow code is itself part of the qualified build graph.
+    # Pin mutable major tags to exact commits so rerunning an old source revision
+    # cannot silently execute different setup or artefact-transfer code.
+    assert SETUP_NODE_ACTION in gate
+    preserve_release = _step_containing(gate, UPLOAD_ARTIFACT_ACTION)
+    assert "actions/setup-node@v4" not in gate
+    assert "actions/upload-artifact@v4" not in gate
+
     build_release = _step_containing(gate, "packaging/build-deb.sh")
-    preserve_release = _step_containing(gate, "actions/upload-artifact@v4")
     assert "if: steps.release_intent.outputs.release == 'true'" in build_release
     assert "if: steps.release_intent.outputs.release == 'true'" in preserve_release
     assert "needs: [quality-gate, sanitizers]" in gate
@@ -98,7 +109,8 @@ def main() -> None:
         "./ci/release.sh wait-apt",
     ):
         assert command in release
-    assert "actions/download-artifact@v4" in release
+    assert DOWNLOAD_ARTIFACT_ACTION in release
+    assert "actions/download-artifact@v4" not in release
     assert "packaging/build-deb.sh" not in release
     assert "packaging/build-local-run.sh" not in release
     assert "curl " not in release

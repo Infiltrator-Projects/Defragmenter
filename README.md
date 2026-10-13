@@ -92,9 +92,9 @@ GitHub automatically provides its standard `Source code (zip)` and `Source code 
 
 This repository uses `main` as its working branch. Development changes are made directly on `main`; the normal project workflow does not depend on PR, feature or release branches.
 
-Every push to `main` runs the project quality gate. Ordinary commits do not publish. A commit becomes release-eligible only when its subject begins `Release <version>` and the complete quality gate succeeds.
+Every push to `main` runs the project quality gate. Ordinary commits do not publish. A change to `defragger/VERSION` is the explicit release decision; commit-message wording is not part of the release control plane. The exact versioned `main` commit becomes release-eligible only after both permanent qualification lanes succeed.
 
-The release workflow requires a successful Project quality gate for the exact current `main` commit, verifies permanent history protection against deletion, force pushes and nonlinear history, and creates a new immutable version tag and release only from that tested commit.
+The release workflow verifies permanent history protection against deletion, force pushes and nonlinear history, and creates a new immutable version tag and release only from that exact qualified commit. Release artefacts are built once by qualification and handed unchanged to publication; the publication workflow never rebuilds them.
 
 Existing version tags and published releases are immutable and are never moved, replaced or edited in place. Manually runnable quality-gate helpers are diagnostic tools only and are not release-approval mechanisms.
 

@@ -113,8 +113,9 @@ publication/removal and neutral design contracts where semantics match.
 Defragmenter's native core owns product-local filesystem-neutral target safety
 and transaction-binding mechanics. Filesystem engines retain volume identity,
 geometry, placement, transaction stages, recovery meaning and fail-closed
-policy. Python is presentation/glue only and carries no filesystem control-plane
-or mutation/durability implementation.
+policy. Python is retained only as source/test fixture and test-tooling material;
+it carries no production filesystem control-plane, mutation or durability
+implementation.
 
 **Consequences.** Generic code is reused without obscuring the safety boundary.
 A smaller codebase is not treated as a sufficient reason to move
@@ -157,19 +158,19 @@ the previous Python orchestration.
   filesystem-neutral application services to C++17.
 
 **Decision.** C remains authoritative for raw filesystem parsing, planning,
-mutation and the storage-safety core. C++17 owns selected application services:
-the native registry, map translation, operation dispatch, process/protocol
-values and privileged-helper lifetime. The privileged helper uses
-`posix_spawn` and explicit process-group ownership. The GTK/Python layer is now presentation/glue only; the former duplicated
-filesystem registry, dispatcher and privileged-process compatibility contracts
-have been removed after their native replacements reached parity.
+mutation and the storage-safety core. C++17 owns the native registry, map
+translation, operation dispatch, process/protocol values, privileged-helper
+lifetime and installed GTK desktop. The privileged helper uses `posix_spawn`
+and explicit process-group ownership. Retained Python modules are source/test
+fixtures and test tooling only; the former duplicated filesystem registry,
+dispatcher and privileged-process compatibility contracts have been removed
+after their native replacements reached parity.
 
 **Consequences.** The project gains stronger scoped ownership without imposing
-an object model on disk algorithms. The completed migration leaves filesystem capability, mapping, operation and
-privileged-process authority in native code; Python no longer carries a second
-representation of those contracts. Language choice remains evidence-driven
-rather than a purity rule.
-
+an object model on disk algorithms. The completed migration leaves filesystem
+capability, mapping, operation and privileged-process authority in native code;
+Python no longer carries a second representation of those production contracts.
+Language choice remains evidence-driven rather than a purity rule.
 
 ## ADR-008 — Keep ZFS mutation inside the ZFS transaction engine
 

@@ -1,5 +1,20 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 if(BUILD_TESTING)
+    add_executable(linux-defragger-helper-policy-test
+        tests/test_helper_policy.cpp)
+    target_include_directories(linux-defragger-helper-policy-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/native"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
+        "${LD_GENERATED_DIR}")
+    target_compile_options(linux-defragger-helper-policy-test PRIVATE
+        ${LD_WARNING_FLAGS})
+    target_compile_definitions(linux-defragger-helper-policy-test PRIVATE
+        _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+    target_link_libraries(linux-defragger-helper-policy-test PRIVATE
+        linux-defragger-runtime-cpp linux-defragger-core)
+    add_test(NAME linux-defragger-helper-policy
+        COMMAND linux-defragger-helper-policy-test)
+
     find_program(LD_PYTHON3_EXECUTABLE NAMES python3 REQUIRED)
 
     add_test(

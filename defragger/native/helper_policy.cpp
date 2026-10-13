@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "helper_policy.hpp"
+#include "map.hpp"
 
 #include <cstdlib>
 #include <filesystem>
@@ -34,6 +35,75 @@ std::uint32_t parse_uid(const char* raw) {
             throw std::runtime_error("invoking UID is out of range");
     }
     return static_cast<std::uint32_t>(parsed);
+}
+
+bool valid_filesystem_identifier(const std::string& value) {
+    static const std::regex filesystem_name(
+        R"(^[A-Za-z0-9+_.-]+$)", std::regex::ECMAScript);
+    return std::regex_match(value, filesystem_name);
+}
+
+void validate_device_path(const std::string& value, std::string_view purpose) {
+    const fs::path path{value};
+    if (value.rfind("/dev/", 0U) != 0U || !path.is_absolute() ||
+        path.lexically_normal() != path) {
+        throw std::runtime_error(
+            std::string(purpose) + " must be a normalised /dev/... path");
+    }
+
+    /*
+     * The desktop receives canonical lsblk PATH values, so privileged commands
+     * need only a root-owned top-level device node or a device-mapper alias.
+     * Refusing deeper /dev subtrees matters: /dev/shm is user-writable, and a
+     * generic `/dev/...` prefix check would otherwise let an authenticated user
+     * redirect the root mapper at an arbitrary regular file placed there.
+     */
+    const std::string_view relative(value.data() + 5U, value.size() - 5U);
+    const bool direct = !relative.empty() &&
+                        relative.find('/') == std::string_view::npos;
+    constexpr std::string_view mapper_prefix = "mapper/";
+    const bool mapper = relative.rfind(mapper_prefix, 0U) == 0U &&
+                        relative.size() > mapper_prefix.size() &&
+                        relative.find('/', mapper_prefix.size()) ==
+                            std::string_view::npos;
+    if (!direct && !mapper)
+        throw std::runtime_error(
+            std::string(purpose) + " is outside the authorised device namespace");
+}
+
+std::size_t parse_mapper_cells(const std::string& value) {
+    if (value.empty())
+        throw std::runtime_error("mapper cell count is empty");
+    std::size_t parsed = 0U;
+    for (const char character : value) {
+        if (character < '0' || character > '9')
+            throw std::runtime_error("mapper cell count is not decimal");
+        const std::size_t digit = static_cast<std::size_t>(character - '0');
+        if (parsed > (kMaxMapCells - digit) / 10U)
+            throw std::runtime_error("mapper cell count is out of range");
+        parsed = parsed * 10U + digit;
+    }
+    if (parsed == 0U || parsed > kMaxMapCells)
+        throw std::runtime_error("mapper cell count is out of range");
+    return parsed;
+}
+
+void validate_mapper_args(const std::vector<std::string>& arguments) {
+    /*
+     * Root mapper authority exists only because an ordinary desktop process may
+     * be unable to open a physical block device for read-only analysis. Regular
+     * image analysis remains unprivileged. Keep this exact argv contract aligned
+     * with Desktop::action(): broad mapper option forwarding would silently turn
+     * the authenticated helper into a general root file reader.
+     */
+    if (arguments.size() != 5U ||
+        arguments[1] != "--fstype" || arguments[3] != "--cells") {
+        throw std::runtime_error("mapper command is not allowed");
+    }
+    validate_device_path(arguments[0], "mapper target");
+    if (!valid_filesystem_identifier(arguments[2]))
+        throw std::runtime_error("mapper filesystem identifier is not valid");
+    (void)parse_mapper_cells(arguments[4]);
 }
 
 void validate_operation_args(const std::vector<std::string>& arguments,
@@ -86,9 +156,7 @@ void validate_operation_args(const std::vector<std::string>& arguments,
         if (token == "--filesystem") {
             if (has_filesystem)
                 throw std::runtime_error("operation-engine request repeats --filesystem");
-            static const std::regex filesystem_name(
-                R"(^[A-Za-z0-9+_.-]+$)", std::regex::ECMAScript);
-            if (!std::regex_match(value, filesystem_name))
+            if (!valid_filesystem_identifier(value))
                 throw std::runtime_error("operation filesystem identifier is not valid");
             has_filesystem = true;
         } else if (token == "--confirm") {
@@ -156,15 +224,16 @@ HelperCommand helper_command(
         validate_operation_args(arguments, invoking_uid);
         command.executable = std::string(kOperationEngine);
     } else if (program == "mapper") {
+        validate_mapper_args(arguments);
         command.executable = std::string(kMapper);
     } else if (program == "udisksctl") {
         if (arguments.size() != 3U ||
             arguments[0] != "unmount" ||
-            arguments[1] != "-b" ||
-            arguments[2].rfind("/dev/", 0U) != 0U) {
+            arguments[1] != "-b") {
             throw std::runtime_error(
                 "only udisksctl unmount -b /dev/... is allowed");
         }
+        validate_device_path(arguments[2], "unmount target");
         command.executable = std::string(kUdisksctl);
     } else {
         throw std::runtime_error("unknown helper program");
