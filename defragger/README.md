@@ -35,13 +35,12 @@ Unsupported or structurally ambiguous layouts fail closed.
 
 ## Source layout
 
-- `gui/ui/` — retained Python presentation fixtures and native desktop artwork.
-- `gui/core/` — retained Python protocol, device-discovery and path fixtures.
+- `gui/ui/art/` — native desktop artwork only; there is no Python application/presentation implementation.
 - `gui/filesystems/<format>/native/` — authoritative per-filesystem native implementations.
-- `native/` — authoritative C++17 registry, mapper, operation dispatcher and privileged session.
+- `native/` — authoritative C++17 GTK desktop, registry, mapper, operation dispatcher and privileged session.
 - `src/core/` — filesystem-neutral native safety/runtime services.
 - `test_media/` — separate destructive sacrificial-media utility.
-- `tests/` — native, filesystem, GUI, safety and release regressions.
+- `tests/` — native regressions plus independent Python fixture/test drivers that exercise native binaries; Python is not a product control plane.
 - `packaging/` — Debian and native local installer construction.
 - `shared/infiltratr-common/` — exact pinned Common dependency.
 
@@ -69,11 +68,13 @@ cmake --build build -j"$jobs"
 ctest --test-dir build --output-on-failure
 ```
 
-The aggregate suite covers native/filesystem behaviour, GUI/service contracts, safety/transaction invariants, packaging and release gates. Hosted CI also runs ASan/UBSan qualification.
+The aggregate suite covers native/filesystem behaviour, native GUI/service contracts, safety/transaction invariants, packaging and release gates. Python is used only where an independent fixture generator or black-box test driver gives stronger evidence than testing native implementation details through itself. Hosted CI also runs ASan/UBSan qualification.
 
 ## Packaging
 
 A numbered release publishes the generic amd64 Debian artifact, the hardware-native local compile/install `.run` artifact and `RELEASE_SHA256SUMS.txt`. GitHub supplies its standard tag source archives automatically.
+
+The local `.run` source payload is materialised from committed Git objects for the exact superproject revision plus the exact pinned Common commit. Ambient untracked runner files are not payload inputs, and qualification verifies that property before publication.
 
 The package/install contract is described in the repository [README](../README.md); exact release qualification is recorded in [Audit Status](../docs/AUDIT_STATUS.md).
 
