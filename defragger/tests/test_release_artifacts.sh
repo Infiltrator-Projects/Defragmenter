@@ -5,7 +5,12 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 VERSION=$(tr -d '\r\n' <"$ROOT/VERSION")
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/linux-defragger-artifact-test.XXXXXX")
-trap 'rm -rf "$WORK"' EXIT HUP INT TERM
+UNTRACKED_SENTINEL="$ROOT/local-installer-untracked-sentinel.secret"
+cleanup() {
+    rm -f "$UNTRACKED_SENTINEL"
+    rm -rf "$WORK"
+}
+trap cleanup EXIT HUP INT TERM
 RUN="$WORK/Defragmenter-${VERSION}-local-folder.run"
 if [ -e "$ROOT/packaging/build-source-zip.sh" ]; then
     printf '%s\n' 'Custom source ZIP builder must remain removed.' >&2
@@ -35,6 +40,11 @@ fi
 grep -Fq 'StartupWMClass=io.github.linuxdefragger' \
     "$ROOT/packaging/io.github.linuxdefragger.desktop"
 grep -Fq 'OUTPUT=${1:-"$ROOT/Defragmenter-${VERSION}-local-folder.run"}' "$ROOT/packaging/build-local-run.sh"
+
+# The builder must be insensitive to arbitrary untracked runner output. This
+# specifically protects against the 1.8.0-261 failure where a GTK smoke-test
+# log was silently captured in the published installer source payload.
+printf '%s\n' 'ambient runner state must never be packaged' >"$UNTRACKED_SENTINEL"
 "$ROOT/packaging/build-local-run.sh" "$RUN" >/dev/null
 
 MARKER_LINE=$(grep -an '^__LINUX_DEFRAGGER_PAYLOAD_BELOW__$' "$RUN" | \
@@ -57,6 +67,11 @@ grep -qx "linux-defragger-${VERSION}/LICENSE" "$WORK/files.txt"
 grep -qx "linux-defragger-${VERSION}/shared/infiltratr-common/VERSION" "$WORK/files.txt"
 grep -qx "linux-defragger-${VERSION}/shared/infiltratr-common/src/core.c" "$WORK/files.txt"
 grep -qx "linux-defragger-${VERSION}/shared/infiltratr-common/src/posix.c" "$WORK/files.txt"
+if grep -Fq 'local-installer-untracked-sentinel.secret' "$WORK/files.txt" || \
+   grep -Fq 'native-desktop-smoke.log' "$WORK/files.txt"; then
+    printf '%s\n' 'Local installer captured untracked runner state.' >&2
+    exit 1
+fi
 if grep -Eq '/(build[^/]*)/|__pycache__|\.py$|\.pyc$|\.deb$|\.run$|\.zip$' "$WORK/files.txt"; then
     printf '%s\n' 'Generated local installer contains a forbidden generated file.' >&2
     exit 1
