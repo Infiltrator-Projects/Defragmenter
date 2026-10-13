@@ -87,6 +87,11 @@ verify_source() {
     git merge-base --is-ancestor "$governance_commit" "$expected_sha" ||
         fail "release-governance baseline is not an ancestor of the release"
 
+    # The audited source baseline covers every tracked input that can change
+    # what qualification builds, installs or accepts. Tests are part of the
+    # safety contract: weakening them after audit must fail closed just as a
+    # production-source change does. VERSION and maintained release prose are
+    # deliberately outside this set so a qualified baseline can be versioned.
     local source_paths=(
         defragger/CMakeLists.txt
         defragger/cmake
@@ -96,9 +101,11 @@ verify_source() {
         defragger/shared
         defragger/packaging
         defragger/test_media
+        defragger/tests
+        defragger/install.sh
     )
     git diff --quiet "$audited_commit" "$expected_sha" -- "${source_paths[@]}" ||
-        fail "production/build/package source changed after the audited source baseline"
+        fail "qualified source/test/install input changed after the audited source baseline"
 
     local governance_paths=(
         .github/workflows
