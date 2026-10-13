@@ -36,20 +36,19 @@ The source tree reflects those responsibilities:
 
 ```text
 defragger/
-├── gui/ui/                 retained presentation fixtures and runtime artwork
-├── gui/core/               retained protocol/device/path fixtures
+├── gui/ui/art/             native desktop artwork only
 ├── gui/filesystems/*/native/ authoritative per-filesystem native engines
 ├── native/                 C++17 GTK desktop and registry/control services
 ├── src/core/               filesystem-neutral native C safety/runtime services
 ├── test_media/             destructive sacrificial-media utility
-├── tests/                  native, filesystem, GUI, safety and release evidence
+├── tests/                  native regressions and independent fixture/test drivers
 ├── packaging/              Debian/native installer construction
 └── shared/                 pinned Infiltratr Common dependency
 ```
 
 ## Contracts and ownership
 
-`native/runtime.cpp` is the single application registry used by the production C++ mapper, operation dispatcher and GTK manifest loader. The former Python registry, filesystem plugin declarations and Python dispatcher/helper compatibility graph have been removed rather than retained as a second knowledge base. Each native filesystem directory owns its probe, analyser, placement rules, writer and verifier.
+`native/runtime.cpp` is the single application registry used by the production C++ mapper, operation dispatcher and GTK manifest loader. The former Python registry, filesystem plugin declarations, presentation model and dispatcher/helper compatibility graph have been removed rather than retained as a second knowledge base. Each native filesystem directory owns its probe, analyser, placement rules, writer and verifier.
 
 `src/core/` owns mechanics that are genuinely filesystem-neutral: exact raw I/O adaptation, one-open canonical target/identity/capacity binding, descriptor-level identity revalidation, overlap-aware mounted-target rejection, Stop state, resource defaults and machine-readable result emission. Filesystem geometry, volume identity, metadata interpretation, transaction stages and recovery rules stay with the owning filesystem.
 
@@ -60,6 +59,8 @@ GTK objects stay in the presentation layer. Runner, policy and storage models ex
 C and C++ are first-class implementation languages with different jobs. C remains the strongest fit for filesystem structures, codecs, raw parsers, planners, writers and the storage-safety core because those components map directly to fixed-layout data, kernel interfaces and explicit byte-oriented algorithms.
 
 C++17 is used where scoped ownership and stronger value types materially improve filesystem-neutral application work. The native registry, JSON/protocol model, allocation-map translation, operation dispatcher, bounded child-process capture and privileged helper session live in `defragger/native/`. Those native binaries are the only mapper/operation-dispatch/privileged-helper control plane in the repository and installed application. GTK carries no filesystem capability registry or operation table of its own: it loads the immutable native manifest and treats the advertised operation names as authoritative. The privileged helper uses `posix_spawn` rather than post-`fork` C++ work and owns its child process group explicitly.
+
+Python is not an application implementation language in this repository. It remains under `tests/` only where an independent fixture constructor, malformed-input generator or black-box process driver gives useful evidence about native binaries. No Python module owns product state, presentation, filesystem capability, device policy, privilege policy or release runtime behaviour.
 
 The NTFS plan database also uses narrow, non-inheriting RAII owners for SQLite statements, transaction rollback and OpenSSL digest state behind the existing C-facing filesystem implementation. None of these uses creates a class hierarchy around the raw filesystem engines. Working C is not rewritten merely because C++ is available, and C++ is not avoided where it gives a stronger ownership model.
 
@@ -114,13 +115,15 @@ The project assumes the kernel, libc, required libraries and storage hardware ho
 
 Common is authoritative for reusable mechanisms whose semantics are genuinely generic. If Defragmenter has a stronger implementation of a generic primitive, the preferred direction is to improve Common until its contract preserves that correctness, performance and resilience, then remove the local duplicate.
 
-For this pin, Common also owns deterministic finite-decimal conversion used by the C++ JSON adapter, checked allocation sizing used by local runtime wrappers, allocation-free key=value line parsing for native journals/manifests, POSIX lexical path joining/concatenation, native typography/structural design identity, immutable MB Corpo asset provenance and the complete layered Linux MBLINK Day/Night semantic role set. The GTK adapter is generated from Common's design JSON and consumes matching titlebar/connection/heading/summary/detail/note/state roles; Test Media consumes the same native design API directly. Defragmenter's no-font-fallback policy remains product-local because the package installs the verified Common-described faces itself. Remaining Python modules are source/test fixtures, with no launcher or application startup path. The GTK desktop, filesystem analysis, mapping, mutation, durability and capability authority are native.
+For this pin, Common also owns deterministic finite-decimal conversion used by the C++ JSON adapter, checked allocation sizing used by local runtime wrappers, allocation-free key=value line parsing for native journals/manifests, POSIX lexical path joining/concatenation, native typography/structural design identity, immutable MB Corpo asset provenance and the complete layered Linux MBLINK Day/Night semantic role set. The GTK adapter is generated from Common's design JSON and consumes matching titlebar/connection/heading/summary/detail/note/state roles; Test Media consumes the same native design API directly. Defragmenter's no-font-fallback policy remains product-local because the package installs the verified Common-described faces itself. The GTK desktop, filesystem analysis, mapping, mutation, durability and capability authority are entirely native; Python test drivers consume public native behaviour rather than reproducing those product contracts.
 
 Do not move filesystem policy, target-safety decisions or transaction semantics into Common merely to reduce line count.
 
 ## Verification and assurance
 
-Correctness is enforced at several levels: warnings-as-errors native builds, unit and parser tests, disposable filesystem-image tests, recovery/fault-injection tests, GUI/service regressions, architecture/safety checks, ASan/UBSan qualification, packaging tests and exact-head release gates.
+Correctness is enforced at several levels: warnings-as-errors native builds, unit and parser tests, disposable filesystem-image tests, recovery/fault-injection tests, native GUI/service regressions, architecture/safety checks, ASan/UBSan qualification, packaging tests and exact-head release gates.
+
+Python test code is evidence machinery, not an alternate product implementation. Tests that need malformed images or orchestration may use it to drive the native executables from outside their implementation language; tests of product policy must not recreate a Python registry, planner, device model or privilege stack and then validate that duplicate instead.
 
 The exact release revision must satisfy the project quality gate. The current write-safety decision is recorded separately in [AUDIT_STATUS.md](AUDIT_STATUS.md), while [VALIDATION.md](VALIDATION.md) defines what each class of evidence proves and does not prove.
 
@@ -128,7 +131,11 @@ The exact release revision must satisfy the project quality gate. The current wr
 
 Release artifacts are built from the exact qualified `main` revision. Published tags and assets are immutable identities. The Debian package/native installer, Common pin, audit source baseline and release-governance baseline are checked as part of publication rather than treated as post-release bookkeeping.
 
+The audited source baseline covers every tracked input that can alter what qualification builds, installs or accepts, including tests and the source-install entry point. Tests are therefore protected against post-audit weakening just as production source is. VERSION and maintained release prose remain outside that baseline so a qualified source state can receive its immutable release identity without pretending that version text changes filesystem semantics.
+
 A change to `defragger/VERSION` on protected `main` is the explicit release decision; human commit-message wording is not part of the control plane. The permanent self-hosted full-suite and ASan/UBSan lanes must both pass before publication can run. Qualification builds the release artefacts once and hands those exact SHA-bound files to the thin reusable publication workflow; publication never rebuilds them.
+
+The hardware-native local `.run` is constructed from committed Git objects for the exact Defragmenter revision and the exact pinned Common commit, not by archiving the ambient runner directory. Tracked edits are refused and untracked workspace state is structurally invisible to the source-payload constructor. Normalised tar ownership/order/time and gzip metadata remove host identity and wall-clock time from that payload.
 
 GitHub Actions only orchestrates checkout, permissions, artefact handoff and ordering. `defragger/ci/release.sh` owns the testable release procedure: audited source/governance verification, protected-main verification, restartable GitHub publication, exact asset-set/digest verification and the downstream APT observation. Public APT propagation is deliberately observational and retryable, so repository or CDN delay can be reported without invalidating an already verified immutable GitHub release.
 
