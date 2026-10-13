@@ -210,11 +210,21 @@ def test_production_control_plane_is_native() -> None:
     assert "native/runtime.cpp" in architecture
     assert "single application registry" in architecture
 
-    for package in (GUI / "filesystems").iterdir():
-        if package.is_dir():
-            assert not list(package.glob("*.py")), (
-                f"production filesystem package {package.name} gained Python control code"
-            )
+    # The retired Python application/model compatibility graph must stay gone.
+    # Python remains valid under tests/ as an independent fixture/driver language,
+    # but no Python source belongs inside the production gui/ tree.
+    python_product_files = sorted(GUI.rglob("*.py"))
+    assert not python_product_files, (
+        f"Python application/control code returned: {python_product_files!r}"
+    )
+    for retired in (
+        ROOT / "packaging" / "generated" / "version.py.in",
+        ROOT / "tests" / "run_typecheck.sh",
+        ROOT / "tests" / "pyrightconfig.json",
+        ROOT / "pytest.ini",
+        ROOT / "tools" / "update-theme-tokens.py",
+    ):
+        assert not retired.exists(), f"retired Python compatibility artefact returned: {retired}"
 
 
 def main() -> None:
