@@ -8,7 +8,7 @@
 
 Defragmenter is a C-first offline filesystem allocation analyser and defragmenter for Linux. Native C owns the raw filesystem engines and storage-safety core; C++17 owns selected filesystem-neutral application services where RAII, stronger value types and explicit process/protocol ownership improve the implementation. Write-capable engines operate directly on unmounted block devices or filesystem images and do not delegate production mutations to mounted kernel filesystem drivers or external repair/defragmentation tools.
 
-**Version authority:** see `defragger/VERSION` and the immutable GitHub release tag.
+**Version authority:** `defragger/VERSION` is the source authority; a published version is additionally bound to its exact qualified `main` commit, version tag and verified release assets.
 
 **Platform:** Linux
 
@@ -94,9 +94,9 @@ This repository uses `main` as its working branch. Development changes are made 
 
 Every push to `main` runs the project quality gate. Ordinary commits do not publish. A change to `defragger/VERSION` is the explicit release decision; commit-message wording is not part of the release control plane. The exact versioned `main` commit becomes release-eligible only after both permanent qualification lanes succeed.
 
-The release workflow verifies permanent history protection against deletion, force pushes and nonlinear history, and creates a new immutable version tag and release only from that exact qualified commit. Release artefacts are built once by qualification and handed unchanged to publication; the publication workflow never rebuilds them.
+The release workflow verifies permanent `main` history protection against deletion, force pushes and nonlinear history, then publishes only from that exact qualified commit. Release artefacts are built once by qualification and handed unchanged to publication; the publication workflow never rebuilds them.
 
-Existing version tags and published releases are immutable and are never moved, replaced or edited in place. Manually runnable quality-gate helpers are diagnostic tools only and are not release-approval mechanisms.
+Version identity is write-once by project policy and enforced by the publisher: an existing tag must already point at the qualified commit, an existing release must target that commit, unexpected or duplicate assets are rejected, and every published asset digest must match the qualified artefact. The project does not rely on GitHub's separate platform-level immutable-release flag for those guarantees. Published tags/releases must not be moved, retargeted or edited in place. Manually runnable quality-gate helpers are diagnostic tools only and are not release-approval mechanisms.
 
 ## Documentation
 
