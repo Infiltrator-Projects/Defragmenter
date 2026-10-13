@@ -122,7 +122,8 @@ def main() -> None:
     assert "continue-on-error: true" in apt_step
 
     # The release implementation itself is executable shell with a small stable
-    # command interface. Test syntax/interface, not human-readable error strings.
+    # command interface. Audit every script that can change the environment
+    # contract seen by qualification/publication, not only the publisher itself.
     assert RELEASE_SCRIPT.stat().st_mode & 0o111
     subprocess.run(["bash", "-n", str(RELEASE_SCRIPT)], check=True)
     help_text = subprocess.check_output(
@@ -130,9 +131,13 @@ def main() -> None:
     )
     for command in ("verify-source", "verify-main-protection", "publish", "wait-apt"):
         assert command in help_text
-    assert "defragger/ci/release.sh" in release_script
-    assert "defragger/tests/test_release_gate.py" in release_script
-    assert ".github/workflows" in release_script
+    for governance_path in (
+        ".github/workflows",
+        "defragger/ci/preflight.sh",
+        "defragger/ci/release.sh",
+        "defragger/tests/test_release_gate.py",
+    ):
+        assert governance_path in release_script
     assert "git diff --quiet" in release_script
     assert "sha256sum -c" in release_script
     assert ".digest" in release_script

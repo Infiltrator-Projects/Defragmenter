@@ -102,6 +102,7 @@ verify_source() {
 
     local governance_paths=(
         .github/workflows
+        defragger/ci/preflight.sh
         defragger/ci/release.sh
         defragger/tests/test_release_gate.py
     )
