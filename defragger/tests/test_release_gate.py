@@ -14,7 +14,6 @@ WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 RELEASE_SCRIPT = PROJECT_ROOT / "ci" / "release.sh"
 AUDIT_FILE = REPO_ROOT / "docs" / "AUDIT_STATUS.md"
 
-SETUP_NODE_ACTION = "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
 UPLOAD_ARTIFACT_ACTION = "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
 DOWNLOAD_ARTIFACT_ACTION = "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
 
@@ -81,11 +80,10 @@ def main() -> None:
     assert "startsWith(" not in gate
 
     # Third-party workflow code is itself part of the qualified build graph.
-    # Pin mutable major tags to exact commits so rerunning an old source revision
-    # cannot silently execute different setup or artefact-transfer code.
-    assert SETUP_NODE_ACTION in gate
+    # Only actions that are actually required remain, and mutable major tags are
+    # forbidden so rerunning an old source revision cannot execute newer code.
     preserve_release = _step_containing(gate, UPLOAD_ARTIFACT_ACTION)
-    assert "actions/setup-node@v4" not in gate
+    assert "actions/setup-node@" not in gate
     assert "actions/upload-artifact@v4" not in gate
 
     build_release = _step_containing(gate, "packaging/build-deb.sh")
