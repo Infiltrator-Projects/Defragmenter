@@ -15,7 +15,6 @@ WORK=$(mktemp -d "${TMPDIR:-/tmp}/linux-defragger-tests.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT
 
 export PYTHONDONTWRITEBYTECODE=1
-export PYTHONPATH="$ROOT/gui"
 export LINUX_DEFRAGGER_BUILD_DIR="$BUILD_DIR"
 bash -n "$ROOT/tests/destructive/run_dm_log_writes_replay.sh"
 
@@ -34,23 +33,16 @@ version=$($FAT_WORKER --version)
 [[ "$version" == "linux-defragger-fat-worker $EXPECTED_VERSION" ]] || \
     fail "unexpected FAT worker version: $version"
 
-python3 -m compileall -q "$ROOT/gui"
 "$ROOT/tests/test_release_artifacts.sh"
-"$ROOT/tests/run_typecheck.sh"
 python3 "$ROOT/tests/test_no_external_fs_tools.py"
 python3 "$ROOT/tests/test_architecture.py"
-python3 "$ROOT/tests/test_analysis_plugins.py"
+python3 "$ROOT/tests/test_registry_mapper.py"
 python3 "$ROOT/tests/test_ext_catalog_fuzz.py"
-PYTHONPATH="$ROOT/gui:$ROOT/tests" python3 "$ROOT/tests/test_planner_properties.py"
-python3 "$ROOT/tests/test_gui_analysis_start.py"
-python3 "$ROOT/tests/test_gui_models.py"
-python3 "$ROOT/tests/test_gui_services.py"
-python3 "$ROOT/tests/test_safety.py"
 python3 "$ROOT/tests/test_worker_entrypoints.py"
-LINUX_DEFRAGGER_BUILD_DIR="$BUILD_DIR" PYTHONPATH="$ROOT/gui:$ROOT/tests" python3 "$ROOT/tests/test_native_top3.py"
-LINUX_DEFRAGGER_BUILD_DIR="$BUILD_DIR" PYTHONPATH="$ROOT/gui:$ROOT/tests" python3 "$ROOT/tests/test_affs_native.py"
-LINUX_DEFRAGGER_BUILD_DIR="$BUILD_DIR" PYTHONPATH="$ROOT/gui:$ROOT/tests" python3 "$ROOT/tests/test_hfsplus_native.py"
-LINUX_DEFRAGGER_BUILD_DIR="$BUILD_DIR" PYTHONPATH="$ROOT/gui:$ROOT/tests" python3 "$ROOT/tests/test_hfs_native.py"
+LINUX_DEFRAGGER_BUILD_DIR="$BUILD_DIR" PYTHONPATH="$ROOT/tests" python3 "$ROOT/tests/test_native_top3.py"
+LINUX_DEFRAGGER_BUILD_DIR="$BUILD_DIR" PYTHONPATH="$ROOT/tests" python3 "$ROOT/tests/test_affs_native.py"
+LINUX_DEFRAGGER_BUILD_DIR="$BUILD_DIR" PYTHONPATH="$ROOT/tests" python3 "$ROOT/tests/test_hfsplus_native.py"
+LINUX_DEFRAGGER_BUILD_DIR="$BUILD_DIR" PYTHONPATH="$ROOT/tests" python3 "$ROOT/tests/test_hfs_native.py"
 python3 "$ROOT/tests/test_xfs_writer.py"
 if [[ -x "$XFS_NATIVE_TEST" ]]; then "$XFS_NATIVE_TEST"; fi
 if [[ -x "$XFS_METADATA_TEST" ]]; then "$XFS_METADATA_TEST"; fi
