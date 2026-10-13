@@ -130,12 +130,15 @@ published source can differ from the tested source.
 
 - mutable release branches;
 - manual publication after an earlier CI run;
-- exact-head qualification and immutable version tags.
+- exact-head qualification with a write-once version identity.
 
 **Decision.** A release is eligible only from a versioned release commit whose
 exact head passes the permanent quality gate and matches the active audit
-baselines. Published tags/releases are immutable; APT publication resolves the
-same release identity.
+baselines. The publisher treats each version as write-once: an existing tag must
+already resolve to the qualified commit, the release must target that commit,
+and the exact qualified asset set/digests must match. APT publication resolves
+the same release identity. These guarantees are project-enforced and do not
+depend on GitHub's separate platform-level immutable-release setting.
 
 **Consequences.** Release administration is stricter and occasionally requires
 an explicit audit-baseline advance, but there is a traceable chain from source
