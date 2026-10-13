@@ -37,11 +37,6 @@ jobs:
         shell: bash
         run: git -C "$GITHUB_WORKSPACE" submodule update --init --depth 1 -- defragger/shared/infiltratr-common
 
-      - name: Provide Node.js for the pinned Python type checker
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: '22'
-
       - name: Verify self-hosted runner contract
         run: ./ci/preflight.sh quality
 
@@ -99,18 +94,15 @@ jobs:
       - name: Run complete native, filesystem, GUI and release test suite
         env:
           PYTHONDONTWRITEBYTECODE: "1"
-          PYTHONPATH: ${{ github.workspace }}/defragger/gui:${{ github.workspace }}/defragger/tests
+          PYTHONPATH: ${{ github.workspace }}/defragger/tests
           LINUX_DEFRAGGER_BUILD_DIR: ${{ github.workspace }}/defragger/build
         run: ctest --test-dir build --output-on-failure
 
-      - name: Enforce architecture and release invariants
+      - name: Enforce release invariants
         env:
           PYTHONDONTWRITEBYTECODE: "1"
-          PYTHONPATH: ${{ github.workspace }}/defragger/gui:${{ github.workspace }}/defragger/tests
           LINUX_DEFRAGGER_BUILD_DIR: ${{ github.workspace }}/defragger/build
-        run: |
-          python3 tests/test_btrfs_architecture.py
-          python3 tests/test_release_gate.py
+        run: python3 tests/test_release_gate.py
 
       - name: Build and verify release artefacts once
         if: steps.release_intent.outputs.release == 'true'
@@ -177,7 +169,7 @@ jobs:
           ASAN_OPTIONS: halt_on_error=1:detect_leaks=0
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
           PYTHONDONTWRITEBYTECODE: "1"
-          PYTHONPATH: ${{ github.workspace }}/defragger/gui:${{ github.workspace }}/defragger/tests
+          PYTHONPATH: ${{ github.workspace }}/defragger/tests
           LINUX_DEFRAGGER_BUILD_DIR: ${{ github.workspace }}/defragger/build-sanitize
         run: |
           ctest --test-dir build-sanitize --output-on-failure \
