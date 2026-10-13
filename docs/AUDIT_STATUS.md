@@ -5,8 +5,8 @@ Status: **complete**
 Completed: 2026-10-13
 
 Applies to: audited source and release-governance baselines below
-Audited source commit: 51f18e338c9709c00505bd7aad8e25713b3678a5
-Audited release-governance commit: 51f18e338c9709c00505bd7aad8e25713b3678a5
+Audited source commit: b47eb871bc414fa05e34fed764e1c3cba1f16a83
+Audited release-governance commit: b47eb871bc414fa05e34fed764e1c3cba1f16a83
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
