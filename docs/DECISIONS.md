@@ -113,36 +113,46 @@ publication/removal and neutral design contracts where semantics match.
 Defragmenter's native core owns product-local filesystem-neutral target safety
 and transaction-binding mechanics. Filesystem engines retain volume identity,
 geometry, placement, transaction stages, recovery meaning and fail-closed
-policy. Python is retained only as source/test fixture and test-tooling material;
-it carries no production filesystem control-plane, mutation or durability
-implementation.
+policy. Python may be used by independent test fixtures/drivers, but it owns no
+product control plane, mutation, durability, presentation or filesystem policy.
 
 **Consequences.** Generic code is reused without obscuring the safety boundary.
 A smaller codebase is not treated as a sufficient reason to move
 application-specific policy into Common.
 
-## ADR-006 — Bind release publication to the exact qualified commit
+## ADR-006 — Bind release publication to the exact qualified commit and inputs
 
 **Context.** A green test result is not meaningful for release assurance if the
-published source can differ from the tested source.
+published source can differ from the tested source, if qualification can be
+weakened after audit, or if a packaging step can absorb ambient runner files
+that are not part of the repository revision.
 
 **Alternatives considered.**
 
 - mutable release branches;
 - manual publication after an earlier CI run;
-- exact-head qualification with a write-once version identity.
+- archiving the current working directory with an exclusion list;
+- exact-head qualification with a write-once version identity and explicit
+  source-input inventory.
 
 **Decision.** A release is eligible only from a versioned release commit whose
 exact head passes the permanent quality gate and matches the active audit
-baselines. The publisher treats each version as write-once: an existing tag must
-already resolve to the qualified commit, the release must target that commit,
-and the exact qualified asset set/digests must match. APT publication resolves
-the same release identity. These guarantees are project-enforced and do not
-depend on GitHub's separate platform-level immutable-release setting.
+baselines. The audited source baseline includes every tracked input that can
+alter what qualification builds, installs or accepts, including tests and the
+source-install entry point. The local native installer is constructed from
+committed Git objects for that exact Defragmenter revision plus the exact pinned
+Common commit; untracked workspace state is not an input. The publisher treats
+each version as write-once: an existing tag must already resolve to the
+qualified commit, the release must target that commit, and the exact qualified
+asset set/digests must match. APT publication resolves the same release identity.
+These guarantees are project-enforced and do not depend on GitHub's separate
+platform-level immutable-release setting.
 
 **Consequences.** Release administration is stricter and occasionally requires
 an explicit audit-baseline advance, but there is a traceable chain from source
-commit to tests, safety decision and distributed artifacts.
+commit to tests, safety decision and distributed artifacts. Adding another
+source input requires deliberately adding it to the audited boundary rather
+than relying on an exclusion convention to keep unrelated files out.
 
 ## ADR-007 — Use C++17 for filesystem-neutral application services without rewriting strong C engines
 
@@ -150,12 +160,13 @@ commit to tests, safety decision and distributed artifacts.
 match fixed-layout data and low-level storage interfaces well. The application
 layer also needs typed registry data, JSON/protocol ownership, process lifetime
 management and a persistent privileged session, where scoped C++ ownership
-removes cleanup and post-`fork` hazards that are awkward to express safely in
-the previous Python orchestration.
+removes cleanup and post-`fork` hazards that were awkward to express safely in
+the former Python orchestration.
 
 **Alternatives considered.**
 
-- retain Python as the permanent production application/control layer;
+- retain Python as a permanent production application/control layer;
+- preserve a Python application model indefinitely as compatibility/test code;
 - rewrite the filesystem engines into C++ for language uniformity;
 - keep the filesystem/storage boundary in C and move only the
   filesystem-neutral application services to C++17.
@@ -164,16 +175,17 @@ the previous Python orchestration.
 mutation and the storage-safety core. C++17 owns the native registry, map
 translation, operation dispatch, process/protocol values, privileged-helper
 lifetime and installed GTK desktop. The privileged helper uses `posix_spawn`
-and explicit process-group ownership. Retained Python modules are source/test
-fixtures and test tooling only; the former duplicated filesystem registry,
-dispatcher and privileged-process compatibility contracts have been removed
-after their native replacements reached parity.
+and explicit process-group ownership. Once native parity and black-box native
+regressions existed, the retired Python application/model/presentation graph was
+removed rather than maintained as a second representation of product state.
+Python remains permitted under `tests/` as an independent fixture and driver
+language only.
 
 **Consequences.** The project gains stronger scoped ownership without imposing
-an object model on disk algorithms. The completed migration leaves filesystem
-capability, mapping, operation and privileged-process authority in native code;
-Python no longer carries a second representation of those production contracts.
-Language choice remains evidence-driven rather than a purity rule.
+an object model on disk algorithms and no longer pays the maintenance cost of a
+non-shipping parallel application. Filesystem capability, mapping, operation,
+presentation and privileged-process authority all have one native source of
+truth. Language choice remains evidence-driven rather than a purity rule.
 
 ## ADR-008 — Keep ZFS mutation inside the ZFS transaction engine
 
