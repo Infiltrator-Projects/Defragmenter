@@ -1,5 +1,0 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-"""Generated Defragmenter version. Do not edit this installed file."""
-VERSION = "@LINUX_DEFRAGGER_PACKAGE_VERSION@"
-BUILD_PROFILE = "@LINUX_DEFRAGGER_BUILD_PROFILE@"
-BUILD_LABEL = "@LINUX_DEFRAGGER_BUILD_LABEL@"
