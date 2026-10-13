@@ -43,7 +43,12 @@ treating one third-party implementation as infallible.
   writer is intentionally restricted to the qualified single-device CRC32C,
   level-0 mixed data/metadata subset and fails closed on feature combinations
   for which deterministic offline mutation has not been established.
-- **Classic HFS** - Apple *Inside Macintosh: Files* HFS on-disk structures, corroborated by Apple's open-source HFS implementation and the Linux HFS driver. The writer is restricted to clean classic-HFS volumes with regular-file fork maps completely represented by the inline catalog extent record; special B-trees remain fixed.
+- **Classic HFS** - Apple *Inside Macintosh: Files* HFS on-disk structures,
+  corroborated by Apple's open-source HFS implementation and the Linux HFS
+  driver. The qualified writer accepts clean classic-HFS regular-file forks
+  whose complete extent chain is validated across the catalog inline extents
+  and supported Extents Overflow records; B-tree topology itself is preserved
+  and malformed or unsupported overflow state fails closed.
 - **HFS+ / HFSX** - Apple Technical Note TN1150, *HFS Plus Volume Format*:
   <https://developer.apple.com/library/archive/technotes/tn/tn1150.html>.
 - **APFS** - Apple, *Apple File System Reference*:
@@ -52,10 +57,12 @@ treating one third-party implementation as infallible.
   checksums, checkpoint/spaceman layout and B-tree record interpretation.
   Defragmenter performs exact allocation/fragmentation analysis and bounded
   offline Defragment/Growth Defrag/Recover for its qualified single-active-
-  checkpoint/direct-CIB/single-volume/flat-tree subset. The writer deliberately
-  rejects historical checkpoint-ring state, shared/sparse/encrypted data and
-  other feature combinations for which deterministic direct mutation is not
-  qualified.
+  checkpoint/direct-CIB/single-volume/flat-tree subset. The writer may preserve
+  checksum-valid descriptor-ring NX/checkpoint-map history whose XID is
+  strictly older than the selected active checkpoint and whose container
+  identity/geometry is compatible; that retained history is not rewritten.
+  Shared/sparse/encrypted data and other unqualified feature combinations fail
+  closed.
 - **UFS/FFS** - BSD Fast File System literature and current FreeBSD filesystem
   sources are corroborating references. Defragmenter owns the native UFS1/UFS2
   parser and bounded offline writer; the qualified writer remains fail-closed to
