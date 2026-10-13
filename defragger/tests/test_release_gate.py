@@ -54,12 +54,13 @@ def main() -> None:
     release_script = _read(RELEASE_SCRIPT)
     audit = _read(AUDIT_FILE)
 
-    # Keep one Linux qualification workflow, one publication workflow and the
-    # independent Windows runner smoke check. Historical helper workflows stay gone.
+    # The maintained workflow surface is deliberately complete and minimal:
+    # one Linux qualification workflow and one publication workflow. Ad-hoc
+    # runner probes, experiments and historical helper workflows must stay out
+    # of the product repository because they create an unaudited CI control plane.
     assert {path.name for path in WORKFLOWS.glob("*.yml")} == {
         "quality-gate.yml",
         "release.yml",
-        "windows-runner-smoke.yml",
     }
 
     # Qualification runs on main, not PR-only branches, and has two permanent
