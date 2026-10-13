@@ -18,7 +18,7 @@ This directory is the canonical documentation entry point for Defragmenter. The 
 
 The baseline files have distinct responsibilities and should not compete as alternate sources of truth. Architecture describes where behaviour belongs; Design explains why; Decisions preserve durable choices; Roadmap describes direction; Validation states what evidence is required.
 
-Code and tests remain authoritative for executable behaviour. Immutable tags/releases identify historical source. Release-specific safety qualification belongs in Audit Status rather than being copied into design documents.
+Code and tests remain authoritative for executable behaviour. Historical version tags and releases identify exact published source and assets under the project's write-once release policy. Release-specific safety qualification belongs in Audit Status rather than being copied into design documents.
 
 ## Specialist documentation
 
