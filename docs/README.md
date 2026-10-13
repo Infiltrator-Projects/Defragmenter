@@ -10,7 +10,7 @@ This directory is the canonical documentation entry point for Defragmenter. The 
 - [Roadmap](ROADMAP.md) — current foundation, near-term priorities and longer-term direction.
 - [Validation](VALIDATION.md) — automated, destructive-path, manual and release evidence boundaries.
 - [Project README](../README.md) — product overview, capabilities, build/use entry point and engineering ethos.
-- [Changelog](../CHANGELOG.md) — consolidated user-visible and contract-relevant history. Exact published identities remain the Git tags/releases; release-specific notes under `releases/` supplement the changelog where present.
+- [Changelog](../CHANGELOG.md) — retained consolidated history through the entries it contains. Later release-specific engineering notes live under `releases/` where retained; exact published identities and source remain the Git tags/releases rather than an inferred gap-free prose ledger.
 - [Contributing](../CONTRIBUTING.md) — development, ownership and verification rules.
 - [Security](../SECURITY.md) — vulnerability scope, reporting and response policy.
 

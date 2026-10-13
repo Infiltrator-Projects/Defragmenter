@@ -46,7 +46,6 @@ activity surface. Further passes can refine animation, preview states, richer
 drive artwork and before/after visualisations without changing the storage
 engine contract.
 
-
 ## Navigation contract
 
 The left rail is **navigation**, not a second copy of the operation controls.
@@ -61,13 +60,13 @@ operation.
 Where the approved concept uses illustration or product artwork, Defragmenter
 uses dedicated standalone raster assets rather than procedurally redrawing the
 scene with Cairo primitives. Runtime artwork lives under `gui/ui/art/` and is
-installed beside the UI modules; the complete concept screenshot is
-**documentation only** and must never be loaded, cropped or displayed by the
-application. The drive badge, hero landscape and Workbench-inspired sidebar
-scene each have their own asset with no embedded prototype controls. Procedural
-drawing remains appropriate for truthful live data visualisations such as gauges
-and the physical allocation map.
-
+installed into the application's private UI asset directory consumed by the
+native GTK desktop; the complete concept screenshot is **documentation only**
+and must never be loaded, cropped or displayed by the application. The drive
+badge, hero landscape and Workbench-inspired sidebar scene each have their own
+asset with no embedded prototype controls. Procedural drawing remains appropriate
+for truthful live data visualisations such as gauges and the physical allocation
+map.
 
 ## Primary volume-control contract
 
@@ -77,7 +76,6 @@ control surface immediately below the hero. Primary controls must never be
 children of the hero artwork overlay or depend on its fixed raster height.
 This guarantees that the combo box and its popup remain visible, clickable and
 unclipped across supported window sizes and desktop themes.
-
 
 ## Overview fit contract
 

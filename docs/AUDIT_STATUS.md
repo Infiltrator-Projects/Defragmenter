@@ -5,8 +5,8 @@ Status: **complete**
 Completed: 2026-10-13
 
 Applies to: audited source and release-governance baselines below
-Audited source commit: 3f2afe2ab58d5b8276bcfd787a8cc2d77f5ca63f
-Audited release-governance commit: 3f2afe2ab58d5b8276bcfd787a8cc2d77f5ca63f
+Audited source commit: 51f18e338c9709c00505bd7aad8e25713b3678a5
+Audited release-governance commit: 51f18e338c9709c00505bd7aad8e25713b3678a5
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
@@ -15,6 +15,8 @@ This document records the current release safety case for the exact audited sour
 ## Current safety case
 
 Write-capable engines are admitted only when the parser, placement model, durable recovery contract and independent final verification agree on the same bounded on-disk subset. Unsupported, structurally ambiguous, mounted or identity-mismatched targets fail closed before authoritative writes.
+
+Filesystem-neutral block topology follows the Linux sysfs object model rather than assuming every block kobject has identical relation directories: partition nodes contribute their containing disk plus `holders/`, while whole/stacked block devices additionally contribute `slaves/` and child partitions. Required relation/parent metadata still fails closed. A host-partition regression exercises this boundary through the production mount-topology API.
 
 - **FAT12/FAT16/FAT32** — native allocation/catalogue analysis, canonical relocation, Growth Defrag reserve and Recover.
 - **exFAT** — native catalogue/relayout, Growth Defrag reserve and Recover.

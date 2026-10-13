@@ -1,47 +1,43 @@
 # Contributing
 
-Defragmenter combines a native GTK application, filesystem-neutral safety/runtime code and first-party filesystem engines. Contributions should preserve those boundaries and keep destructive behaviour demonstrably recoverable.
+Defragmenter accepts changes only when they preserve the write-safety case and the single-source-of-truth architecture.
 
-## Engineering rules
+Read [PHILOSOPHY.md](PHILOSOPHY.md) before making a substantial change. It is the repository entry point to the canonical Infiltrator Engineering Philosophy and defines the expected engineering, review, comment and documentation standard.
 
-- Keep the installed GTK presentation and filesystem-neutral application orchestration in `native/`; keep raw/filesystem policy below the presentation layer. The Python material under `gui/ui/` is source/test fixture material, not a production control plane.
-- Keep one filesystem registry and one authoritative implementation per filesystem.
-- Keep filesystem-neutral raw device/runtime mechanics in `src/core/`; keep native application-service orchestration in `native/`; keep format semantics with the owning filesystem package.
-- Reuse the pinned Infiltratr Common API when it is the correct generic abstraction; improve Common first if Defragmenter has the stronger generic implementation.
-- Do not add external repair/defragmentation commands to production mutation paths.
-- Treat unsupported, ambiguous or malformed on-disk state as a fail-closed result.
-- Preserve target-identity, mounted-overlap, durable-recovery, safe-Stop and final-verification contracts.
-- Add deterministic regression coverage for parser, planner, writer, transaction, safety, GUI/service or packaging changes.
-- Do not create parallel Markdown for a subject already owned by the canonical documentation set.
+Before changing code, read:
 
-## Language and dependency policy
+- `docs/ARCHITECTURE.md`
+- `docs/DESIGN.md`
+- `docs/DECISIONS.md`
+- `docs/VALIDATION.md`
+- `docs/AUDIT_STATUS.md`
+- `defragger/README.md`
 
-C is the default for on-disk codecs, fixed-layout structures and direct storage work. Use C++17 when RAII, scoped ownership, stronger value types or explicit process/protocol ownership make a filesystem-neutral native component safer or clearer; do not introduce class hierarchies merely because C++ is available, and do not rewrite strong C for uniformity. C++17 owns the installed GTK presentation and native application services. Python is limited to source/test fixtures and test tooling; it must not become runtime authority for filesystem capability, mapping, mutation, recovery or privileged process safety.
+Engineering rules:
 
-Platform/system libraries are acceptable when their documented contract is the stronger engineering choice. Convenience alone is not a reason to move Defragmenter-owned semantics into a dependency.
+- Prefer one authoritative implementation over compatibility layers.
+- Do not introduce a second filesystem registry, write-policy table, package manifest or theme authority.
+- Filesystem-specific parsing and mutation semantics belong with their native filesystem package.
+- The native C++ registry and operation engine own application-wide dispatch and user-facing operation policy.
+- Filesystem-neutral device, mount, identity, I/O and Stop safety belong under `src/core/`.
+- Use Infiltratr Common for genuinely generic mechanisms when its contract is at least as strong as the local requirement.
+- Do not move product-specific disk safety, staging or recovery semantics into Common merely to reduce local line count.
+- Python under `tests/` is independent fixture and black-box orchestration tooling only. Production application, presentation, capability and privilege policy remain native C/C++; `gui/ui/art/` contains native desktop artwork, not a Python compatibility graph.
+- Treat parser uncertainty, target-identity uncertainty and recovery uncertainty as fail-closed conditions.
+- Update maintained documentation when an ownership, safety, release or support contract changes.
 
-## Build and validation
+Validation rules:
 
-Clone recursively because the project pins Infiltratr Common:
+- Keep first-party C/C++ warnings clean under the permanent warnings-as-errors build.
+- Add boundary-oriented tests for changed behaviour; do not couple tests to private implementation merely to increase coverage.
+- Parser changes need valid, malformed and truncated evidence.
+- Writer changes need disposable-image mutation plus independent verification and recovery evidence.
+- Release/build changes need package/install/release contract tests.
+- Run the full project suite before release; focused local tests are development aids, not a release substitute.
 
-```bash
-git clone --recurse-submodules https://github.com/Infiltrator-Projects/Defragmenter.git
-cd Defragmenter/defragger
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DLD_ENABLE_WERROR=ON
-jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || printf '2')
-[ "$jobs" -gt 1 ] && jobs=$((jobs - 1))
-cmake --build build -j"$jobs"
-ctest --test-dir build --output-on-failure
-```
+Repository hygiene:
 
-Write-capable changes require evidence appropriate to the affected safety boundary. When a transaction or recovery contract changes, add interruption/fault coverage as well as a successful image path.
-
-## Documentation and comments
-
-Read `docs/README.md` for document authority. Architecture belongs in `docs/ARCHITECTURE.md`; rationale in `docs/DESIGN.md`; durable choices in `docs/DECISIONS.md`; direction in `docs/ROADMAP.md`; validation evidence in `docs/VALIDATION.md`; current release safety qualification in `docs/AUDIT_STATUS.md`.
-
-Comments should preserve information expensive to reconstruct: on-disk units, ownership, target identity, transaction boundaries, durability assumptions, complexity limits and non-obvious format rules. Do not narrate straightforward syntax.
-
-## Repository discipline
-
-`main` is the authoritative development and release branch. Keep commits focused. Published version identities are write-once project contracts: do not move tags, retarget releases or replace qualified assets. Publication is bound to the exact qualified commit and verifies that contract before succeeding.
+- Development is direct-to-protected-`main`; do not create routine feature or release branches.
+- Do not commit generated packages, build trees, caches, qualification output or forensic scratch files.
+- `VERSION` is the explicit release decision. Ordinary commits do not publish.
+- Never rebuild a qualified release in the publication phase.
