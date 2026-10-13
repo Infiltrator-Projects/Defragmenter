@@ -80,7 +80,7 @@ def run_case(mode, program):
             send({"action": "ping", "id": 91})
             assert event_of("pong", 91)["id"] == 91
 
-            arguments = ["/dev/test", "--fstype", "fat12"]
+            arguments = ["/dev/test", "--fstype", "fat12", "--cells", "1024"]
             if program == "operation-engine":
                 arguments = ["defrag", "/dev/test", "--filesystem", "fat12",
                              "--write", "--confirm", "/dev/test",
