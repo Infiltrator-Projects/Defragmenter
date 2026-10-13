@@ -1,93 +1,97 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Create the self-contained local hardware-optimised compiler/installer.
+# Create the self-contained local hardware-optimised compiler/installer from
+# committed source only. Untracked runner state must never enter a release.
 set -eu
 
+fail() {
+    printf 'local installer: %s\n' "$*" >&2
+    exit 1
+}
+
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+command -v git >/dev/null 2>&1 || fail 'git is required to construct the source payload'
+REPO_ROOT=$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null) || \
+    fail 'build-local-run.sh must be run from a Git checkout'
+[ "$ROOT" = "$REPO_ROOT/defragger" ] || \
+    fail "unexpected project root: $ROOT"
+
+# The payload is materialised from HEAD, never from the ambient working tree.
+# Refuse tracked edits rather than silently packaging different bytes from the
+# ones the caller is looking at; arbitrary untracked files are deliberately
+# irrelevant because git archive cannot see them.
+git -C "$REPO_ROOT" diff --quiet -- defragger || \
+    fail 'tracked Defragmenter files differ from HEAD'
+git -C "$REPO_ROOT" diff --cached --quiet -- defragger || \
+    fail 'staged Defragmenter files differ from HEAD'
+
 VERSION=$(tr -d '\r\n' <"$ROOT/VERSION")
 NATIVE_PACKAGE_VERSION="${VERSION}+native1"
 OUTPUT=${1:-"$ROOT/Defragmenter-${VERSION}-local-folder.run"}
 TEMPLATE="$ROOT/packaging/local-run-header.sh.in"
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/linux-defragger-run-build.XXXXXX")
 COMMON_DIR="$ROOT/shared/infiltratr-common"
-COMMON_URL="https://github.com/Infiltrator-Projects/Infiltrator-Libraries.git"
-COMMON_TAG="v1.19.38"
 COMMON_VERSION="1.19.38"
 COMMON_COMMIT="7070c5812b50821fd7580101cb2289a3184f6b2c"
-COMMON_TEMP=0
 cleanup() {
     rm -rf "$WORK"
-    if [ "$COMMON_TEMP" -eq 1 ]; then
-        rm -rf "$COMMON_DIR"
-        rmdir "$ROOT/shared" 2>/dev/null || true
-    fi
 }
 trap cleanup EXIT HUP INT TERM
 
 if [ ! -f "$COMMON_DIR/VERSION" ]; then
-    command -v git >/dev/null 2>&1 || {
-        printf 'git is required to retrieve Infiltratr Common %s\n' "$COMMON_VERSION" >&2
-        exit 1
-    }
-    if [ -e "$ROOT/.git" ]; then
-        git -C "$ROOT" submodule update --init --depth 1 -- shared/infiltratr-common
-    else
-        mkdir -p "$ROOT/shared"
-        git clone --quiet --depth 1 --branch "$COMMON_TAG" "$COMMON_URL" "$COMMON_DIR"
-        COMMON_TEMP=1
-    fi
+    git -C "$REPO_ROOT" submodule update --init --depth 1 -- \
+        defragger/shared/infiltratr-common || \
+        fail "unable to initialise Infiltratr Common ${COMMON_VERSION}"
 fi
+[ -e "$COMMON_DIR/.git" ] || \
+    fail 'Infiltratr Common must be a checked-out Git submodule'
 ACTUAL_COMMON_VERSION=$(tr -d '\r\n' <"$COMMON_DIR/VERSION")
-[ "$ACTUAL_COMMON_VERSION" = "$COMMON_VERSION" ] || {
-    printf 'Infiltratr Common %s is required; found %s\n' "$COMMON_VERSION" "$ACTUAL_COMMON_VERSION" >&2
-    exit 1
-}
-if [ -e "$COMMON_DIR/.git" ]; then
-    ACTUAL_COMMON_COMMIT=$(git -C "$COMMON_DIR" rev-parse HEAD)
-    [ "$ACTUAL_COMMON_COMMIT" = "$COMMON_COMMIT" ] || {
-        printf 'Infiltratr Common commit mismatch: %s\n' "$ACTUAL_COMMON_COMMIT" >&2
-        exit 1
-    }
-fi
+[ "$ACTUAL_COMMON_VERSION" = "$COMMON_VERSION" ] || \
+    fail "Infiltratr Common ${COMMON_VERSION} is required; found ${ACTUAL_COMMON_VERSION}"
+ACTUAL_COMMON_COMMIT=$(git -C "$COMMON_DIR" rev-parse HEAD)
+[ "$ACTUAL_COMMON_COMMIT" = "$COMMON_COMMIT" ] || \
+    fail "Infiltratr Common commit mismatch: ${ACTUAL_COMMON_COMMIT}"
+git -C "$COMMON_DIR" diff --quiet || fail 'Infiltratr Common has tracked working-tree changes'
+git -C "$COMMON_DIR" diff --cached --quiet || fail 'Infiltratr Common has staged changes'
 
-for command_name in tar gzip sha256sum sed; do
-    command -v "$command_name" >/dev/null 2>&1 || {
-        printf 'Required command is missing: %s\n' "$command_name" >&2
-        exit 1
-    }
+for command_name in tar gzip sha256sum sed find; do
+    command -v "$command_name" >/dev/null 2>&1 || \
+        fail "required command is missing: ${command_name}"
 done
+[ -f "$TEMPLATE" ] || fail "installer template is missing: ${TEMPLATE}"
 
-[ -f "$TEMPLATE" ] || {
-    printf 'Installer template is missing: %s\n' "$TEMPLATE" >&2
-    exit 1
-}
-
-PARENT=$(dirname -- "$ROOT")
-BASENAME=$(basename -- "$ROOT")
 PAYLOAD_BASENAME="linux-defragger-${VERSION}"
+STAGE="$WORK/stage"
 TAR_PATH="$WORK/source.tar"
 FONT_ARCHIVE="$WORK/mb-corpo-fonts.tar.xz"
-"$ROOT/packaging/vendor-mb-fonts.sh" "$FONT_ARCHIVE" >/dev/null
+mkdir -p "$STAGE"
 
-tar --sort=name --mtime='@1704067200' --owner=0 --group=0 --numeric-owner \
-    --exclude-vcs \
-    --exclude='__pycache__' \
-    --exclude='*.pyc' \
-    --exclude='*.py' \
-    --exclude="$BASENAME/build*" \
-    --exclude="$BASENAME/native-verify" \
-    --exclude="$BASENAME/release" \
-    --exclude='*.deb' \
-    --exclude='*.run' \
-    --exclude='*.zip' \
-    --exclude="$BASENAME/assets/fonts/mb-corpo-fonts.tar.xz" \
-    --transform="s,^${BASENAME},${PAYLOAD_BASENAME}," \
-    -C "$PARENT" -cf "$TAR_PATH" "$BASENAME"
-FONT_STAGE="$WORK/font-stage/$PAYLOAD_BASENAME/assets/fonts"
+# Git, not a hand-maintained exclusion list, is the source inventory authority.
+# The superproject archive intentionally contains only the Common gitlink; the
+# exact pinned Common commit is archived separately into that location.
+git -C "$REPO_ROOT" archive --format=tar HEAD defragger | tar -xf - -C "$STAGE"
+mv "$STAGE/defragger" "$STAGE/$PAYLOAD_BASENAME"
+COMMON_STAGE="$STAGE/$PAYLOAD_BASENAME/shared/infiltratr-common"
+rm -rf "$COMMON_STAGE"
+mkdir -p "$COMMON_STAGE"
+git -C "$COMMON_DIR" archive --format=tar HEAD | tar -xf - -C "$COMMON_STAGE"
+
+# Python remains independent qualification/test tooling only. The local source
+# installer builds production C/C++ with BUILD_TESTING=OFF, so test drivers are
+# not payload inputs and are removed as an explicit product-output policy.
+find "$STAGE/$PAYLOAD_BASENAME" -type f \( -name '*.py' -o -name '*.pyc' \) -delete
+find "$STAGE/$PAYLOAD_BASENAME" -type d -name '__pycache__' -prune -exec rm -rf '{}' +
+
+"$ROOT/packaging/vendor-mb-fonts.sh" "$FONT_ARCHIVE" >/dev/null
+FONT_STAGE="$STAGE/$PAYLOAD_BASENAME/assets/fonts"
 mkdir -p "$FONT_STAGE"
+rm -f "$FONT_STAGE/mb-corpo-fonts.tar.xz"
 cp "$FONT_ARCHIVE" "$FONT_STAGE/mb-corpo-fonts.tar.xz"
-tar --mtime='@1704067200' --owner=0 --group=0 --numeric-owner \
-    -C "$WORK/font-stage" -rf "$TAR_PATH" "$PAYLOAD_BASENAME/assets/fonts/mb-corpo-fonts.tar.xz"
+
+# Normalised metadata makes equal committed inputs produce equal source
+# payloads; neither local uid/gid nor wall-clock time participates.
+tar --sort=name --mtime='@1704067200' --owner=0 --group=0 --numeric-owner \
+    -C "$STAGE" -cf "$TAR_PATH" "$PAYLOAD_BASENAME"
 gzip -n -9 "$TAR_PATH"
 PAYLOAD="$TAR_PATH.gz"
 
@@ -102,10 +106,8 @@ sed \
 if [ -n "$(tail -c 1 "$OUTPUT" 2>/dev/null || true)" ]; then
     printf '\n' >>"$OUTPUT"
 fi
-[ "$(tail -n 1 "$OUTPUT")" = '__LINUX_DEFRAGGER_PAYLOAD_BELOW__' ] || {
-    printf '%s\n' 'Generated installer payload marker is missing or malformed.' >&2
-    exit 1
-}
+[ "$(tail -n 1 "$OUTPUT")" = '__LINUX_DEFRAGGER_PAYLOAD_BELOW__' ] || \
+    fail 'generated installer payload marker is missing or malformed'
 
 dd if="$PAYLOAD" of="$OUTPUT" oflag=append conv=notrunc status=none
 chmod 0755 "$OUTPUT"
