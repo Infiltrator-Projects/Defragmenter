@@ -138,6 +138,19 @@ def main() -> None:
         "defragger/tests/test_release_gate.py",
     ):
         assert governance_path in release_script
+    for qualified_input in (
+        "defragger/CMakeLists.txt",
+        "defragger/cmake",
+        "defragger/native",
+        "defragger/gui",
+        "defragger/src",
+        "defragger/shared",
+        "defragger/packaging",
+        "defragger/test_media",
+        "defragger/tests",
+        "defragger/install.sh",
+    ):
+        assert qualified_input in release_script
     assert "git diff --quiet" in release_script
     assert "sha256sum -c" in release_script
     assert ".digest" in release_script
@@ -160,6 +173,8 @@ def main() -> None:
         "defragger/shared",
         "defragger/packaging",
         "defragger/test_media",
+        "defragger/tests",
+        "defragger/install.sh",
     )
     result = subprocess.run(
         ["git", "diff", "--quiet", audited_source, "HEAD", "--", *audited_paths],
@@ -167,7 +182,7 @@ def main() -> None:
         check=False,
     )
     assert result.returncode == 0, (
-        "production/build/package source changed after the audited source baseline"
+        "qualified source/test/install input changed after the audited source baseline"
     )
 
     print("release contracts: semantic gate passed")
