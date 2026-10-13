@@ -7,8 +7,9 @@ This document defines the Linux feature-completion target. The released source a
 - [x] Broad first-party native allocation analysis across the currently registered filesystem families.
 - [x] Qualified Defragment, Growth Defrag and Recover engines for FAT12/16/32, exFAT, NTFS, ext2/3/4, XFS v5, Amiga OFS/FFS, Amiga SFS0/SFS2, bounded Amiga PFS3, bounded Classic HFS, bounded single-device Btrfs, bounded APFS, HFS+/HFSX, Minix v1/v2/v3 and the qualified UFS1/UFS2 subset.
 - [x] Exact target confirmation, descriptor-level identity binding, mounted-overlap refusal, durable recovery state, cooperative Stop and final read-only verification.
-- [x] Full filesystem, GUI, architecture, safety, packaging and release regression gate.
+- [x] Full filesystem, native GUI, architecture, safety, packaging and release regression gate.
 - [x] Exact pinned Common dependency with filesystem-neutral mechanisms kept out of filesystem engines.
+- [x] Single native application/control/presentation plane; Python is limited to independent test fixtures and black-box drivers.
 
 ## Linux feature-completion backlog
 
@@ -22,7 +23,7 @@ A filesystem writer is complete only when Defragment, exact 10% Growth Defrag an
 - [x] **Minix v1/v2/v3** — exact native analyser plus recoverable native Defragment/Growth Defrag/Recover support, including exact 10% reserve qualification.
 - [x] **UFS1/UFS2** — exact cylinder-group allocation mapping and inode block-tree fragmentation analysis for both variants, with a bounded clean/non-journalled/snapshot-free native Defragment/Growth Defrag/Recover contract, exact 10% reserve qualification, durable staged recovery and genuine makefs UFS1/UFS2 integration coverage.
 - [x] **ZFS/OpenZFS member** — bounded exact native analysis walks all four leaf-vdev labels/uberblock rings, selects the newest committed TXG, decodes the MOS root and packed XDR topology, traverses MOS/dnodes, replays per-metaslab space maps for exact allocation and scans dataset regular-file block trees for physical fragmentation. Legacy pools and compatible feature-flag pools are admitted only for the qualified single-disk topology; unknown MOS-required features, foreign/gang/encrypted block forms, unsupported checksums/compression, fat feature ZAPs and active log-space-map state fail closed to summary rather than being reported as exact. Raw Defragment/Growth Defrag/Recover are explicitly outside product scope for ZFS: Defragmenter does not replace the CoW/TXG transaction engine, and an exact persistent 10% post-file physical reserve is not a stable ZFS postcondition.
-- [x] **Native GTK migration** — the installed `linux-defragger` launcher runs the C++ GTK desktop; native mapper/operation-dispatch/privileged-helper services are the sole control plane, and retained Python GUI material is source/test compatibility code rather than a runtime dependency.
+- [x] **Native GTK migration** — the installed `linux-defragger` launcher, presentation, registry, mapper, operation dispatcher and privileged-helper services are native C/C++; the retired Python application/model/presentation compatibility graph has been removed rather than maintained as a second source of truth.
 - [x] **Test Media completeness** — every filesystem slot now has an implemented creator path; APFS uses the first-party raw C bounded fixture/verifier rather than a manual reserved partition.
 
 Linux swap and ZFS/OpenZFS are complete by design as analysis-only. Swap has no meaningful file-layout mutation, while ZFS owns physical relocation through its CoW/TXG allocator and cannot provide Defragmenter's exact persistent 10% post-file reserve contract without replacing core pool transaction semantics.
