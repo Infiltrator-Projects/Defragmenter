@@ -2,54 +2,57 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -eu
 
-[ "$#" -eq 1 ] || {
-    printf 'Usage: %s UFS_WORKER\n' "$0" >&2
+[ "$#" -eq 2 ] || {
+    printf 'Usage: %s UFS_CREATOR UFS_WORKER\n' "$0" >&2
     exit 2
 }
 
-UFS_WORKER=$1
-command -v makefs >/dev/null 2>&1 || exit 77
+UFS_CREATOR=$1
+UFS_WORKER=$2
+[ -x "$UFS_CREATOR" ] || exit 2
 [ -x "$UFS_WORKER" ] || exit 2
 
-WORK=$(mktemp -d "${TMPDIR:-/tmp}/linux-defragger-ufs-makefs.XXXXXX")
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/linux-defragger-ufs-native.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT HUP INT TERM
 mkdir -p "$WORK/source/Defragmenter-TestData/fragmented-files"
-printf '%s\n' 'Defragmenter genuine UFS makefs integration test' \
-    >"$WORK/source/Defragmenter-TestData/fragmented-files/probe.txt"
 
-check_variant()
-{
-    version=$1
-    image="$WORK/ufs${version}.img"
-    variant="ufs${version}-le"
+# Four creator blocks are enough to prove that the private creator emits real
+# non-contiguous UFS data extents and that the production writer can compact
+# the exact fixture it manufactures.
+python3 - "$WORK/source/Defragmenter-TestData/fragmented-files/probe.bin" <<'PY'
+import pathlib
+import sys
+pathlib.Path(sys.argv[1]).write_bytes(bytes(range(256)) * 1024)
+PY
 
-    echo "+ makefs -t ffs -B little -s 64m -o version=${version},bsize=8192,fsize=1024,minfree=5"
-    makefs -t ffs -B little -s 64m \
-        -o "version=${version},bsize=8192,fsize=1024,minfree=5" \
-        "$image" "$WORK/source" >/dev/null
+IMAGE="$WORK/ufs2.img"
+echo "+ first-party UFS2 creator -t ffs -B little -s 64m"
+"$UFS_CREATOR" -t ffs -B little -s 64m \
+    -o version=2,bsize=8192,fsize=1024,minfree=5 \
+    "$IMAGE" "$WORK/source"
 
-    IDENTIFY=$($UFS_WORKER identify "$image")
-    EXPECTED="{\"filesystem\":\"ufs\",\"variant\":\"${variant}\",\"version\":${version},\"byte_order\":\"little\"}"
-    [ "$IDENTIFY" = "$EXPECTED" ] || {
-        printf '%s\n' "unexpected UFS${version} identity: $IDENTIFY" >&2
-        exit 1
-    }
+IDENTIFY=$($UFS_WORKER identify "$IMAGE")
+EXPECTED='{"filesystem":"ufs","variant":"ufs2-le","version":2,"byte_order":"little"}'
+[ "$IDENTIFY" = "$EXPECTED" ] || {
+    printf '%s\n' "unexpected UFS2 identity: $IDENTIFY" >&2
+    exit 1
+}
 
-    ANALYSE=$($UFS_WORKER analyse-json "$image")
-    printf '%s\n' "$ANALYSE" \
-        | grep -q "\"filesystem\":\"ufs\",\"variant\":\"${variant}\",\"version\":${version},\"byte_order\":\"little\""
-    printf '%s\n' "$ANALYSE" | grep -q '"map_accuracy":"exact"'
+ANALYSE=$($UFS_WORKER analyse-json "$IMAGE")
+printf '%s\n' "$ANALYSE" \
+    | grep -q '"filesystem":"ufs","variant":"ufs2-le","version":2,"byte_order":"little"'
+printf '%s\n' "$ANALYSE" | grep -q '"map_accuracy":"exact"'
 
-    MAP=$($UFS_WORKER map "$image" --cells 8)
-    python3 - "$MAP" "$version" <<'PY'
+MAP=$($UFS_WORKER map "$IMAGE" --cells 8)
+python3 - "$MAP" "$ANALYSE" <<'PY'
 import json
 import sys
 
 payload = json.loads(sys.argv[1])
-version = int(sys.argv[2])
+analysis = json.loads(sys.argv[2])
 assert payload["filesystem"] == "ufs"
 assert payload["map_accuracy"] == "exact"
-assert payload["details"]["version"] == version
+assert payload["details"]["version"] == 2
 assert payload["details"]["allocation_basis"] == "validated UFS1/UFS2 cylinder-group fragment bitmaps"
 assert payload["filesystem_bytes"] > 0
 assert payload["free_bytes"] > 0
@@ -61,19 +64,25 @@ assert sum(cell["free"] for cell in payload["cells"]) * payload["unit_size"] == 
 assert sum(cell["used"] for cell in payload["cells"]) * payload["unit_size"] == payload["used_bytes"]
 assert sum(cell["unknown"] for cell in payload["cells"]) == 0
 assert sum(cell.get("outside", 0) for cell in payload["cells"]) * payload["unit_size"] == payload["outside_bytes"]
+assert analysis["fragmented_files"] >= 1
 PY
 
-    JOURNAL="$WORK/ufs${version}.journal"
-    OUTPUT=$($UFS_WORKER defrag "$image" \
-        --write --confirm "$image" --journal "$JOURNAL")
-    printf '%s\n' "$OUTPUT" | grep -q '@@RESULT'
-    [ ! -e "$JOURNAL" ] || {
-        printf '%s\n' "UFS${version} no-op Defragment unexpectedly left a recovery journal" >&2
-        exit 1
-    }
+JOURNAL="$WORK/ufs2.journal"
+OUTPUT=$($UFS_WORKER defrag "$IMAGE" \
+    --write --confirm "$IMAGE" --journal "$JOURNAL")
+printf '%s\n' "$OUTPUT" | grep -q '@@RESULT'
+[ ! -e "$JOURNAL" ] || {
+    printf '%s\n' 'UFS2 Defragment unexpectedly left a recovery journal' >&2
+    exit 1
 }
 
-check_variant 1
-check_variant 2
+AFTER=$($UFS_WORKER analyse-json "$IMAGE")
+python3 - "$AFTER" <<'PY'
+import json
+import sys
+analysis = json.loads(sys.argv[1])
+assert analysis["fragmented_files"] == 0
+assert analysis["fragmented_directories"] == 0
+PY
 
-printf '%s\n' 'makefs UFS1/UFS2 images accepted with exact allocation and inode-tree fragmentation mapping; qualified native mutation dispatch is enabled and remains fail-closed outside the supported writer subset.'
+printf '%s\n' 'First-party UFS2 creator accepted with exact allocation mapping, real fragmentation, and qualified native Defragment compaction.'
