@@ -2,15 +2,17 @@
 
 Status: **complete**
 
-Completed: 2026-10-13
+Completed: 2026-10-14
 
 Applies to: audited source and release-governance baselines below
-Audited source commit: b47eb871bc414fa05e34fed764e1c3cba1f16a83
-Audited release-governance commit: b47eb871bc414fa05e34fed764e1c3cba1f16a83
+Audited source commit: f0409f07d8ce53e077cac998897014789f3b6e96
+Audited release-governance commit: f0409f07d8ce53e077cac998897014789f3b6e96
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
 This document records the current release safety case for the exact audited source baseline above. Publication still requires the exact release head to pass the self-hosted Project quality gate and the release-governance drift checks.
+
+The 2026-10-14 repository-wide forensic pass also rechecked dependency ownership and removed the FAT catalogue's private pathname-concatenation implementation. FAT now uses the same checked arithmetic and Common-owned lexical path contract already used elsewhere, so generic pathname construction has one stronger implementation while filesystem interpretation remains locally owned.
 
 ## Current safety case
 
