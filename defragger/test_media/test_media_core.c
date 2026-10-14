@@ -35,7 +35,7 @@ static const LdtmFilesystemSpec LDTM_SPECS[LDTM_SPEC_COUNT] = {
     {"hfs", "LD_HFS", 2048U, 200U, LDTM_CREATOR_HFS, "hfsutils", ""},
     {"hfsplus", "LD_HFSPLUS", 2048U, 200U, LDTM_CREATOR_HFSPLUS, "hfsprogs", ""},
     {"minix", "LD_MINIX", 2048U, 200U, LDTM_CREATOR_MINIX, "util-linux", ""},
-    {"ufs", "LD_UFS", 2048U, 200U, LDTM_CREATOR_UFS, "",
+    {"ufs", "LD_UFS", 2048U, 200U, LDTM_CREATOR_UFS, "makefs",
      "Built-in first-party bounded UFS2/FFS creator writes the qualification image directly and requires exact allocation/fragmentation analysis before native mutation testing."},
     {"zfs", "LD_ZFS", 2048U, 200U, LDTM_CREATOR_ZFS, "zfsutils-linux",
      "Creates an isolated single-disk OpenZFS feature-flags pool with optional features disabled, exports it after population and requires the native exact analyser to accept it."},
