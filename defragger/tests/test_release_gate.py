@@ -65,11 +65,15 @@ def main() -> None:
 
     # Qualification runs on main, not PR-only branches, and has two permanent
     # self-hosted lanes. A VERSION change is the release signal; English commit
-    # wording is not part of the control plane.
+    # wording is not part of the control plane. Main candidates are serialized,
+    # not cancelled: cancelling a VERSION-changing run could erase release intent
+    # when a later ordinary main push supersedes it.
     assert "workflow_call:" in gate
     assert "push:" in gate and "- main" in gate
     assert "pull_request:" not in gate
     assert "merge_group:" not in gate
+    assert "cancel-in-progress: false" in gate
+    assert "cancel-in-progress: true" not in gate
     runner = "runs-on: [self-hosted, Linux, X64, linux-native, bigbedroom]"
     assert gate.count(runner) == 2
     assert "release_intent:" in gate
@@ -86,6 +90,10 @@ def main() -> None:
     preserve_release = _step_containing(gate, UPLOAD_ARTIFACT_ACTION)
     assert "actions/setup-node@" not in gate
     assert "actions/upload-artifact@v4" not in gate
+    # The SHA-bound artefact is the only permitted publication input. Retain it
+    # long enough for a multi-day GitHub/APT outage to be resumed without ever
+    # rebuilding a release that has already been qualified.
+    assert "retention-days: 7" in preserve_release
 
     build_release = _step_containing(gate, "packaging/build-deb.sh")
     assert "if: steps.release_intent.outputs.release == 'true'" in build_release

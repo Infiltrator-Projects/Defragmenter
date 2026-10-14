@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: quality-gate-v7-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   quality-gate:
@@ -131,7 +131,7 @@ jobs:
             defragger/Defragmenter-*-local-folder.run
             defragger/RELEASE_SHA256SUMS.txt
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
 
   sanitizers:
     name: Self-hosted ASan / UBSan
