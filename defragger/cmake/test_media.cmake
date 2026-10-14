@@ -89,10 +89,19 @@ target_link_libraries(linux-defragger-test-media-mkfs-ffs PRIVATE
 set_target_properties(linux-defragger-test-media-mkfs-ffs PROPERTIES
     OUTPUT_NAME test-media-mkfs-ffs)
 
+add_executable(linux-defragger-test-media-mkfs-ufs
+    test_media/test_media_ufs_mkfs.c)
+target_compile_options(linux-defragger-test-media-mkfs-ufs PRIVATE ${LD_WARNING_FLAGS})
+target_compile_definitions(linux-defragger-test-media-mkfs-ufs PRIVATE
+    _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+set_target_properties(linux-defragger-test-media-mkfs-ufs PROPERTIES
+    OUTPUT_NAME test-media-mkfs-ufs)
+
 install(TARGETS linux-defragger-test-media RUNTIME DESTINATION bin)
 install(TARGETS
     linux-defragger-test-media-mkfs-ofs
     linux-defragger-test-media-mkfs-ffs
+    linux-defragger-test-media-mkfs-ufs
     RUNTIME DESTINATION lib/linux-defragger)
 install(FILES packaging/io.github.linuxdefragger.TestMedia.desktop
         DESTINATION share/applications)
@@ -142,7 +151,6 @@ if(BUILD_TESTING)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_test_media_install.cmake")
     add_test(NAME linux-defragger-test-media-ufs-makefs
         COMMAND /bin/sh "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_ufs_makefs.sh"
+            "$<TARGET_FILE:linux-defragger-test-media-mkfs-ufs>"
             "$<TARGET_FILE:linux-defragger-ufs-worker>")
-    set_tests_properties(linux-defragger-test-media-ufs-makefs
-        PROPERTIES SKIP_RETURN_CODE 77)
 endif()
