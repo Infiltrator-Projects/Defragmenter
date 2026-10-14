@@ -5,14 +5,16 @@ Status: **complete**
 Completed: 2026-10-14
 
 Applies to: audited source and release-governance baselines below
-Audited source commit: f0409f07d8ce53e077cac998897014789f3b6e96
-Audited release-governance commit: f0409f07d8ce53e077cac998897014789f3b6e96
+Audited source commit: 5dc3bc8269e5557c8221aacd59e5491f91e32113
+Audited release-governance commit: 5dc3bc8269e5557c8221aacd59e5491f91e32113
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
 This document records the current release safety case for the exact audited source baseline above. Publication still requires the exact release head to pass the self-hosted Project quality gate and the release-governance drift checks.
 
-The 2026-10-14 repository-wide forensic pass also rechecked dependency ownership and removed the FAT catalogue's private pathname-concatenation implementation. FAT now uses the same checked arithmetic and Common-owned lexical path contract already used elsewhere, so generic pathname construction has one stronger implementation while filesystem interpretation remains locally owned.
+The 2026-10-14 repository-wide forensic pass rechecked dependency ownership and removed the FAT catalogue's private pathname-concatenation implementation. FAT now uses the same checked arithmetic and Common-owned lexical path contract already used elsewhere, so generic pathname construction has one stronger implementation while filesystem interpretation remains locally owned.
+
+The second 2026-10-14 forensic pass identified a release-recovery hole rather than a filesystem defect: cancelling an in-progress `main` qualification could discard the only run carrying a VERSION-change release decision, and the once-built qualified artefact was retained for only one day. Main qualification is now serialized instead of cancelled, and its exact SHA-bound release artefact is retained for seven days. The semantic release regression fixes those properties as part of the governance contract. This preserves the existing single-build rule while making restartable publication survive ordinary multi-day service or propagation failures without rebuilding a qualified release.
 
 ## Current safety case
 
@@ -41,6 +43,6 @@ ZFS/OpenZFS and Linux swap remain analysis-only by design.
 
 The repository uses the `direct-main` development model. The active `protected-main` history contract, exact audited source/governance baselines and self-hosted **Project quality gate** collectively guard publication.
 
-Ordinary main commits never publish. A change to `defragger/VERSION` on protected `main` is the explicit release decision; commit-message wording is not part of the control plane. The exact head must pass the self-hosted full-suite and ASan/UBSan lanes. Release artefacts are built once by that qualified head and publication can only publish or resume those exact SHA-bound artefacts after checksum, audit-baseline and protected-history verification.
+Ordinary main commits never publish. A change to `defragger/VERSION` on protected `main` is the explicit release decision; commit-message wording is not part of the control plane. Main qualification runs are serialized so a later ordinary push cannot cancel and erase an earlier VERSION-changing release decision. The exact head must pass the self-hosted full-suite and ASan/UBSan lanes. Release artefacts are built once by that qualified head, retained for a bounded seven-day recovery window, and publication can only publish or resume those exact SHA-bound artefacts after checksum, audit-baseline and protected-history verification.
 
 GitHub release correctness is independent of downstream APT propagation. Publication succeeds only after the GitHub release and all three expected asset identities/digests are exact; the public APT visibility check is observational and retryable. The project publisher treats version identity as write-once and rejects tag, target or asset drift rather than relying on GitHub's separate platform-level immutable-release setting.
