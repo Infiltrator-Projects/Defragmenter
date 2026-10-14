@@ -102,17 +102,20 @@ if grep -Fq "printf 'Version: %s\\n' \"\$VERSION\"" \
 fi
 "$ROOT/tests/test_deb_package_versions.sh"
 
-if command -v makefs >/dev/null 2>&1; then
-    UFS_BUILD="$WORK/ufs-build"
-    cmake -S "$ROOT" -B "$UFS_BUILD" \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DLD_ENABLE_WERROR=ON \
-        -DBUILD_TESTING=OFF >/dev/null
-    cmake --build "$UFS_BUILD" --target linux-defragger-ufs-worker -j2 >/dev/null
-    /bin/sh "$ROOT/tests/test_ufs_makefs.sh" "$UFS_BUILD/linux-defragger-ufs-worker"
-else
-    printf '%s\n' 'makefs unavailable; UFS2 release integration test skipped.'
-fi
+# UFS Test Media is first-party.  Release validation must therefore build and
+# exercise the package-owned creator unconditionally rather than silently
+# skipping coverage when a host makefs utility is absent.
+UFS_BUILD="$WORK/ufs-build"
+cmake -S "$ROOT" -B "$UFS_BUILD" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DLD_ENABLE_WERROR=ON \
+    -DBUILD_TESTING=OFF >/dev/null
+cmake --build "$UFS_BUILD" \
+    --target linux-defragger-test-media-mkfs-ufs linux-defragger-ufs-worker \
+    -j2 >/dev/null
+/bin/sh "$ROOT/tests/test_ufs_makefs.sh" \
+    "$UFS_BUILD/test-media-mkfs-ufs" \
+    "$UFS_BUILD/linux-defragger-ufs-worker"
 
 "$ROOT/tests/test_local_installer_end_to_end.sh" "$RUN"
 
