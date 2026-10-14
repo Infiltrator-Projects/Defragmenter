@@ -19,6 +19,7 @@
 #include "ld_runtime.h"
 #include "infiltratr/arithmetic.h"
 #include "infiltratr/endian.h"
+#include "infiltratr/posix.h"
 #include "infiltratr/utf8.h"
 
 #define FAT_PROGRAM_NAME "linux-defragger-fat-worker"
@@ -241,18 +242,15 @@ static char *lfn_name(
 }
 
 static char *path_join(const char *parent, const char *name) {
-    size_t parent_length = strlen(parent);
-    size_t name_length = strlen(name);
-    bool slash = (
-        parent_length > 0 && parent[parent_length - 1] != '/'
-    );
-    char *joined = ld_xmalloc(
-        parent_length + (slash ? 1 : 0) + name_length + 1
-    );
-    memcpy(joined, parent, parent_length);
-    size_t position = parent_length;
-    if (slash) joined[position++] = '/';
-    memcpy(joined + position, name, name_length + 1);
+    size_t joined_size = 0U;
+    if (!infiltratr_size_add_checked(strlen(parent), strlen(name), &joined_size) ||
+        !infiltratr_size_add_checked(joined_size, 2U, &joined_size)) {
+        ld_die("FAT catalogue path length overflow");
+    }
+    char *joined = ld_xmalloc(joined_size);
+    if (!infiltratr_path_join(joined, joined_size, parent, name)) {
+        ld_die("cannot join FAT catalogue path");
+    }
     return joined;
 }
 
