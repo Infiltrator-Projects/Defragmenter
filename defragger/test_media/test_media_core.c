@@ -36,7 +36,7 @@ static const LdtmFilesystemSpec LDTM_SPECS[LDTM_SPEC_COUNT] = {
     {"hfsplus", "LD_HFSPLUS", 2048U, 200U, LDTM_CREATOR_HFSPLUS, "hfsprogs", ""},
     {"minix", "LD_MINIX", 2048U, 200U, LDTM_CREATOR_MINIX, "util-linux", ""},
     {"ufs", "LD_UFS", 2048U, 200U, LDTM_CREATOR_UFS, "makefs",
-     "Creates a genuine UFS2/FFS image with makefs and requires exact allocation/fragmentation analysis before qualified native mutation testing."},
+     "Built-in first-party bounded UFS2/FFS creator writes the qualification image directly and requires exact allocation/fragmentation analysis before native mutation testing."},
     {"zfs", "LD_ZFS", 2048U, 200U, LDTM_CREATOR_ZFS, "zfsutils-linux",
      "Creates an isolated single-disk OpenZFS feature-flags pool with optional features disabled, exports it after population and requires the native exact analyser to accept it."},
     {"apfs", "LD_APFS", 2048U, 200U, LDTM_CREATOR_APFS, "",
@@ -273,20 +273,33 @@ const char *ldtm_creator_display_name(const LdtmFilesystemSpec *spec) {
 
     /*
      * These formats are constructed directly by Defragmenter's native
-     * test-media engine.  They intentionally have no external mkfs program,
-     * so the GUI must not describe a ready native creator as unavailable.
+     * test-media engine.  Their private helpers are package-owned rather than
+     * host filesystem dependencies, so the GUI presents one consistent native
+     * ownership boundary.
      */
     if ((spec->creator == LDTM_CREATOR_AFFS &&
          (strcmp(spec->key, "ofs") == 0 ||
           strcmp(spec->key, "ffs") == 0 ||
           strcmp(spec->key, "sfs") == 0)) ||
         spec->creator == LDTM_CREATOR_PFS3 ||
+        spec->creator == LDTM_CREATOR_UFS ||
         spec->creator == LDTM_CREATOR_APFS) {
         return "Built-in native";
     }
 
     program = ldtm_creator_program(spec);
     return program != NULL ? program : "Unavailable";
+}
+
+static int copy_resolved_program(const char *program, char *output,
+                                 size_t output_capacity) {
+    char resolved[PATH_MAX];
+    if (realpath(program, resolved) == NULL || access(resolved, X_OK) != 0)
+        return -1;
+    if (snprintf(output, output_capacity, "%s", resolved) < 0 ||
+        strlen(resolved) + 1U > output_capacity)
+        return -1;
+    return 0;
 }
 
 int ldtm_resolve_program(const char *program, char *output,
@@ -296,22 +309,27 @@ int ldtm_resolve_program(const char *program, char *output,
         "/usr/local/sbin", "/usr/local/bin"
     };
     char candidate[PATH_MAX];
-    char resolved[PATH_MAX];
     size_t index;
 
     if (program == NULL || *program == '\0' ||
         output == NULL || output_capacity == 0U)
         return -1;
 
+    /*
+     * UFS Test Media is intentionally self-contained.  Keep the historical
+     * argv[0] spelling used by the worker, but bind it exclusively to the
+     * package-owned creator so a host makefs installation can neither become
+     * a hidden dependency nor silently change the qualification geometry.
+     */
+    if (strcmp(program, "makefs") == 0)
+        return copy_resolved_program(
+            "/usr/lib/linux-defragger/test-media-mkfs-ufs",
+            output, output_capacity);
+
     if (strchr(program, '/') != NULL) {
-        if (program[0] != '/' ||
-            realpath(program, resolved) == NULL ||
-            access(resolved, X_OK) != 0)
+        if (program[0] != '/')
             return -1;
-        if (snprintf(output, output_capacity, "%s", resolved) < 0 ||
-            strlen(resolved) + 1U > output_capacity)
-            return -1;
-        return 0;
+        return copy_resolved_program(program, output, output_capacity);
     }
 
     for (index = 0U; index < sizeof(directories) / sizeof(directories[0]); ++index) {
@@ -320,12 +338,8 @@ int ldtm_resolve_program(const char *program, char *output,
         if (count <= 0 || (size_t)count >= sizeof(candidate) ||
             access(candidate, X_OK) != 0)
             continue;
-        if (realpath(candidate, resolved) == NULL)
-            continue;
-        if (snprintf(output, output_capacity, "%s", resolved) < 0 ||
-            strlen(resolved) + 1U > output_capacity)
-            return -1;
-        return 0;
+        if (copy_resolved_program(candidate, output, output_capacity) == 0)
+            return 0;
     }
     return -1;
 }
@@ -355,6 +369,16 @@ int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
         (void)snprintf(detail, detail_capacity,
                        "Built-in raw C creator + payload engine: Amiga PFS3, 100-fragment native fixture");
         return 1;
+    }
+    if (spec->creator == LDTM_CREATOR_UFS) {
+        if (ldtm_program_available("makefs")) {
+            (void)snprintf(detail, detail_capacity,
+                           "Built-in first-party UFS2 creator: bounded raw FFS fixture engine");
+            return 1;
+        }
+        (void)snprintf(detail, detail_capacity,
+                       "Missing bundled UFS2 creator: /usr/lib/linux-defragger/test-media-mkfs-ufs");
+        return 0;
     }
     if (spec->creator == LDTM_CREATOR_APFS) {
         (void)snprintf(detail, detail_capacity,

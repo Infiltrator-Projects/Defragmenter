@@ -5,7 +5,7 @@ set -euo pipefail
 profile="${1:-}"
 case "$profile" in
   quality)
-    commands=(git cmake cc c++ make dpkg-deb pkg-config python3 makefs udisksctl pkexec xvfb-run Xvfb xauth sha256sum)
+    commands=(git cmake cc c++ make dpkg-deb pkg-config python3 udisksctl pkexec xvfb-run Xvfb xauth sha256sum)
     packages=(gtk+-3.0 ext2fs sqlite3 openssl)
     ;;
   sanitizers)
