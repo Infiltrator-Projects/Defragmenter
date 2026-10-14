@@ -21,6 +21,7 @@ foreach(_path IN ITEMS
     "usr/bin/linux-defragger-test-media"
     "usr/lib/linux-defragger/test-media-mkfs-ofs"
     "usr/lib/linux-defragger/test-media-mkfs-ffs"
+    "usr/lib/linux-defragger/test-media-mkfs-ufs"
     "usr/share/applications/io.github.linuxdefragger.TestMedia.desktop")
     if(NOT EXISTS "${_root}/${_path}")
         message(FATAL_ERROR "staged Test Media install is missing ${_path}")
@@ -28,4 +29,4 @@ foreach(_path IN ITEMS
 endforeach()
 
 file(REMOVE_RECURSE "${_root}")
-message(STATUS "Test Media staged install contains GUI plus OFS/FFS C creators")
+message(STATUS "Test Media staged install contains GUI plus OFS/FFS/UFS C creators")
