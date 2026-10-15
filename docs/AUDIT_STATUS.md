@@ -2,11 +2,11 @@
 
 Status: **complete**
 
-Completed: 2026-10-14
+Completed: 2026-10-16
 
 Applies to: audited source and release-governance baselines below
-Audited source commit: 5dc3bc8269e5557c8221aacd59e5491f91e32113
-Audited release-governance commit: 5dc3bc8269e5557c8221aacd59e5491f91e32113
+Audited source commit: 7424678c7adc283da5e14cf52b426afcce0261d7
+Audited release-governance commit: 7424678c7adc283da5e14cf52b426afcce0261d7
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
@@ -15,6 +15,10 @@ This document records the current release safety case for the exact audited sour
 The 2026-10-14 repository-wide forensic pass rechecked dependency ownership and removed the FAT catalogue's private pathname-concatenation implementation. FAT now uses the same checked arithmetic and Common-owned lexical path contract already used elsewhere, so generic pathname construction has one stronger implementation while filesystem interpretation remains locally owned.
 
 The second 2026-10-14 forensic pass identified a release-recovery hole rather than a filesystem defect: cancelling an in-progress `main` qualification could discard the only run carrying a VERSION-change release decision, and the once-built qualified artefact was retained for only one day. Main qualification is now serialized instead of cancelled, and its exact SHA-bound release artefact is retained for seven days. The semantic release regression fixes those properties as part of the governance contract. This preserves the existing single-build rule while making restartable publication survive ordinary multi-day service or propagation failures without rebuilding a qualified release.
+
+The 2026-10-16 incremental review covers the two subsequent UFS Test Media commits, `00f8287b8c10efefc87f6b54c1c4b440e5a05078` and `7424678c7adc283da5e14cf52b426afcce0261d7`. The first bundles a bounded, little-endian UFS2 fixture creator, installs and resolves that package-owned helper, removes the external makefs prerequisite, and adds mandatory creation/analysis/defragmentation and staged-install coverage. The second runs that same creator/worker integration from release-artifact qualification. The creator's geometry, allocation bounds, inode/direct/indirect block construction, source-copy error handling and metadata accounting were reviewed alongside the build, installation, resolver and test changes. Existing filesystem mutation and recovery engines are unchanged. The former feature branches have identical changed-file contents on main; their separate commit ancestry is a result of squash integration.
+
+The existing qualification of this exact source completed all 46 CTest cases and the ASan/UBSan lane; publication stopped at the correctly enforced stale-audit-baseline check. Both audited baselines now identify the reviewed UFS head, including its preflight change. Release 1.8.0-266 must rerun the full qualification and exact-artifact publication path. No release assertion, audit-drift check, history protection or test has been disabled or relaxed.
 
 ## Current safety case
 
