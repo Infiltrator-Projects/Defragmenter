@@ -48,6 +48,61 @@ def _assert_ancestor(commit: str) -> None:
     )
 
 
+
+def _assert_release_intent_behaviour(intent: str) -> None:
+    """Execute the real workflow decision against disposable Git histories."""
+    import os
+    import tempfile
+
+    script = intent.split("run: |\n", 1)[1]
+    script = "\n".join(line[10:] if line.startswith("          ") else line
+                       for line in script.splitlines())
+    with tempfile.TemporaryDirectory(prefix="defrag-release-intent-") as temporary:
+        root = Path(temporary)
+        project = root / "defragger"
+        project.mkdir()
+        version_file = project / "VERSION"
+        version_file.write_text("1.8.0-267\n", encoding="utf-8")
+
+        def git(*arguments: str) -> str:
+            return subprocess.check_output(
+                ["git", "-C", str(root), *arguments], text=True).strip()
+
+        git("init", "-q", "-b", "main")
+        git("config", "user.name", "Release contract fixture")
+        git("config", "user.email", "fixture@example.invalid")
+        git("add", ".")
+        git("commit", "-qm", "Initial candidate")
+
+        def decision(expected: str) -> None:
+            output = root / "outputs"
+            output.write_text("", encoding="utf-8")
+            environment = dict(os.environ, GITHUB_WORKSPACE=str(root),
+                               GITHUB_SHA=git("rev-parse", "HEAD"),
+                               GITHUB_OUTPUT=str(output))
+            result = subprocess.run(["bash", "-eu", "-o", "pipefail", "-c", script],
+                                    cwd=project, env=environment,
+                                    capture_output=True, text=True)
+            assert result.returncode == 0, result.stdout + result.stderr
+            assert output.read_text(encoding="utf-8").strip() == f"release={expected}"
+
+        decision("true")
+        (root / "correction").write_text("Reviewed correction\n", encoding="utf-8")
+        git("add", ".")
+        git("commit", "-qm", "Correct candidate without changing VERSION")
+        decision("true")
+        git("tag", "v1.8.0-267")
+        decision("true")
+        (root / "ordinary").write_text("Documentation maintenance\n", encoding="utf-8")
+        git("add", ".")
+        git("commit", "-qm", "Ordinary maintenance after publication")
+        decision("false")
+        version_file.write_text("1.8.0-268\n", encoding="utf-8")
+        git("add", ".")
+        git("commit", "-qm", "Advance VERSION")
+        decision("true")
+
+
 def main() -> None:
     gate = _read(WORKFLOWS / "quality-gate.yml")
     release = _read(WORKFLOWS / "release.yml")
@@ -65,9 +120,9 @@ def main() -> None:
 
     # Qualification runs on main, not PR-only branches, and has two permanent
     # self-hosted lanes. A VERSION change is the release signal; English commit
-    # wording is not part of the control plane. Main candidates are serialized,
-    # not cancelled: cancelling a VERSION-changing run could erase release intent
-    # when a later ordinary main push supersedes it.
+    # wording is not part of the control plane. An unpublished VERSION persists
+    # across corrective commits. Main candidates retain serialized qualification
+    # and the exact-commit retry contract.
     assert "workflow_call:" in gate
     assert "push:" in gate and "- main" in gate
     assert "pull_request:" not in gate
@@ -79,7 +134,8 @@ def main() -> None:
     assert "release_intent:" in gate
     intent = _step_containing(gate, "id: release_intent")
     assert "defragger/VERSION" in intent
-    assert "github.event.before" in intent
+    assert "refs/tags/v" in intent
+    _assert_release_intent_behaviour(intent)
     assert "GITHUB_OUTPUT" in intent
     assert "head_commit.message" not in gate
     assert "startsWith(" not in gate

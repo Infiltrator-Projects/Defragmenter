@@ -44,16 +44,15 @@ jobs:
         id: release_intent
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: bash
-        env:
-          BEFORE_SHA: ${{ github.event.before }}
         run: |
           set -euo pipefail
+          version="$(tr -d '\r\n' < VERSION)"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9]+$ ]]
+          tag_commit="$(git -C "$GITHUB_WORKSPACE" rev-parse -q --verify "refs/tags/v${version}^{commit}" 2>/dev/null || true)"
           release=false
-          before="$BEFORE_SHA"
-          if [[ -z "$before" || "$before" =~ ^0+$ ]] || ! git -C "$GITHUB_WORKSPACE" cat-file -e "${before}^{commit}" 2>/dev/null; then
-            before="${GITHUB_SHA}^"
-          fi
-          if ! git -C "$GITHUB_WORKSPACE" diff --quiet "$before" "$GITHUB_SHA" -- defragger/VERSION; then
+          # An unpublished VERSION remains intent across corrective commits.
+          # An exact-commit rerun can resume a draft; an older public tag is fixed.
+          if [[ -z "$tag_commit" || "$tag_commit" == "$GITHUB_SHA" ]]; then
             release=true
           fi
           echo "release=$release" >> "$GITHUB_OUTPUT"
