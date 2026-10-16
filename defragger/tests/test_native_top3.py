@@ -14,8 +14,8 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILD = Path(os.environ.get("LINUX_DEFRAGGER_BUILD_DIR", ROOT / "build"))
-MAPPER = BUILD / "linux-defragger-mapper"
+BUILD = Path(os.environ.get("DEFRAGMENTER_BUILD_DIR", ROOT / "build"))
+MAPPER = BUILD / "defragmenter-mapper"
 sys.path.insert(0, str(ROOT / "tests"))
 from ntfs_test_fixture import make_image as make_ntfs_image  # noqa: E402
 
@@ -75,7 +75,7 @@ def assert_clean(payload: dict, *, growth: bool) -> None:
 
 
 def test_exfat(work: Path) -> None:
-    worker = BUILD / "linux-defragger-exfat-worker"
+    worker = BUILD / "defragmenter-exfat-worker"
     image = work / "exfat.img"
     subprocess.run([sys.executable, str(ROOT / "tests" / "make_exfat_image.py"), str(image)], check=True)
     before = run_json(worker, image)
@@ -101,7 +101,7 @@ def test_exfat(work: Path) -> None:
 
 
 def test_ntfs_combined_analysis(work: Path) -> None:
-    worker = BUILD / "linux-defragger-ntfs-worker"
+    worker = BUILD / "defragmenter-ntfs-worker"
     for dirty in (False, True):
         image = work / f"ntfs-combined-{dirty}.img"
         make_ntfs_image(image, volume_flags=1 if dirty else 0,
@@ -132,7 +132,7 @@ def test_ntfs_combined_analysis(work: Path) -> None:
 
 
 def test_ntfs(work: Path) -> None:
-    worker = BUILD / "linux-defragger-ntfs-worker"
+    worker = BUILD / "defragmenter-ntfs-worker"
     image = work / "ntfs.img"
     make_ntfs_image(image, fragmented_data=True, directory_data=True)
     before = run_json(worker, image)
@@ -159,7 +159,7 @@ def test_ntfs(work: Path) -> None:
 
 
 def test_ntfs_relocates_named_data_stream(work: Path) -> None:
-    worker = BUILD / "linux-defragger-ntfs-worker"
+    worker = BUILD / "defragmenter-ntfs-worker"
     image = work / "ntfs-ads.img"
     make_ntfs_image(
         image,
@@ -189,7 +189,7 @@ def test_ntfs_relocates_named_data_stream(work: Path) -> None:
 
 
 def test_ntfs_preserves_safe_unsupported_user_stream(work: Path) -> None:
-    worker = BUILD / "linux-defragger-ntfs-worker"
+    worker = BUILD / "defragmenter-ntfs-worker"
     image = work / "ntfs-fixed-user-stream.img"
     make_ntfs_image(
         image,
@@ -235,8 +235,8 @@ def test_ntfs_preserves_safe_unsupported_user_stream(work: Path) -> None:
     assert_clean(run_json(worker, image), growth=True)
 
 def test_ext(work: Path) -> None:
-    worker = BUILD / "linux-defragger-ext-worker"
-    fixture = BUILD / "linux-defragger-ext-fixture"
+    worker = BUILD / "defragmenter-ext-worker"
+    fixture = BUILD / "defragmenter-ext-fixture"
     image = work / "ext4.img"
     subprocess.run([str(fixture), str(image)], check=True)
     before = run_json(worker, image)
@@ -264,11 +264,11 @@ def test_ext(work: Path) -> None:
 
 
 def main() -> None:
-    for name in ("linux-defragger-ext-worker", "linux-defragger-ntfs-worker",
-                 "linux-defragger-exfat-worker", "linux-defragger-ext-fixture",
-                 "linux-defragger-mapper"):
+    for name in ("defragmenter-ext-worker", "defragmenter-ntfs-worker",
+                 "defragmenter-exfat-worker", "defragmenter-ext-fixture",
+                 "defragmenter-mapper"):
         assert (BUILD / name).is_file(), f"missing native test executable: {name}"
-    with tempfile.TemporaryDirectory(prefix="linux-defragger-native83-") as directory:
+    with tempfile.TemporaryDirectory(prefix="defragmenter-native83-") as directory:
         work = Path(directory)
         test_exfat(work)
         test_ntfs_combined_analysis(work)

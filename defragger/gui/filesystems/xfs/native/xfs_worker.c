@@ -37,7 +37,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#define PROGRAM_NAME "linux-defragger-xfs-worker"
+#define PROGRAM_NAME "defragmenter-xfs-worker"
 #define COPY_CHUNK (4U * 1024U * 1024U)
 #define JOURNAL_INTERVAL (64U * 1024U * 1024U)
 #define JOURNAL_MAGIC "LINUX-DEFRAGGER-XFS-JOURNAL-1"

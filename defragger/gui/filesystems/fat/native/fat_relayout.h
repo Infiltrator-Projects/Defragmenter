@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#ifndef LINUX_DEFRAGGER_FAT_RELAYOUT_H
-#define LINUX_DEFRAGGER_FAT_RELAYOUT_H
+#ifndef DEFRAGMENTER_FAT_RELAYOUT_H
+#define DEFRAGMENTER_FAT_RELAYOUT_H
 
 /* This public model is deliberately FAT-width neutral.  FAT12, FAT16 and
    FAT32 geometry stays in Fat32/FatGeometry; relayout policy is only the

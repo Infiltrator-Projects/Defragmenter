@@ -14,7 +14,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILD = Path(os.environ.get("LINUX_DEFRAGGER_BUILD_DIR", ROOT / "build"))
+BUILD = Path(os.environ.get("DEFRAGMENTER_BUILD_DIR", ROOT / "build"))
 ANALYSER = BUILD / "hfs_analyser"
 EXPECTED_EXTENTS = [[10, 1], [20, 1], [30, 1]]
 
@@ -240,7 +240,7 @@ def _write_recovery_journal(journal: Path, image: Path, stage: Path) -> None:
 def main() -> None:
     assert ANALYSER.is_file() and os.access(ANALYSER, os.X_OK), ANALYSER
     assert not (ROOT / "vendor").exists()
-    with tempfile.TemporaryDirectory(prefix="linux-defragger-hfs-test.") as tmp:
+    with tempfile.TemporaryDirectory(prefix="defragmenter-hfs-test.") as tmp:
         image = Path(tmp) / "fragmented-hfs.img"
         _make_fragmented_hfs(image)
         completed = subprocess.run(

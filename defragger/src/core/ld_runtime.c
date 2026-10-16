@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const char *g_program_name = "linux-defragger";
+static const char *g_program_name = "defragmenter";
 
 void ld_runtime_set_program_name(const char *name) {
     if (name != NULL && *name != '\0') g_program_name = name;

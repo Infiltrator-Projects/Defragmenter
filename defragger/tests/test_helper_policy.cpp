@@ -39,7 +39,7 @@ int main()
         1000U);
     ok = check(
              mapper.executable ==
-                 "/usr/lib/linux-defragger/linux-defragger-mapper" &&
+                 "/usr/lib/defragmenter/defragmenter-mapper" &&
                  mapper.arguments == std::vector<std::string>{
                      "/dev/sda2", "--fstype", "ext4", "--cells", "4096"},
              "exact read-only mapper contract is accepted") && ok;

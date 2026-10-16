@@ -28,7 +28,7 @@
 #include <sys/sysmacros.h>
 #include <unistd.h>
 
-#define PROG "linux-defragger-sfs-worker"
+#define PROG "defragmenter-sfs-worker"
 #define JOURNAL_MAGIC "LINUX-DEFRAGGER-SFS-JOURNAL-1"
 #define STOPPED 130
 #define SFS_WORKER_IO_BYTES (1024U * 1024U)

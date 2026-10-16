@@ -17,7 +17,7 @@ static int fail(const char *message) {
 
 
 int main(void) {
-    char path[] = "/tmp/linux-defragger-fat-journal.XXXXXX";
+    char path[] = "/tmp/defragmenter-fat-journal.XXXXXX";
     int descriptor = mkstemp(path);
     if (descriptor < 0) return fail("mkstemp");
     close(descriptor);

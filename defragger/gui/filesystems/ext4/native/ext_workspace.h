@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#ifndef LINUX_DEFRAGGER_EXT_WORKSPACE_H
-#define LINUX_DEFRAGGER_EXT_WORKSPACE_H
+#ifndef DEFRAGMENTER_EXT_WORKSPACE_H
+#define DEFRAGMENTER_EXT_WORKSPACE_H
 
 #include "ext_native.h"
 

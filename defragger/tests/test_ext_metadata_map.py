@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILD = Path(os.environ.get("LINUX_DEFRAGGER_BUILD_DIR", ROOT / "build"))
+BUILD = Path(os.environ.get("DEFRAGMENTER_BUILD_DIR", ROOT / "build"))
 
 
 def run_json(program: Path, *arguments: str) -> dict:
@@ -40,17 +40,17 @@ def main() -> None:
         "read-only EXT analysis must not depend on fail-closed mutation topology validation"
     )
 
-    primary = BUILD / "linux-defragger-ext-worker"
-    metadata = BUILD / "linux-defragger-ext-metadata-worker"
-    mapper = BUILD / "linux-defragger-mapper"
-    fixture = BUILD / "linux-defragger-ext-fixture"
+    primary = BUILD / "defragmenter-ext-worker"
+    metadata = BUILD / "defragmenter-ext-metadata-worker"
+    mapper = BUILD / "defragmenter-mapper"
+    fixture = BUILD / "defragmenter-ext-fixture"
     for program in (primary, metadata, mapper, fixture):
         assert program.is_file(), f"missing native EXT test executable: {program}"
 
-    os.environ["LINUX_DEFRAGGER_EXT_WORKER"] = str(primary)
-    os.environ["LINUX_DEFRAGGER_EXT_METADATA_WORKER"] = str(metadata)
+    os.environ["DEFRAGMENTER_EXT_WORKER"] = str(primary)
+    os.environ["DEFRAGMENTER_EXT_METADATA_WORKER"] = str(metadata)
 
-    with tempfile.TemporaryDirectory(prefix="linux-defragger-ext-map-") as directory:
+    with tempfile.TemporaryDirectory(prefix="defragmenter-ext-map-") as directory:
         image = Path(directory) / "ext4.img"
         subprocess.run([str(fixture), str(image)], check=True)
 

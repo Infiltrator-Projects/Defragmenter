@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#ifndef LINUX_DEFRAGGER_EXT_DISK_H
-#define LINUX_DEFRAGGER_EXT_DISK_H
+#ifndef DEFRAGMENTER_EXT_DISK_H
+#define DEFRAGMENTER_EXT_DISK_H
 
 #include <stdbool.h>
 #include <stddef.h>

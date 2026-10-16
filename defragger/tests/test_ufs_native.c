@@ -610,7 +610,7 @@ static void test_ufs2_exact_allocation(int fd, const char *path)
 
 int main(void)
 {
-    char path[] = "/tmp/linux-defragger-ufs-test-XXXXXX";
+    char path[] = "/tmp/defragmenter-ufs-test-XXXXXX";
     const int fd = mkstemp(path);
     CHECK(fd >= 0);
 

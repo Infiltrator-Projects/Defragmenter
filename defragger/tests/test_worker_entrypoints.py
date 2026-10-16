@@ -9,7 +9,7 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILD = Path(os.environ.get("LINUX_DEFRAGGER_BUILD_DIR", ROOT / "build"))
+BUILD = Path(os.environ.get("DEFRAGMENTER_BUILD_DIR", ROOT / "build"))
 
 
 def _run_version(name: str) -> None:
@@ -27,13 +27,13 @@ def _run_version(name: str) -> None:
 
 def main() -> None:
     for worker in (
-        "linux-defragger-ext-worker",
-        "linux-defragger-ntfs-worker",
-        "linux-defragger-exfat-worker",
-        "linux-defragger-xfs-worker",
-        "linux-defragger-fat-worker",
-        "linux-defragger-affs-worker",
-        "linux-defragger-hfsplus-worker",
+        "defragmenter-ext-worker",
+        "defragmenter-ntfs-worker",
+        "defragmenter-exfat-worker",
+        "defragmenter-xfs-worker",
+        "defragmenter-fat-worker",
+        "defragmenter-affs-worker",
+        "defragmenter-hfsplus-worker",
     ):
         _run_version(worker)
     print("native worker entry-point/version tests passed")

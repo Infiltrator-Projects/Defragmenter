@@ -87,7 +87,7 @@ static int test_clean_log_head_detection(void) {
     uint64_t log_bbs = (uint64_t)catalogue.geometry.logblocks *
                        catalogue.geometry.block_size / 512U;
 
-    char image[] = "/tmp/linux-defragger-xfs-log-XXXXXX";
+    char image[] = "/tmp/defragmenter-xfs-log-XXXXXX";
     int fd = mkstemp(image);
     CHECK(fd >= 0);
     CHECK(ftruncate(fd, (off_t)(start + log_bbs * 512U)) == 0);
@@ -255,7 +255,7 @@ int main(void) {
     CHECK(xfs_be64(high + 4) == UINT64_C(0xfffffffffffffffc));
     CHECK(xfs_be64(high + 12) == 0U);
 
-    char image[] = "/tmp/linux-defragger-xfs-rmap-XXXXXX";
+    char image[] = "/tmp/defragmenter-xfs-rmap-XXXXXX";
     int fd = mkstemp(image);
     CHECK(fd >= 0);
     CHECK(ftruncate(fd, (off_t)(geometry.dblocks * geometry.block_size)) == 0);

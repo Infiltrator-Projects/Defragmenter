@@ -19,7 +19,7 @@ namespace {
 
 int usage() {
     std::fputs(
-        "usage: linux-defragger-operation-engine-cpp "
+        "usage: defragmenter-operation-engine-cpp "
         "[--list-plugins] OPERATION DEVICE --filesystem TYPE [worker options...]\n",
         stderr);
     return 2;
@@ -36,7 +36,7 @@ int main(int argc, char** argv) {
     for (int index = 1; index < argc; ++index) {
         const std::string token = argv[index];
         if (token == "--version") {
-            std::printf("linux-defragger-operation-engine-cpp %s\n", LD_VERSION);
+            std::printf("defragmenter-operation-engine-cpp %s\n", LD_VERSION);
             return 0;
         }
         if (token == "--list-plugins") {
@@ -70,7 +70,7 @@ int main(int argc, char** argv) {
         defragger::backend_by_fstype(filesystem);
     if (backend == nullptr) {
         std::fprintf(stderr,
-                     "linux-defragger-operation-engine: no filesystem plugin "
+                     "defragmenter-operation-engine: no filesystem plugin "
                      "is registered for %s\n",
                      filesystem.c_str());
         return 2;
@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
         defragger::operation_for(*backend, operation);
     if (specification == nullptr) {
         std::fprintf(stderr,
-                     "linux-defragger-operation-engine: the %s plugin does not "
+                     "defragmenter-operation-engine: the %s plugin does not "
                      "implement %s\n",
                      backend->display_name.c_str(), operation.c_str());
         return 2;
@@ -88,20 +88,20 @@ int main(int argc, char** argv) {
     struct stat status {};
     if (stat(device.c_str(), &status) != 0) {
         std::fprintf(stderr,
-                     "linux-defragger-operation-engine: cannot inspect target "
+                     "defragmenter-operation-engine: cannot inspect target "
                      "%s: %s\n",
                      device.c_str(), std::strerror(errno));
         return 2;
     }
     if (!S_ISREG(status.st_mode) && !S_ISBLK(status.st_mode)) {
         std::fprintf(stderr,
-                     "linux-defragger-operation-engine: target is neither a "
+                     "defragmenter-operation-engine: target is neither a "
                      "regular image nor a block device\n");
         return 2;
     }
     if (ld_path_is_mounted(device.c_str())) {
         std::fprintf(stderr,
-                     "linux-defragger-operation-engine: %s or overlapping "
+                     "defragmenter-operation-engine: %s or overlapping "
                      "storage is mounted; unmount it before mutation\n",
                      device.c_str());
         return 2;
@@ -110,14 +110,14 @@ int main(int argc, char** argv) {
         bool system_use = true;
         if (ld_block_device_has_system_use(device.c_str(), &system_use) != 0) {
             std::fprintf(stderr,
-                         "linux-defragger-operation-engine: cannot prove %s "
+                         "defragmenter-operation-engine: cannot prove %s "
                          "is free of active system use: %s\n",
                          device.c_str(), std::strerror(errno));
             return 2;
         }
         if (system_use) {
             std::fprintf(stderr,
-                         "linux-defragger-operation-engine: %s or related "
+                         "defragmenter-operation-engine: %s or related "
                          "storage is in active system use (including swap); "
                          "disable that use before mutation\n",
                          device.c_str());
@@ -129,7 +129,7 @@ int main(int argc, char** argv) {
     try {
         worker = defragger::resolve_program(specification->worker, false);
     } catch (const std::exception& error) {
-        std::fprintf(stderr, "linux-defragger-operation-engine: %s\n",
+        std::fprintf(stderr, "defragmenter-operation-engine: %s\n",
                      error.what());
         return 2;
     }
@@ -152,7 +152,7 @@ int main(int argc, char** argv) {
     (void)setenv("LANG", "C", 1);
     execv(raw[0], raw.data());
     std::fprintf(stderr,
-                 "linux-defragger-operation-engine: exec %s failed: %s\n",
+                 "defragmenter-operation-engine: exec %s failed: %s\n",
                  worker.c_str(), std::strerror(errno));
     return 127;
 }

@@ -9,7 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define PROG "linux-defragger-swap-worker"
+#define PROG "defragmenter-swap-worker"
 
 static void usage(FILE *stream)
 {
@@ -262,7 +262,7 @@ int main(int argc, char **argv)
             return 1;
         LdSwapRuntimeUsage runtime;
         char runtime_error[256];
-        const char *proc_source = getenv("LINUX_DEFRAGGER_PROC_SWAPS");
+        const char *proc_source = getenv("DEFRAGMENTER_PROC_SWAPS");
         if (proc_source == NULL || *proc_source == '\0')
             proc_source = "/proc/swaps";
         const int runtime_result =

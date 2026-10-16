@@ -150,7 +150,7 @@ std::string desktop_journal(const DesktopVolume& v, unsigned uid) {
     if (stem.empty()) stem = "volume";
     char suffix[17];
     for (unsigned i = 0; i < 8; ++i) std::snprintf(suffix + i * 2, 3, "%02x", digest[i]);
-    return "/var/lib/linux-defragger/state/" + std::to_string(uid) + "/" + stem + "-" + suffix + ".journal";
+    return "/var/lib/defragmenter/state/" + std::to_string(uid) + "/" + stem + "-" + suffix + ".journal";
 }
 
 void desktop_verify_identity(DesktopVolume& v, std::string_view detected) {

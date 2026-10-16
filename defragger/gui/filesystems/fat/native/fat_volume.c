@@ -16,7 +16,7 @@
 #include "infiltratr/arithmetic.h"
 #include "infiltratr/endian.h"
 
-#define PROGRAM_NAME "linux-defragger-fat-worker"
+#define PROGRAM_NAME "defragmenter-fat-worker"
 
 void u32vec_push(U32Vec *vector, uint32_t value) {
     if (vector->len == SIZE_MAX ||

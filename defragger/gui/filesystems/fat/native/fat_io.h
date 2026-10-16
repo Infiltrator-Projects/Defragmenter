@@ -6,8 +6,8 @@
  * extent coalescing, parallel source reads and ordered destination writes.
  */
 
-#ifndef LINUX_DEFRAGGER_FAT_IO_H
-#define LINUX_DEFRAGGER_FAT_IO_H
+#ifndef DEFRAGMENTER_FAT_IO_H
+#define DEFRAGMENTER_FAT_IO_H
 
 #include <stdbool.h>
 #include <stddef.h>

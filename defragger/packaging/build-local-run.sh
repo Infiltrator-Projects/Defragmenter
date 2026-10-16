@@ -29,7 +29,7 @@ VERSION=$(tr -d '\r\n' <"$ROOT/VERSION")
 NATIVE_PACKAGE_VERSION="${VERSION}+native1"
 OUTPUT=${1:-"$ROOT/Defragmenter-${VERSION}-local-folder.run"}
 TEMPLATE="$ROOT/packaging/local-run-header.sh.in"
-WORK=$(mktemp -d "${TMPDIR:-/tmp}/linux-defragger-run-build.XXXXXX")
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/defragmenter-run-build.XXXXXX")
 COMMON_DIR="$ROOT/shared/infiltratr-common"
 COMMON_COMMIT=$(git -C "$REPO_ROOT" rev-parse \
     HEAD:defragger/shared/infiltratr-common 2>/dev/null) || \
@@ -64,7 +64,7 @@ for command_name in tar gzip sha256sum sed find; do
 done
 [ -f "$TEMPLATE" ] || fail "installer template is missing: ${TEMPLATE}"
 
-PAYLOAD_BASENAME="linux-defragger-${VERSION}"
+PAYLOAD_BASENAME="defragmenter-${VERSION}"
 STAGE="$WORK/stage"
 TAR_PATH="$WORK/source.tar"
 FONT_ARCHIVE="$WORK/mb-corpo-fonts.tar.xz"
@@ -112,7 +112,7 @@ sed \
 if [ -n "$(tail -c 1 "$OUTPUT" 2>/dev/null || true)" ]; then
     printf '\n' >>"$OUTPUT"
 fi
-[ "$(tail -n 1 "$OUTPUT")" = '__LINUX_DEFRAGGER_PAYLOAD_BELOW__' ] || \
+[ "$(tail -n 1 "$OUTPUT")" = '__DEFRAGMENTER_PAYLOAD_BELOW__' ] || \
     fail 'generated installer payload marker is missing or malformed'
 
 dd if="$PAYLOAD" of="$OUTPUT" oflag=append conv=notrunc status=none

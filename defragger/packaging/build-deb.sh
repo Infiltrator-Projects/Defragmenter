@@ -11,7 +11,7 @@ BUILD_FLAVOR=${LD_BUILD_FLAVOR:-generic}
 BUILD_TESTING=${LD_BUILD_TESTING:-ON}
 BUILD=${BUILD_DIR:-"$ROOT/build-deb-$BUILD_FLAVOR"}
 OUTPUT=${OUTPUT_PATH:-"$ROOT/Defragmenter-${PACKAGE_VERSION}-${ARCH}.deb"}
-STAGE=$(mktemp -d "${TMPDIR:-/tmp}/linux-defragger-deb.XXXXXX")
+STAGE=$(mktemp -d "${TMPDIR:-/tmp}/defragmenter-deb.XXXXXX")
 trap 'rm -rf "$STAGE"' EXIT HUP INT TERM
 
 if [ "$ARCH" != amd64 ]; then
@@ -44,10 +44,10 @@ cmake "$@"
 cmake --build "$BUILD" -j"$BUILD_JOBS_EFFECTIVE"
 DESTDIR="$STAGE/root" cmake --install "$BUILD"
 
-SOURCE_ICON="$ROOT/packaging/io.github.linuxdefragger.png"
+SOURCE_ICON="$ROOT/packaging/io.github.defragmenter.png"
 for INSTALLED_ICON in \
-    "$STAGE/root/usr/lib/linux-defragger/defragmenter-icon.png" \
-    "$STAGE/root/usr/share/icons/hicolor/96x96/apps/io.github.linuxdefragger.png" \
+    "$STAGE/root/usr/lib/defragmenter/defragmenter-icon.png" \
+    "$STAGE/root/usr/share/icons/hicolor/96x96/apps/io.github.defragmenter.png" \
     "$STAGE/root/usr/share/app-install/icons/defragmenter.png"
 do
     [ -f "$INSTALLED_ICON" ] || {
@@ -66,11 +66,11 @@ if [ -f "$ROOT/assets/fonts/mb-corpo-fonts.tar.xz" ]; then
 fi
 "$ROOT/packaging/vendor-mb-fonts.sh" "$FONT_ARCHIVE" >/dev/null
 FONT_WORK="$STAGE/fonts"
-mkdir -p "$FONT_WORK" "$STAGE/root/usr/share/fonts/truetype/linux-defragger"
+mkdir -p "$FONT_WORK" "$STAGE/root/usr/share/fonts/truetype/defragmenter"
 tar -xJf "$FONT_ARCHIVE" -C "$FONT_WORK"
-install -m 0644 "$FONT_WORK/mb_corpo_a_cond_regular.ttf" "$STAGE/root/usr/share/fonts/truetype/linux-defragger/"
-install -m 0644 "$FONT_WORK/mb_corpo_s_bold.ttf" "$STAGE/root/usr/share/fonts/truetype/linux-defragger/"
-install -m 0644 "$FONT_WORK/mb_corpo_s_regular.ttf" "$STAGE/root/usr/share/fonts/truetype/linux-defragger/"
+install -m 0644 "$FONT_WORK/mb_corpo_a_cond_regular.ttf" "$STAGE/root/usr/share/fonts/truetype/defragmenter/"
+install -m 0644 "$FONT_WORK/mb_corpo_s_bold.ttf" "$STAGE/root/usr/share/fonts/truetype/defragmenter/"
+install -m 0644 "$FONT_WORK/mb_corpo_s_regular.ttf" "$STAGE/root/usr/share/fonts/truetype/defragmenter/"
 
 mkdir -p "$STAGE/root/DEBIAN"
 INSTALLED_SIZE=$(du -sk "$STAGE/root/usr" | awk '{print $1}')
@@ -80,9 +80,6 @@ INSTALLED_SIZE=$(du -sk "$STAGE/root/usr" | awk '{print $1}')
     printf 'Section: utils\n'
     printf 'Priority: optional\n'
     printf 'Architecture: %s\n' "$ARCH"
-    printf 'Provides: infiltrator-defragmenter (= %s), linux-defragger (= %s)\n' "$PACKAGE_VERSION" "$PACKAGE_VERSION"
-    printf 'Breaks: infiltrator-defragmenter (<< %s), linux-defragger (<< %s)\n' "$PACKAGE_VERSION" "$PACKAGE_VERSION"
-    printf 'Replaces: infiltrator-defragmenter (<< %s), linux-defragger (<< %s)\n' "$PACKAGE_VERSION" "$PACKAGE_VERSION"
     printf 'Maintainer: Shannon Smith\n'
     printf 'X-Linux-Defragger-Build: %s\n' "$BUILD_FLAVOR"
     printf 'Depends: libgtk-3-0t64, fontconfig, policykit-1, ca-certificates, desktop-file-utils, udisks2, util-linux, libsqlite3-0, libssl3t64, libstdc++6\n'

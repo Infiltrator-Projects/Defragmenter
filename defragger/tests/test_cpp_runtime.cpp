@@ -149,7 +149,7 @@ int main() {
             "\"fragmented\":1,\"directory\":1,\"bad\":0},"
             "{\"start\":4,\"end\":5,\"free\":2,\"used\":0,"
             "\"fragmented\":0,\"directory\":0,\"bad\":0}]}");
-        (void)setenv("LINUX_DEFRAGGER_FAT_WORKER", fat_worker.c_str(), 1);
+        (void)setenv("DEFRAGMENTER_FAT_WORKER", fat_worker.c_str(), 1);
         try {
             const Json mapped = map_backend(*fat12, "/dev/null", 2U);
             ok = check(mapped.at("filesystem").string() == "FAT12",
@@ -177,7 +177,7 @@ int main() {
             ok = check(false, "FAT-specific map contract accepted") && ok;
         }
         (void)unlink(fat_worker.c_str());
-        (void)unsetenv("LINUX_DEFRAGGER_FAT_WORKER");
+        (void)unsetenv("DEFRAGMENTER_FAT_WORKER");
     }
 
 
@@ -190,7 +190,7 @@ int main() {
             "\"unit_size\":4096,\"total_units\":1,\"cell_count\":1,"
             "\"cells\":[{\"start\":0,\"end\":0,\"free\":0,\"used\":1,"
             "\"unknown\":0,\"bad\":0,\"fragmented\":0,\"directory\":0}]}");
-        (void)setenv("LINUX_DEFRAGGER_UFS_WORKER", exact_worker.c_str(), 1);
+        (void)setenv("DEFRAGMENTER_UFS_WORKER", exact_worker.c_str(), 1);
         try {
             const Json mapped = map_backend(*ufs, "/dev/null", 1U);
             ok = check(mapped.at("map_accuracy").string() == "exact",
@@ -199,7 +199,7 @@ int main() {
             ok = check(false, "UFS exact native map contract accepted") && ok;
         }
         (void)unlink(exact_worker.c_str());
-        (void)unsetenv("LINUX_DEFRAGGER_UFS_WORKER");
+        (void)unsetenv("DEFRAGMENTER_UFS_WORKER");
     }
 
     const std::vector<std::string> input{
@@ -278,7 +278,7 @@ int main() {
             "\"cells\":[{\"start\":0,\"end\":0,\"free\":0,\"used\":1,"
             "\"unknown\":0,\"outside\":0,\"bad\":0,"
             "\"fragmented\":0,\"directory\":0}]}");
-        (void)setenv("LINUX_DEFRAGGER_BTRFS_WORKER", valid_worker.c_str(), 1);
+        (void)setenv("DEFRAGMENTER_BTRFS_WORKER", valid_worker.c_str(), 1);
         try {
             const Json mapped = map_backend(*btrfs, "/dev/null", 1U);
             ok = check(mapped.at("filesystem").string() == "btrfs",
@@ -295,7 +295,7 @@ int main() {
             "\"cells\":[{\"start\":0,\"end\":0,\"free\":0,\"used\":1,"
             "\"unknown\":0,\"outside\":0,\"bad\":0,"
             "\"fragmented\":0,\"directory\":0}]}");
-        (void)setenv("LINUX_DEFRAGGER_BTRFS_WORKER", wrong_identity.c_str(), 1);
+        (void)setenv("DEFRAGMENTER_BTRFS_WORKER", wrong_identity.c_str(), 1);
         bool rejected_identity = false;
         try {
             (void)map_backend(*btrfs, "/dev/null", 1U);
@@ -312,7 +312,7 @@ int main() {
             "\"cells\":[{\"start\":0,\"end\":0,\"free\":0,\"used\":1,"
             "\"unknown\":0,\"outside\":0,\"bad\":0,"
             "\"fragmented\":0,\"directory\":0}]}");
-        (void)setenv("LINUX_DEFRAGGER_BTRFS_WORKER", wrong_accuracy.c_str(), 1);
+        (void)setenv("DEFRAGMENTER_BTRFS_WORKER", wrong_accuracy.c_str(), 1);
         bool rejected_accuracy = false;
         try {
             (void)map_backend(*btrfs, "/dev/null", 1U);
@@ -329,7 +329,7 @@ int main() {
             "\"cells\":[{\"start\":0,\"end\":3,\"free\":1,\"used\":2,"
             "\"unknown\":0,\"outside\":0,\"bad\":0,"
             "\"fragmented\":0,\"directory\":0}]}");
-        (void)setenv("LINUX_DEFRAGGER_BTRFS_WORKER", inconsistent_counts.c_str(), 1);
+        (void)setenv("DEFRAGMENTER_BTRFS_WORKER", inconsistent_counts.c_str(), 1);
         bool rejected_counts = false;
         try {
             (void)map_backend(*btrfs, "/dev/null", 1U);
@@ -338,7 +338,7 @@ int main() {
         }
         ok = check(rejected_counts, "native map inconsistent counts rejected") && ok;
         (void)unlink(inconsistent_counts.c_str());
-        (void)unsetenv("LINUX_DEFRAGGER_BTRFS_WORKER");
+        (void)unsetenv("DEFRAGMENTER_BTRFS_WORKER");
     }
 
     const BackendInfo* ntfs = backend_by_fstype("ntfs");
@@ -348,7 +348,7 @@ int main() {
             "\"free_ranges\":[[3,8]],\"defrag_qualified\":false,\"growth_qualified\":false,"
             "\"defrag_reason\":\"fixed layout\",\"growth_reason\":\"fixed layout\"}",
             "test \"$1\" = analyse-json || exit 12");
-        (void)setenv("LINUX_DEFRAGGER_NTFS_WORKER", combined_worker.c_str(), 1);
+        (void)setenv("DEFRAGMENTER_NTFS_WORKER", combined_worker.c_str(), 1);
         const Json mapped = map_backend(*ntfs, "/dev/null", 1U);
         ok = check(!mapped.at("defrag_qualified").boolean() &&
                    !mapped.at("growth_qualified").boolean(),
@@ -357,7 +357,7 @@ int main() {
         const std::string failed_worker = fake_map_worker("{}",
             "printf '%s\\n' '@@ANALYSIS {\"phase\":\"scan\"}' >&2\n"
             "printf '%s\\n' 'real checksum failure' >&2\nexit 1");
-        (void)setenv("LINUX_DEFRAGGER_NTFS_WORKER", failed_worker.c_str(), 1);
+        (void)setenv("DEFRAGMENTER_NTFS_WORKER", failed_worker.c_str(), 1);
         bool clean_failure = false;
         try { (void)map_backend(*ntfs, "/dev/null", 1U); }
         catch (const std::exception& failure) {
@@ -367,18 +367,18 @@ int main() {
         }
         ok = check(clean_failure, "native progress is excluded from failure diagnostics") && ok;
         (void)unlink(failed_worker.c_str());
-        (void)unsetenv("LINUX_DEFRAGGER_NTFS_WORKER");
+        (void)unsetenv("DEFRAGMENTER_NTFS_WORKER");
     }
 
     const HelperCommand helper = helper_command(
         "operation-engine",
         {"defrag", "/dev/test", "--filesystem", "ext4", "--write",
          "--confirm", "/dev/test", "--journal",
-         "/var/lib/linux-defragger/state/1000/test.journal"},
+         "/var/lib/defragmenter/state/1000/test.journal"},
         1000U);
     ok = check(
         helper.executable ==
-            "/usr/lib/linux-defragger/linux-defragger-operation-engine",
+            "/usr/lib/defragmenter/defragmenter-operation-engine",
         "privileged operation-engine allowlist") && ok;
     bool rejected_journal = false;
     try {
@@ -399,7 +399,7 @@ int main() {
             "operation-engine",
             {"defrag", "/dev/test", "--filesystem", "fat32", "--write",
              "--confirm", "/dev/test", "--journal",
-             "/var/lib/linux-defragger/state/1000/test.journal",
+             "/var/lib/defragmenter/state/1000/test.journal",
              "--diagnostic-log", "/etc/defragger-root.log"},
             1000U);
     } catch (const std::exception&) {
@@ -414,7 +414,7 @@ int main() {
             "operation-engine",
             {"defrag", "/dev/test", "--filesystem", "fat32", "--write",
              "--confirm", "/dev/other", "--journal",
-             "/var/lib/linux-defragger/state/1000/test.journal"},
+             "/var/lib/defragmenter/state/1000/test.journal"},
             1000U);
     } catch (const std::exception&) {
         rejected_confirm = true;

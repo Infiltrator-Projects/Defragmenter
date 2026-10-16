@@ -28,7 +28,7 @@
 #include <sys/sysmacros.h>
 #include <unistd.h>
 
-#define PROG "linux-defragger-hfsplus-worker"
+#define PROG "defragmenter-hfsplus-worker"
 #define JOURNAL_MAGIC "LINUX-DEFRAGGER-HFSPLUS-JOURNAL-2"
 #define HASH_CHUNK (1024U * 1024U)
 #define COMMIT_CHUNK (4U * 1024U * 1024U)

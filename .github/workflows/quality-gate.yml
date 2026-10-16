@@ -75,12 +75,12 @@ jobs:
             -DLD_ENABLE_WERROR=ON \
             -DBUILD_TESTING=ON
           cmake --build build -j2
-          cmake --build build --target linux-defragger-desktop -j2
+          cmake --build build --target defragmenter-desktop -j2
 
       - name: Smoke-test the shipped native GTK desktop under Xvfb
         run: |
           set +e
-          xvfb-run -a timeout --signal=TERM 5s ./build/linux-defragger-desktop \
+          xvfb-run -a timeout --signal=TERM 5s ./build/defragmenter-desktop \
             >native-desktop-smoke.log 2>&1
           status=$?
           set -e
@@ -94,13 +94,13 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: "1"
           PYTHONPATH: ${{ github.workspace }}/defragger/tests
-          LINUX_DEFRAGGER_BUILD_DIR: ${{ github.workspace }}/defragger/build
+          DEFRAGMENTER_BUILD_DIR: ${{ github.workspace }}/defragger/build
         run: ctest --test-dir build --output-on-failure
 
       - name: Enforce release invariants
         env:
           PYTHONDONTWRITEBYTECODE: "1"
-          LINUX_DEFRAGGER_BUILD_DIR: ${{ github.workspace }}/defragger/build
+          DEFRAGMENTER_BUILD_DIR: ${{ github.workspace }}/defragger/build
         run: python3 tests/test_release_gate.py
 
       - name: Build and verify release artefacts once
@@ -169,10 +169,10 @@ jobs:
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
           PYTHONDONTWRITEBYTECODE: "1"
           PYTHONPATH: ${{ github.workspace }}/defragger/tests
-          LINUX_DEFRAGGER_BUILD_DIR: ${{ github.workspace }}/defragger/build-sanitize
+          DEFRAGMENTER_BUILD_DIR: ${{ github.workspace }}/defragger/build-sanitize
         run: |
           ctest --test-dir build-sanitize --output-on-failure \
-            -E linux-defragger-tests
+            -E defragmenter-tests
 
   publish-release:
     name: Publish qualified release

@@ -15,11 +15,11 @@ namespace defragger {
 namespace {
 
 constexpr std::string_view kMapper =
-    "/usr/lib/linux-defragger/linux-defragger-mapper";
+    "/usr/lib/defragmenter/defragmenter-mapper";
 constexpr std::string_view kOperationEngine =
-    "/usr/lib/linux-defragger/linux-defragger-operation-engine";
+    "/usr/lib/defragmenter/defragmenter-operation-engine";
 constexpr std::string_view kUdisksctl = "/usr/bin/udisksctl";
-constexpr std::string_view kStateRoot = "/var/lib/linux-defragger/state";
+constexpr std::string_view kStateRoot = "/var/lib/defragmenter/state";
 
 std::uint32_t parse_uid(const char* raw) {
     if (raw == nullptr || *raw == '\0')

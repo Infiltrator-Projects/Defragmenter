@@ -4,7 +4,7 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 VERSION=$(tr -d '\r\n' <"$ROOT/VERSION")
-WORK=$(mktemp -d "${TMPDIR:-/tmp}/linux-defragger-artifact-test.XXXXXX")
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/defragmenter-artifact-test.XXXXXX")
 UNTRACKED_SENTINEL="$ROOT/local-installer-untracked-sentinel.secret"
 cleanup() {
     rm -f "$UNTRACKED_SENTINEL"
@@ -37,8 +37,8 @@ if grep -Fq 'libext2fs-dev' "$ROOT/packaging/local-run-header.sh.in"; then
     printf '%s\n' 'Native production build must not require libext2fs headers.' >&2
     exit 1
 fi
-grep -Fq 'StartupWMClass=io.github.linuxdefragger' \
-    "$ROOT/packaging/io.github.linuxdefragger.desktop"
+grep -Fq 'StartupWMClass=io.github.defragmenter' \
+    "$ROOT/packaging/io.github.defragmenter.desktop"
 grep -Fq 'OUTPUT=${1:-"$ROOT/Defragmenter-${VERSION}-local-folder.run"}' "$ROOT/packaging/build-local-run.sh"
 
 # The builder must be insensitive to arbitrary untracked runner output. This
@@ -47,7 +47,7 @@ grep -Fq 'OUTPUT=${1:-"$ROOT/Defragmenter-${VERSION}-local-folder.run"}' "$ROOT/
 printf '%s\n' 'ambient runner state must never be packaged' >"$UNTRACKED_SENTINEL"
 "$ROOT/packaging/build-local-run.sh" "$RUN" >/dev/null
 
-MARKER_LINE=$(grep -an '^__LINUX_DEFRAGGER_PAYLOAD_BELOW__$' "$RUN" | \
+MARKER_LINE=$(grep -an '^__DEFRAGMENTER_PAYLOAD_BELOW__$' "$RUN" | \
     head -1 | cut -d: -f1)
 [ -n "$MARKER_LINE" ]
 PAYLOAD_LINE=$((MARKER_LINE + 1))
@@ -60,13 +60,13 @@ ACTUAL=$(tail -n +"$PAYLOAD_LINE" "$RUN" | sha256sum | awk '{print $1}')
 [ "$ACTUAL" = "$EXPECTED" ]
 
 tail -n +"$PAYLOAD_LINE" "$RUN" | tar -tzf - >"$WORK/files.txt"
-grep -qx "linux-defragger-${VERSION}/CMakeLists.txt" "$WORK/files.txt"
-grep -qx "linux-defragger-${VERSION}/packaging/build-deb.sh" "$WORK/files.txt"
-grep -qx "linux-defragger-${VERSION}/packaging/build-local-run.sh" "$WORK/files.txt"
-grep -qx "linux-defragger-${VERSION}/LICENSE" "$WORK/files.txt"
-grep -qx "linux-defragger-${VERSION}/shared/infiltratr-common/VERSION" "$WORK/files.txt"
-grep -qx "linux-defragger-${VERSION}/shared/infiltratr-common/src/core.c" "$WORK/files.txt"
-grep -qx "linux-defragger-${VERSION}/shared/infiltratr-common/src/posix.c" "$WORK/files.txt"
+grep -qx "defragmenter-${VERSION}/CMakeLists.txt" "$WORK/files.txt"
+grep -qx "defragmenter-${VERSION}/packaging/build-deb.sh" "$WORK/files.txt"
+grep -qx "defragmenter-${VERSION}/packaging/build-local-run.sh" "$WORK/files.txt"
+grep -qx "defragmenter-${VERSION}/LICENSE" "$WORK/files.txt"
+grep -qx "defragmenter-${VERSION}/shared/infiltratr-common/VERSION" "$WORK/files.txt"
+grep -qx "defragmenter-${VERSION}/shared/infiltratr-common/src/core.c" "$WORK/files.txt"
+grep -qx "defragmenter-${VERSION}/shared/infiltratr-common/src/posix.c" "$WORK/files.txt"
 if grep -Fq 'local-installer-untracked-sentinel.secret' "$WORK/files.txt" || \
    grep -Fq 'native-desktop-smoke.log' "$WORK/files.txt"; then
     printf '%s\n' 'Local installer captured untracked runner state.' >&2
@@ -111,11 +111,11 @@ cmake -S "$ROOT" -B "$UFS_BUILD" \
     -DLD_ENABLE_WERROR=ON \
     -DBUILD_TESTING=OFF >/dev/null
 cmake --build "$UFS_BUILD" \
-    --target linux-defragger-test-media-mkfs-ufs linux-defragger-ufs-worker \
+    --target defragmenter-test-media-mkfs-ufs defragmenter-ufs-worker \
     -j2 >/dev/null
 /bin/sh "$ROOT/tests/test_ufs_makefs.sh" \
     "$UFS_BUILD/test-media-mkfs-ufs" \
-    "$UFS_BUILD/linux-defragger-ufs-worker"
+    "$UFS_BUILD/defragmenter-ufs-worker"
 
 "$ROOT/tests/test_local_installer_end_to_end.sh" "$RUN"
 

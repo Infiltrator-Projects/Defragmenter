@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define PROGRAM_NAME "linux-defragger-ext-metadata-worker"
+#define PROGRAM_NAME "defragmenter-ext-metadata-worker"
 
 #ifndef LINUX_S_IFMT
 #define LINUX_S_IFMT 0170000

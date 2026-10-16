@@ -6,7 +6,7 @@ The current software version is defined by [VERSION](VERSION).
 
 ## Compatibility naming
 
-The user-facing product is **Defragmenter**. The Debian/APT package identity is `defragmenter`. Established executable, desktop application ID, runtime/configuration paths and recovery/journal identities retain their `linux-defragger` compatibility names so upgrades and persisted state continue to work.
+The user-facing product is **Defragmenter**. The Debian/APT package identity is `defragmenter`. Established executable, desktop application ID, runtime/configuration paths and recovery/journal identities retain their `defragmenter` compatibility names so upgrades and persisted state continue to work.
 
 ## Filesystem support
 

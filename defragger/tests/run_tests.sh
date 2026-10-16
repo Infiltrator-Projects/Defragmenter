@@ -3,19 +3,19 @@
 set -euo pipefail
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-FAT_WORKER=${1:-"$ROOT/build/linux-defragger-fat-worker"}
+FAT_WORKER=${1:-"$ROOT/build/defragmenter-fat-worker"}
 BUILD_DIR=$(CDPATH= cd -- "$(dirname -- "$FAT_WORKER")" && pwd)
 HFS_ANALYSER="$BUILD_DIR/hfs_analyser"
-XFS_WORKER="$BUILD_DIR/linux-defragger-xfs-worker"
-XFS_NATIVE_TEST="$BUILD_DIR/linux-defragger-xfs-native-test"
-XFS_METADATA_TEST="$BUILD_DIR/linux-defragger-xfs-metadata-test"
-FAT12_SMALL_WORKSPACE_FIXTURE="$BUILD_DIR/linux-defragger-fat12-small-workspace-fixture"
+XFS_WORKER="$BUILD_DIR/defragmenter-xfs-worker"
+XFS_NATIVE_TEST="$BUILD_DIR/defragmenter-xfs-native-test"
+XFS_METADATA_TEST="$BUILD_DIR/defragmenter-xfs-metadata-test"
+FAT12_SMALL_WORKSPACE_FIXTURE="$BUILD_DIR/defragmenter-fat12-small-workspace-fixture"
 EXPECTED_VERSION=$(tr -d '\r\n' <"$ROOT/VERSION")
-WORK=$(mktemp -d "${TMPDIR:-/tmp}/linux-defragger-tests.XXXXXX")
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/defragmenter-tests.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT
 
 export PYTHONDONTWRITEBYTECODE=1
-export LINUX_DEFRAGGER_BUILD_DIR="$BUILD_DIR"
+export DEFRAGMENTER_BUILD_DIR="$BUILD_DIR"
 bash -n "$ROOT/tests/destructive/run_dm_log_writes_replay.sh"
 
 fail() {
@@ -27,10 +27,10 @@ fail() {
 [[ -x "$HFS_ANALYSER" ]] || fail "HFS analyser is not executable: $HFS_ANALYSER"
 [[ -x "$XFS_WORKER" ]] || fail "XFS worker is not executable: $XFS_WORKER"
 [[ -x "$FAT12_SMALL_WORKSPACE_FIXTURE" ]] || fail "FAT12 small-workspace fixture is not executable: $FAT12_SMALL_WORKSPACE_FIXTURE"
-export LINUX_DEFRAGGER_XFS_WORKER="$XFS_WORKER"
+export DEFRAGMENTER_XFS_WORKER="$XFS_WORKER"
 
 version=$($FAT_WORKER --version)
-[[ "$version" == "linux-defragger-fat-worker $EXPECTED_VERSION" ]] || \
+[[ "$version" == "defragmenter-fat-worker $EXPECTED_VERSION" ]] || \
     fail "unexpected FAT worker version: $version"
 
 "$ROOT/tests/test_release_artifacts.sh"
@@ -39,10 +39,10 @@ python3 "$ROOT/tests/test_architecture.py"
 python3 "$ROOT/tests/test_registry_mapper.py"
 python3 "$ROOT/tests/test_ext_catalog_fuzz.py"
 python3 "$ROOT/tests/test_worker_entrypoints.py"
-LINUX_DEFRAGGER_BUILD_DIR="$BUILD_DIR" PYTHONPATH="$ROOT/tests" python3 "$ROOT/tests/test_native_top3.py"
-LINUX_DEFRAGGER_BUILD_DIR="$BUILD_DIR" PYTHONPATH="$ROOT/tests" python3 "$ROOT/tests/test_affs_native.py"
-LINUX_DEFRAGGER_BUILD_DIR="$BUILD_DIR" PYTHONPATH="$ROOT/tests" python3 "$ROOT/tests/test_hfsplus_native.py"
-LINUX_DEFRAGGER_BUILD_DIR="$BUILD_DIR" PYTHONPATH="$ROOT/tests" python3 "$ROOT/tests/test_hfs_native.py"
+DEFRAGMENTER_BUILD_DIR="$BUILD_DIR" PYTHONPATH="$ROOT/tests" python3 "$ROOT/tests/test_native_top3.py"
+DEFRAGMENTER_BUILD_DIR="$BUILD_DIR" PYTHONPATH="$ROOT/tests" python3 "$ROOT/tests/test_affs_native.py"
+DEFRAGMENTER_BUILD_DIR="$BUILD_DIR" PYTHONPATH="$ROOT/tests" python3 "$ROOT/tests/test_hfsplus_native.py"
+DEFRAGMENTER_BUILD_DIR="$BUILD_DIR" PYTHONPATH="$ROOT/tests" python3 "$ROOT/tests/test_hfs_native.py"
 python3 "$ROOT/tests/test_xfs_writer.py"
 if [[ -x "$XFS_NATIVE_TEST" ]]; then "$XFS_NATIVE_TEST"; fi
 if [[ -x "$XFS_METADATA_TEST" ]]; then "$XFS_METADATA_TEST"; fi
@@ -215,4 +215,4 @@ if "$HFS_ANALYSER" defrag /dev/null >"$WORK/hfs-write.log" 2>&1; then
     fail "classic HFS worker accepted an invalid write target"
 fi
 
-printf 'Linux Defragger %s focused tests passed.\n' "$EXPECTED_VERSION"
+printf 'Defragmenter %s focused tests passed.\n' "$EXPECTED_VERSION"

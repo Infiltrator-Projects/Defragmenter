@@ -18,11 +18,11 @@ if(NOT _install_result EQUAL 0)
 endif()
 
 foreach(_path IN ITEMS
-    "usr/bin/linux-defragger-test-media"
-    "usr/lib/linux-defragger/test-media-mkfs-ofs"
-    "usr/lib/linux-defragger/test-media-mkfs-ffs"
-    "usr/lib/linux-defragger/test-media-mkfs-ufs"
-    "usr/share/applications/io.github.linuxdefragger.TestMedia.desktop")
+    "usr/bin/defragmenter-test-media"
+    "usr/lib/defragmenter/test-media-mkfs-ofs"
+    "usr/lib/defragmenter/test-media-mkfs-ffs"
+    "usr/lib/defragmenter/test-media-mkfs-ufs"
+    "usr/share/applications/io.github.defragmenter.TestMedia.desktop")
     if(NOT EXISTS "${_root}/${_path}")
         message(FATAL_ERROR "staged Test Media install is missing ${_path}")
     endif()

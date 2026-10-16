@@ -12,7 +12,7 @@ UFS_WORKER=$2
 [ -x "$UFS_CREATOR" ] || exit 2
 [ -x "$UFS_WORKER" ] || exit 2
 
-WORK=$(mktemp -d "${TMPDIR:-/tmp}/linux-defragger-ufs-native.XXXXXX")
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/defragmenter-ufs-native.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT HUP INT TERM
 mkdir -p "$WORK/source/Defragmenter-TestData/fragmented-files"
 

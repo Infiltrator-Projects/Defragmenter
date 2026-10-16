@@ -7,8 +7,8 @@
  * geometry validation, mirrored-table writes and cluster-chain traversal.
  */
 
-#ifndef LINUX_DEFRAGGER_FAT_VOLUME_H
-#define LINUX_DEFRAGGER_FAT_VOLUME_H
+#ifndef DEFRAGMENTER_FAT_VOLUME_H
+#define DEFRAGMENTER_FAT_VOLUME_H
 
 #include <stdbool.h>
 #include <stddef.h>

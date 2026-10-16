@@ -39,16 +39,16 @@ if [ "${LD_INSTALLER_TEST_COMMAND:-0}" = 1 ]; then
                 : "${DESTDIR:?DESTDIR is required for the fake install}"
                 : "${LD_INSTALLER_TEST_SOURCE_ROOT:?source root is required for the fake install}"
                 mkdir -p \
-                    "$DESTDIR/usr/lib/linux-defragger/filesystems/fat" \
+                    "$DESTDIR/usr/lib/defragmenter/filesystems/fat" \
                     "$DESTDIR/usr/share/icons/hicolor/96x96/apps" \
                     "$DESTDIR/usr/share/app-install/icons"
-                : >"$DESTDIR/usr/lib/linux-defragger/filesystems/fat/linux-defragger-fat-worker"
-                chmod 0755 "$DESTDIR/usr/lib/linux-defragger/filesystems/fat/linux-defragger-fat-worker"
-                cp "$LD_INSTALLER_TEST_SOURCE_ROOT/packaging/io.github.linuxdefragger.png" \
-                    "$DESTDIR/usr/lib/linux-defragger/defragmenter-icon.png"
-                cp "$LD_INSTALLER_TEST_SOURCE_ROOT/packaging/io.github.linuxdefragger.png" \
-                    "$DESTDIR/usr/share/icons/hicolor/96x96/apps/io.github.linuxdefragger.png"
-                cp "$LD_INSTALLER_TEST_SOURCE_ROOT/packaging/io.github.linuxdefragger.png" \
+                : >"$DESTDIR/usr/lib/defragmenter/filesystems/fat/defragmenter-fat-worker"
+                chmod 0755 "$DESTDIR/usr/lib/defragmenter/filesystems/fat/defragmenter-fat-worker"
+                cp "$LD_INSTALLER_TEST_SOURCE_ROOT/packaging/io.github.defragmenter.png" \
+                    "$DESTDIR/usr/lib/defragmenter/defragmenter-icon.png"
+                cp "$LD_INSTALLER_TEST_SOURCE_ROOT/packaging/io.github.defragmenter.png" \
+                    "$DESTDIR/usr/share/icons/hicolor/96x96/apps/io.github.defragmenter.png"
+                cp "$LD_INSTALLER_TEST_SOURCE_ROOT/packaging/io.github.defragmenter.png" \
                     "$DESTDIR/usr/share/app-install/icons/defragmenter.png"
             fi
             ;;
@@ -72,7 +72,7 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 VERSION=$(tr -d '\r\n' <"$ROOT/VERSION")
 EXPECTED_VERSION="${VERSION}+native1"
 RUN=$1
-WORK=$(mktemp -d "${TMPDIR:-/tmp}/linux-defragger-installer-test.XXXXXX")
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/defragmenter-installer-test.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT HUP INT TERM
 
 for command_name in dpkg-query dpkg cmake sudo gcc make makefs apt-get; do

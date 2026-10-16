@@ -395,7 +395,7 @@ static int write_image_path(const char *path, const uint8_t *image)
 
 static int save_image(const uint8_t *image, char path[64])
 {
-    (void)snprintf(path, 64U, "/tmp/linux-defragger-pfs3-XXXXXX");
+    (void)snprintf(path, 64U, "/tmp/defragmenter-pfs3-XXXXXX");
     int fd = mkstemp(path);
     if (fd < 0)
         return -1;
@@ -418,7 +418,7 @@ static int save_image(const uint8_t *image, char path[64])
 
 static int make_stage_path(char path[64])
 {
-    (void)snprintf(path, 64U, "/tmp/linux-defragger-pfs3-stage-XXXXXX");
+    (void)snprintf(path, 64U, "/tmp/defragmenter-pfs3-stage-XXXXXX");
     int fd = mkstemp(path);
     if (fd < 0)
         return -1;

@@ -14,9 +14,9 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILD = Path(os.environ.get("LINUX_DEFRAGGER_BUILD_DIR", ROOT / "build"))
-WORKER = BUILD / "linux-defragger-affs-worker"
-MAPPER = BUILD / "linux-defragger-mapper"
+BUILD = Path(os.environ.get("DEFRAGMENTER_BUILD_DIR", ROOT / "build"))
+WORKER = BUILD / "defragmenter-affs-worker"
+MAPPER = BUILD / "defragmenter-mapper"
 BLOCK_SIZE = 512
 
 
@@ -282,7 +282,7 @@ def test_legacy_recovery_journal_fails_closed(work: Path) -> None:
 def main() -> None:
     assert WORKER.is_file(), f"missing native Amiga worker: {WORKER}"
     assert MAPPER.is_file(), f"missing C++ mapper: {MAPPER}"
-    with tempfile.TemporaryDirectory(prefix="linux-defragger-affs-") as directory:
+    with tempfile.TemporaryDirectory(prefix="defragmenter-affs-") as directory:
         work = Path(directory)
         test_mutation_paths(work)
         test_recover_from_verified_bound_stage(work)

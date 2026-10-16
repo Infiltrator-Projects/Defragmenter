@@ -42,7 +42,7 @@ static void unlink_if_exists(const char *path)
         return;
     const int failure = infiltratr_unlink_durable(path, true);
     if (failure != 0)
-        fprintf(stderr, "linux-defragger-ntfs-worker: warning: cannot durably remove %s: %s\n",
+        fprintf(stderr, "defragmenter-ntfs-worker: warning: cannot durably remove %s: %s\n",
                 path, strerror(failure));
 }
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.8.0-269 - 2026-10-17
+
+- Use canonical alpha product and package identities without migration aliases.
+
 ## 1.8.0-267 — 2026-10-16
 
 Keep desktop/presentation regression checks active in optimized builds. A failed contract now reports its expression and exits unsuccessfully even when `NDEBUG` is defined. Production behaviour is unchanged.
@@ -11,7 +15,7 @@ This changelog records user-visible, compatibility, architecture and validation 
 - Cache hero, drive and sidebar raster artwork at the current widget geometry instead of bilinear-rescaling it on every GTK expose/redraw.
 - Bound Test Media child stdout/stderr processing to 64 lines per main-loop dispatch and remove per-line temporary text-mark allocation so sustained qualification output cannot monopolise the GTK thread.
 - Remove the final stale Infiltrator OS geometry holdovers: the native header widget is actually 44 px, and sidebar artwork fits inside the 195 px navigation rail instead of requesting 210 px and expanding it.
-- Reverify the dependency against current Infiltratr Common main: Common remains 1.19.38 at exact commit `7070c5812b50821fd7580101cb2289a3184f6b2c`, so no Common bump is required.
+- Reverify the dependency against current Libraries main: Common remains 1.19.38 at exact commit `7070c5812b50821fd7580101cb2289a3184f6b2c`, so no Common bump is required.
 - Keep the Python GUI/reference layer source-only for regression compatibility; shipped packages and the local installer continue to exclude Python sources and run the native C/C++ desktop.
 
 ## 1.8.0-239
@@ -21,7 +25,7 @@ This changelog records user-visible, compatibility, architecture and validation 
 - Keep cache invalidation exact for selection, analysis, live-map and appearance changes, preserving the physical-order raster semantics while eliminating redundant redraw work.
 - Align Defragmenter and Test Media to the current Infiltrator OS 44-pixel titlebar and 195-pixel normal navigation-rail standard.
 - Remove a duplicate Night hero-style block from the retained source/test reference theme.
-- Advance the exact Infiltratr Common dependency from 1.19.35 (`7cc5de3de0e94ed2cfcff0840bbb5346eb5c9c9f`) to 1.19.38 (`7070c5812b50821fd7580101cb2289a3184f6b2c`) across CMake, local packaging, documentation and release assertions.
+- Advance the exact Libraries dependency from 1.19.35 (`7cc5de3de0e94ed2cfcff0840bbb5346eb5c9c9f`) to 1.19.38 (`7070c5812b50821fd7580101cb2289a3184f6b2c`) across CMake, local packaging, documentation and release assertions.
 - No filesystem analyser, writer, placement, transaction or recovery semantics are changed.
 
 ## 1.8.0-238
@@ -346,7 +350,7 @@ This changelog records user-visible, compatibility, architecture and validation 
 - Replace the NTFS catalogue's repeated linear owner lookup and stream/object aggregation passes with an open-addressed record index and one indexed aggregation pass, eliminating the pathological growth that made a large historical MFT appear hung while a small NTFS volume completed normally.
 - Keep NTFS parsing and mutation semantics unchanged: malformed-record tolerance, attribute-list fail-closed behaviour, movable-stream qualification, hibernation detection, fragmentation accounting, Growth Defrag reserve checks and writer/recovery safety remain authoritative.
 - Turn the left rail into genuine navigation rather than duplicate command buttons. Overview keeps convenient quick actions; Analyse, Defragment, Growth Defrag, Recover, Test Media and Settings now open dedicated pages with task-specific information and one relevant primary action.
-- Replace the procedural hero landscape, checker sphere and selected-drive drawing with raster artwork taken directly from the approved UI concept. The approved concept image is installed with the application under `/usr/lib/linux-defragger/art/`; gauges and the physical allocation map remain live data visualisations rather than decorative raster substitutes.
+- Replace the procedural hero landscape, checker sphere and selected-drive drawing with raster artwork taken directly from the approved UI concept. The approved concept image is installed with the application under `/usr/lib/defragmenter/art/`; gauges and the physical allocation map remain live data visualisations rather than decorative raster substitutes.
 - Add permanent architecture/regression guards for 32 MiB NTFS batching, N−1 worker policy, hashed catalogue ownership, raster concept artwork, dedicated navigation pages and the existing exact physical disk-map ordering.
 - Qualify production source commit `1d6d609219d360fbd76fc3689d10f7a911940f37` in Project quality gate run 36124937941 and the self-hosted qualification run 36124937769: warnings-as-errors builds, all 44 hosted CTest tests, the local qualification subsets and the separate ASan/UBSan lane pass; both ordinary candidate gates stop only on the deliberately stale audited-source marker advanced by this release.
 
@@ -413,7 +417,7 @@ This changelog records user-visible, compatibility, architecture and validation 
 
 ## 1.8.0-197
 
-- Centralise Unicode scalar-to-UTF-8 byte encoding through Infiltratr Common 1.19.27 for the native JSON parser and FAT/exFAT filename paths, removing their independent byte encoders.
+- Centralise Unicode scalar-to-UTF-8 byte encoding through Libraries 1.19.27 for the native JSON parser and FAT/exFAT filename paths, removing their independent byte encoders.
 - Keep filesystem-specific Unicode policy local: FAT still sanitises path separators/NUL and replaces malformed UTF-16, while exFAT now maps unpaired UTF-16 surrogates to U+FFFD before the shared strict encoder.
 - Advance the exact Common dependency to released 1.19.27 at commit `3ef3710df6563df305b6d8e2dc9d1a41c61843ba` across the gitlink, CMake, installer, tests and maintained documentation.
 - Qualify the production-source baseline at `e9a341b08b93d624f98df9a9ec0d7bc4842d9d7b`: warnings-as-errors builds and all 44 hosted CTest tests pass, and the separate hosted ASan/UBSan lane passes; the pre-release gate stops only on the deliberately stale audit-baseline marker that this release commit advances.
@@ -443,7 +447,7 @@ This changelog records user-visible, compatibility, architecture and validation 
 - Replaced the production EXT2/EXT3/EXT4 libext2fs dependency with a bounded first-party native on-disk engine owning superblock/group-descriptor validation, allocation bitmaps, inode scanning/checksums, extent and legacy-indirect traversal, allocation accounting and physical-reference mutation; e2fsprogs/libext2fs remains test-only independent fixture/oracle evidence.
 - Completed UFS1/UFS2 qualification and enabled the bounded clean/non-journalled/snapshot-free native Defragment, exact 10% Growth Defrag and Recover contract with genuine makefs integration coverage.
 - Replaced ZFS summary-only detection with bounded exact native analysis across labels/uberblocks, packed-XDR topology, MOS/dnodes, supported checksum/compression, metaslab space maps and regular-file physical fragmentation; ZFS mutation remains deliberately outside product scope.
-- Advanced the exact Infiltratr Common dependency to released 1.19.23 at commit `a9cf2957cffeefe6001830916b8a32c2ef58a551` across the submodule, CMake, installer, tests and current architecture/design/validation documentation.
+- Advanced the exact Libraries dependency to released 1.19.23 at commit `a9cf2957cffeefe6001830916b8a32c2ef58a551` across the submodule, CMake, installer, tests and current architecture/design/validation documentation.
 - Fixed release-qualification defects exposed by warnings-as-errors and sanitizers: EXT checked-arithmetic integration and opaque handle ownership, UFS1 zero rotational-offset division, and bounded ZFS string copying.
 - Restored the ZFS multi-uberblock selection fixture so candidate counting and same-TXG timestamp tie-breaking are both exercised rather than weakening the assertions.
 - Clarified UFS, ZFS, APFS and Btrfs native ownership/fail-closed boundaries in source comments without duplicating filesystem specifications or narrating syntax.
@@ -469,10 +473,10 @@ This changelog records user-visible, compatibility, architecture and validation 
 
 - Standardised Defragmenter artwork on the canonical `#00ADEF` non-automotive Infiltrator icon family while retaining the single-byte-source launcher/taskbar/About packaging contract.
 - Hardened root-anchored trusted-directory traversal with Linux `openat2()` using `RESOLVE_BENEATH`, `RESOLVE_NO_SYMLINKS` and `RESOLVE_NO_MAGICLINKS`, while preserving the established `openat(O_NOFOLLOW)` fallback for older kernels.
-- Removed the obsolete second GTK About implementation from the base window view; the LINK-standard About presenter is now the single concrete About/licence/icon implementation.
+- Removed the obsolete second GTK About implementation from the base window view; the Link-standard About presenter is now the single concrete About/licence/icon implementation.
 - Added a deterministic fail-closed malformed-media matrix across all 15 installed native filesystem identifiers, including classic HFS, rejecting hangs, signal termination and accidental identification of empty/truncated/seeded garbage; the matrix is a first-class CTest so it also runs under the hosted ASan/UBSan qualification lane.
 - Added an opt-in `dm-log-writes`/`replay-log` sacrificial-media harness for validating source-filesystem structure at each FLUSH or FUA durability boundary without conflating that evidence with external recovery-journal persistence.
-- Advanced the exact released Infiltratr Common pin to 1.19.22 while retaining the existing filesystem-specific mutation/recovery ownership boundary.
+- Advanced the exact released Libraries pin to 1.19.22 while retaining the existing filesystem-specific mutation/recovery ownership boundary.
 
 ## 1.8.0-190
 
@@ -495,7 +499,7 @@ This changelog records user-visible, compatibility, architecture and validation 
 
 ## 1.8.0-186
 
-- Fixed the Cinnamon taskbar identity at its source: the GTK process now publishes the installed `io.github.linuxdefragger` identity as its GLib program name and X11 program class, while the desktop entry declares the matching `StartupWMClass`.
+- Fixed the Cinnamon taskbar identity at its source: the GTK process now publishes the installed `io.github.defragmenter` identity as its GLib program name and X11 program class, while the desktop entry declares the matching `StartupWMClass`.
 - Routed process-wide, main-window and About-window icons through the same directly loaded project-owned pixbuf, retaining the canonical icon-name fallback only when direct artwork loading is unavailable.
 - Kept the About dialog's GTK3 named-logo override cleared before assigning the project pixbuf, and added a canonical-name fallback for damaged/source-tree environments.
 - Added permanent regressions for the Cinnamon WM-class/desktop-entry match, direct pixbuf window icons, About-window icon application and release packaging identity.
@@ -522,7 +526,7 @@ This changelog records user-visible, compatibility, architecture and validation 
 
 ## 1.8.0-182
 
-- Advanced the exact Infiltratr Common dependency from 1.19.8 to released 1.19.10 at commit `33e69c0a462b56d388881d89c4eb49f72fa0b0fe` across the submodule, CMake build and local installer.
+- Advanced the exact Libraries dependency from 1.19.8 to released 1.19.10 at commit `33e69c0a462b56d388881d89c4eb49f72fa0b0fe` across the submodule, CMake build and local installer.
 - Regenerated the complete Common Day/Night adapter and mapped the new titlebar, connection, heading, summary, kicker, detail-label, note, status-border and hover-accent roles into the main GTK application and Test Media.
 - Removed the About dialog's private Night colour constants so About follows the same Common-resolved Day/Night palette as the rest of Defragmenter.
 - Removed the unused Python transaction/journal durability layer and unused Python raw-write/sync path; production mutation continues through the native writers using Common exact I/O and durable file publication/removal.
@@ -536,7 +540,7 @@ This changelog records user-visible, compatibility, architecture and validation 
 
 ## 1.8.0-180
 
-- Advanced the exact Infiltratr Common dependency from 1.19.6 to released 1.19.8.
+- Advanced the exact Libraries dependency from 1.19.6 to released 1.19.8.
 - Replaced C++ JSON real conversion with Common's deterministic locale-independent finite-decimal parser and hardened local string allocation with Common checked size arithmetic.
 - Extended the generated GTK design adapter to consume Common typography roles and neutral structural metrics; the allocation-map placeholder now uses the same generated typography identity.
 - Moved Test Media typography and shared radius identity onto Common's native design API without changing Defragmenter-specific presentation or filesystem behaviour.

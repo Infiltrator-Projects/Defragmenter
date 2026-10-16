@@ -82,7 +82,7 @@ struct RasterImageCache {
 };
 
 fs::path artwork(const char* name) {
-    const fs::path installed = fs::path("/usr/lib/linux-defragger/ui/art") / name;
+    const fs::path installed = fs::path("/usr/lib/defragmenter/ui/art") / name;
     if (fs::is_regular_file(installed)) return installed;
     const auto local = fs::path("defragger/gui/ui/art") / name;
     if (fs::is_regular_file(local)) return local;
@@ -144,10 +144,10 @@ GdkPixbuf* scaled_cover_pixbuf(
 GtkWidget* app_icon_image(int size)
 {
     const fs::path candidates[] = {
-        "/usr/lib/linux-defragger/defragmenter-icon.png",
-        "/usr/share/icons/hicolor/96x96/apps/io.github.linuxdefragger.png",
-        fs::path("defragger/packaging/io.github.linuxdefragger.png"),
-        fs::path("packaging/io.github.linuxdefragger.png"),
+        "/usr/lib/defragmenter/defragmenter-icon.png",
+        "/usr/share/icons/hicolor/96x96/apps/io.github.defragmenter.png",
+        fs::path("defragger/packaging/io.github.defragmenter.png"),
+        fs::path("packaging/io.github.defragmenter.png"),
     };
     for (const auto& path : candidates) {
         if (!fs::is_regular_file(path)) continue;
@@ -161,7 +161,7 @@ GtkWidget* app_icon_image(int size)
         return image;
     }
     auto* image = gtk_image_new_from_icon_name(
-        "io.github.linuxdefragger", GTK_ICON_SIZE_DIALOG);
+        "io.github.defragmenter", GTK_ICON_SIZE_DIALOG);
     gtk_image_set_pixel_size(GTK_IMAGE(image), size);
     return image;
 }
@@ -169,10 +169,10 @@ GtkWidget* app_icon_image(int size)
 void apply_window_icon(GtkWindow* window)
 {
     const fs::path candidates[] = {
-        "/usr/lib/linux-defragger/defragmenter-icon.png",
-        "/usr/share/icons/hicolor/96x96/apps/io.github.linuxdefragger.png",
-        fs::path("defragger/packaging/io.github.linuxdefragger.png"),
-        fs::path("packaging/io.github.linuxdefragger.png"),
+        "/usr/lib/defragmenter/defragmenter-icon.png",
+        "/usr/share/icons/hicolor/96x96/apps/io.github.defragmenter.png",
+        fs::path("defragger/packaging/io.github.defragmenter.png"),
+        fs::path("packaging/io.github.defragmenter.png"),
     };
     for (const auto& path : candidates) {
         if (!fs::is_regular_file(path)) continue;
@@ -184,7 +184,7 @@ void apply_window_icon(GtkWindow* window)
         g_object_unref(pixbuf);
         return;
     }
-    gtk_window_set_icon_name(window, "io.github.linuxdefragger");
+    gtk_window_set_icon_name(window, "io.github.defragmenter");
 }
 
 gboolean draw_hero_art(GtkWidget* widget, cairo_t* cr, gpointer) {
@@ -318,7 +318,7 @@ bool system_prefers_dark() {
 
 std::string theme_file() {
     return (fs::path(g_get_user_config_dir()) /
-            "linux-defragger" / "theme").string();
+            "defragmenter" / "theme").string();
 }
 
 InfiltratrThemeMode load_theme_mode() {
@@ -1649,7 +1649,7 @@ private:
                 "copyright", "Copyright © 2000–2026 Shannon Smith",
                 "website", "https://github.com/Infiltrator-Projects/Defragmenter", "website-label", "Website",
                 "authors", authors, "license-type", GTK_LICENSE_GPL_3_0, "wrap-license", TRUE,
-                "logo-icon-name", "io.github.linuxdefragger", nullptr);
+                "logo-icon-name", "io.github.defragmenter", nullptr);
             return;
         }
         if (action_name == "theme") { set_theme(infiltratr_theme_mode_next(theme_mode_)); return; }

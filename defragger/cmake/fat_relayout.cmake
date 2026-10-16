@@ -1,15 +1,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Focused integration coverage for the shared FAT12/FAT16/FAT32 relayout engine.
 
-if(BUILD_TESTING AND TARGET linux-defragger-fat-worker)
+if(BUILD_TESTING AND TARGET defragmenter-fat-worker)
     add_test(
-        NAME linux-defragger-fat-relayout
+        NAME defragmenter-fat-relayout
         COMMAND bash
                 "${CMAKE_CURRENT_LIST_DIR}/../tests/test_fat_relayout_engine.sh"
-                "$<TARGET_FILE:linux-defragger-fat-worker>"
+                "$<TARGET_FILE:defragmenter-fat-worker>"
     )
     set_tests_properties(
-        linux-defragger-fat-relayout
+        defragmenter-fat-relayout
         PROPERTIES
             TIMEOUT 180
             ENVIRONMENT

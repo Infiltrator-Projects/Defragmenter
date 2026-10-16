@@ -9,9 +9,9 @@ Usage:
     --data-device /dev/LOOP_OR_SCRATCH_DATA \
     --log-device /dev/LOOP_OR_SCRATCH_LOG \
     --image prepared-filesystem.img \
-    --worker build/linux-defragger-fat-worker \
+    --worker build/defragmenter-fat-worker \
     --operation defrag \
-    --check-command 'build/linux-defragger-fat-worker analyze {device}' \
+    --check-command 'build/defragmenter-fat-worker analyze {device}' \
     --confirm-data /dev/LOOP_OR_SCRATCH_DATA \
     --confirm-log /dev/LOOP_OR_SCRATCH_LOG \
     [--check-mode flush|fua] [-- extra worker arguments...]

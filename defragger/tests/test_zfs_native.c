@@ -669,7 +669,7 @@ static off_t write_uber(int fd, unsigned label, unsigned slot, int big,
 
 int main(void)
 {
-    char path[] = "/tmp/linux-defragger-zfs-test-XXXXXX";
+    char path[] = "/tmp/defragmenter-zfs-test-XXXXXX";
     const int fd = mkstemp(path);
     CHECK(fd >= 0);
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #ifndef LD_VERSION_H
 #define LD_VERSION_H
-#define LD_VERSION "@LINUX_DEFRAGGER_PACKAGE_VERSION@"
+#define LD_VERSION "@DEFRAGMENTER_PACKAGE_VERSION@"
 #endif

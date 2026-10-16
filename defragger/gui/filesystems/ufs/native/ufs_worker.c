@@ -30,7 +30,7 @@
 #include <sys/sysmacros.h>
 #include <unistd.h>
 
-#define PROG "linux-defragger-ufs-worker"
+#define PROG "defragmenter-ufs-worker"
 #define UFS_SUMMARY_UNIT_SIZE 512U
 
 static void usage(FILE *stream)

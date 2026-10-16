@@ -48,7 +48,7 @@ int main(void) {
                "\"message\":\"quoted \\\"value\\\"\\\\path\\nnext\"}\n") != 0)
         return fail("protocol JSON escaping");
 
-    char victim_path[] = "/tmp/linux-defragger-core-victim.XXXXXX";
+    char victim_path[] = "/tmp/defragmenter-core-victim.XXXXXX";
     int victim_fd = mkstemp(victim_path);
     if (victim_fd < 0) return fail("victim mkstemp");
     const char victim_payload[] = "must-not-be-truncated";
@@ -57,7 +57,7 @@ int main(void) {
         return fail("victim write");
     close(victim_fd);
 
-    char journal_path[] = "/tmp/linux-defragger-core-journal.XXXXXX";
+    char journal_path[] = "/tmp/defragmenter-core-journal.XXXXXX";
     int journal_fd = mkstemp(journal_path);
     if (journal_fd < 0) return fail("journal mkstemp");
     close(journal_fd);
@@ -85,7 +85,7 @@ int main(void) {
     unlink(journal_path);
     unlink(victim_path);
 
-    char target_path[] = "/tmp/linux-defragger-core-target.XXXXXX";
+    char target_path[] = "/tmp/defragmenter-core-target.XXXXXX";
     int target_fd = mkstemp(target_path);
     if (target_fd < 0) return fail("target mkstemp");
     if (ftruncate(target_fd, 8192) != 0) return fail("target size");
@@ -136,7 +136,7 @@ int main(void) {
     if (verified_fd < 0) return fail("journal-bound target accepted");
     close(verified_fd);
 
-    char replacement_path[] = "/tmp/linux-defragger-core-replacement.XXXXXX";
+    char replacement_path[] = "/tmp/defragmenter-core-replacement.XXXXXX";
     int replacement_fd = mkstemp(replacement_path);
     if (replacement_fd < 0 || ftruncate(replacement_fd, 8192) != 0)
         return fail("replacement target");
@@ -152,7 +152,7 @@ int main(void) {
     unlink(target_link);
     unlink(target_path);
 
-    char tree_root[] = "/tmp/linux-defragger-secure-tree.XXXXXX";
+    char tree_root[] = "/tmp/defragmenter-secure-tree.XXXXXX";
     if (mkdtemp(tree_root) == NULL) return fail("secure tree mkdtemp");
     char safe_parent[PATH_MAX];
     char safe_child[PATH_MAX];
@@ -217,7 +217,7 @@ int main(void) {
     if (infiltratr_u64_add_checked(UINT64_MAX, 1, &result))
         return fail("addition overflow");
 
-    char path[] = "/tmp/linux-defragger-core-test.XXXXXX";
+    char path[] = "/tmp/defragmenter-core-test.XXXXXX";
     int fd = mkstemp(path);
     if (fd < 0) return fail("mkstemp");
     unlink(path);

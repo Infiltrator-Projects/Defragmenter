@@ -167,7 +167,7 @@ static void make_image(uint8_t *image, int transaction_pending, int fragmented,
 
 static int save_image(const uint8_t *image, char path[64])
 {
-    (void)snprintf(path, 64U, "/tmp/linux-defragger-sfs-XXXXXX");
+    (void)snprintf(path, 64U, "/tmp/defragmenter-sfs-XXXXXX");
     const int fd = mkstemp(path);
     if (fd < 0)
         return -1;
@@ -195,7 +195,7 @@ static int analyse_image(const uint8_t *image, SfsAnalysis *analysis,
 
 static int make_stage_path(char path[64])
 {
-    (void)snprintf(path, 64U, "/tmp/linux-defragger-sfs-stage-XXXXXX");
+    (void)snprintf(path, 64U, "/tmp/defragmenter-sfs-stage-XXXXXX");
     const int fd = mkstemp(path);
     if (fd < 0)
         return -1;
@@ -249,7 +249,7 @@ static int test_sfs2_large_sparse(void)
         LARGE_DATA_BLOCKS = 65537U
     };
     const uint64_t file_size = UINT64_C(0x100000001);
-    char path[] = "/tmp/linux-defragger-sfs2-large-XXXXXX";
+    char path[] = "/tmp/defragmenter-sfs2-large-XXXXXX";
     uint8_t *block = calloc(1U, LARGE_BLOCK_SIZE);
     if (block == NULL)
         return -1;

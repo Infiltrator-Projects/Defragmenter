@@ -417,14 +417,14 @@ static int capture_process(const char *const argv[], char **output)
 }
 
 static const char *production_mapper_program(void) {
-    const char *configured = getenv("LINUX_DEFRAGGER_MAPPER");
+    const char *configured = getenv("DEFRAGMENTER_MAPPER");
     if (configured != NULL && *configured != '\0' &&
         access(configured, X_OK) == 0)
         return configured;
-    if (access("/usr/lib/linux-defragger/linux-defragger-mapper", X_OK) == 0)
-        return "/usr/lib/linux-defragger/linux-defragger-mapper";
-    if (ldtm_program_available("linux-defragger-mapper"))
-        return "linux-defragger-mapper";
+    if (access("/usr/lib/defragmenter/defragmenter-mapper", X_OK) == 0)
+        return "/usr/lib/defragmenter/defragmenter-mapper";
+    if (ldtm_program_available("defragmenter-mapper"))
+        return "defragmenter-mapper";
     return NULL;
 }
 
@@ -2482,7 +2482,7 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device,
     char current_fingerprint[LDTM_HASH_HEX];
     char safety[512];
     char script[8192];
-    char work_template[] = "/tmp/linux-defragger-test-media.XXXXXX";
+    char work_template[] = "/tmp/defragmenter-test-media.XXXXXX";
     char *work;
     char state_path[PATH_MAX];
     LdtmPartitionMap map;
@@ -3002,7 +3002,7 @@ int ldtm_worker_verify(const char *device) {
     char canonical[PATH_MAX];
     char safety[512];
     char state_path[PATH_MAX];
-    char work_template[] = "/tmp/linux-defragger-test-media-verify.XXXXXX";
+    char work_template[] = "/tmp/defragmenter-test-media-verify.XXXXXX";
     char *work;
     LdtmPartitionMap map;
     LdtmVerifyFilesystem expected[LDTM_SPEC_COUNT];
@@ -3265,7 +3265,7 @@ int ldtm_worker_qualify(const char *device)
         return 2;
     }
     if (ldtm_resolve_program(
-            "/usr/lib/linux-defragger/linux-defragger-operation-engine",
+            "/usr/lib/defragmenter/defragmenter-operation-engine",
             engine, sizeof(engine)) != 0) {
         fputs("The installed production Defragmenter operation engine is unavailable.\n",
               stderr);

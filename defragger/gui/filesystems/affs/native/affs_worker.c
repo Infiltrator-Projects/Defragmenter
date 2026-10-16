@@ -27,7 +27,7 @@
 #include <sys/sysmacros.h>
 #include <unistd.h>
 
-#define PROG "linux-defragger-affs-worker"
+#define PROG "defragmenter-affs-worker"
 #define JOURNAL_MAGIC "LINUX-DEFRAGGER-AFFS-JOURNAL-2"
 #define BLOCK_SIZE 512U
 #define AMIGA_IO_BATCH_BLOCKS 8192U

@@ -12,8 +12,8 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILD = Path(os.environ.get("LINUX_DEFRAGGER_BUILD_DIR", str(ROOT / "build")))
-MAPPER = BUILD / "linux-defragger-mapper"
+BUILD = Path(os.environ.get("DEFRAGMENTER_BUILD_DIR", str(ROOT / "build")))
+MAPPER = BUILD / "defragmenter-mapper"
 assert MAPPER.is_file(), f"missing native mapper: {MAPPER}"
 
 listed_result = subprocess.run(

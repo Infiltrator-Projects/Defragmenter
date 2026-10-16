@@ -9,7 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define PROG "linux-defragger-zfs-worker"
+#define PROG "defragmenter-zfs-worker"
 #define ZFS_MAP_UNIT_SIZE 512U
 
 static void usage(FILE *stream)

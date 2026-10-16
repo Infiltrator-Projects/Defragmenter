@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Linux Defragger
+# Defragmenter
 # Author: Shannon Smith
 # Purpose: Verify FAT12/FAT16 Growth Defrag placement and reserved gap.
 

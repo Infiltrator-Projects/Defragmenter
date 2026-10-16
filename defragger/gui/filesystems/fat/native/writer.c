@@ -43,7 +43,7 @@
 #include "fat_relocation.h"
 #include "fat_volume.h"
 
-#define PROGRAM_NAME "linux-defragger-fat-worker"
+#define PROGRAM_NAME "defragmenter-fat-worker"
 #define PROGRAM_VERSION LD_VERSION
 
 /* Runtime I/O policy and counters used by the buffered relocation pipeline. */

@@ -15,9 +15,9 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILD = Path(os.environ.get("LINUX_DEFRAGGER_BUILD_DIR", ROOT / "build"))
-WORKER = BUILD / "linux-defragger-hfsplus-worker"
-MAPPER = BUILD / "linux-defragger-mapper"
+BUILD = Path(os.environ.get("DEFRAGMENTER_BUILD_DIR", ROOT / "build"))
+WORKER = BUILD / "defragmenter-hfsplus-worker"
+MAPPER = BUILD / "defragmenter-mapper"
 FIXTURE = ROOT / "tests" / "make_hfsplus_fixture.py"
 sys.path.insert(0, str(ROOT / "tests"))
 import make_hfsplus_fixture as fixture  # noqa: E402
@@ -339,7 +339,7 @@ def test_legacy_recovery_journal_fails_closed(work: Path) -> None:
 def main() -> None:
     assert WORKER.is_file(), f"missing native HFS+ worker: {WORKER}"
     assert MAPPER.is_file(), f"missing C++ mapper: {MAPPER}"
-    with tempfile.TemporaryDirectory(prefix="linux-defragger-hfsplus-") as directory:
+    with tempfile.TemporaryDirectory(prefix="defragmenter-hfsplus-") as directory:
         work = Path(directory)
         test_hfsplus_defrag(work)
         test_hfsx_growth(work)

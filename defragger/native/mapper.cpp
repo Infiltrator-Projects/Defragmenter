@@ -27,7 +27,7 @@ void cancel_mapper(int) {
 
 int usage() {
     std::fputs(
-        "usage: linux-defragger-mapper-cpp "
+        "usage: defragmenter-mapper-cpp "
         "[PATH] [--fstype TYPE] [--cells N] [--probe] [--list-backends]\n",
         stderr);
     return 2;
@@ -86,7 +86,7 @@ int main(int argc, char** argv) {
     for (int index = 1; index < argc; ++index) {
         const std::string token = argv[index];
         if (token == "--version") {
-            std::printf("linux-defragger-mapper-cpp %s\n", LD_VERSION);
+            std::printf("defragmenter-mapper-cpp %s\n", LD_VERSION);
             return 0;
         }
         if (token == "--list-backends") {

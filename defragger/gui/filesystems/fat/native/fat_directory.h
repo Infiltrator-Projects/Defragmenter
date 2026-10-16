@@ -7,8 +7,8 @@
  * consumed by placement and reporting.  It does not choose or write layouts.
  */
 
-#ifndef LINUX_DEFRAGGER_FAT_DIRECTORY_H
-#define LINUX_DEFRAGGER_FAT_DIRECTORY_H
+#ifndef DEFRAGMENTER_FAT_DIRECTORY_H
+#define DEFRAGMENTER_FAT_DIRECTORY_H
 
 #include <stdbool.h>
 #include <stddef.h>

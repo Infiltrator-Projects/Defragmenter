@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 cmake_minimum_required(VERSION 3.20)
-project(linux_defragger LANGUAGES C CXX)
+project(defragmenter LANGUAGES C CXX)
 
 # Keep the established project/build graph isolated from filesystem-specific
 # native modules so new native engines can be added without duplicating the registry.

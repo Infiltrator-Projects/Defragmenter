@@ -41,7 +41,7 @@ int main() {
     } catch (const std::runtime_error&) {}
 
     CHECK(desktop_journal(v, 1000) ==
-        "/var/lib/linux-defragger/state/1000/volume-fc1f33e16c4a68d6.journal");
+        "/var/lib/defragmenter/state/1000/volume-fc1f33e16c4a68d6.journal");
     try {
         desktop_verify_identity(v, "ntfs");
         CHECK(false);

@@ -483,7 +483,7 @@ static gboolean spawn_worker(LdtmApp *app, const char *operation,
     GError *error = NULL;
     guint arg = 0U;
     gboolean started;
-    if (self == NULL) self = g_strdup("linux-defragger-test-media");
+    if (self == NULL) self = g_strdup("defragmenter-test-media");
     argv[arg++] = g_strdup("pkexec");
     argv[arg++] = self;
     argv[arg++] = g_strdup("--worker");
@@ -1128,7 +1128,7 @@ static GtkWidget *make_suite_header(LdtmApp *app)
     GtkWidget *maximize = gtk_button_new_from_icon_name("window-maximize-symbolic", GTK_ICON_SIZE_BUTTON);
     GtkWidget *close = gtk_button_new_from_icon_name("window-close-symbolic", GTK_ICON_SIZE_BUTTON);
     GtkWidget *empty_title = gtk_label_new("");
-    GtkWidget *brand_icon = make_icon_well("io.github.linuxdefragger", "ldtm-accent-cyan", 27);
+    GtkWidget *brand_icon = make_icon_well("io.github.defragmenter", "ldtm-accent-cyan", 27);
     GtkWidget *controls[] = { minimize, maximize, close };
     gtk_widget_set_name(header, "ldtm-shell-header");
     gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(header), FALSE);

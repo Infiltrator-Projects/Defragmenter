@@ -12,9 +12,9 @@ import tempfile
 from pathlib import Path
 
 
-BUILD = Path(os.environ["LINUX_DEFRAGGER_BUILD_DIR"])
-FIXTURE = BUILD / "linux-defragger-sfs-native-test"
-WORKER = BUILD / "linux-defragger-sfs-worker"
+BUILD = Path(os.environ["DEFRAGMENTER_BUILD_DIR"])
+FIXTURE = BUILD / "defragmenter-sfs-native-test"
+WORKER = BUILD / "defragmenter-sfs-worker"
 
 
 def run(*args: object) -> subprocess.CompletedProcess[str]:
@@ -104,7 +104,7 @@ def test_recovery(root: Path, sfs2: bool) -> None:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="linux-defragger-sfs-transaction-") as temp:
+    with tempfile.TemporaryDirectory(prefix="defragmenter-sfs-transaction-") as temp:
         root = Path(temp)
         for sfs2 in (False, True):
             test_defrag(root, sfs2)

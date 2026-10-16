@@ -191,7 +191,7 @@ static void test_vector_and_chain_traversal(void) {
 }
 
 static void test_buffered_cluster_io(void) {
-    char path[] = "/tmp/linux-defragger-fat-io.XXXXXX";
+    char path[] = "/tmp/defragmenter-fat-io.XXXXXX";
     int file_descriptor = mkstemp(path);
     CHECK(file_descriptor >= 0);
     CHECK(unlink(path) == 0);

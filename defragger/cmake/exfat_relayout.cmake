@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 if(BUILD_TESTING)
     add_test(
-        NAME linux-defragger-exfat-relayout
+        NAME defragmenter-exfat-relayout
         COMMAND bash "${CMAKE_CURRENT_LIST_DIR}/../tests/test_exfat_relayout_engine.sh"
-                "$<TARGET_FILE:linux-defragger-exfat-worker>")
-    set_tests_properties(linux-defragger-exfat-relayout PROPERTIES
+                "$<TARGET_FILE:defragmenter-exfat-worker>")
+    set_tests_properties(defragmenter-exfat-relayout PROPERTIES
         ENVIRONMENT
             "PYTHONDONTWRITEBYTECODE=1")
 endif()

@@ -3,8 +3,8 @@
 set -euo pipefail
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-FAT_WORKER=${1:-"$ROOT/build/linux-defragger-fat-worker"}
-WORK=$(mktemp -d "${TMPDIR:-/tmp}/linux-defragger-fat-relayout.XXXXXX")
+FAT_WORKER=${1:-"$ROOT/build/defragmenter-fat-worker"}
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/defragmenter-fat-relayout.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT
 
 export PYTHONDONTWRITEBYTECODE=1

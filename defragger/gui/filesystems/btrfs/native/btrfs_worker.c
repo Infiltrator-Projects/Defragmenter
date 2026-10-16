@@ -27,7 +27,7 @@
 #include <sys/sysmacros.h>
 #include <unistd.h>
 
-#define PROG "linux-defragger-btrfs-worker"
+#define PROG "defragmenter-btrfs-worker"
 
 typedef struct {
     uint64_t start;

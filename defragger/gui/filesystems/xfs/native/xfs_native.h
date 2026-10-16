@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#ifndef LINUX_DEFRAGGER_XFS_NATIVE_H
-#define LINUX_DEFRAGGER_XFS_NATIVE_H
+#ifndef DEFRAGMENTER_XFS_NATIVE_H
+#define DEFRAGMENTER_XFS_NATIVE_H
 
 #include <stdbool.h>
 #include <stddef.h>

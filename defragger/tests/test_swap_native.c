@@ -92,7 +92,7 @@ static int make_legacy(const char *path, uint32_t physical_pages)
 
 static void test_current_little(void)
 {
-    char path[] = "/tmp/linux-defragger-swap-le.XXXXXX";
+    char path[] = "/tmp/defragmenter-swap-le.XXXXXX";
     const int temp = mkstemp(path);
     CHECK(temp >= 0);
     (void)close(temp);
@@ -130,7 +130,7 @@ static void test_current_little(void)
 
 static void test_current_big(void)
 {
-    char path[] = "/tmp/linux-defragger-swap-be.XXXXXX";
+    char path[] = "/tmp/defragmenter-swap-be.XXXXXX";
     const int temp = mkstemp(path);
     CHECK(temp >= 0);
     (void)close(temp);
@@ -153,7 +153,7 @@ static void test_current_big(void)
 
 static void test_legacy_is_not_misparsed(void)
 {
-    char path[] = "/tmp/linux-defragger-swap-v0.XXXXXX";
+    char path[] = "/tmp/defragmenter-swap-v0.XXXXXX";
     const int temp = mkstemp(path);
     CHECK(temp >= 0);
     (void)close(temp);
@@ -176,7 +176,7 @@ static void test_legacy_is_not_misparsed(void)
 
 static void test_invalid_headers(void)
 {
-    char path[] = "/tmp/linux-defragger-swap-invalid.XXXXXX";
+    char path[] = "/tmp/defragmenter-swap-invalid.XXXXXX";
     int temp = mkstemp(path);
     CHECK(temp >= 0);
     (void)close(temp);
@@ -235,7 +235,7 @@ static void test_proc_swaps_runtime(void)
     int fd = mkstemp(target);
     CHECK(fd >= 0);
     (void)close(fd);
-    char proc_path[] = "/tmp/linux-defragger-proc-swaps.XXXXXX";
+    char proc_path[] = "/tmp/defragmenter-proc-swaps.XXXXXX";
     fd = mkstemp(proc_path);
     CHECK(fd >= 0);
     FILE *proc = fdopen(fd, "w");

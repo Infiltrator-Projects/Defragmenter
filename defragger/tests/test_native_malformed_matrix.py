@@ -11,25 +11,25 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILD = Path(os.environ.get("LINUX_DEFRAGGER_BUILD_DIR", ROOT / "build"))
+BUILD = Path(os.environ.get("DEFRAGMENTER_BUILD_DIR", ROOT / "build"))
 
 WORKERS = (
-    "linux-defragger-ext-worker",
-    "linux-defragger-ntfs-worker",
-    "linux-defragger-exfat-worker",
-    "linux-defragger-xfs-worker",
-    "linux-defragger-fat-worker",
-    "linux-defragger-apfs-worker",
-    "linux-defragger-minix-worker",
-    "linux-defragger-btrfs-worker",
-    "linux-defragger-affs-worker",
-    "linux-defragger-hfsplus-worker",
+    "defragmenter-ext-worker",
+    "defragmenter-ntfs-worker",
+    "defragmenter-exfat-worker",
+    "defragmenter-xfs-worker",
+    "defragmenter-fat-worker",
+    "defragmenter-apfs-worker",
+    "defragmenter-minix-worker",
+    "defragmenter-btrfs-worker",
+    "defragmenter-affs-worker",
+    "defragmenter-hfsplus-worker",
     "hfs_analyser",
-    "linux-defragger-swap-worker",
-    "linux-defragger-ufs-worker",
-    "linux-defragger-zfs-worker",
-    "linux-defragger-sfs-worker",
-    "linux-defragger-pfs3-worker",
+    "defragmenter-swap-worker",
+    "defragmenter-ufs-worker",
+    "defragmenter-zfs-worker",
+    "defragmenter-sfs-worker",
+    "defragmenter-pfs3-worker",
 )
 
 

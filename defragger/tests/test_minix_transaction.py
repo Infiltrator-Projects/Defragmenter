@@ -12,9 +12,9 @@ import tempfile
 from pathlib import Path
 
 
-BUILD = Path(os.environ["LINUX_DEFRAGGER_BUILD_DIR"])
-FIXTURE = BUILD / "linux-defragger-minix-native-test"
-WORKER = BUILD / "linux-defragger-minix-worker"
+BUILD = Path(os.environ["DEFRAGMENTER_BUILD_DIR"])
+FIXTURE = BUILD / "defragmenter-minix-native-test"
+WORKER = BUILD / "defragmenter-minix-worker"
 
 
 def run(*args: object) -> subprocess.CompletedProcess[str]:
@@ -177,7 +177,7 @@ def test_corrupt_stage_is_rejected(root: Path) -> None:
 
 def main() -> int:
     with tempfile.TemporaryDirectory(
-        prefix="linux-defragger-minix-transaction-"
+        prefix="defragmenter-minix-transaction-"
     ) as temp:
         root = Path(temp)
         test_defrag(root)

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#ifndef LINUX_DEFRAGGER_TEST_MEDIA_H
-#define LINUX_DEFRAGGER_TEST_MEDIA_H
+#ifndef DEFRAGMENTER_TEST_MEDIA_H
+#define DEFRAGMENTER_TEST_MEDIA_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -9,7 +9,7 @@
 #define LDTM_GIB UINT64_C(1073741824)
 #define LDTM_SPEC_COUNT 21U
 #define LDTM_TARGET_FILE_COUNT 8U
-#define LDTM_STATE_ROOT "/var/lib/linux-defragger-test-media"
+#define LDTM_STATE_ROOT "/var/lib/defragmenter-test-media"
 
 typedef enum {
     LDTM_CREATOR_FAT12,

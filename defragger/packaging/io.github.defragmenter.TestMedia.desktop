@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Legacy contract note: Exec=linux-defragger-test-media was replaced by the absolute launcher below.
+# Legacy contract note: Exec=defragmenter-test-media was replaced by the absolute launcher below.
 [Desktop Entry]
 Type=Application
 Name=Defragmenter Test Media
 GenericName=Filesystem Test Media Builder
 Comment=Build and verify deliberately fragmented sacrificial filesystem test disks
-TryExec=/usr/bin/linux-defragger-test-media
-Exec=/usr/bin/linux-defragger-test-media
+TryExec=/usr/bin/defragmenter-test-media
+Exec=/usr/bin/defragmenter-test-media
 Icon=drive-removable-media
 Terminal=false
 Categories=System;Utility;

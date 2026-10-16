@@ -20,7 +20,7 @@
 #include "ld_runtime.h"
 #include "version.h"
 
-#define PROGRAM_NAME "linux-defragger-fat-worker"
+#define PROGRAM_NAME "defragmenter-fat-worker"
 #define PROGRAM_VERSION LD_VERSION
 
 typedef struct {
@@ -358,7 +358,7 @@ void fat_analysis_print_map_json(Fat32 *fs, const FileList *files, size_t reques
     bool growth_10_satisfied = growth_layout_satisfied_for_map(fs, files, 10);
 
     fputs("{\n", stdout);
-    fputs("  \"program\": \"linux-defragger-fat-worker\",\n", stdout);
+    fputs("  \"program\": \"defragmenter-fat-worker\",\n", stdout);
     printf("  \"version\": \"%s\",\n", PROGRAM_VERSION);
     fputs("  \"device\": ", stdout); json_print_string(fs->dev.path); fputs(",\n", stdout);
     printf("  \"filesystem\": \"%s\",\n", fat_type_name(fs));

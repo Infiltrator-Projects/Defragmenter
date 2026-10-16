@@ -29,7 +29,7 @@
 #include <sys/sysmacros.h>
 #include <unistd.h>
 
-#define PROGRAM_NAME "linux-defragger-ntfs-worker"
+#define PROGRAM_NAME "defragmenter-ntfs-worker"
 #define JOURNAL_CLUSTER_INTERVAL UINT64_C(16384)
 
 static void usage(FILE *stream) {

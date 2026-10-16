@@ -52,7 +52,7 @@ static void put32(uint8_t *p, uint32_t value, int little)
 
 static int write_image(const uint8_t *image, char path[64])
 {
-    (void)snprintf(path, 64U, "/tmp/linux-defragger-minix-XXXXXX");
+    (void)snprintf(path, 64U, "/tmp/defragmenter-minix-XXXXXX");
     const int fd = mkstemp(path);
     if (fd < 0)
         return -1;
@@ -223,7 +223,7 @@ static void test_exact_analysis(void)
 static void test_full_size_map_analysis(void)
 {
     char path[64];
-    (void)snprintf(path, sizeof(path), "/tmp/linux-defragger-minix-large-XXXXXX");
+    (void)snprintf(path, sizeof(path), "/tmp/defragmenter-minix-large-XXXXXX");
     const int fd = mkstemp(path);
     CHECK(fd >= 0);
     CHECK(ftruncate(fd, (off_t)LARGE_IMAGE_BYTES) == 0);
@@ -295,7 +295,7 @@ static int write_fixture_path(const char *path)
 
 static void make_stage_path(char path[64])
 {
-    (void)snprintf(path, 64U, "/tmp/linux-defragger-minix-stage-XXXXXX");
+    (void)snprintf(path, 64U, "/tmp/defragmenter-minix-stage-XXXXXX");
     const int fd = mkstemp(path);
     CHECK(fd >= 0);
     CHECK(close(fd) == 0);

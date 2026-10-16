@@ -247,8 +247,8 @@ const char *ldtm_creator_program(const LdtmFilesystemSpec *spec) {
         case LDTM_CREATOR_XFS: return "mkfs.xfs";
         case LDTM_CREATOR_BTRFS: return "mkfs.btrfs";
         case LDTM_CREATOR_AFFS:
-            if (strcmp(spec->key, "ofs") == 0) return "/usr/lib/linux-defragger/test-media-mkfs-ofs";
-            if (strcmp(spec->key, "ffs") == 0) return "/usr/lib/linux-defragger/test-media-mkfs-ffs";
+            if (strcmp(spec->key, "ofs") == 0) return "/usr/lib/defragmenter/test-media-mkfs-ofs";
+            if (strcmp(spec->key, "ffs") == 0) return "/usr/lib/defragmenter/test-media-mkfs-ffs";
             return NULL;
         case LDTM_CREATOR_PFS3: return NULL;
         case LDTM_CREATOR_HFS: return "hformat";
@@ -323,7 +323,7 @@ int ldtm_resolve_program(const char *program, char *output,
      */
     if (strcmp(program, "makefs") == 0)
         return copy_resolved_program(
-            "/usr/lib/linux-defragger/test-media-mkfs-ufs",
+            "/usr/lib/defragmenter/test-media-mkfs-ufs",
             output, output_capacity);
 
     if (strchr(program, '/') != NULL) {
@@ -377,7 +377,7 @@ int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
             return 1;
         }
         (void)snprintf(detail, detail_capacity,
-                       "Missing bundled UFS2 creator: /usr/lib/linux-defragger/test-media-mkfs-ufs");
+                       "Missing bundled UFS2 creator: /usr/lib/defragmenter/test-media-mkfs-ufs");
         return 0;
     }
     if (spec->creator == LDTM_CREATOR_APFS) {

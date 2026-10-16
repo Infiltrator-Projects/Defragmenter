@@ -14,12 +14,12 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILD = Path(os.environ.get("LINUX_DEFRAGGER_BUILD_DIR", ROOT / "build"))
+BUILD = Path(os.environ.get("DEFRAGMENTER_BUILD_DIR", ROOT / "build"))
 WORKER = Path(os.environ.get(
-    "LINUX_DEFRAGGER_BTRFS_WORKER", BUILD / "linux-defragger-btrfs-worker"
+    "DEFRAGMENTER_BTRFS_WORKER", BUILD / "defragmenter-btrfs-worker"
 ))
 FIXTURE = ROOT / "tests" / "make_btrfs_fixture.py"
-MAPPER = BUILD / "linux-defragger-mapper"
+MAPPER = BUILD / "defragmenter-mapper"
 
 
 def run(*args: object, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -199,7 +199,7 @@ def test_recovery(work: Path) -> None:
 def main() -> None:
     assert WORKER.is_file(), f"missing native Btrfs worker: {WORKER}"
     assert MAPPER.is_file(), f"missing native mapper: {MAPPER}"
-    with tempfile.TemporaryDirectory(prefix="linux-defragger-btrfs-") as directory:
+    with tempfile.TemporaryDirectory(prefix="defragmenter-btrfs-") as directory:
         work = Path(directory)
         test_worker_contract(work)
         test_native_mapper_contract(work)

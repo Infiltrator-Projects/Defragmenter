@@ -58,7 +58,7 @@ static int check(int condition, const char *message)
 
 int main(void)
 {
-    char path[] = "/tmp/linux-defragger-apfs-test.XXXXXX";
+    char path[] = "/tmp/defragmenter-apfs-test.XXXXXX";
     const int fd = mkstemp(path);
     if (fd < 0) {
         perror("mkstemp");

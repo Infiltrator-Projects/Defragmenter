@@ -29,14 +29,14 @@ def _cmake_source() -> str:
 
 
 def _build_dir() -> Path:
-    configured = os.environ.get("LINUX_DEFRAGGER_BUILD_DIR")
+    configured = os.environ.get("DEFRAGMENTER_BUILD_DIR")
     if configured:
         return Path(configured)
     return ROOT / "build"
 
 
 def _registry_manifest() -> dict[str, object]:
-    engine = _build_dir() / "linux-defragger-operation-engine"
+    engine = _build_dir() / "defragmenter-operation-engine"
     assert engine.is_file(), f"native operation engine is unavailable: {engine}"
     completed = subprocess.run(
         [str(engine), "--list-plugins"],
@@ -190,7 +190,7 @@ def test_desktop_tests_use_public_boundaries_not_private_implementation() -> Non
 def test_common_is_a_versioned_dependency_not_copied_source() -> None:
     common = ROOT / "shared" / "infiltratr-common"
     assert common.is_dir()
-    assert _read(common / "VERSION").strip() == "1.19.38"
+    assert _read(common / "VERSION").strip() == "1.19.46"
 
     # One repository-level declaration owns the gitlink. Do not mirror
     # .gitmodules inside the application directory.

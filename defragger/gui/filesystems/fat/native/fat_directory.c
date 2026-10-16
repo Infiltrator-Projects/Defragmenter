@@ -22,7 +22,7 @@
 #include "infiltratr/posix.h"
 #include "infiltratr/utf8.h"
 
-#define FAT_PROGRAM_NAME "linux-defragger-fat-worker"
+#define FAT_PROGRAM_NAME "defragmenter-fat-worker"
 #define MAX_RECURSION_DEPTH 128U
 
 typedef struct {

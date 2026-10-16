@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#ifndef LINUX_DEFRAGGER_FAT_JOURNAL_H
-#define LINUX_DEFRAGGER_FAT_JOURNAL_H
+#ifndef DEFRAGMENTER_FAT_JOURNAL_H
+#define DEFRAGMENTER_FAT_JOURNAL_H
 
 #include <stdbool.h>
 #include <stddef.h>

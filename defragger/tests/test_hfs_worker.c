@@ -113,7 +113,7 @@ static int run_worker(const char *worker, const char *mode, const char *image,
 
 int main(int argc, char **argv)
 {
-    char image[] = "/tmp/linux-defragger-hfs-test-XXXXXX";
+    char image[] = "/tmp/defragmenter-hfs-test-XXXXXX";
     char output[16384];
     static const uint8_t invalid_signature[2] = {0U, 0U};
 

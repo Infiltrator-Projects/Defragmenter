@@ -4,9 +4,9 @@
 from __future__ import annotations
 import json, os, stat, subprocess, tempfile
 from pathlib import Path
-BUILD=Path(os.environ["LINUX_DEFRAGGER_BUILD_DIR"])
-FIXTURE=BUILD/"linux-defragger-pfs3-native-test"
-WORKER=BUILD/"linux-defragger-pfs3-worker"
+BUILD=Path(os.environ["DEFRAGMENTER_BUILD_DIR"])
+FIXTURE=BUILD/"defragmenter-pfs3-native-test"
+WORKER=BUILD/"defragmenter-pfs3-worker"
 def run(*args: object)->subprocess.CompletedProcess[str]:
     return subprocess.run([str(WORKER),*map(str,args)],check=False,text=True,
         stdout=subprocess.PIPE,stderr=subprocess.PIPE,
@@ -35,7 +35,7 @@ def test_recovery(root:Path)->None:
     assert recovered.returncode==0,recovered.stderr; assert analysis(image)["fragmented_files"]==0
     assert not journal.exists() and not stage.exists()
 def main()->int:
-    with tempfile.TemporaryDirectory(prefix="linux-defragger-pfs3-transaction-") as temp:
+    with tempfile.TemporaryDirectory(prefix="defragmenter-pfs3-transaction-") as temp:
         root=Path(temp); test_defrag(root); test_growth(root); test_recovery(root)
     return 0
 if __name__=="__main__": raise SystemExit(main())

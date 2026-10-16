@@ -88,7 +88,7 @@ static void test_payload_relocation(void) {
     CHECK(xfs_build_plan(&catalogue, "defrag", &plan, &error) == 0);
     CHECK(plan.count == 1U && plan.items[0].target_start == 10U);
 
-    char image_template[] = "/tmp/linux-defragger-xfs-image-XXXXXX";
+    char image_template[] = "/tmp/defragmenter-xfs-image-XXXXXX";
     int image_fd = mkstemp(image_template);
     CHECK(image_fd >= 0);
     CHECK(ftruncate(image_fd, (off_t)(256U * 512U)) == 0);
@@ -98,7 +98,7 @@ static void test_payload_relocation(void) {
     CHECK(fsync(image_fd) == 0);
     CHECK(close(image_fd) == 0);
 
-    char plan_template[] = "/tmp/linux-defragger-xfs-plan-XXXXXX";
+    char plan_template[] = "/tmp/defragmenter-xfs-plan-XXXXXX";
     int plan_fd = mkstemp(plan_template);
     CHECK(plan_fd >= 0);
     CHECK(close(plan_fd) == 0);
@@ -129,13 +129,13 @@ static void test_payload_relocation(void) {
 
 static void test_payload_checkpoint_boundary(void) {
     enum { MOVE_COUNT = 9000, SOURCE_BASE = 10000 };
-    char image_template[] = "/tmp/linux-defragger-xfs-checkpoint-image-XXXXXX";
+    char image_template[] = "/tmp/defragmenter-xfs-checkpoint-image-XXXXXX";
     int image_fd = mkstemp(image_template);
     CHECK(image_fd >= 0);
     CHECK(ftruncate(image_fd, (off_t)((SOURCE_BASE + MOVE_COUNT) * 512U)) == 0);
     CHECK(close(image_fd) == 0);
 
-    char plan_template[] = "/tmp/linux-defragger-xfs-checkpoint-plan-XXXXXX";
+    char plan_template[] = "/tmp/defragmenter-xfs-checkpoint-plan-XXXXXX";
     int plan_fd = mkstemp(plan_template);
     CHECK(plan_fd >= 0);
     CHECK(close(plan_fd) == 0);

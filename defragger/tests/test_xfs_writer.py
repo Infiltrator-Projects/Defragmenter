@@ -12,18 +12,18 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILD = Path(os.environ.get("LINUX_DEFRAGGER_BUILD_DIR", ROOT / "build"))
-MAPPER = BUILD / "linux-defragger-mapper"
+BUILD = Path(os.environ.get("DEFRAGMENTER_BUILD_DIR", ROOT / "build"))
+MAPPER = BUILD / "defragmenter-mapper"
 
 
 def _native_worker() -> Path:
-    override = os.environ.get("LINUX_DEFRAGGER_XFS_WORKER")
+    override = os.environ.get("DEFRAGMENTER_XFS_WORKER")
     if override:
         return Path(override)
-    candidate = ROOT / "build" / "linux-defragger-xfs-worker"
+    candidate = ROOT / "build" / "defragmenter-xfs-worker"
     if candidate.is_file():
         return candidate
-    candidate = ROOT / "build82" / "linux-defragger-xfs-worker"
+    candidate = ROOT / "build82" / "defragmenter-xfs-worker"
     if candidate.is_file():
         return candidate
     raise RuntimeError("native XFS worker is not built")
@@ -93,7 +93,7 @@ def _minimal_xfs(path: Path) -> None:
 
 def test_worker_identify_and_analysis() -> None:
     worker = _native_worker()
-    os.environ["LINUX_DEFRAGGER_XFS_WORKER"] = str(worker)
+    os.environ["DEFRAGMENTER_XFS_WORKER"] = str(worker)
     with tempfile.TemporaryDirectory() as raw:
         image = Path(raw) / "minimal-xfs.img"
         _minimal_xfs(image)
@@ -125,7 +125,7 @@ def test_worker_identify_and_analysis() -> None:
 
 def test_native_mapper_uses_native_analysis() -> None:
     worker = _native_worker()
-    os.environ["LINUX_DEFRAGGER_XFS_WORKER"] = str(worker)
+    os.environ["DEFRAGMENTER_XFS_WORKER"] = str(worker)
     with tempfile.TemporaryDirectory() as raw:
         image = Path(raw) / "minimal-xfs.img"
         _minimal_xfs(image)

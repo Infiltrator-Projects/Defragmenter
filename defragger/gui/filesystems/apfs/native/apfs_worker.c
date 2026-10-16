@@ -28,7 +28,7 @@
 #include <sys/sysmacros.h>
 #include <unistd.h>
 
-#define PROG "linux-defragger-apfs-worker"
+#define PROG "defragmenter-apfs-worker"
 
 static void usage(FILE *stream)
 {

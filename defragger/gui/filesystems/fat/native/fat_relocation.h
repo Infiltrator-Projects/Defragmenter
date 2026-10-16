@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#ifndef LINUX_DEFRAGGER_FAT_RELOCATION_H
-#define LINUX_DEFRAGGER_FAT_RELOCATION_H
+#ifndef DEFRAGMENTER_FAT_RELOCATION_H
+#define DEFRAGMENTER_FAT_RELOCATION_H
 
 #include <stddef.h>
 #include <stdint.h>

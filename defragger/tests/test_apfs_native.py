@@ -14,8 +14,8 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILD = Path(os.environ.get("LINUX_DEFRAGGER_BUILD_DIR", ROOT / "build"))
-WORKER = BUILD / "linux-defragger-apfs-worker"
+BUILD = Path(os.environ.get("DEFRAGMENTER_BUILD_DIR", ROOT / "build"))
+WORKER = BUILD / "defragmenter-apfs-worker"
 MAKER = ROOT / "tests" / "make_apfs_fixture.py"
 
 

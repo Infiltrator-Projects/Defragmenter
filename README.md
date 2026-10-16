@@ -32,7 +32,7 @@ The main GTK application supports **Follow system**, **Day** and **Night** appea
 
 Typography is deliberately closed to the three packaged MB Corpo faces: MB Corpo A Condensed for primary titles, MB Corpo S Regular for normal interface text and MB Corpo S Bold for emphasis. Defragmenter and Test Media do not request generic system or monospace fallback families; the Debian and local installers ship and register the same verified font bundle used by MBLink.
 
-The desktop, window and About surfaces use one approved 96×96 Defragmenter artwork asset in the same non-automotive Infiltrator desktop family as System Monitor: a dark graphite tile, #00ADEF cyan linework and a simple defragmentation glyph showing scattered blocks compacting into an ordered group. Packaging installs the same source asset into the desktop icon theme, Mint app-install icon path and the application's private runtime path; the GTK application resolves those installed copies deterministically before consulting the icon theme, so a missing cache entry cannot silently turn the About/window artwork into a placeholder. The process also publishes the same `io.github.linuxdefragger` identity as its GTK application ID, X11 program class and desktop `StartupWMClass`, so Cinnamon can associate the running native C++ GTK window with the packaged desktop icon instead of falling back to a generic taskbar glyph.
+The desktop, window and About surfaces use one approved 96×96 Defragmenter artwork asset in the same non-automotive Infiltrator desktop family as System Monitor: a dark graphite tile, #00ADEF cyan linework and a simple defragmentation glyph showing scattered blocks compacting into an ordered group. Packaging installs the same source asset into the desktop icon theme, Mint app-install icon path and the application's private runtime path; the GTK application resolves those installed copies deterministically before consulting the icon theme, so a missing cache entry cannot silently turn the About/window artwork into a placeholder. The process also publishes the same `io.github.defragmenter` identity as its GTK application ID, X11 program class and desktop `StartupWMClass`, so Cinnamon can associate the running native C++ GTK window with the packaged desktop icon instead of falling back to a generic taskbar glyph.
 
 ## Capabilities
 
@@ -84,7 +84,7 @@ A numbered release publishes:
 | `Defragmenter-<version>-local-folder.run` | Hardware-native local compile/install program. |
 | `RELEASE_SHA256SUMS.txt` | SHA-256 checksums for the two project release artifacts. |
 
-The `.deb` keeps the human-facing `Defragmenter-...` asset filename while its Debian/APT package identity is `defragmenter`; existing `linux-defragger` installations migrate through the repository transition package.
+The `.deb` keeps the human-facing `Defragmenter-...` asset filename while its Debian/APT package identity is `defragmenter`; existing `defragmenter` installations migrate through the repository transition package.
 
 The local `.run` embeds the exact committed Defragmenter source for the qualified revision plus the exact pinned Common commit. Its source inventory comes from Git objects rather than the ambient build directory, so untracked runner logs, temporary files and other workspace debris cannot enter a qualified installer. Python test drivers are not part of the production source payload.
 

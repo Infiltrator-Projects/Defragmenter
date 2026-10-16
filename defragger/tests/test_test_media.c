@@ -147,7 +147,7 @@ cleanup:
 }
 
 static int test_amiga_formatters_and_payload(void) {
-    char path[] = "/tmp/linux-defragger-amiga-media.XXXXXX";
+    char path[] = "/tmp/defragmenter-amiga-media.XXXXXX";
     const LdtmFragmentProfile tiny = {
         .anchors = 0U,
         .anchor_kib = 0U,
@@ -251,7 +251,7 @@ static int test_amiga_formatters_and_payload(void) {
 }
 
 static int test_sfs_formatter_and_payload(void) {
-    char path[] = "/tmp/linux-defragger-sfs-media.XXXXXX";
+    char path[] = "/tmp/defragmenter-sfs-media.XXXXXX";
     char detail[512];
     char error[256] = {0};
     SfsAnalysis analysis;
@@ -339,7 +339,7 @@ static int test_sfs_formatter_and_payload(void) {
 }
 
 static int test_pfs3_formatter_and_payload(void) {
-    char path[] = "/tmp/linux-defragger-pfs3-media.XXXXXX";
+    char path[] = "/tmp/defragmenter-pfs3-media.XXXXXX";
     char detail[512];
     char error[256] = {0};
     Pfs3Analysis analysis;
@@ -404,7 +404,7 @@ static int test_pfs3_formatter_and_payload(void) {
 
 
 static int test_apfs_formatter_and_payload(void) {
-    char path[] = "/tmp/linux-defragger-apfs-media.XXXXXX";
+    char path[] = "/tmp/defragmenter-apfs-media.XXXXXX";
     char detail[512];
     char error[512] = {0};
     ApfsAnalysis analysis;
@@ -493,7 +493,7 @@ static int reset_two_gib_sparse_image(const char *path)
 
 static int test_two_gib_first_party_media_geometry(void)
 {
-    char path[] = "/tmp/linux-defragger-2g-media.XXXXXX";
+    char path[] = "/tmp/defragmenter-2g-media.XXXXXX";
     char detail[512];
     int fd = mkstemp(path);
     if (fd < 0)
@@ -637,8 +637,8 @@ int main(void) {
     CHECK(ofs->creator == LDTM_CREATOR_AFFS);
     CHECK(ffs->creator == LDTM_CREATOR_AFFS);
     CHECK(sfs->creator == LDTM_CREATOR_AFFS);
-    CHECK(strcmp(ldtm_creator_program(ofs), "/usr/lib/linux-defragger/test-media-mkfs-ofs") == 0);
-    CHECK(strcmp(ldtm_creator_program(ffs), "/usr/lib/linux-defragger/test-media-mkfs-ffs") == 0);
+    CHECK(strcmp(ldtm_creator_program(ofs), "/usr/lib/defragmenter/test-media-mkfs-ofs") == 0);
+    CHECK(strcmp(ldtm_creator_program(ffs), "/usr/lib/defragmenter/test-media-mkfs-ffs") == 0);
     CHECK(ldtm_creator_program(sfs) == NULL);
     CHECK(strcmp(ldtm_creator_display_name(fat12), "mkfs.fat") == 0);
     CHECK(strcmp(ldtm_creator_display_name(ofs), "Built-in native") == 0);

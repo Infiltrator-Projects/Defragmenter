@@ -84,7 +84,7 @@ def run_case(mode, program):
             if program == "operation-engine":
                 arguments = ["defrag", "/dev/test", "--filesystem", "fat12",
                              "--write", "--confirm", "/dev/test",
-                             "--journal", "/var/lib/linux-defragger/state/1000/test.journal"]
+                             "--journal", "/var/lib/defragmenter/state/1000/test.journal"]
             send({"action": "run", "id": 1, "program": program, "argv": arguments})
             if mode == "immediate-stop":
                 send({"action": "stop", "id": 2})
@@ -191,7 +191,7 @@ def run_uncooperative_case():
                 "action": "run", "id": 20, "program": "operation-engine",
                 "argv": ["defrag", "/dev/test", "--filesystem", "fat12",
                          "--write", "--confirm", "/dev/test", "--journal",
-                         "/var/lib/linux-defragger/state/1000/test.journal"],
+                         "/var/lib/defragmenter/state/1000/test.journal"],
             })
             started = read_event("started", 20)
             pid = started["pid"]

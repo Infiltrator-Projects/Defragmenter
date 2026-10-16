@@ -3,7 +3,7 @@
 set -euo pipefail
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 WORKER=${1:?exFAT worker path required}
-WORK=$(mktemp -d "${TMPDIR:-/tmp}/linux-defragger-exfat-relayout.XXXXXX")
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/defragmenter-exfat-relayout.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT
 fail(){ echo "TEST FAILURE: $*" >&2; exit 1; }
 

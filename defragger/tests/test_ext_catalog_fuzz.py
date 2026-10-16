@@ -7,8 +7,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
-BUILD = Path(os.environ.get("LINUX_DEFRAGGER_BUILD_DIR", ROOT / "build"))
-worker = BUILD / "linux-defragger-ext-worker"
+BUILD = Path(os.environ.get("DEFRAGMENTER_BUILD_DIR", ROOT / "build"))
+worker = BUILD / "defragmenter-ext-worker"
 with tempfile.TemporaryDirectory() as directory:
     image = Path(directory) / "garbage.img"
     image.write_bytes(os.urandom(1024 * 1024))
