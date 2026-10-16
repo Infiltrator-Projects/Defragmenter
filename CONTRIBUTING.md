@@ -2,7 +2,7 @@
 
 Defragmenter accepts changes only when they preserve the write-safety case and the single-source-of-truth architecture.
 
-Read [PHILOSOPHY.md](PHILOSOPHY.md) before making a substantial change. It is the repository entry point to the canonical Infiltrator Engineering Philosophy and defines the expected engineering, review, comment and documentation standard.
+Read [PHILOSOPHY.md](docs/PHILOSOPHY.md) before making a substantial change. It is the repository entry point to the canonical Infiltrator Engineering Philosophy and defines the expected engineering, review, comment and documentation standard.
 
 Before changing code, read:
 
