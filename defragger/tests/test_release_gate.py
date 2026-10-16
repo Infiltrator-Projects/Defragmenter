@@ -71,6 +71,8 @@ def _assert_release_intent_behaviour(intent: str) -> None:
         git("init", "-q", "-b", "main")
         git("config", "user.name", "Release contract fixture")
         git("config", "user.email", "fixture@example.invalid")
+        git("config", "commit.gpgsign", "false")
+        git("config", "tag.gpgsign", "false")
         git("add", ".")
         git("commit", "-qm", "Initial candidate")
 
