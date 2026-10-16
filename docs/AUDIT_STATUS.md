@@ -5,8 +5,8 @@ Status: **complete**
 Completed: 2026-10-16
 
 Applies to: audited source and release-governance baselines below
-Audited source commit: 1e744115b688984f0e428484c3aa56b77a2be3e5
-Audited release-governance commit: 1e744115b688984f0e428484c3aa56b77a2be3e5
+Audited source commit: eca7037aff3641512ea458cf7533b966ea6978a6
+Audited release-governance commit: eca7037aff3641512ea458cf7533b966ea6978a6
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
@@ -56,3 +56,9 @@ GitHub release correctness is independent of downstream APT propagation. Publica
 The current reviewed source replaces `assert()` in the native desktop policy and live-map regressions with unconditional failure-reporting checks. The Release CTest run completed all 46 cases and the ASan/UBSan lane passed at `67fe8eea61d01945809755870b65f40eb3dc49cf`; those runs now exercise the affected checks instead of compiling them away. Filesystem parsers, mutation engines, recovery semantics and privilege policy are unchanged.
 
 Release intent now follows the unpublished `VERSION` across corrective commits instead of depending on the immediately preceding push. The actual workflow decision is executed against disposable Git histories covering initial intent, a correction without another version bump, an exact-commit retry, ordinary maintenance after a tag, and an advanced version. Fixtures isolate their own Git signing policy. These behavioural fixtures passed locally with the intended Git Bash runtime. The source and governance baselines above identify the complete reviewed implementation; the final release head must still pass the full mandatory qualification and exact-artifact publication gates.
+
+## Package naming review — 2026-10-16
+
+The incremental review from `1e744115b688984f0e428484c3aa56b77a2be3e5` to `eca7037aff3641512ea458cf7533b966ea6978a6` covers the canonical `defragmenter` Debian identity, its package-owned icon and native-installer queries, and the `Libraries` repository URL and dependency diagnostics. The native installer continues to build and verify the same package version. Versioned Provides, Breaks and Replaces retain upgrades from `infiltrator-defragmenter` and `linux-defragger`; executable paths and the pinned library revision are unchanged. Matching packaging and dependency tests use the canonical names.
+
+At the reviewed source commit, all 46 Release CTest cases and the ASan/UBSan lane passed in [qualification run 38979033117](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/38979033117). Qualification then stopped at the expected source-baseline drift check. The source diff contains no filesystem parser, mutation engine, recovery or privilege-policy changes. The governance diff changes only two dependency-step display labels. The baselines above now identify these reviewed changes; the final publication head must still pass every existing qualification, audit-drift, checksum and exact-artifact gate.
