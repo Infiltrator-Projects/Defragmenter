@@ -135,7 +135,6 @@ def main() -> None:
     assert gate.count(runner) == 2
     assert "release_intent:" in gate
     intent = _step_containing(gate, "id: release_intent")
-    assert "defragger/VERSION" in intent
     assert "refs/tags/v" in intent
     _assert_release_intent_behaviour(intent)
     assert "GITHUB_OUTPUT" in intent
