@@ -20,7 +20,7 @@ Engineering rules:
 - Filesystem-specific parsing and mutation semantics belong with their native filesystem package.
 - The native C++ registry and operation engine own application-wide dispatch and user-facing operation policy.
 - Filesystem-neutral device, mount, identity, I/O and Stop safety belong under `src/core/`.
-- Use Infiltratr Common for genuinely generic mechanisms when its contract is at least as strong as the local requirement.
+- Use Libraries for genuinely generic mechanisms when its contract is at least as strong as the local requirement.
 - Do not move product-specific disk safety, staging or recovery semantics into Common merely to reduce local line count.
 - Python under `tests/` is independent fixture and black-box orchestration tooling only. Production application, presentation, capability and privilege policy remain native C/C++; `gui/ui/art/` contains native desktop artwork, not a Python compatibility graph.
 - Treat parser uncertainty, target-identity uncertainty and recovery uncertainty as fail-closed conditions.

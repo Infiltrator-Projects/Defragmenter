@@ -87,4 +87,4 @@ if(NOT _final_sha256 STREQUAL INFILTRATR_MB_CORPO_ARCHIVE_SHA256)
     message(FATAL_ERROR "Materialised MB Corpo archive failed final hash verification")
 endif()
 
-message(STATUS "Verified canonical MB Corpo assets from Infiltratr Common")
+message(STATUS "Verified canonical MB Corpo assets from Libraries")

@@ -18,7 +18,7 @@ find_package(OpenSSL REQUIRED)
 set(INFILTRATR_COMMON_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/shared/infiltratr-common")
 set(INFILTRATR_COMMON_URL
-    "https://github.com/Infiltrator-Projects/Infiltrator-Libraries.git")
+    "https://github.com/Infiltrator-Projects/Libraries.git")
 set(INFILTRATR_COMMON_TAG "v1.19.38")
 set(INFILTRATR_COMMON_EXPECTED_VERSION "1.19.38")
 set(INFILTRATR_COMMON_EXPECTED_COMMIT
@@ -43,7 +43,7 @@ if(NOT EXISTS "${INFILTRATR_COMMON_DIR}/VERSION")
     if(NOT LD_COMMON_FETCH_RESULT EQUAL 0 OR
        NOT EXISTS "${INFILTRATR_COMMON_DIR}/VERSION")
         message(FATAL_ERROR
-            "Unable to retrieve Infiltratr Common ${INFILTRATR_COMMON_EXPECTED_VERSION}.")
+            "Unable to retrieve Libraries ${INFILTRATR_COMMON_EXPECTED_VERSION}.")
     endif()
 endif()
 
@@ -51,7 +51,7 @@ file(READ "${INFILTRATR_COMMON_DIR}/VERSION" INFILTRATR_COMMON_VERSION)
 string(STRIP "${INFILTRATR_COMMON_VERSION}" INFILTRATR_COMMON_VERSION)
 if(NOT INFILTRATR_COMMON_VERSION STREQUAL INFILTRATR_COMMON_EXPECTED_VERSION)
     message(FATAL_ERROR
-        "Infiltratr Common ${INFILTRATR_COMMON_EXPECTED_VERSION} is required; found ${INFILTRATR_COMMON_VERSION}.")
+        "Libraries ${INFILTRATR_COMMON_EXPECTED_VERSION} is required; found ${INFILTRATR_COMMON_VERSION}.")
 endif()
 if(EXISTS "${INFILTRATR_COMMON_DIR}/.git")
     find_program(LD_GIT_EXECUTABLE git REQUIRED)
@@ -63,7 +63,7 @@ if(EXISTS "${INFILTRATR_COMMON_DIR}/.git")
     if(NOT LD_COMMON_COMMIT_RESULT EQUAL 0 OR
        NOT INFILTRATR_COMMON_COMMIT STREQUAL INFILTRATR_COMMON_EXPECTED_COMMIT)
         message(FATAL_ERROR
-            "Infiltratr Common must be pinned to ${INFILTRATR_COMMON_EXPECTED_COMMIT}; found ${INFILTRATR_COMMON_COMMIT}.")
+            "Libraries must be pinned to ${INFILTRATR_COMMON_EXPECTED_COMMIT}; found ${INFILTRATR_COMMON_COMMIT}.")
     endif()
 endif()
 
@@ -163,7 +163,7 @@ if(LD_ENABLE_HARDENING AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
     endif()
 endif()
 
-# Infiltratr Common owns generic parsing, arithmetic, byte-order, exact-I/O,
+# Libraries owns generic parsing, arithmetic, byte-order, exact-I/O,
 # checked allocation growth, strings, paths, sysfs primitives and generic
 # durable file publication/removal. Consume its authoritative package target
 # so every source dependency and transitive platform library remains defined by
@@ -563,7 +563,7 @@ install(FILES packaging/io.github.linuxdefragger.png
         DESTINATION share/icons/hicolor/96x96/apps)
 install(FILES packaging/io.github.linuxdefragger.png
         DESTINATION share/app-install/icons
-        RENAME infiltrator-defragmenter.png)
+        RENAME defragmenter.png)
 install(FILES packaging/io.github.linuxdefragger.png
         DESTINATION lib/linux-defragger
         RENAME defragmenter-icon.png)

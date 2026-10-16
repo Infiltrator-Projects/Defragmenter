@@ -6,7 +6,7 @@ Defragmenter separates GTK presentation, filesystem-neutral safety/runtime servi
 
 Defragmenter starts from filesystem structures, durability rules and target-safety requirements rather than treating a mounted filesystem driver or external repair utility as the specification.
 
-First principles does not mean reimplementing every mechanism. Linux supplies raw block I/O and process primitives; GTK supplies presentation; system libraries may provide documented in-process APIs; Infiltratr Common supplies reusable first-party primitives. Defragmenter retains ownership of filesystem interpretation, placement, mutation, recovery and user-visible safety policy.
+First principles does not mean reimplementing every mechanism. Linux supplies raw block I/O and process primitives; GTK supplies presentation; system libraries may provide documented in-process APIs; Libraries supplies reusable first-party primitives. Defragmenter retains ownership of filesystem interpretation, placement, mutation, recovery and user-visible safety policy.
 
 A dependency is chosen because its contract is stronger for the job, not because it is convenient. Unsupported or ambiguous layouts remain unsupported instead of being guessed.
 
@@ -26,7 +26,7 @@ per-filesystem native C analysers / planners / writers
         ↓
 raw image or unmounted block device
 
-Infiltratr Common 1.19.38
+Libraries 1.19.38
         ↓
 checked arithmetic / parsing / endian / path / exact-I/O /
 allocation-growth / JSON / durable-file primitives
@@ -43,7 +43,7 @@ defragger/
 ├── test_media/             destructive sacrificial-media utility
 ├── tests/                  native regressions and independent fixture/test drivers
 ├── packaging/              Debian/native installer construction
-└── shared/                 pinned Infiltratr Common dependency
+└── shared/                 pinned Libraries dependency
 ```
 
 ## Contracts and ownership
@@ -111,11 +111,11 @@ The project assumes the kernel, libc, required libraries and storage hardware ho
 
 ## Common
 
-`shared/infiltratr-common` is pinned to Infiltratr Common 1.19.38 at exact commit `7070c5812b50821fd7580101cb2289a3184f6b2c`.
+`shared/infiltratr-common` is pinned to Libraries 1.19.38 at exact commit `7070c5812b50821fd7580101cb2289a3184f6b2c`.
 
 Common is authoritative for reusable mechanisms whose semantics are genuinely generic. If Defragmenter has a stronger implementation of a generic primitive, the preferred direction is to improve Common until its contract preserves that correctness, performance and resilience, then remove the local duplicate.
 
-For this pin, Common also owns deterministic finite-decimal conversion used by the C++ JSON adapter, checked allocation sizing used by local runtime wrappers, allocation-free key=value line parsing for native journals/manifests, POSIX lexical path joining/concatenation, native typography/structural design identity, immutable MB Corpo asset provenance and the complete layered Linux MBLINK Day/Night semantic role set. The native GTK desktop resolves Common's theme/typography/metrics API directly and maps those neutral roles into Defragmenter selectors; Test Media consumes the same native design API. Defragmenter's no-font-fallback policy remains product-local because the package installs the verified Common-described faces itself. The GTK desktop, filesystem analysis, mapping, mutation, durability and capability authority are entirely native; Python test drivers consume public native behaviour rather than reproducing those product contracts.
+For this pin, Common also owns deterministic finite-decimal conversion used by the C++ JSON adapter, checked allocation sizing used by local runtime wrappers, allocation-free key=value line parsing for native journals/manifests, POSIX lexical path joining/concatenation, native typography/structural design identity, immutable MB Corpo asset provenance and the complete layered Linux MBLink Day/Night semantic role set. The native GTK desktop resolves Common's theme/typography/metrics API directly and maps those neutral roles into Defragmenter selectors; Test Media consumes the same native design API. Defragmenter's no-font-fallback policy remains product-local because the package installs the verified Common-described faces itself. The GTK desktop, filesystem analysis, mapping, mutation, durability and capability authority are entirely native; Python test drivers consume public native behaviour rather than reproducing those product contracts.
 
 Do not move filesystem policy, target-safety decisions or transaction semantics into Common merely to reduce line count.
 

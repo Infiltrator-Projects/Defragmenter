@@ -48,7 +48,7 @@ SOURCE_ICON="$ROOT/packaging/io.github.linuxdefragger.png"
 for INSTALLED_ICON in \
     "$STAGE/root/usr/lib/linux-defragger/defragmenter-icon.png" \
     "$STAGE/root/usr/share/icons/hicolor/96x96/apps/io.github.linuxdefragger.png" \
-    "$STAGE/root/usr/share/app-install/icons/infiltrator-defragmenter.png"
+    "$STAGE/root/usr/share/app-install/icons/defragmenter.png"
 do
     [ -f "$INSTALLED_ICON" ] || {
         printf 'Required Defragmenter icon missing from package stage: %s\n' "$INSTALLED_ICON" >&2
@@ -75,14 +75,14 @@ install -m 0644 "$FONT_WORK/mb_corpo_s_regular.ttf" "$STAGE/root/usr/share/fonts
 mkdir -p "$STAGE/root/DEBIAN"
 INSTALLED_SIZE=$(du -sk "$STAGE/root/usr" | awk '{print $1}')
 {
-    printf 'Package: infiltrator-defragmenter\n'
+    printf 'Package: defragmenter\n'
     printf 'Version: %s\n' "$PACKAGE_VERSION"
     printf 'Section: utils\n'
     printf 'Priority: optional\n'
     printf 'Architecture: %s\n' "$ARCH"
-    printf 'Provides: linux-defragger\n'
-    printf 'Breaks: linux-defragger (<< 1.8.0-172)\n'
-    printf 'Replaces: linux-defragger (<< 1.8.0-172)\n'
+    printf 'Provides: infiltrator-defragmenter (= %s), linux-defragger (= %s)\n' "$PACKAGE_VERSION" "$PACKAGE_VERSION"
+    printf 'Breaks: infiltrator-defragmenter (<< %s), linux-defragger (<< %s)\n' "$PACKAGE_VERSION" "$PACKAGE_VERSION"
+    printf 'Replaces: infiltrator-defragmenter (<< %s), linux-defragger (<< %s)\n' "$PACKAGE_VERSION" "$PACKAGE_VERSION"
     printf 'Maintainer: Shannon Smith\n'
     printf 'X-Linux-Defragger-Build: %s\n' "$BUILD_FLAVOR"
     printf 'Depends: libgtk-3-0t64, fontconfig, policykit-1, ca-certificates, desktop-file-utils, udisks2, util-linux, libsqlite3-0, libssl3t64, libstdc++6\n'

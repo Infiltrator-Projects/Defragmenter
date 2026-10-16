@@ -7,7 +7,7 @@ if [ "${LD_INSTALLER_TEST_COMMAND:-0}" = 1 ]; then
     case "$command_name" in
         dpkg-query)
             case "$*" in
-                *'${Version}'*infiltrator-defragmenter*)
+                *'${Version}'*defragmenter*)
                     [ -f "${LD_INSTALLER_TEST_STATE:?}" ] || exit 1
                     cat "$LD_INSTALLER_TEST_STATE"
                     ;;
@@ -49,7 +49,7 @@ if [ "${LD_INSTALLER_TEST_COMMAND:-0}" = 1 ]; then
                 cp "$LD_INSTALLER_TEST_SOURCE_ROOT/packaging/io.github.linuxdefragger.png" \
                     "$DESTDIR/usr/share/icons/hicolor/96x96/apps/io.github.linuxdefragger.png"
                 cp "$LD_INSTALLER_TEST_SOURCE_ROOT/packaging/io.github.linuxdefragger.png" \
-                    "$DESTDIR/usr/share/app-install/icons/infiltrator-defragmenter.png"
+                    "$DESTDIR/usr/share/app-install/icons/defragmenter.png"
             fi
             ;;
         sudo) shift 0; exec "$@" ;;

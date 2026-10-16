@@ -25,7 +25,7 @@ if [ "${LD_TEST_FAKE_CMAKE:-0}" = 1 ]; then
         cp "$LD_TEST_SOURCE_ROOT/packaging/io.github.linuxdefragger.png" \
             "$DESTDIR/usr/share/icons/hicolor/96x96/apps/io.github.linuxdefragger.png"
         cp "$LD_TEST_SOURCE_ROOT/packaging/io.github.linuxdefragger.png" \
-            "$DESTDIR/usr/share/app-install/icons/infiltrator-defragmenter.png"
+            "$DESTDIR/usr/share/app-install/icons/defragmenter.png"
     fi
     exit 0
 fi
@@ -39,7 +39,7 @@ trap 'rm -rf "$WORK"' EXIT HUP INT TERM
 mkdir -p "$WORK/bin"
 ln -s "$ROOT/tests/test_deb_package_versions.sh" "$WORK/bin/cmake"
 
-PACKAGE="$WORK/infiltrator-defragmenter_${NATIVE_VERSION}_amd64.deb"
+PACKAGE="$WORK/defragmenter_${NATIVE_VERSION}_amd64.deb"
 LD_TEST_REAL_CMAKE=$(command -v cmake)
 PATH="$WORK/bin:$PATH" \
 LD_TEST_FAKE_CMAKE=1 \
@@ -52,7 +52,7 @@ BUILD_DIR="$WORK/build" \
 OUTPUT_PATH="$PACKAGE" \
     "$ROOT/packaging/build-deb.sh" >/dev/null
 
-[ "$(dpkg-deb -f "$PACKAGE" Package)" = infiltrator-defragmenter ]
+[ "$(dpkg-deb -f "$PACKAGE" Package)" = defragmenter ]
 [ "$(dpkg-deb -f "$PACKAGE" Version)" = "$NATIVE_VERSION" ]
 [ "$(dpkg-deb -f "$PACKAGE" Architecture)" = amd64 ]
 [ "$(dpkg-deb -f "$PACKAGE" X-Linux-Defragger-Build)" = native ]

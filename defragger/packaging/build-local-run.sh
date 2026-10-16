@@ -33,10 +33,10 @@ WORK=$(mktemp -d "${TMPDIR:-/tmp}/linux-defragger-run-build.XXXXXX")
 COMMON_DIR="$ROOT/shared/infiltratr-common"
 COMMON_COMMIT=$(git -C "$REPO_ROOT" rev-parse \
     HEAD:defragger/shared/infiltratr-common 2>/dev/null) || \
-    fail 'HEAD does not contain the Infiltratr Common gitlink'
-[ "${#COMMON_COMMIT}" -eq 40 ] || fail 'Infiltratr Common gitlink is not a commit object'
+    fail 'HEAD does not contain the Libraries gitlink'
+[ "${#COMMON_COMMIT}" -eq 40 ] || fail 'Libraries gitlink is not a commit object'
 case "$COMMON_COMMIT" in
-    *[!0-9a-f]*) fail 'Infiltratr Common gitlink is not a commit object' ;;
+    *[!0-9a-f]*) fail 'Libraries gitlink is not a commit object' ;;
 esac
 cleanup() {
     rm -rf "$WORK"
@@ -46,17 +46,17 @@ trap cleanup EXIT HUP INT TERM
 if [ ! -f "$COMMON_DIR/VERSION" ]; then
     git -C "$REPO_ROOT" submodule update --init --depth 1 -- \
         defragger/shared/infiltratr-common || \
-        fail "unable to initialise Infiltratr Common at ${COMMON_COMMIT}"
+        fail "unable to initialise Libraries at ${COMMON_COMMIT}"
 fi
 [ -e "$COMMON_DIR/.git" ] || \
-    fail 'Infiltratr Common must be a checked-out Git submodule'
+    fail 'Libraries must be a checked-out Git submodule'
 COMMON_VERSION=$(tr -d '\r\n' <"$COMMON_DIR/VERSION")
-[ -n "$COMMON_VERSION" ] || fail 'Infiltratr Common VERSION is empty'
+[ -n "$COMMON_VERSION" ] || fail 'Libraries VERSION is empty'
 ACTUAL_COMMON_COMMIT=$(git -C "$COMMON_DIR" rev-parse HEAD)
 [ "$ACTUAL_COMMON_COMMIT" = "$COMMON_COMMIT" ] || \
-    fail "Infiltratr Common gitlink mismatch: expected ${COMMON_COMMIT}, found ${ACTUAL_COMMON_COMMIT}"
-git -C "$COMMON_DIR" diff --quiet || fail 'Infiltratr Common has tracked working-tree changes'
-git -C "$COMMON_DIR" diff --cached --quiet || fail 'Infiltratr Common has staged changes'
+    fail "Libraries gitlink mismatch: expected ${COMMON_COMMIT}, found ${ACTUAL_COMMON_COMMIT}"
+git -C "$COMMON_DIR" diff --quiet || fail 'Libraries has tracked working-tree changes'
+git -C "$COMMON_DIR" diff --cached --quiet || fail 'Libraries has staged changes'
 
 for command_name in tar gzip sha256sum sed find; do
     command -v "$command_name" >/dev/null 2>&1 || \
