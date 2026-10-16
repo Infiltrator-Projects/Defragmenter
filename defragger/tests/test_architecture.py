@@ -197,7 +197,7 @@ def test_common_is_a_versioned_dependency_not_copied_source() -> None:
     assert not (ROOT / ".gitmodules").exists()
     gitmodules = _read(ROOT.parent / ".gitmodules")
     assert "defragger/shared/infiltratr-common" in gitmodules
-    assert "Infiltrator-Libraries.git" in gitmodules
+    assert "Infiltrator-Projects/Libraries.git" in gitmodules
 
     cmake = _cmake_source()
     assert "add_subdirectory" in cmake
