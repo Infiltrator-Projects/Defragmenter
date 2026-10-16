@@ -5,8 +5,8 @@ Status: **complete**
 Completed: 2026-10-16
 
 Applies to: audited source and release-governance baselines below
-Audited source commit: 7424678c7adc283da5e14cf52b426afcce0261d7
-Audited release-governance commit: 7424678c7adc283da5e14cf52b426afcce0261d7
+Audited source commit: c08d05ca87271b3bcebd642841a8e8ee3897c9cd
+Audited release-governance commit: c08d05ca87271b3bcebd642841a8e8ee3897c9cd
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
@@ -18,7 +18,7 @@ The second 2026-10-14 forensic pass identified a release-recovery hole rather th
 
 The 2026-10-16 incremental review covers the two subsequent UFS Test Media commits, `00f8287b8c10efefc87f6b54c1c4b440e5a05078` and `7424678c7adc283da5e14cf52b426afcce0261d7`. The first bundles a bounded, little-endian UFS2 fixture creator, installs and resolves that package-owned helper, removes the external makefs prerequisite, and adds mandatory creation/analysis/defragmentation and staged-install coverage. The second runs that same creator/worker integration from release-artifact qualification. The creator's geometry, allocation bounds, inode/direct/indirect block construction, source-copy error handling and metadata accounting were reviewed alongside the build, installation, resolver and test changes. Existing filesystem mutation and recovery engines are unchanged. The former feature branches have identical changed-file contents on main; their separate commit ancestry is a result of squash integration.
 
-The existing qualification of this exact source completed all 46 CTest cases and the ASan/UBSan lane; publication stopped at the correctly enforced stale-audit-baseline check. Both audited baselines now identify the reviewed UFS head, including its preflight change. Release 1.8.0-266 must rerun the full qualification and exact-artifact publication path. No release assertion, audit-drift check, history protection or test has been disabled or relaxed.
+The existing qualification of this exact source completed all 46 CTest cases and the ASan/UBSan lane; publication stopped at the correctly enforced stale-audit-baseline check. That UFS baseline subsequently qualified and published as 1.8.0-266. The current baselines also include the reviewed qualification and retry changes below. No release assertion, audit-drift check, history protection or test has been disabled or relaxed.
 
 ## Current safety case
 
@@ -50,3 +50,9 @@ The repository uses the `direct-main` development model. The active `protected-m
 Ordinary main commits never publish. A change to `defragger/VERSION` on protected `main` is the explicit release decision; commit-message wording is not part of the control plane. Main qualification runs are serialized so a later ordinary push cannot cancel and erase an earlier VERSION-changing release decision. The exact head must pass the self-hosted full-suite and ASan/UBSan lanes. Release artefacts are built once by that qualified head, retained for a bounded seven-day recovery window, and publication can only publish or resume those exact SHA-bound artefacts after checksum, audit-baseline and protected-history verification.
 
 GitHub release correctness is independent of downstream APT propagation. Publication succeeds only after the GitHub release and all three expected asset identities/digests are exact; the public APT visibility check is observational and retryable. The project publisher treats version identity as write-once and rejects tag, target or asset drift rather than relying on GitHub's separate platform-level immutable-release setting.
+
+## Release-effective qualification and retry review — 2026-10-16
+
+The current reviewed source replaces `assert()` in the native desktop policy and live-map regressions with unconditional failure-reporting checks. The Release CTest run completed all 46 cases and the ASan/UBSan lane passed at `67fe8eea61d01945809755870b65f40eb3dc49cf`; those runs now exercise the affected checks instead of compiling them away. Filesystem parsers, mutation engines, recovery semantics and privilege policy are unchanged.
+
+Release intent now follows the unpublished `VERSION` across corrective commits instead of depending on the immediately preceding push. The actual workflow decision is executed against disposable Git histories covering initial intent, a correction without another version bump, an exact-commit retry, ordinary maintenance after a tag, and an advanced version. Fixtures isolate their own Git signing policy. These behavioural fixtures passed locally with the intended Git Bash runtime. The source and governance baselines above identify the complete reviewed implementation; the final release head must still pass the full mandatory qualification and exact-artifact publication gates.
