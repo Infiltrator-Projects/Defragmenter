@@ -94,3 +94,5 @@ The evidence is not a mathematical proof and does not establish correctness for 
 NTFS qualification additionally covers an ordinary named nonresident alternate data stream split across two physical runs. Defragment and Growth Defrag relocate the ADS through the same journalled record/attribute-offset plan as unnamed data, preserve its payload byte-for-byte and report ADS fragmentation at the owning-file level. Attribute-list/split, compressed, encrypted and sparse streams remain fail-closed or fixed as explicitly qualified.
 
 UFS qualification includes sparse regular-file relocation: holes remain logical holes while allocated fragment/block references are packed, fragment-sized tails remain valid, and both Defragment and exact 10% Growth Defrag independently reopen and verify the result.
+
+Optimized qualification retains executable checks in the desktop/presentation regression paths. These checks report a failing expression and terminate unsuccessfully independently of `NDEBUG`; Release compilation cannot silently turn the suite into a successful no-op.

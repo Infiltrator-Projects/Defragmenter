@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.8.0-267 — 2026-10-16
+
+Keep desktop/presentation regression checks active in optimized builds. A failed contract now reports its expression and exits unsuccessfully even when `NDEBUG` is defined. Production behaviour is unchanged.
+
 This changelog records user-visible, compatibility, architecture and validation changes for Defragmenter. Detailed commit-by-commit history remains in Git.
 
 ## 1.8.0-240
