@@ -29,7 +29,7 @@
 #include <unistd.h>
 
 #define PROG "defragmenter-pfs3-worker"
-#define JOURNAL_MAGIC "LINUX-DEFRAGGER-PFS3-JOURNAL-1"
+#define JOURNAL_MAGIC "DEFRAGMENTER-PFS3-JOURNAL-1"
 #define STOPPED 130
 #define PFS3_WORKER_IO_BYTES (1024U * 1024U)
 

@@ -30,7 +30,7 @@
 #include <unistd.h>
 
 #define PROG "defragmenter-minix-worker"
-#define JOURNAL_MAGIC "LINUX-DEFRAGGER-MINIX-JOURNAL-1"
+#define JOURNAL_MAGIC "DEFRAGMENTER-MINIX-JOURNAL-1"
 #define HASH_CHUNK (1024U * 1024U)
 #define COMMIT_CHUNK (4U * 1024U * 1024U)
 #define STOPPED 130

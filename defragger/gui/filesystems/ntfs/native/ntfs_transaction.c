@@ -18,7 +18,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#define NTFS_JOURNAL_MAGIC "LINUX-DEFRAGGER-NTFS-JOURNAL-1"
+#define NTFS_JOURNAL_MAGIC "DEFRAGMENTER-NTFS-JOURNAL-1"
 
 static int ensure_directory_tree(const char *path, char **error)
 {

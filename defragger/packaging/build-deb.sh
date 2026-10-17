@@ -81,7 +81,7 @@ INSTALLED_SIZE=$(du -sk "$STAGE/root/usr" | awk '{print $1}')
     printf 'Priority: optional\n'
     printf 'Architecture: %s\n' "$ARCH"
     printf 'Maintainer: Shannon Smith\n'
-    printf 'X-Linux-Defragger-Build: %s\n' "$BUILD_FLAVOR"
+    printf 'X-Defragmenter-Build: %s\n' "$BUILD_FLAVOR"
     printf 'Depends: libgtk-3-0t64, fontconfig, policykit-1, ca-certificates, desktop-file-utils, udisks2, util-linux, libsqlite3-0, libssl3t64, libstdc++6\n'
     printf 'Suggests: makefs\n'
     printf 'Installed-Size: %s\n' "$INSTALLED_SIZE"

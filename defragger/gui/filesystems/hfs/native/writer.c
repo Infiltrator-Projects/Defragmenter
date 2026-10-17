@@ -32,7 +32,7 @@
 #include <sys/sysmacros.h>
 
 #define HFS_PROG "hfs_analyser"
-#define HFS_JOURNAL_MAGIC "LINUX-DEFRAGGER-HFS-JOURNAL-1"
+#define HFS_JOURNAL_MAGIC "DEFRAGMENTER-HFS-JOURNAL-1"
 #define HFS_STAGE_SUFFIX ".hfs-stage"
 #define HFS_IO_CHUNK (1024U * 1024U)
 #define HFS_STOPPED 130

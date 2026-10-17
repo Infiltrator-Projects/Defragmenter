@@ -29,7 +29,7 @@
 #include <unistd.h>
 
 #define PROGRAM_NAME "defragmenter-exfat-worker"
-#define JOURNAL_MAGIC "LINUX-DEFRAGGER-EXFAT-JOURNAL-2"
+#define JOURNAL_MAGIC "DEFRAGMENTER-EXFAT-JOURNAL-2"
 #define COPY_CHUNK (4U * 1024U * 1024U)
 #define JOURNAL_INTERVAL (64U * 1024U * 1024U)
 

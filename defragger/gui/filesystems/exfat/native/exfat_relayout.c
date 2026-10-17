@@ -37,7 +37,7 @@
 #include <sys/sysmacros.h>
 #include <unistd.h>
 
-#define EXFAT_RELAYOUT_MAGIC "LINUX-DEFRAGGER-EXFAT-RELAYOUT-1"
+#define EXFAT_RELAYOUT_MAGIC "DEFRAGMENTER-EXFAT-RELAYOUT-1"
 #define EXFAT_RELAYOUT_MAX_BUFFER (UINT64_C(64) * 1024 * 1024)
 
 typedef struct {

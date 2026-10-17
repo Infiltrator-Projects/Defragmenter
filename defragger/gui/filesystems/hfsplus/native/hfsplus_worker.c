@@ -29,7 +29,7 @@
 #include <unistd.h>
 
 #define PROG "defragmenter-hfsplus-worker"
-#define JOURNAL_MAGIC "LINUX-DEFRAGGER-HFSPLUS-JOURNAL-2"
+#define JOURNAL_MAGIC "DEFRAGMENTER-HFSPLUS-JOURNAL-2"
 #define HASH_CHUNK (1024U * 1024U)
 #define COMMIT_CHUNK (4U * 1024U * 1024U)
 #define STOPPED 130
@@ -153,7 +153,7 @@ static int journal_load(const char *path, HfsPlusJournal *state, char **error) {
     if (getline(&line, &capacity, file) < 0) goto invalid;
     infiltratr_trim_line_end(line);
     if (strcmp(line, JOURNAL_MAGIC) != 0) {
-        if (strcmp(line, "LINUX-DEFRAGGER-HFSPLUS-1") == 0) {
+        if (strcmp(line, "DEFRAGMENTER-HFSPLUS-1") == 0) {
             free(line);
             fclose(file);
             hfsplus_set_error(error,

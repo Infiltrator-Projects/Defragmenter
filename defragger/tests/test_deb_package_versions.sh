@@ -55,6 +55,6 @@ OUTPUT_PATH="$PACKAGE" \
 [ "$(dpkg-deb -f "$PACKAGE" Package)" = defragmenter ]
 [ "$(dpkg-deb -f "$PACKAGE" Version)" = "$NATIVE_VERSION" ]
 [ "$(dpkg-deb -f "$PACKAGE" Architecture)" = amd64 ]
-[ "$(dpkg-deb -f "$PACKAGE" X-Linux-Defragger-Build)" = native ]
+[ "$(dpkg-deb -f "$PACKAGE" X-Defragmenter-Build)" = native ]
 
 printf '%s\n' 'Debian package-version metadata test passed.'

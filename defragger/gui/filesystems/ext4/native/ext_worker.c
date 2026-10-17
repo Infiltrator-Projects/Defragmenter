@@ -31,7 +31,7 @@
 #define PROGRAM_NAME "defragmenter-ext-worker"
 #define COPY_CHUNK (4U * 1024U * 1024U)
 #define JOURNAL_INTERVAL (64U * 1024U * 1024U)
-#define JOURNAL_MAGIC "LINUX-DEFRAGGER-EXT-JOURNAL-1"
+#define JOURNAL_MAGIC "DEFRAGMENTER-EXT-JOURNAL-1"
 
 typedef struct {
     char *device;

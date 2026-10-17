@@ -282,7 +282,7 @@ static int print_map_json(const BtrfsAnalysis *analysis, uint64_t requested_cell
 }
 
 
-#define BTRFS_JOURNAL_MAGIC "LINUX-DEFRAGGER-BTRFS-JOURNAL-1"
+#define BTRFS_JOURNAL_MAGIC "DEFRAGMENTER-BTRFS-JOURNAL-1"
 #define BTRFS_STAGE_SUFFIX ".btrfs-stage"
 #define BTRFS_TXN_IO_BYTES (1024U * 1024U)
 #define BTRFS_TXN_STOPPED 130

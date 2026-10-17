@@ -29,7 +29,7 @@
 #include <unistd.h>
 
 #define PROG "defragmenter-sfs-worker"
-#define JOURNAL_MAGIC "LINUX-DEFRAGGER-SFS-JOURNAL-1"
+#define JOURNAL_MAGIC "DEFRAGMENTER-SFS-JOURNAL-1"
 #define STOPPED 130
 #define SFS_WORKER_IO_BYTES (1024U * 1024U)
 

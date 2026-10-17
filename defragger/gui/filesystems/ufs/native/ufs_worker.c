@@ -286,7 +286,7 @@ static int print_exact_map(const char *path, uint64_t requested_cells)
     free(cells);
     return 0;
 }
-#define UFS_JOURNAL_MAGIC "LINUX-DEFRAGGER-UFS-JOURNAL-1"
+#define UFS_JOURNAL_MAGIC "DEFRAGMENTER-UFS-JOURNAL-1"
 #define UFS_STAGE_SUFFIX ".ufs-stage"
 #define UFS_TXN_IO_BYTES (1024U * 1024U)
 #define UFS_TXN_STOPPED 130

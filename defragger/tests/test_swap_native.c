@@ -231,7 +231,7 @@ static void encode_proc_path(const char *path, char *encoded, size_t size)
 
 static void test_proc_swaps_runtime(void)
 {
-    char target[] = "/tmp/linux defragger swap runtime.XXXXXX";
+    char target[] = "/tmp/defragmenter swap runtime.XXXXXX";
     int fd = mkstemp(target);
     CHECK(fd >= 0);
     (void)close(fd);

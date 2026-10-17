@@ -113,7 +113,7 @@ env LD_BUILD_FLAVOR=native \
     fail 'Compiled package version is invalid.'
 [ "$(dpkg-deb -f "$PACKAGE" Architecture)" = amd64 ] || \
     fail 'Compiled package architecture is invalid.'
-[ "$(dpkg-deb -f "$PACKAGE" X-Linux-Defragger-Build)" = native ] || \
+[ "$(dpkg-deb -f "$PACKAGE" X-Defragmenter-Build)" = native ] || \
     fail 'Compiled package is not marked as a native build.'
 
 printf '%s\n' 'Installing the locally compiled package through dpkg...'

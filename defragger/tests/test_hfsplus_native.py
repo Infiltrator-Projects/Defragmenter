@@ -135,7 +135,7 @@ def write_recovery_journal(journal: Path, image: Path, stage: Path,
                            operation: str = "defrag", phase: str = "committing") -> None:
     fields = transaction_fields(image)
     journal.write_text(
-        "LINUX-DEFRAGGER-HFSPLUS-JOURNAL-2\n"
+        "DEFRAGMENTER-HFSPLUS-JOURNAL-2\n"
         f"device={fields['device']}\n"
         f"target_identity={fields['target_identity']}\n"
         f"stage={stage}\n"
@@ -322,7 +322,7 @@ def test_legacy_recovery_journal_fails_closed(work: Path) -> None:
     shutil.copyfile(image, stage)
     journal = work / "legacy.journal"
     journal.write_text(
-        "LINUX-DEFRAGGER-HFSPLUS-1\n"
+        "DEFRAGMENTER-HFSPLUS-1\n"
         f"device={image}\n"
         f"stage={stage}\n"
         "operation=defrag\n",

@@ -28,7 +28,7 @@
 #include <unistd.h>
 
 #define PROG "defragmenter-affs-worker"
-#define JOURNAL_MAGIC "LINUX-DEFRAGGER-AFFS-JOURNAL-2"
+#define JOURNAL_MAGIC "DEFRAGMENTER-AFFS-JOURNAL-2"
 #define BLOCK_SIZE 512U
 #define AMIGA_IO_BATCH_BLOCKS 8192U
 #define AMIGA_IO_BATCH_BYTES ((size_t)AMIGA_IO_BATCH_BLOCKS * BLOCK_SIZE)
@@ -151,7 +151,7 @@ static int journal_load(const char *path, AffsJournal *state, char **error) {
     if (getline(&line, &capacity, file) < 0) goto invalid;
     infiltratr_trim_line_end(line);
     if (strcmp(line, JOURNAL_MAGIC) != 0) {
-        if (strcmp(line, "LINUX-DEFRAGGER-AFFS-1") == 0) {
+        if (strcmp(line, "DEFRAGMENTER-AFFS-1") == 0) {
             free(line);
             fclose(file);
             affs_set_error(error,

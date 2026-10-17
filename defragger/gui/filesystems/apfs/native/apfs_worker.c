@@ -141,7 +141,7 @@ static int print_map(const ApfsAnalysis *analysis, uint64_t requested_cells)
     return 0;
 }
 
-#define APFS_JOURNAL_MAGIC "LINUX-DEFRAGGER-APFS-JOURNAL-1"
+#define APFS_JOURNAL_MAGIC "DEFRAGMENTER-APFS-JOURNAL-1"
 #define APFS_STAGE_SUFFIX ".apfs-stage"
 #define APFS_TXN_IO_BYTES (1024U * 1024U)
 #define APFS_TXN_STOPPED 130

@@ -220,7 +220,7 @@ def _write_recovery_journal(journal: Path, image: Path, stage: Path) -> None:
     header = image.read_bytes()[1024:1536]
     st = image.stat()
     journal.write_text(
-        "LINUX-DEFRAGGER-HFS-JOURNAL-1\n"
+        "DEFRAGMENTER-HFS-JOURNAL-1\n"
         f"device={image.resolve()}\n"
         f"target_identity=file:{st.st_dev}:{st.st_ino}\n"
         f"stage={stage}\n"
