@@ -18,7 +18,6 @@ if [ "$ARCH" != amd64 ]; then
     printf '%s\n' "Defragmenter $VERSION release packages support amd64 only." >&2
     exit 1
 fi
-
 case "$BUILD_FLAVOR" in
     generic) FLAVOR_DESCRIPTION='Generic x86-64 build for broad amd64 compatibility.' ;;
     native) FLAVOR_DESCRIPTION='Locally compiled build optimised for this machine CPU.' ;;
@@ -50,27 +49,18 @@ for INSTALLED_ICON in \
     "$STAGE/root/usr/share/icons/hicolor/96x96/apps/io.github.defragmenter.png" \
     "$STAGE/root/usr/share/app-install/icons/defragmenter.png"
 do
-    [ -f "$INSTALLED_ICON" ] || {
-        printf 'Required Defragmenter icon missing from package stage: %s\n' "$INSTALLED_ICON" >&2
-        exit 1
-    }
-    cmp -s "$SOURCE_ICON" "$INSTALLED_ICON" || {
-        printf 'Packaged Defragmenter icon differs from approved artwork: %s\n' "$INSTALLED_ICON" >&2
-        exit 1
-    }
+    [ -f "$INSTALLED_ICON" ] || { printf 'Required Defragmenter icon missing from package stage: %s\n' "$INSTALLED_ICON" >&2; exit 1; }
+    cmp -s "$SOURCE_ICON" "$INSTALLED_ICON" || { printf 'Packaged Defragmenter icon differs from approved artwork: %s\n' "$INSTALLED_ICON" >&2; exit 1; }
 done
 
-FONT_ARCHIVE="$STAGE/mb-corpo-fonts.tar.xz"
-if [ -f "$ROOT/assets/fonts/mb-corpo-fonts.tar.xz" ]; then
-    cp "$ROOT/assets/fonts/mb-corpo-fonts.tar.xz" "$FONT_ARCHIVE"
+# MB Corpo is persistent machine state. The package owns only the bootstrap,
+# never another copy of the three TTF files.
+if find "$STAGE/root" -type f -name 'mb_corpo_*.ttf' | grep -q .; then
+    printf '%s\n' 'Defragmenter package must not contain duplicate MB Corpo font binaries.' >&2
+    exit 1
 fi
-"$ROOT/packaging/vendor-mb-fonts.sh" "$FONT_ARCHIVE" >/dev/null
-FONT_WORK="$STAGE/fonts"
-mkdir -p "$FONT_WORK" "$STAGE/root/usr/share/fonts/truetype/defragmenter"
-tar -xJf "$FONT_ARCHIVE" -C "$FONT_WORK"
-install -m 0644 "$FONT_WORK/mb_corpo_a_cond_regular.ttf" "$STAGE/root/usr/share/fonts/truetype/defragmenter/"
-install -m 0644 "$FONT_WORK/mb_corpo_s_bold.ttf" "$STAGE/root/usr/share/fonts/truetype/defragmenter/"
-install -m 0644 "$FONT_WORK/mb_corpo_s_regular.ttf" "$STAGE/root/usr/share/fonts/truetype/defragmenter/"
+install -D -m 0755 "$ROOT/packaging/ensure-native-fonts.sh" \
+    "$STAGE/root/usr/lib/defragmenter/ensure-native-fonts"
 
 mkdir -p "$STAGE/root/DEBIAN"
 INSTALLED_SIZE=$(du -sk "$STAGE/root/usr" | awk '{print $1}')
@@ -82,7 +72,7 @@ INSTALLED_SIZE=$(du -sk "$STAGE/root/usr" | awk '{print $1}')
     printf 'Architecture: %s\n' "$ARCH"
     printf 'Maintainer: Shannon Smith\n'
     printf 'X-Defragmenter-Build: %s\n' "$BUILD_FLAVOR"
-    printf 'Depends: libgtk-3-0t64, fontconfig, policykit-1, ca-certificates, desktop-file-utils, udisks2, util-linux, libsqlite3-0, libssl3t64, libstdc++6\n'
+    printf 'Depends: libgtk-3-0t64, fontconfig, policykit-1, ca-certificates, xz-utils, wget | curl, desktop-file-utils, udisks2, util-linux, libsqlite3-0, libssl3t64, libstdc++6\n'
     printf 'Suggests: makefs\n'
     printf 'Installed-Size: %s\n' "$INSTALLED_SIZE"
     printf 'Description: Safe direct filesystem analysis and canonical layout rewriting\n'
@@ -91,13 +81,13 @@ INSTALLED_SIZE=$(du -sk "$STAGE/root/usr" | awk '{print $1}')
     printf ' classic HFS, HFS+/HFSX, Btrfs, APFS, Minix and qualified UFS filesystems.\n'
     printf ' ZFS/OpenZFS remains analysis-only by design. The package also includes the separate all-C GTK\n'
     printf ' Defragmenter Test Media program for building sacrificial field-test disks.\n'
-    printf ' The supplied MB Corpo typography is installed for the Defragmenter interfaces.\n'
+    printf ' Shared MB Corpo typography is established in the native machine font cache when required.\n'
     printf ' %s\n' "$FLAVOR_DESCRIPTION"
 } >"$STAGE/root/DEBIAN/control"
 cat >"$STAGE/root/DEBIAN/postinst" <<'EOF'
 #!/bin/sh
 set -e
-command -v fc-cache >/dev/null 2>&1 && fc-cache -f >/dev/null 2>&1 || true
+/usr/lib/defragmenter/ensure-native-fonts
 command -v update-desktop-database >/dev/null 2>&1 && \
     update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
 command -v gtk-update-icon-cache >/dev/null 2>&1 && \
@@ -107,7 +97,8 @@ EOF
 cat >"$STAGE/root/DEBIAN/postrm" <<'EOF'
 #!/bin/sh
 set -e
-command -v fc-cache >/dev/null 2>&1 && fc-cache -f >/dev/null 2>&1 || true
+# Shared native fonts and their Fontconfig registration deliberately survive
+# removal of any individual application.
 command -v update-desktop-database >/dev/null 2>&1 && \
     update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
 command -v gtk-update-icon-cache >/dev/null 2>&1 && \
