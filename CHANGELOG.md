@@ -3,7 +3,7 @@
 ## Unreleased
 
 - Update Defragmenter's copied native-font bootstrap to Libraries 1.19.58, using the newer version 1.010 Title fonts. Reuse the verified InfiltratorOS seed or a pinned SHA-verified source; do not recreate the legacy three resource filenames.
-- This installer-source change requires Defragmenter's independent source-safety audit before a qualified version can be released.
+- The font-installer-only source delta is now documented in the incremental safety review; future releases still require the full independent qualification gates.
 
 ## 1.8.0-269 - 2026-10-17
 

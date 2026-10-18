@@ -5,7 +5,7 @@ Status: **complete**
 Completed: 2026-10-16
 
 Applies to: audited source and release-governance baselines below
-Audited source commit: aaad4c4ed07f71a055938ba00d8fc75f05513741
+Audited source commit: c144ebda5d8eb646da813f68223bd2b9b1529f83
 Audited release-governance commit: aaad4c4ed07f71a055938ba00d8fc75f05513741
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
@@ -64,3 +64,26 @@ The current review covers the canonical `defragmenter` package, commands, native
 The exact Libraries dependency advances from 1.19.38 to 1.19.46. Its reviewed changes add bounded Calendar date-provider loading, clock presentation/localization, design-record validation and the canonical System Settings provider identity. Arithmetic, pathname construction, filesystem-neutral persistence primitives and filesystem parsers are unchanged by that dependency delta. Libraries' complete local contract suite passed at the new pin.
 
 The own-source changes are product identities and consistent path/build substitutions. The same UID-bounded journal policy now uses the canonical state root, and installer payload discovery and removal use matching canonical markers. Journal and request magic strings use the canonical product namespace; earlier namespace strings are not accepted. Filesystem formats, mutation algorithms, journal structure and privilege boundaries are unchanged. The final release head must pass all 46 Release CTest cases, ASan/UBSan, desktop smoke, artifact installation, audit-drift and exact-byte publication checks. This review does not substitute for those mandatory results.
+
+## Incremental native-font bootstrap audit — 2026-10-18
+
+The production-source delta from the previously reviewed baseline to
+`c144ebda5d8eb646da813f68223bd2b9b1529f83` affects only `defragger/packaging/ensure-native-fonts.sh`.
+Its implementation is a reviewed copy of Libraries/Common 1.19.58's
+independent three-face bootstrap. The old MBLink archive is no longer fetched
+and the obsolete version 1.000 MB Corpo filenames are not recreated. It uses
+the three SHA-256-verified, version 1.010 Title faces from the immutable
+InfiltratorOS commit `66c17fe9ea3ea9678b4028ffea1862a37d488f79`,
+prefers a verified local font seed, rejects symlinked native resource paths,
+and atomically publishes only validated font bytes. The Fontconfig
+registration and package-owned/unowned lifetime contracts are preserved.
+
+The `c144ebda5d8eb646da813f68223bd2b9b1529f83` qualification completed all 46 CTest cases and the
+ASan/UBSan lane successfully. Its release-gate test rejected the source
+change for the correct reason: the audited source baseline had not yet
+been advanced. This incremental review now advances *only* the source
+baseline to that exact font-script revision; the independent governance
+baseline is unchanged. The audited filesystem writers, analysis engines,
+privilege boundaries, on-disk formats, durable journal and recovery logic
+have not changed. Mandatory post-audit qualification must still pass
+before any new release can be published.
