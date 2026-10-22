@@ -115,6 +115,39 @@ def test_recovery(work: Path) -> None:
     assert json.loads(run("analyse-json", image).stdout)["fragmented_files"] == 0
 
 
+def test_interrupted_commit(work: Path) -> None:
+    image = work / "interrupted.img"
+    make(image)
+    journal = work / "interrupted.journal"
+    image.chmod(stat.S_IRUSR)
+    failed = run(
+        "defrag", image, "--write", "--confirm", image,
+        "--journal", journal, check=False,
+    )
+    image.chmod(stat.S_IRUSR | stat.S_IWUSR)
+    stage = Path(str(journal) + ".apfs-stage")
+    assert failed.returncode != 0 and journal.exists() and stage.exists()
+    assert "phase=committing\n" in journal.read_text()
+
+    # A prefix of the verified stage models a short source write after the
+    # durable committing phase. Bitmap and catalogue now describe different
+    # layouts, so requiring a successful source scan would prevent recovery.
+    with image.open("r+b") as target, stage.open("rb") as source:
+        target.write(source.read(184324))
+        target.flush()
+        os.fsync(target.fileno())
+    assert run("analyse-json", image, check=False).returncode != 0
+    assert run("identify", image).returncode == 0
+    recovered = run(
+        "recover", image, "--write", "--confirm", image, "--journal", journal,
+    )
+    assert '"status":"completed"' in recovered.stdout
+    assert not journal.exists() and not stage.exists()
+    assert json.loads(run("analyse-json", image).stdout)["fragmented_files"] == 0
+    raw = image.read_bytes()
+    assert raw[10 * 4096:12 * 4096] == b"A" * 4096 + b"B" * 4096
+
+
 def main() -> None:
     assert WORKER.is_file(), WORKER
     with tempfile.TemporaryDirectory(prefix="defragger-apfs-") as directory:
@@ -161,6 +194,7 @@ def main() -> None:
 
         test_writer(work)
         test_recovery(work)
+        test_interrupted_commit(work)
 
     print("bounded APFS checkpoint/spaceman/catalog/writer/recovery tests passed")
 

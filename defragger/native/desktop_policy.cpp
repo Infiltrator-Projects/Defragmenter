@@ -104,7 +104,14 @@ DesktopControls desktop_controls(const DesktopVolume* v, bool busy,
     out.analyse = true;
     out.unmount = v->mounted && !v->image;
     const auto* backend = backend_by_fstype(v->filesystem);
-    if (!backend || !v->verified || v->readonly || v->mounted) return out;
+    if (!backend || v->readonly || v->mounted) return out;
+
+    // Recovery admission comes from the persistent transaction, not a source
+    // scan that may be impossible halfway through committing that transaction.
+    // The native worker validates journal schema, target binding and staged
+    // bytes before writing; discovery metadata only selects that validator.
+    out.recover = journal_exists && operation_for(*backend, "recover");
+    if (!v->verified) return out;
 
     /*
      * Once native identity has been proved and the target is writable and
@@ -117,7 +124,6 @@ DesktopControls desktop_controls(const DesktopVolume* v, bool busy,
      */
     out.defrag = operation_for(*backend, "defrag") != nullptr;
     out.growth_defrag = operation_for(*backend, "growth-defrag") != nullptr;
-    out.recover = journal_exists && operation_for(*backend, "recover");
     return out;
 }
 
@@ -193,7 +199,8 @@ std::vector<std::string> desktop_mutation(const DesktopVolume& v,
                                           bool journal_exists) {
     const auto* backend = backend_by_fstype(v.filesystem);
     const auto* spec = backend ? operation_for(*backend, operation) : nullptr;
-    if (!backend || !spec || !v.verified || v.mounted || v.readonly)
+    if (!backend || !spec || (operation != "recover" && !v.verified) ||
+        v.mounted || v.readonly)
         throw std::runtime_error("Volume is not verified, unmounted, writable or supported");
     if (operation != "recover" && !v.exact_analysis)
         throw std::runtime_error(

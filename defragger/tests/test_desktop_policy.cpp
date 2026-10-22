@@ -34,6 +34,27 @@ int main() {
     CHECK(!controls.growth_defrag);
     CHECK(!controls.recover);
 
+    // A restarted desktop must reach the native journal validator even when
+    // interrupted metadata cannot pass analysis. No journal grants no recovery.
+    controls = desktop_controls(&v, false, false, true);
+    CHECK(controls.recover && !controls.defrag && !controls.growth_defrag);
+    const auto recovery = desktop_mutation(
+        v, "recover", "/tmp/engine", desktop_journal(v, 1000), 512, true);
+    CHECK(recovery.at(1) == "recover");
+    try {
+        (void)desktop_mutation(
+            v, "recover", "/tmp/engine", desktop_journal(v, 1000), 512, false);
+        CHECK(false);
+    } catch (const std::runtime_error&) {}
+    auto readonly = v;
+    readonly.readonly = true;
+    CHECK(!desktop_controls(&readonly, false, false, true).recover);
+    try {
+        (void)desktop_mutation(
+            readonly, "recover", "/tmp/engine", desktop_journal(v, 1000), 512, true);
+        CHECK(false);
+    } catch (const std::runtime_error&) {}
+
     try {
         (void)desktop_mutation(
             v, "defrag", "/tmp/engine", "/tmp/test.journal", 512, false);

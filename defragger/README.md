@@ -23,7 +23,7 @@ The user-facing product is **Defragmenter**. The Debian/APT package identity is 
 | Amiga PFS3 | Exact allocation + anode-chain analysis for qualified subset | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
 | HFS+ / HFSX | Exact | Native C, fail-closed preflight | Native C, exact 10% reserve | Yes |
 | Classic Macintosh HFS | Exact, native C | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
-| Btrfs | Exact raw single-device analysis | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
+| Btrfs | Exact raw single-device CRC32C analysis | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
 | APFS | Exact native C analysis for bounded checkpoint/spaceman subset | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
 | Minix v1 / v2 / v3 | Exact, native C | Native C, fail-closed staged relayout | Native C, exact 10% reserve | Yes |
 | UFS1 | Exact allocation + inode-tree fragmentation analysis | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |

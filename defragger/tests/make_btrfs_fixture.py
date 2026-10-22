@@ -293,6 +293,9 @@ def build(path: Path, *, malformed: bool = False, multi_device: bool = False,
     if malformed:
         first_item = ROOT_TREE + 101
         image[first_item + 17:first_item + 21] = le32(0)
+        root = bytearray(image[ROOT_TREE:ROOT_TREE + NODE])
+        checksum(root)
+        image[ROOT_TREE:ROOT_TREE + NODE] = root
 
     path.write_bytes(image)
 

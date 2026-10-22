@@ -26,7 +26,7 @@ per-filesystem native C analysers / planners / writers
         ↓
 raw image or unmounted block device
 
-Libraries 1.19.38
+Libraries 1.19.46
         ↓
 checked arithmetic / parsing / endian / path / exact-I/O /
 allocation-growth / JSON / durable-file primitives
@@ -76,7 +76,7 @@ The mapper probes FAT geometry when discovery supplies only a generic FAT name. 
 
 Paths and device-provided metadata are external input. A previously valid path may refer to a different object later, so persistent transactions bind to stable target and filesystem identity where the format exposes it.
 
-Linux/libblkid metadata and GPT labels may choose a candidate parser, but they never authorise a write. A physical volume starts mutation-disabled until the selected first-party native analyser successfully returns an identity consistent with that candidate. Only that native proof promotes the volume to a write-capable GUI state; the filesystem worker still repeats its own target/format preflight before mutation.
+Linux/libblkid metadata and GPT labels may choose a candidate parser, but they never authorise a write. A physical volume starts with new layout operations disabled until the selected first-party native analyser successfully returns an identity consistent with that candidate. Only that native proof promotes the volume to a new-layout GUI state; the filesystem worker still repeats its own target/format preflight before mutation. Recovery is admitted separately when the user-specific persistent journal exists. It must reach the native recovery validator even if an interrupted source cannot be analysed: that validator checks the journal's format, target identity/capacity, staged bytes and transaction phase before any write. A discovery hint cannot substitute for those checks.
 
 ## Filesystem engine contract
 
@@ -111,7 +111,7 @@ The project assumes the kernel, libc, required libraries and storage hardware ho
 
 ## Common
 
-`shared/infiltratr-common` is pinned to Libraries 1.19.38 at exact commit `7070c5812b50821fd7580101cb2289a3184f6b2c`.
+`shared/infiltratr-common` is pinned to Libraries 1.19.46 at exact commit `fc2c72cb038a8e4c1e0bc62145adf533fbfd7923`.
 
 Common is authoritative for reusable mechanisms whose semantics are genuinely generic. If Defragmenter has a stronger implementation of a generic primitive, the preferred direction is to improve Common until its contract preserves that correctness, performance and resilience, then remove the local duplicate.
 

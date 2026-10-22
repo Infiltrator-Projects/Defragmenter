@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased
+## 1.8.0-271 — 2026-10-23
+
+- Admit GUI Recover from an existing persistent journal even when interrupted source metadata cannot pass analysis; native journal, target, stage and phase validation remain mandatory.
+- Verify Btrfs primary-superblock and consumed-tree CRC32C checksums before reporting exact allocation. Unknown checksum algorithms are explicitly unsupported.
+- Keep every map pixel at one or more whole native allocation units, including FAT clusters. Remove magnification and sector expansion; share exact integer density geometry between painting and captions.
+- Observe APT by the Debian package identity and require the qualified SHA-256 in both catalogue and package index. Exercise the real observer with valid, stale and digest-mismatched fixtures.
+- Align maintained Common documentation with the actual 1.19.46 pin and clarify shared font-cache ownership and canonical alpha update behaviour.
+
+## 1.8.0-270 — 2026-10-18
 
 - Update Defragmenter's copied native-font bootstrap to Libraries 1.19.58, using the newer version 1.010 Title fonts. Reuse the verified InfiltratorOS seed or a pinned SHA-verified source; do not recreate the legacy three resource filenames.
 - The font-installer-only source delta is now documented in the incremental safety review; future releases still require the full independent qualification gates.

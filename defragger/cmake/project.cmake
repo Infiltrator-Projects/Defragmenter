@@ -196,6 +196,7 @@ target_link_libraries(defragmenter-core PUBLIC InfiltratrCommon::Common)
 # mutation remain in the existing native C engines.
 add_library(defragmenter-runtime-cpp STATIC
     native/desktop_live_map.cpp
+    native/desktop_map_geometry.cpp
     native/desktop_policy.cpp
     native/helper_policy.cpp
     native/json.cpp

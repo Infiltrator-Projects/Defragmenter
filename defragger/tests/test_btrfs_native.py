@@ -20,6 +20,8 @@ WORKER = Path(os.environ.get(
 ))
 FIXTURE = ROOT / "tests" / "make_btrfs_fixture.py"
 MAPPER = BUILD / "defragmenter-mapper"
+sys.path.insert(0, str(ROOT / "tests"))
+import make_btrfs_fixture as fixture  # noqa: E402
 
 
 def run(*args: object, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -118,6 +120,44 @@ def test_unsupported_layouts_fail_closed(work: Path) -> None:
     assert "striped Btrfs profiles" in completed.stderr
 
 
+def test_metadata_checksums_fail_closed(work: Path) -> None:
+    for index, offset in enumerate((
+        fixture.SUPER, fixture.CHUNK_TREE, fixture.ROOT_TREE,
+        fixture.EXTENT_TREE, fixture.FS_TREE,
+    )):
+        image = work / f"bad-checksum-{index}.img"
+        make(image)
+        with image.open("r+b") as stream:
+            stream.seek(offset)
+            old = stream.read(1)
+            stream.seek(offset)
+            stream.write(bytes([old[0] ^ 1]))
+        before = hashlib.sha256(image.read_bytes()).digest()
+        for command in (("analyse-json", image), ("map", image, "--cells", "8")):
+            failed = run(*command, check=False)
+            assert failed.returncode != 0 and "checksum" in failed.stderr, (
+                offset, command, failed.returncode, failed.stdout, failed.stderr)
+        mapped = subprocess.run(
+            [str(MAPPER), str(image), "--fstype", "btrfs", "--cells", "8"],
+            capture_output=True, text=True, check=False,
+        )
+        assert mapped.returncode != 0 and "checksum" in mapped.stderr
+        assert not mapped.stdout.strip()
+        assert hashlib.sha256(image.read_bytes()).digest() == before
+
+    image = work / "unsupported-checksum.img"
+    make(image)
+    with image.open("r+b") as stream:
+        stream.seek(fixture.SUPER)
+        superblock = bytearray(stream.read(4096))
+        superblock[196:198] = fixture.le16(1)
+        fixture.checksum(superblock)
+        stream.seek(fixture.SUPER)
+        stream.write(superblock)
+    failed = run("map", image, "--cells", "8", check=False)
+    assert failed.returncode != 0 and "CRC32C" in failed.stderr
+
+
 def payload(path: Path) -> bytes:
     data = path.read_bytes()
     return b"A" * 4096 + b"B" * 4096
@@ -205,6 +245,7 @@ def main() -> None:
         test_native_mapper_contract(work)
         test_malformed_metadata_fails_closed(work)
         test_unsupported_layouts_fail_closed(work)
+        test_metadata_checksums_fail_closed(work)
         test_native_writer(work)
         test_recovery(work)
     print("native Btrfs allocation/fragmentation/writer/recovery tests passed")

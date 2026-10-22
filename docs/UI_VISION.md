@@ -17,15 +17,16 @@ is contemporary GTK rather than a retro imitation.
 ## Visual direction
 
 - The disk map is a **continuous pixel raster**, not a visible square-cell grid.
-  The complete analysed address space fills the complete drawing surface.
-  Left-to-right and then top-to-bottom always advances monotonically through
-  physical disk order. If the canvas has more device pixels than analysed
-  storage units, the same physical unit or analyser cell is magnified across
-  adjacent pixels; if storage units outnumber pixels, adjacent physical ranges
-  are combined in order. Repeated pixels are visual magnification only and do
-  not imply invented filesystem detail. FAT may use validated sectors beneath
-  an exact cluster cell, but no renderer may split an already-aggregated source
-  cell into made-up storage states. The renderer must never use Hilbert,
+  Every painted device pixel represents at least one whole physical storage
+  unit. Left-to-right and then top-to-bottom advances monotonically through
+  physical disk order. When units outnumber pixels, adjacent ranges combine
+  in order; when the canvas exceeds the available detail, surplus canvas stays
+  unused. No unit or analyser cell is magnified across pixels to fill space.
+  The caption states the actual integer unit count or range per mapped pixel.
+  Units are the native analyser's allocation units, including FAT clusters;
+  clusters are never expanded into sector pixels to fill the canvas. No
+  renderer may subdivide an aggregated source cell into made-up storage states.
+  The renderer must never use Hilbert,
   Morton/Z-order, visible cell borders or interpolation that blurs category
   boundaries.
 - The main window uses a graphical navigation rail, a selected-volume hero card,

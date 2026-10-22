@@ -69,6 +69,36 @@
     (BTRFS_BLOCK_GROUP_RAID0 | BTRFS_BLOCK_GROUP_RAID10 | \
      BTRFS_BLOCK_GROUP_RAID5 | BTRFS_BLOCK_GROUP_RAID6)
 
+/* CRC32C covers bytes after the 32-byte checksum field. Analysis and
+ * mutation share this verifier; unchecked metadata cannot be called exact. */
+static uint32_t btrfs_crc32c(const uint8_t *data, size_t length)
+{
+    uint32_t crc = UINT32_MAX;
+    for (size_t index = 0U; index < length; ++index) {
+        crc ^= data[index];
+        for (unsigned bit = 0U; bit < 8U; ++bit) {
+            const uint32_t mask = (uint32_t)(0U - (crc & 1U));
+            crc = (crc >> 1U) ^ (UINT32_C(0x82f63b78) & mask);
+        }
+    }
+    return ~crc;
+}
+
+static bool btrfs_checksum_valid(const uint8_t *block, size_t length)
+{
+    if (length < 32U)
+        return false;
+    return infiltratr_load_le32(block) ==
+           btrfs_crc32c(block + 32U, length - 32U);
+}
+
+static void btrfs_checksum_store(uint8_t *block, size_t length)
+{
+    memset(block, 0, 32U);
+    infiltratr_store_le32(block,
+                          btrfs_crc32c(block + 32U, length - 32U));
+}
+
 typedef struct {
     int fd;
     uint64_t size;
@@ -659,6 +689,11 @@ static int tree_walk(const Reader *reader, const ChunkVec *chunks, uint64_t devi
                                  error, error_size) != 0 ||
             read_exact(reader, physical, raw, node_size, error, error_size) != 0)
             goto done;
+        if (!btrfs_checksum_valid(raw, node_size)) {
+            set_error(error, error_size,
+                      "Btrfs tree-block CRC32C checksum is invalid");
+            goto done;
+        }
         if (infiltratr_load_le64(raw + 48U) != current.logical) {
             set_error(error, error_size, "Btrfs tree-block bytenr mismatch");
             goto done;
@@ -976,13 +1011,11 @@ static int scan_filesystems(const Reader *reader, const ChunkVec *chunks, uint64
         analysis->filesystem_roots_scanned++;
         ItemVec items = {0};
         U64Vec blocks = {0};
-        char local_error[256] = {0};
         if (tree_walk(reader, chunks, devid, node_size, record->bytenr, record->level,
-                      &items, &blocks, local_error, sizeof(local_error)) != 0) {
-            analysis->malformed_items++;
+                      &items, &blocks, error, error_size) != 0) {
             item_vec_free(&items);
             free(blocks.items);
-            continue;
+            return -1;
         }
         analysis->filesystem_tree_blocks += (uint64_t)blocks.count;
         if (scan_filesystem_tree(&items, chunks, devid, analysis->total_bytes,
@@ -1054,6 +1087,17 @@ int btrfs_analyse(const char *path, BtrfsAnalysis *analysis,
         goto done;
     if (memcmp(superblock + 0x40U, "_BHRfS_M", 8U) != 0) {
         set_error(error, error_size, "not a Btrfs volume");
+        goto done;
+    }
+
+    if (infiltratr_load_le16(superblock + 196U) != 0U) {
+        set_error(error, error_size,
+                  "exact Btrfs analysis supports CRC32C metadata checksums only");
+        goto done;
+    }
+    if (!btrfs_checksum_valid(superblock, sizeof(superblock))) {
+        set_error(error, error_size,
+                  "Btrfs superblock CRC32C checksum is invalid");
         goto done;
     }
 
@@ -1168,6 +1212,11 @@ int btrfs_analyse(const char *path, BtrfsAnalysis *analysis,
     if (scan_filesystems(&reader, &chunks, devid, node_size, &roots,
                          analysis, &fragmented, error, error_size) != 0)
         goto done;
+    if (analysis->malformed_items != 0U) {
+        set_error(error, error_size,
+                  "Btrfs filesystem tree contains malformed allocation items");
+        goto done;
+    }
     range_merge(&fragmented);
 
     analysis->chunk_count = chunks.count;
@@ -1309,34 +1358,6 @@ typedef struct {
     WriterFileVec files;
 } WriterModel;
 
-static uint32_t writer_crc32c(const uint8_t *data, size_t length)
-{
-    uint32_t crc = UINT32_MAX;
-    for (size_t index = 0U; index < length; ++index) {
-        crc ^= data[index];
-        for (unsigned bit = 0U; bit < 8U; ++bit) {
-            const uint32_t mask = (uint32_t)(0U - (crc & 1U));
-            crc = (crc >> 1U) ^ (UINT32_C(0x82f63b78) & mask);
-        }
-    }
-    return ~crc;
-}
-
-static bool writer_checksum_valid(const uint8_t *block, size_t length)
-{
-    if (length < 32U)
-        return false;
-    return infiltratr_load_le32(block) ==
-           writer_crc32c(block + 32U, length - 32U);
-}
-
-static void writer_checksum_store(uint8_t *block, size_t length)
-{
-    memset(block, 0, 32U);
-    infiltratr_store_le32(block,
-                          writer_crc32c(block + 32U, length - 32U));
-}
-
 static int writer_key_compare_value(const Key *left, const Key *right)
 {
     if (left->objectid < right->objectid) return -1;
@@ -1398,7 +1419,7 @@ static int writer_leaf_load(const Reader *reader, const ChunkVec *chunks,
     int result = -1;
     if (read_exact(reader, physical, raw, node_size, error, error_size) != 0)
         goto done;
-    if (!writer_checksum_valid(raw, node_size)) {
+    if (!btrfs_checksum_valid(raw, node_size)) {
         set_error(error, error_size,
                   "Btrfs writer refuses a tree block with an invalid CRC32C checksum");
         goto done;
@@ -1507,7 +1528,7 @@ static int writer_leaf_write(const WriterModel *model, int fd,
                               (uint32_t)(cursor - BTRFS_HEADER_SIZE));
         infiltratr_store_le32(raw + pos + 21U, item->size);
     }
-    writer_checksum_store(raw, model->node_size);
+    btrfs_checksum_store(raw, model->node_size);
     const int rc =
         infiltratr_pwrite_full(fd, raw, model->node_size, leaf->physical);
     free(raw);
@@ -1778,7 +1799,7 @@ static int writer_validate_csum_tree(const WriterModel *model,
             const uint32_t expected =
                 infiltratr_load_le32(
                     item->data + (size_t)sector_index * 4U);
-            if (writer_crc32c(sector, model->sector_size) != expected) {
+            if (btrfs_crc32c(sector, model->sector_size) != expected) {
                 set_error(error, error_size,
                           "Btrfs data checksum mismatch at logical byte %" PRIu64,
                           logical);
@@ -1995,7 +2016,7 @@ static int writer_model_load(const char *path, WriterModel *model,
                    sizeof(model->superblock), error, error_size) != 0)
         goto fail;
     if (memcmp(model->superblock + 0x40U, "_BHRfS_M", 8U) != 0 ||
-        !writer_checksum_valid(model->superblock, BTRFS_SUPER_SIZE)) {
+        !btrfs_checksum_valid(model->superblock, BTRFS_SUPER_SIZE)) {
         set_error(error, error_size,
                   "Btrfs writer requires a checksum-valid primary superblock");
         goto fail;
@@ -2474,7 +2495,7 @@ static int writer_super_write(int stage_fd, WriterModel *model,
         uint8_t mirror[BTRFS_SUPER_SIZE];
         memcpy(mirror, updated, sizeof(mirror));
         infiltratr_store_le64(mirror + 48U, offset);
-        writer_checksum_store(mirror, sizeof(mirror));
+        btrfs_checksum_store(mirror, sizeof(mirror));
         if (infiltratr_pwrite_full(stage_fd, mirror, sizeof(mirror),
                                    offset) != 0) {
             set_error(error, error_size,

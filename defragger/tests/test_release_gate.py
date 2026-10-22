@@ -105,6 +105,74 @@ def _assert_release_intent_behaviour(intent: str) -> None:
         decision("true")
 
 
+def _assert_apt_observation_behaviour() -> None:
+    """Run the real observer against fixed catalogue/index responses."""
+    import gzip
+    import hashlib
+    import json
+    import os
+    import tempfile
+
+    version = _read(PROJECT_ROOT / "VERSION").strip()
+    with tempfile.TemporaryDirectory(prefix="defrag-apt-observer-") as temporary:
+        root = Path(temporary)
+        artifacts = root / "artifacts"
+        artifacts.mkdir()
+        control = root / "package" / "DEBIAN"
+        control.mkdir(parents=True)
+        (control / "control").write_text(
+            f"Package: defragmenter\nVersion: {version}\nArchitecture: amd64\n"
+            "Maintainer: Fixture <fixture@example.invalid>\n"
+            "Description: Release observer fixture\n", encoding="utf-8")
+        deb = artifacts / f"Defragmenter-{version}-amd64.deb"
+        subprocess.run(["dpkg-deb", "--build", str(control.parent), str(deb)],
+                       check=True, capture_output=True)
+        native = artifacts / f"Defragmenter-{version}-local-folder.run"
+        native.write_bytes(b"fixture native installer\n")
+        digest = hashlib.sha256(deb.read_bytes()).hexdigest()
+        (artifacts / "RELEASE_SHA256SUMS.txt").write_text("".join(
+            f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n"
+            for path in (deb, native)), encoding="utf-8")
+
+        commands = root / "bin"
+        commands.mkdir()
+        mocks = {
+            "curl": ("#!/bin/sh\ncase \"$*\" in\n"
+                     "*catalogue/apps.json*) cat \"$HAL_RELEASE_FIXTURE/catalogue.json\";;\n"
+                     "*Packages.gz*) cat \"$HAL_RELEASE_FIXTURE/Packages.gz\";;\n"
+                     "*) exit 2;;\nesac\n"),
+            # Only the retry clock is shortened. The real JSON, gzip, Debian
+            # identity, checksum and Packages parsers all run unmodified.
+            "seq": "#!/bin/sh\nprintf '1\\n'\n",
+            "sleep": "#!/bin/sh\nexit 0\n",
+        }
+        for name, body in mocks.items():
+            program = commands / name
+            program.write_text(body, encoding="utf-8")
+            program.chmod(0o755)
+        environment = dict(os.environ, PATH=str(commands) + os.pathsep + os.environ["PATH"],
+                           HAL_RELEASE_FIXTURE=str(root))
+
+        def observe(catalogue_version: str = version, index_version: str = version,
+                    catalogue_digest: str = digest, index_digest: str = digest) -> bool:
+            (root / "catalogue.json").write_text(json.dumps([{
+                "id": "defragmenter", "package": "defragmenter",
+                "version": catalogue_version, "sha256": catalogue_digest,
+            }]), encoding="utf-8")
+            (root / "Packages.gz").write_bytes(gzip.compress(
+                (f"Package: defragmenter\nVersion: {index_version}\n"
+                 f"SHA256: {index_digest}\n\n").encode()))
+            result = subprocess.run([str(RELEASE_SCRIPT), "wait-apt", str(artifacts)],
+                                    env=environment, capture_output=True, text=True, timeout=10)
+            return result.returncode == 0
+
+        assert observe(), "canonical package and exact digest must be accepted"
+        assert not observe(catalogue_version="0.0.0-1")
+        assert not observe(index_version="0.0.0-1")
+        assert not observe(catalogue_digest="0" * 64)
+        assert not observe(index_digest="0" * 64)
+
+
 def main() -> None:
     gate = _read(WORKFLOWS / "quality-gate.yml")
     release = _read(WORKFLOWS / "release.yml")
@@ -137,6 +205,7 @@ def main() -> None:
     intent = _step_containing(gate, "id: release_intent")
     assert "refs/tags/v" in intent
     _assert_release_intent_behaviour(intent)
+    _assert_apt_observation_behaviour()
     assert "GITHUB_OUTPUT" in intent
     assert "head_commit.message" not in gate
     assert "startsWith(" not in gate

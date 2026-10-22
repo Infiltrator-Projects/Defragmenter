@@ -3,6 +3,7 @@
 #include "desktop_policy.hpp"
 #include "desktop_live_map.hpp"
 #include "desktop_map_render.hpp"
+#include "desktop_map_geometry.hpp"
 #include "desktop_process_session.hpp"
 
 extern "C" {
@@ -1362,18 +1363,9 @@ private:
         const std::uint64_t width = static_cast<std::uint64_t>(std::max(1, allocation.width)) * scale;
         const std::uint64_t height = static_cast<std::uint64_t>(std::max(1, allocation.height)) * scale;
         const std::uint64_t display_pixels = std::max<std::uint64_t>(1U, width * height);
-        const auto geometry = defragger::desktop_map_display_geometry(map_data_, cells_);
-        if (geometry.allocation_units == 0U) return;
-        const std::uint64_t measured_units = geometry.exact_subunits ? geometry.total_display_units : geometry.allocation_units;
         std::string unit_label = "allocation units";
         std::string suffix;
-        if (geometry.exact_subunits) {
-            unit_label = geometry.display_unit_name;
-            if (geometry.display_unit_size != 0U)
-                suffix = " · " + bytes(geometry.display_unit_size) + (unit_label == "sectors" ? "/sector" : "/unit");
-            const std::uint64_t cluster_size = number(map_data_, "cluster_size");
-            if (cluster_size != 0U) suffix += " · " + bytes(cluster_size) + "/cluster";
-        } else if (map_data_.find("cluster_size") != nullptr && map_data_.find("data_clusters") != nullptr) {
+        if (map_data_.find("cluster_size") != nullptr && map_data_.find("data_clusters") != nullptr) {
             unit_label = "clusters";
             const std::uint64_t cluster_size = number(map_data_, "cluster_size");
             if (cluster_size != 0U) suffix = " · " + bytes(cluster_size) + "/cluster";
@@ -1385,23 +1377,16 @@ private:
             else if (unit == 4096U) unit_label = "4 KiB units";
             else if (unit != 0U) unit_label = bytes(unit) + " units";
         }
-        char density[64];
-        std::string relationship;
-        if (measured_units >= display_pixels) {
-            const double units_per_pixel = static_cast<double>(measured_units) / static_cast<double>(display_pixels);
-            if (units_per_pixel >= 100.0) g_snprintf(density, sizeof(density), "%.0f", units_per_pixel);
-            else if (units_per_pixel >= 10.0) g_snprintf(density, sizeof(density), "%.1f", units_per_pixel);
-            else g_snprintf(density, sizeof(density), "%.2f", units_per_pixel);
-            relationship = std::string(density) + " " + unit_label + " per display pixel";
-        } else {
-            const double pixels_per_unit = static_cast<double>(display_pixels) / static_cast<double>(measured_units);
-            if (pixels_per_unit >= 100.0) g_snprintf(density, sizeof(density), "%.0f", pixels_per_unit);
-            else if (pixels_per_unit >= 10.0) g_snprintf(density, sizeof(density), "%.1f", pixels_per_unit);
-            else g_snprintf(density, sizeof(density), "%.2f", pixels_per_unit);
-            relationship = std::string(density) + " display pixels per " +
-                (unit_label == "clusters" ? "cluster" : unit_label == "sectors" ? "sector" :
-                 unit_label == "allocation units" ? "allocation unit" : unit_label);
-        }
+        const auto raster = defragger::desktop_map_raster_geometry(
+            cells_, static_cast<std::size_t>(display_pixels));
+        if (raster.pixels == 0U) return;
+        std::string density = std::to_string(raster.minimum_units);
+        if (raster.maximum_units != raster.minimum_units)
+            density += "–" + std::to_string(raster.maximum_units);
+        if (raster.maximum_units == 1U && !unit_label.empty() && unit_label.back() == 's')
+            unit_label.pop_back();
+        const std::string relationship = density + " " + unit_label + " per mapped pixel";
+        if (raster.pixels < display_pixels) suffix += " · remaining canvas unused";
         const std::string caption = "Physical allocation raster · " + relationship + suffix;
         gtk_label_set_text(GTK_LABEL(summary_), caption.c_str());
     }
@@ -2004,7 +1989,7 @@ private:
     }
     static gboolean draw_map(GtkWidget* widget, cairo_t* cr, gpointer data) {
         auto* self = static_cast<Desktop*>(data);
-        return defragger::desktop_draw_map(widget, cr, self->map_data_, self->cells_, self->map_generation_);
+        return defragger::desktop_draw_map(widget, cr, self->cells_, self->map_generation_);
     }
 };
 } // namespace

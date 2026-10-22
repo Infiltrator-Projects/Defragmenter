@@ -51,9 +51,9 @@ The XFS metadata white-box suite includes the field-shaped allocation-tree press
 
 Destructive Test Media accounts for all 21 registered filesystem slots on every Build, Qualify and Verify pass. A filesystem that did not reach the populated build state is emitted as an explicit per-filesystem failure with its saved build diagnostic; it is never silently skipped and left at `Waiting`. UFS2 raw verification counts the retained boundary-sized files as well as the eight manifest targets and directory-stress files. Classic HFS host-generated media is normalised after population by reconciling the MDB free-block counter with the allocation bitmap before the unchanged strict production preflight. Btrfs live media is intentionally constructed as a 4 KiB single-device mixed-group, level-0 NODATACOW fixture with two separated extents per retained target file, while checksum-tree-protected and deeper/unsupported forms remain in white-box and fail-closed coverage. The ZFS live pool retains the full fragmented 200 MiB file workload while avoiding unrelated directory growth that would move the disposable pool outside the bounded exact-analysis topology.
 
-GUI contract tests treat typography as release behaviour rather than decoration. They verify that the main application and Test Media reference only the MB Corpo A/S families, that the package still installs the A Condensed, S Regular and S Bold font files, and that generic/system font fallbacks or a forced host monospace log cannot be silently reintroduced.
+GUI contract tests treat typography as release behaviour rather than decoration. The application and Test Media reference the MB Corpo A/S families; installation establishes the shared SHA-256-verified three-face native cache rather than shipping duplicate application font binaries. Generic/system font fallbacks or a forced host monospace log must not be silently introduced.
 
-Common-integration regressions bind CMake, the local installer and the submodule to the exact released Common 1.19.38 revision. They verify that C++ JSON real conversion uses Common's locale-independent parser, local allocation wrappers use Common checked size arithmetic, native recovery/relayout readers use Common's key=value parser, shared lexical path construction uses Common path contracts, and Test Media obtains typography/metrics and semantic palette roles through the native design API. The native GTK desktop also resolves Common's palette, typography and metrics API directly; there is no retained Python palette generator or compatibility UI to keep in sync. The font packager obtains its provenance from the pinned Common source. The installed application, filesystem I/O, mapping, mutation and GTK desktop are wholly native C/C++; Python remains only where independent fixture construction or black-box orchestration improves the evidence.
+Common-integration regressions bind CMake, the local installer and the submodule to the exact released Common 1.19.46 revision. They verify that C++ JSON real conversion uses Common's locale-independent parser, local allocation wrappers use Common checked size arithmetic, native recovery/relayout readers use Common's key=value parser, shared lexical path construction uses Common path contracts, and Test Media obtains typography/metrics and semantic palette roles through the native design API. The native GTK desktop also resolves Common's palette, typography and metrics API directly; there is no retained Python palette generator or compatibility UI to keep in sync. The font bootstrap is a reviewed copy of Libraries 1.19.58 with immutable InfiltratorOS asset provenance; that separate bootstrap revision does not change the compiled Common 1.19.46 pin. The installed application, filesystem I/O, mapping, mutation and GTK desktop are wholly native C/C++; Python remains only where independent fixture construction or black-box orchestration improves the evidence.
 
 Branding validation is limited to the contracts the gate actually checks. Packaging/build tests exercise the canonical icon source through the Debian/local-install paths, the native desktop uses deterministic installed/private icon lookup, and the desktop file preserves the `io.github.defragmenter`/`StartupWMClass` identity. The project does not claim a separate byte-for-byte PNG parser/CRC oracle where none is maintained.
 
@@ -96,3 +96,31 @@ NTFS qualification additionally covers an ordinary named nonresident alternate d
 UFS qualification includes sparse regular-file relocation: holes remain logical holes while allocated fragment/block references are packed, fragment-sized tails remain valid, and both Defragment and exact 10% Growth Defrag independently reopen and verify the result.
 
 Optimized qualification retains executable checks in the desktop/presentation regression paths. These checks report a failing expression and terminate unsuccessfully independently of `NDEBUG`; Release compilation cannot silently turn the suite into a successful no-op.
+
+## Recovery admission and truthful map regressions — 2026-10-23
+
+Desktop policy tests admit Recover for a newly discovered writable, offline
+volume with an existing journal while keeping new layout operations disabled
+until native analysis qualifies them. Missing journals, mounted targets and
+read-only targets remain refused. An APFS transaction regression retains a
+real verified stage and committing journal, copies only a source prefix to
+model interrupted commit, proves normal analysis rejects the inconsistent
+metadata, and verifies native recovery restores the exact payload and layout.
+
+Btrfs analysis verifies CRC32C on the primary superblock and every tree block
+it consumes. Corrupt-checksum fixtures exercise the worker and normal mapper;
+unknown checksum algorithms are explicitly refused rather than labelled exact.
+The writer and analyser use the same checksum implementation. Structural
+malformation fixtures retain valid checksums so geometry validation remains
+independently exercised.
+
+Pure native raster geometry tests cover small volumes, aggregated cells,
+native FAT clusters, short final spans and compression into fewer pixels.
+Painting and captions share this geometry: no storage unit is magnified, no
+aggregated cell is subdivided, and every mapped pixel covers whole units.
+
+The release observer regression executes the actual shell procedure with
+fixed HTTP responses and a real Debian fixture. It accepts the canonical
+package only when both catalogue and Packages index match the qualified
+version and SHA-256, and rejects stale versions or altered digests. Its retry
+clock is shortened in the fixture; the parsers and identity checks are real.

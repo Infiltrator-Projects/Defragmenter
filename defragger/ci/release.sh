@@ -271,28 +271,32 @@ wait_for_apt() {
 
     local catalogue='https://infiltrator-projects.github.io/Infiltrator-Repository/catalogue/apps.json'
     local packages='https://infiltrator-projects.github.io/Infiltrator-Repository/dists/beta/main/binary-amd64/Packages.gz'
-    local attempt cache_key catalogue_version apt_match
+    local attempt cache_key catalogue_version apt_match expected_digest
+    expected_digest=$(sha256sum "$RELEASE_DEB" | awk '{print $1}')
 
     for attempt in $(seq 1 20); do
         cache_key="${GITHUB_RUN_ID:-manual}-${attempt}"
         catalogue_version=$(curl -fsSL --retry 2 --retry-delay 1 \
             -H 'Cache-Control: no-cache' "${catalogue}?release=${cache_key}" 2>/dev/null \
-            | jq -r '.[] | select(.id == "defragger") | (.version // empty)' \
+            | jq -r --arg package "$RELEASE_PACKAGE" --arg digest "$expected_digest" \
+                '.[] | select(.package == $package and .sha256 == $digest) | (.version // empty)' \
             | head -n1 || true)
 
         apt_match=false
         if curl -fsSL --retry 2 --retry-delay 1 \
             -H 'Cache-Control: no-cache' "${packages}?release=${cache_key}" 2>/dev/null \
             | gzip -dc 2>/dev/null \
-            | awk -v package="$RELEASE_PACKAGE" -v version="$RELEASE_VERSION" '
+            | awk -v package="$RELEASE_PACKAGE" -v version="$RELEASE_VERSION" \
+                  -v digest="$expected_digest" '
                 BEGIN { RS=""; FS="\n"; found=0 }
                 {
-                    p=""; v=""
+                    p=""; v=""; d=""
                     for (i=1; i<=NF; ++i) {
                         if ($i ~ /^Package: /) { p=substr($i,10) }
                         if ($i ~ /^Version: /) { v=substr($i,10) }
+                        if ($i ~ /^SHA256: /) { d=substr($i,9) }
                     }
-                    if (p == package && v == version) { found=1 }
+                    if (p == package && v == version && d == digest) { found=1 }
                 }
                 END { exit(found ? 0 : 1) }
             '; then

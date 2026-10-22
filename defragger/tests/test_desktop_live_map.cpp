@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "desktop_live_map.hpp"
+#include "desktop_map_geometry.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -60,4 +61,28 @@ int main() {
         desktop_live_cells(map, cells, Json::parse(R"({"cells":[{"i":0,"start":5,"end":9}]})"));
         CHECK(false);
     } catch (const std::runtime_error&) { CHECK(Json(cells).dump() == Json(before).dump()); }
+
+    const auto grouped = Json::parse(R"([
+        {"start":0,"end":5}, {"start":6,"end":11}, {"start":12,"end":13}
+    ])").array();
+    auto raster = desktop_map_raster_geometry(grouped, 100U);
+    CHECK(raster.pixels == 3U);
+    CHECK(raster.minimum_units == 2U && raster.maximum_units == 6U);
+    raster = desktop_map_raster_geometry(grouped, 2U);
+    CHECK(raster.pixels == 2U);
+    CHECK(raster.minimum_units == 6U && raster.maximum_units == 8U);
+    CHECK(desktop_map_raster_geometry(grouped, 0U).pixels == 0U);
+
+    const auto clusters = Json::parse(R"([
+        {"start":2,"end":2}, {"start":3,"end":3}
+    ])").array();
+    // FAT's validated cluster cells remain one cluster per pixel even when
+    // the physical canvas has room for many more sector-sized pixels.
+    raster = desktop_map_raster_geometry(clusters, 100U);
+    CHECK(raster.pixels == 2U);
+    CHECK(raster.minimum_units == 1U && raster.maximum_units == 1U);
+    raster = desktop_map_raster_geometry(clusters, 1U);
+    CHECK(raster.pixels == 1U);
+    CHECK(raster.minimum_units == 2U && raster.maximum_units == 2U);
+    CHECK(desktop_map_raster_geometry({}, 100U).pixels == 0U);
 }
