@@ -2,11 +2,11 @@
 
 Status: **complete**
 
-Completed: 2026-10-16
+Completed: 2026-10-23
 
 Applies to: audited source and release-governance baselines below
-Audited source commit: c144ebda5d8eb646da813f68223bd2b9b1529f83
-Audited release-governance commit: aaad4c4ed07f71a055938ba00d8fc75f05513741
+Audited source commit: 62de3845c5b7d685ffa39b099743287a707f461b
+Audited release-governance commit: 62de3845c5b7d685ffa39b099743287a707f461b
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
@@ -87,3 +87,51 @@ baseline is unchanged. The audited filesystem writers, analysis engines,
 privilege boundaries, on-disk formats, durable journal and recovery logic
 have not changed. Mandatory post-audit qualification must still pass
 before any new release can be published.
+
+## Recovery, analysis and raster correctness review — 2026-10-23
+
+The current baselines cover the reviewed corrections from the 1.8.0-270
+release-readiness review. No writer placement algorithm, on-disk journal schema,
+staging identity, privilege namespace or durable transaction phase has changed.
+
+Recovery admission is separate from new-layout admission. A restarted desktop
+may offer Recover for a supported offline writable target with an existing
+user-specific journal even when the source cannot pass normal analysis. This
+only reaches the existing native validator: journal magic, operation/phase,
+stable target identity/capacity and verified staged bytes remain authoritative.
+Normal Defragment and Growth Defrag still require native identity and exact
+writer qualification. The APFS regression demonstrates a real committing
+journal and verified stage with inconsistent partially copied source metadata;
+analysis rejects that image and Recover restores its exact payload and layout.
+
+Btrfs read-only analysis now verifies the CRC32C primary superblock and every
+consumed tree block using the same checksum code as the qualified writer.
+Failed filesystem-tree walks and malformed allocation items propagate failure
+rather than becoming a plausible exact result. Other checksum algorithms are
+explicitly unsupported. The malformed structural fixture recomputes its CRC,
+so its geometry test still reaches and exercises the independent structural
+validator rather than merely duplicating checksum rejection.
+
+The allocation raster consumes whole native analyser cells in physical order.
+Small volumes use no more pixels than their proven allocation cells; FAT
+clusters are not expanded into sector pixels. Larger inputs combine adjacent
+cells. Painting and the integer-density caption share one small pure geometry
+function; repeated-pixel and sector-expansion machinery has been removed.
+
+The APT observer selects the Debian package identity from the qualified
+artifact instead of the obsolete catalogue ID. Both catalogue and Packages
+index must contain the qualified version and SHA-256. The real observer is
+executed against a real Debian fixture with valid, stale and altered-digest
+HTTP responses; only its retry clock is shortened. The quality preflight now
+names the additional parser prerequisites used by that behavioural test.
+
+Maintained documentation identifies the actual Libraries 1.19.46 gitlink and
+separately identifies the reviewed 1.19.58 font bootstrap. Historical release
+notes retain their original dependency identities.
+
+Local warnings-as-errors builds and the available native/transaction/parser
+regressions passed. All locally runnable sanitizer cases passed; this container
+exposes no physical partition nodes and cannot create the GTK X server sockets.
+Those environment limits do not waive the permanent full-suite, GTK smoke,
+ASan/UBSan, audit-drift, exact-artifact installation and publication gates. The
+exact 1.8.0-271 release head must pass them before publication is accepted.
