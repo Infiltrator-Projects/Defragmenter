@@ -5,7 +5,7 @@ Status: **complete**
 Completed: 2026-10-23
 
 Applies to: audited source and release-governance baselines below
-Audited source commit: 498d4c26ef8a3741d0573c90ab62e22dd53d9bb0
+Audited source commit: 9b3ba2cf4b1560bd0c31051a199cb13317592022
 Audited release-governance commit: 62de3845c5b7d685ffa39b099743287a707f461b
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
@@ -145,3 +145,5 @@ Fifteen remaining host-created slots now use bounded first-party raw C codecs: F
 Target formatter/mount/pool-tool paths, mutable expected-list state, unused allocator-anchor profiles and optional host-package hints have been removed. Creator readiness uses the canonical slot registry and correctly identifies ZFS as built in. UFS2 remains bound exclusively to the package-owned private C helper; no host makefs is accepted. The production external-tool regression now covers Test Media. Canonical large-file sizes remain 4, 6, 10, 16, 26, 34, 44 and 60 MiB, plus the eight boundary cases. OFS/FFS directory stress and the existing SFS/PFS3/APFS contracts remain qualified separately. The new Btrfs fixture uses 16 KiB equal sector/leaf geometry within the existing level-zero writer contract. ZFS and swap remain analysis-only.
 
 Local optimized fixture qualification exercised every additional file-bearing fixture through native creation, exact analysis, complete payload verification and deliberate corruption rejection. Both native relocation modes passed for every additional write-capable format, including the full 200 MiB corpus and tails. The strict state/corpus regression executes the production parser and verification accounting. Mandatory post-audit qualification still requires the exact versioned release head to pass the complete 48-case self-hosted suite, ASan/UBSan, GTK smoke, artifact installation and immutable exact-byte publication. No existing writer qualification, recovery phase, audit-drift rule or release assertion is relaxed.
+
+The 1.8.0-272 final-run follow-up reviews a test-orchestration-only change after both self-hosted lanes exhausted the uniform 240-second command budget in full-corpus EXT2 relocation. Mutation commands now have a finite 900-second budget; creation, analysis and verification retain 240 seconds. The complete 200 MiB corpus, both relocation modes, byte-for-byte oracle, corruption rejection, production durability barriers and unchanged 45-minute job limits remain mandatory. This timing allowance does not establish a passing result: the corrected exact head must still qualify before publication.

@@ -7,6 +7,8 @@
 - Verify every expected file and every logical byte after relocation, including all UFS boundary payloads. Preserve the eight varied large files totalling 200 MiB.
 - Add native fixture qualification through both relocation modes and deliberate payload-corruption rejection, plus strict state/corpus regressions. Existing writer admission, recovery contracts and the analysis-only ZFS/swap scope remain unchanged.
 
+- Allow fifteen minutes for full-corpus relocation commands on slower qualification storage; retain shorter read/check limits and all existing correctness and publication gates.
+
 ## 1.8.0-271 — 2026-10-23
 
 - Admit GUI Recover from an existing persistent journal even when interrupted source metadata cannot pass analysis; native journal, target, stage and phase validation remain mandatory.
