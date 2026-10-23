@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.8.0-272 — 2026-10-23
+
+- Make all 21 Test Media slots first-party native C creators with raw verification, including ZFS. Remove host filesystem formatters, target mounts, pool-tool orchestration and optional host-package hints.
+- Replace mutable saved payload lists with schema 3 state and a compiled complete-corpus contract. Missing or malformed state fails closed; schema 2 test disks require rebuilding.
+- Verify every expected file and every logical byte after relocation, including all UFS boundary payloads. Preserve the eight varied large files totalling 200 MiB.
+- Add native fixture qualification through both relocation modes and deliberate payload-corruption rejection, plus strict state/corpus regressions. Existing writer admission, recovery contracts and the analysis-only ZFS/swap scope remain unchanged.
+
 ## 1.8.0-271 — 2026-10-23
 
 - Admit GUI Recover from an existing persistent journal even when interrupted source metadata cannot pass analysis; native journal, target, stage and phase validation remain mandatory.
