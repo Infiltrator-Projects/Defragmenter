@@ -19,9 +19,10 @@ BUILD = Path(sys.argv[1]).resolve()
 FIXTURE = BUILD / "defragmenter-test-media-raw-test"
 
 
-def run(*args: object, fails: bool = False) -> subprocess.CompletedProcess[str]:
+def run(*args: object, fails: bool = False,
+        timeout: int = 240) -> subprocess.CompletedProcess[str]:
     result = subprocess.run([str(a) for a in args], capture_output=True, text=True,
-                            timeout=240)
+                            timeout=timeout)
     if (result.returncode != 0) != fails:
         raise AssertionError(f"{args}\n{result.stdout}\n{result.stderr}")
     return result
@@ -98,8 +99,11 @@ def qualify(fs: str, parent: Path) -> None:
                   f"defragmenter-{fs}-worker")
         for operation in ("defrag", "growth-defrag"):
             journal = work / f"{operation}.journal"
+            # These full-corpus writes retain the production durability barriers.
+            # Allow slower runner storage fifteen minutes per operation while
+            # keeping creation, analysis and verification on the shorter budget.
             run(BUILD / worker, operation, image, "--write", "--confirm", image,
-                "--journal", journal)
+                "--journal", journal, timeout=900)
             assert not journal.exists(), (fs, operation)
             run(FIXTURE, "verify", fs, image)
             after = mapping(image, fs)
