@@ -5,8 +5,8 @@ Status: **complete**
 Completed: 2026-10-23
 
 Applies to: audited source and release-governance baselines below
-Audited source commit: 9b3ba2cf4b1560bd0c31051a199cb13317592022
-Audited release-governance commit: 62de3845c5b7d685ffa39b099743287a707f461b
+Audited source commit: d89dff435d41eb36c2e2fec8d679f87f0d7d4ada
+Audited release-governance commit: d89dff435d41eb36c2e2fec8d679f87f0d7d4ada
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
@@ -147,3 +147,11 @@ Target formatter/mount/pool-tool paths, mutable expected-list state, unused allo
 Local optimized fixture qualification exercised every additional file-bearing fixture through native creation, exact analysis, complete payload verification and deliberate corruption rejection. Both native relocation modes passed for every additional write-capable format, including the full 200 MiB corpus and tails. The strict state/corpus regression executes the production parser and verification accounting. Mandatory post-audit qualification still requires the exact versioned release head to pass the complete 48-case self-hosted suite, ASan/UBSan, GTK smoke, artifact installation and immutable exact-byte publication. No existing writer qualification, recovery phase, audit-drift rule or release assertion is relaxed.
 
 The 1.8.0-272 final-run follow-up reviews a test-orchestration-only change after both self-hosted lanes exhausted the uniform 240-second command budget in full-corpus EXT2 relocation. Mutation commands now have a finite 900-second budget; creation, analysis and verification retain 240 seconds. The complete 200 MiB corpus, both relocation modes, byte-for-byte oracle, corruption rejection, production durability barriers and unchanged 45-minute job limits remain mandatory. This timing allowance does not establish a passing result: the corrected exact head must still qualify before publication.
+
+## Bounded independent full-corpus qualification — 2026-10-23
+
+The 1.8.0-272 full-corpus regression passed FAT12, FAT16, FAT32, exFAT, NTFS and EXT2 but exhausted the 1,800-second aggregate test limit before reaching the remaining filesystem cases. Both mandatory lanes failed closed and correctly prevented publication. Extending only the per-command deadline did not solve that serial-orchestration bottleneck.
+
+The reviewed source at `d89dff435d41eb36c2e2fec8d679f87f0d7d4ada` replaces the serial sixteen-format Python driver invocation with one separately named CTest case per filesystem. Each case still executes the unchanged first-party creator, complete expected-file and byte oracle, exact native analyser, both actual relocation modes where supported, independently reopened postconditions and intentional live-payload corruption rejection. ZFS and swap retain their bounded analysis-only contracts. All sixteen cases use independent temporary images and journals, and the self-hosted quality and sanitizer lanes run them with bounded four-way concurrency after their remaining native/architecture/safety tests. Each case retains its 1,800-second watchdog; both job-level 45-minute bounds and unchanged exact-source/artifact publication gates remain in force.
+
+The source and the single affected workflow are audited at the same commit above; no filesystem writer, transaction, privilege, format codec, recovery policy or release-publisher implementation has changed. This audit records the justified reorganization of qualification, not a claim that the new exact release head has already passed. Publication still requires successful complete normal and sanitizer lanes, artifact installation, release-history validation and checksum-bound publication. Physical power-loss testing remains independent environment-dependent evidence.

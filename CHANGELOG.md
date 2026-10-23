@@ -8,6 +8,7 @@
 - Add native fixture qualification through both relocation modes and deliberate payload-corruption rejection, plus strict state/corpus regressions. Existing writer admission, recovery contracts and the analysis-only ZFS/swap scope remain unchanged.
 
 - Allow fifteen minutes for full-corpus relocation commands on slower qualification storage; retain shorter read/check limits and all existing correctness and publication gates.
+- Split the 16 native Test Media filesystem fixtures into independent CTest cases with four-way bounded CI scheduling; retain each full corpus, both supported relocation modes, corruption rejection, 30-minute per-format watchdog and 45-minute self-hosted job limits.
 
 ## 1.8.0-271 — 2026-10-23
 
