@@ -146,3 +146,9 @@ GitHub Actions only orchestrates checkout, permissions, artefact handoff and ord
 - [Validation](VALIDATION.md) — evidence classes, destructive-path validation and release criteria.
 - [Audit status](AUDIT_STATUS.md) — current write-safety case and exact audited baselines.
 - [References](REFERENCES.md) — filesystem/platform specifications and engineering sources.
+
+## Test Media ownership
+
+The canonical 21-slot specification remains the single creator/readiness registry. Test Media constructs bounded qualification fixtures in first-party C and verifies raw bytes through the current on-disk metadata. The raw fixture layer owns the shared corpus, exact I/O and complete-file verification accounting; each codec owns only its filesystem records and allocation geometry. Existing public native readers are reused where their contracts fit. No fixture adds an alternative mutation engine or changes writer admission. UFS2 retains a package-owned private C helper, with ordinary source files and no mounted UFS dependency. Host formatter, mount and pool-tool paths have been removed.
+
+Protected schema 3 state binds disk identity and one build result per slot. Expected file identities, sizes and bytes are compiled policy, independent of mutable saved state and independent of the relocation engines. All expected files and all logical bytes must be covered exactly once for verification to succeed. Legacy schema 2 disks must be rebuilt. ZFS and swap remain analysis-only.

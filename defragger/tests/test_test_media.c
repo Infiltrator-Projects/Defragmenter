@@ -149,8 +149,6 @@ cleanup:
 static int test_amiga_formatters_and_payload(void) {
     char path[] = "/tmp/defragmenter-amiga-media.XXXXXX";
     const LdtmFragmentProfile tiny = {
-        .anchors = 0U,
-        .anchor_kib = 0U,
         .files = 2U,
         .chunks = 4U,
         .chunk_kib = 8U,
@@ -606,10 +604,12 @@ int main(void) {
     CHECK(ldtm_target_payload_bytes(ffs) == UINT64_C(200) * LDTM_MIB);
     CHECK(ldtm_target_payload_bytes(sfs) == UINT64_C(200) * LDTM_MIB);
     CHECK(ldtm_target_payload_bytes(pfs3) == UINT64_C(200) * LDTM_MIB);
-    CHECK(small.directory_initial == 128U && small.directory_second == 128U);
+    CHECK(ldtm_fragment_profile(ofs).directory_initial == 4096U &&
+          ldtm_fragment_profile(ffs).directory_second == 4096U);
+    CHECK(small.directory_initial == 0U && small.directory_second == 0U);
     CHECK(normal.files == LDTM_TARGET_FILE_COUNT && normal.chunks == 30U &&
-          normal.chunk_kib == 2048U && normal.directory_initial == 4096U &&
-          normal.directory_second == 4096U);
+          normal.chunk_kib == 2048U && normal.directory_initial == 0U &&
+          normal.directory_second == 0U);
     CHECK(ldtm_profile_file_chunks(&normal, 0U) == 2U &&
           ldtm_profile_file_chunks(&normal, 7U) == 30U &&
           ldtm_profile_file_bytes(&normal, 0U) == UINT64_C(4) * LDTM_MIB &&
@@ -640,7 +640,7 @@ int main(void) {
     CHECK(strcmp(ldtm_creator_program(ofs), "/usr/lib/defragmenter/test-media-mkfs-ofs") == 0);
     CHECK(strcmp(ldtm_creator_program(ffs), "/usr/lib/defragmenter/test-media-mkfs-ffs") == 0);
     CHECK(ldtm_creator_program(sfs) == NULL);
-    CHECK(strcmp(ldtm_creator_display_name(fat12), "mkfs.fat") == 0);
+    CHECK(strcmp(ldtm_creator_display_name(fat12), "Built-in native") == 0);
     CHECK(strcmp(ldtm_creator_display_name(ofs), "Built-in native") == 0);
     CHECK(strcmp(ldtm_creator_display_name(ffs), "Built-in native") == 0);
     CHECK(strcmp(ldtm_creator_display_name(sfs), "Built-in native") == 0);
@@ -652,12 +652,10 @@ int main(void) {
     CHECK(pfs3->creator == LDTM_CREATOR_PFS3 &&
           strstr(pfs3->note, "200 MiB heterogeneous") != NULL);
     CHECK(strcmp(ldtm_creator_program(ufs), "makefs") == 0);
-    CHECK(ufs->package_hint != NULL && strcmp(ufs->package_hint, "makefs") == 0);
     CHECK(strstr(ufs->note, "UFS2") != NULL &&
           strstr(ufs->note, "exact allocation/fragmentation") != NULL);
-    CHECK(zfs->package_hint != NULL && strcmp(zfs->package_hint, "zfsutils-linux") == 0);
-    CHECK(strstr(zfs->note, "feature-flags") != NULL &&
-          strstr(zfs->note, "optional features disabled") != NULL &&
+    CHECK(strstr(zfs->note, "First-party") != NULL &&
+          strstr(zfs->note, "legacy-version-28") != NULL &&
           strstr(zfs->note, "native exact analyser") != NULL);
     CHECK(fat12->size_mib == 255U);
     CHECK(fat16->size_mib == 2048U);

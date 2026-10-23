@@ -120,3 +120,5 @@ Defragmentation changes filesystem allocation metadata and data placement. Keep 
 Copyright © 1993-2026 Shannon Smith.
 
 Defragmenter first-party code, scripts, tests, packaging and documentation are licensed under the GNU General Public License version 3 or, at your option, any later version (`GPL-3.0-or-later`). The canonical licence text is `LICENSE`.
+
+Defragmenter Test Media includes first-party native creators and raw verification for all 21 slots. It builds the bounded qualification corpus without host filesystem formatters or target filesystem drivers. After upgrading from schema 2, rebuild an existing test disk before qualification or verification; schema 3 derives every expected payload from the compiled corpus.

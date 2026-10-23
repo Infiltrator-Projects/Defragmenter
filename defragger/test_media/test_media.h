@@ -40,13 +40,10 @@ typedef struct {
     uint32_t size_mib;
     uint32_t payload_mib;
     LdtmCreator creator;
-    const char *package_hint;
     const char *note;
 } LdtmFilesystemSpec;
 
 typedef struct {
-    uint32_t anchors;
-    uint32_t anchor_kib;
     uint32_t files;
     /* Maximum chunks in any target. Individual targets may be smaller. */
     uint32_t chunks;

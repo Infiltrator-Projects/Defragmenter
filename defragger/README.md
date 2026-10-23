@@ -56,7 +56,7 @@ Stop is cooperative and takes effect only at a filesystem-safe boundary.
 
 The package includes **Defragmenter Test Media**, a separate all-C GTK utility for manufacturing sacrificial test filesystems. It repeats destructive-target checks after privilege elevation and must never be pointed at a system disk or irreplaceable media.
 
-Formatting utilities used by Test Media are fixture-generation tools only; they are not part of production defragmentation. OFS/FFS, SFS, bounded PFS3 and bounded APFS qualification media are manufactured by first-party raw C creators.
+All 21 Test Media slots use first-party C creators and raw payload verification. Target construction and verification require no host filesystem formatters, mounted target filesystems or external filesystem drivers. The native-fixture regression runs both relocation modes and byte verification for the additional write-capable fixtures. Protected schema 3 state records disk identity and build results; expected payloads come from compiled corpus policy. Rebuild schema 2 test disks before qualification or verification. These bounded fixtures exercise the qualified native subsets and are not general-purpose filesystem formatters.
 
 ## Build and test
 

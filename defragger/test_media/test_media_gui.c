@@ -601,7 +601,7 @@ static gboolean confirmation_dialog(LdtmApp *app, const char *device)
 
 static void reset_filesystem_rows(LdtmApp *app)
 {
-    guint ready = 0U, package_missing = 0U, unavailable = 0U, manual = 0U;
+    guint ready = 0U, unavailable = 0U, manual = 0U;
     char summary[64];
     gtk_list_store_clear(app->filesystem_store);
     for (size_t index = 0U; index < ldtm_spec_count(); ++index) {
@@ -620,16 +620,9 @@ static void reset_filesystem_rows(LdtmApp *app)
         } else if (available) {
             availability = "Ready"; ++ready;
             (void)snprintf(detail, sizeof(detail), "%s", creator_detail);
-        } else if (spec->package_hint != NULL && *spec->package_hint != '\0') {
-            availability = "Optional package missing"; ++package_missing;
-            (void)snprintf(detail, sizeof(detail), "%s. Install package '%s' to enable this test slot.",
-                           creator_detail, spec->package_hint);
         } else {
-            availability = "No standard creator"; ++unavailable;
-            (void)snprintf(detail, sizeof(detail),
-                           "No supported creator is installed for this format. The slot is reserved and the rest of the build continues.%s%s",
-                           (spec->note != NULL && *spec->note != '\0') ? " " : "",
-                           spec->note != NULL ? spec->note : "");
+            availability = "Creator unavailable"; ++unavailable;
+            (void)snprintf(detail, sizeof(detail), "%s", creator_detail);
         }
         gtk_list_store_append(app->filesystem_store, &iter);
         gtk_list_store_set(app->filesystem_store, &iter,
@@ -651,8 +644,8 @@ static void reset_filesystem_rows(LdtmApp *app)
     (void)snprintf(summary, sizeof(summary), "%u / %zu", ready, ldtm_spec_count());
     gtk_label_set_text(GTK_LABEL(app->readiness_summary), summary);
     {
-        char *tip = g_strdup_printf("%u ready • %u optional package missing • %u unavailable • %u reserved",
-                                    ready, package_missing, unavailable, manual);
+        char *tip = g_strdup_printf("%u ready • %u unavailable • %u reserved",
+                                    ready, unavailable, manual);
         gtk_widget_set_tooltip_text(app->readiness_summary, tip);
         g_free(tip);
     }

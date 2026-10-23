@@ -27,12 +27,26 @@ FORBIDDEN_TOKENS = {
     "exfatfsck",
     "btrfs filesystem defragment",
     "losetup",
+    "mkfs.fat",
+    "mkfs.exfat",
+    "mkfs.ext2",
+    "mkfs.ext3",
+    "mkfs.ext4",
+    "mkfs.xfs",
+    "mkfs.btrfs",
+    "mkfs.hfsplus",
+    "mkfs.minix",
+    "mkntfs",
+    "mkswap",
+    "hformat",
 }
 
 # Multi-word tool commands must be recognised as argv/shell syntax rather than
 # arbitrary prose.  In particular, native diagnostics such as "Btrfs checksum"
 # must never be mistaken for an invocation of `btrfs check`.
 FORBIDDEN_PATTERNS = (
+    re.compile(r'["\']mount["\']\s*,'),
+    re.compile(r'["\'](?:zpool|zfs)["\']\s*,\s*["\'](?:create|import|mount|export)["\']'),
     re.compile(r'["\']btrfs["\']\s*,\s*["\']check["\']'),
     re.compile(r'["\']btrfs["\']\s*,\s*["\']filesystem["\']\s*,\s*["\']defragment["\']'),
     re.compile(r'\bbtrfs\s+check\b.*(?:subprocess|exec|spawn|system)', re.DOTALL),
@@ -43,6 +57,7 @@ PRODUCTION_ROOTS = [
     ROOT / "gui",
     ROOT / "src",
     ROOT / "packaging",
+    ROOT / "test_media",
 ]
 PRODUCTION_FILES = [
     ROOT / "CMakeLists.txt",

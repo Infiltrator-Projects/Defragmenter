@@ -23,6 +23,15 @@ set_source_files_properties(test_media/test_media_amiga_payload.c PROPERTIES
 
 add_library(defragmenter-test-media-core STATIC
     test_media/test_media_core.c
+    test_media/test_media_raw.c
+    test_media/test_media_raw_fat.c
+    test_media/test_media_raw_exfat.c
+    test_media/test_media_raw_unix.c
+    test_media/test_media_raw_mac.c
+    test_media/test_media_raw_ntfs.c
+    test_media/test_media_raw_xfs.c
+    test_media/test_media_raw_btrfs.c
+    test_media/test_media_raw_zfs.c
     test_media/test_media_worker.c
     test_media/test_media_reserved.c
     test_media/test_media_amiga.c
@@ -51,6 +60,9 @@ target_link_libraries(defragmenter-test-media-core PRIVATE
     defragmenter-affs-native defragmenter-sfs-native
     defragmenter-pfs3-native defragmenter-apfs-native
     defragmenter-ufs-native defragmenter-zfs-native)
+target_link_libraries(defragmenter-test-media-core PRIVATE
+    defragmenter-ext-native defragmenter-hfsplus-native
+    defragmenter-ntfs-native defragmenter-xfs-native)
 
 add_executable(defragmenter-test-media
     test_media/test_media_main.c
@@ -107,6 +119,17 @@ install(FILES packaging/io.github.defragmenter.TestMedia.desktop
         DESTINATION share/applications)
 
 if(BUILD_TESTING)
+    add_executable(defragmenter-test-media-raw-test tests/test_test_media_raw.c)
+    target_include_directories(defragmenter-test-media-raw-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/core")
+    target_compile_options(defragmenter-test-media-raw-test PRIVATE ${LD_WARNING_FLAGS})
+    target_compile_definitions(defragmenter-test-media-raw-test PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+    target_link_libraries(defragmenter-test-media-raw-test PRIVATE
+        defragmenter-test-media-core defragmenter-ufs-native)
+    add_test(NAME defragmenter-test-media-corpus-contract COMMAND defragmenter-test-media-raw-test)
+    add_test(NAME defragmenter-test-media-native-fixtures
+        COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_test_media_raw.py" "${CMAKE_BINARY_DIR}")
+    set_tests_properties(defragmenter-test-media-native-fixtures PROPERTIES TIMEOUT 1800)
     add_executable(defragmenter-test-media-gui-test
         tests/test_test_media_gui.c test_media/test_media_theme.c)
     target_include_directories(defragmenter-test-media-gui-test PRIVATE

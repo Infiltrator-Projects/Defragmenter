@@ -13,37 +13,45 @@
 #include <unistd.h>
 
 static const LdtmFilesystemSpec LDTM_SPECS[LDTM_SPEC_COUNT] = {
-    {"fat12", "LD_FAT12", 255U, 200U, LDTM_CREATOR_FAT12, "dosfstools",
-     "FAT12 uses the largest whole-MiB geometry that remains below the 4085-cluster FAT16 threshold; the standard 200 MiB corpus fits by using smaller temporary fragmentation anchors."},
-    {"fat16", "LD_FAT16", 2048U, 200U, LDTM_CREATOR_FAT16, "dosfstools", ""},
-    {"fat32", "LD_FAT32", 2048U, 200U, LDTM_CREATOR_FAT32, "dosfstools", ""},
-    {"exfat", "LD_EXFAT", 2048U, 200U, LDTM_CREATOR_EXFAT, "exfatprogs", ""},
-    {"ntfs", "LD_NTFS", 2048U, 200U, LDTM_CREATOR_NTFS, "ntfs-3g", ""},
-    {"ext2", "LD_EXT2", 2048U, 200U, LDTM_CREATOR_EXT2, "e2fsprogs", ""},
-    {"ext3", "LD_EXT3", 2048U, 200U, LDTM_CREATOR_EXT3, "e2fsprogs", ""},
-    {"ext4", "LD_EXT4", 2048U, 200U, LDTM_CREATOR_EXT4, "e2fsprogs", ""},
-    {"xfs", "LD_XFS", 2048U, 200U, LDTM_CREATOR_XFS, "xfsprogs", ""},
-    {"btrfs", "LD_BTRFS", 2048U, 200U, LDTM_CREATOR_BTRFS, "btrfs-progs", ""},
-    {"ofs", "LD_OFS", 2048U, 200U, LDTM_CREATOR_AFFS, "",
-     "Amiga Old File System DOS\\0; first-party raw C creator uses the full 2 GiB qualification cap."},
-    {"ffs", "LD_FFS", 2048U, 200U, LDTM_CREATOR_AFFS, "",
-     "Amiga Fast File System DOS\\1; first-party raw C creator uses the full 2 GiB qualification cap."},
-    {"sfs", "LD_SFS", 2048U, 200U, LDTM_CREATOR_AFFS, "",
-     "Amiga Smart File System SFS0 v3; first-party raw C creator uses the standard 200 MiB heterogeneous fragmented corpus."},
-    {"pfs3", "LD_PFS3", 2048U, 200U, LDTM_CREATOR_PFS3, "",
-     "Amiga Professional File System 3; first-party raw C creator uses the standard 200 MiB heterogeneous fragmented corpus in the qualified small-disk subset."},
-    {"hfs", "LD_HFS", 2048U, 200U, LDTM_CREATOR_HFS, "hfsutils", ""},
-    {"hfsplus", "LD_HFSPLUS", 2048U, 200U, LDTM_CREATOR_HFSPLUS, "hfsprogs", ""},
-    {"minix", "LD_MINIX", 2048U, 200U, LDTM_CREATOR_MINIX, "util-linux", ""},
-    {"ufs", "LD_UFS", 2048U, 200U, LDTM_CREATOR_UFS, "makefs",
-     "Built-in first-party bounded UFS2/FFS creator writes the qualification image directly and requires exact allocation/fragmentation analysis before native mutation testing."},
-    {"zfs", "LD_ZFS", 2048U, 200U, LDTM_CREATOR_ZFS, "zfsutils-linux",
-     "Creates an isolated single-disk OpenZFS feature-flags pool with optional features disabled, exports it after population and requires the native exact analyser to accept it."},
-    {"apfs", "LD_APFS", 2048U, 200U, LDTM_CREATOR_APFS, "",
-     "Built-in first-party raw C creator manufactures a 2 GiB qualified bounded APFS checkpoint/spaceman/flat-tree fixture with the standard 200 MiB heterogeneous fragmented corpus."},
-    {"swap", "LD_SWAP", 2048U, 0U, LDTM_CREATOR_SWAP, "util-linux",
-     "Swap contains no files."}
-};
+    {"fat12", "LD_FAT12", 255U, 200U, LDTM_CREATOR_FAT12,
+     "First-party FAT12 fixture uses 64 KiB clusters below the 4085-cluster FAT16 threshold and "
+     "retains the full 200 MiB corpus plus boundary files."},
+    {"fat16", "LD_FAT16", 2048U, 200U, LDTM_CREATOR_FAT16, ""},
+    {"fat32", "LD_FAT32", 2048U, 200U, LDTM_CREATOR_FAT32, ""},
+    {"exfat", "LD_EXFAT", 2048U, 200U, LDTM_CREATOR_EXFAT, ""},
+    {"ntfs", "LD_NTFS", 2048U, 200U, LDTM_CREATOR_NTFS, ""},
+    {"ext2", "LD_EXT2", 2048U, 200U, LDTM_CREATOR_EXT2, ""},
+    {"ext3", "LD_EXT3", 2048U, 200U, LDTM_CREATOR_EXT3, ""},
+    {"ext4", "LD_EXT4", 2048U, 200U, LDTM_CREATOR_EXT4, ""},
+    {"xfs", "LD_XFS", 2048U, 200U, LDTM_CREATOR_XFS, ""},
+    {"btrfs", "LD_BTRFS", 2048U, 200U, LDTM_CREATOR_BTRFS, ""},
+    {"ofs", "LD_OFS", 2048U, 200U, LDTM_CREATOR_AFFS,
+     "Amiga Old File System DOS\\0; first-party raw C creator uses the full 2 GiB qualification "
+     "cap."},
+    {"ffs", "LD_FFS", 2048U, 200U, LDTM_CREATOR_AFFS,
+     "Amiga Fast File System DOS\\1; first-party raw C creator uses the full 2 GiB qualification "
+     "cap."},
+    {"sfs", "LD_SFS", 2048U, 200U, LDTM_CREATOR_AFFS,
+     "Amiga Smart File System SFS0 v3; first-party raw C creator uses the standard 200 MiB "
+     "heterogeneous fragmented corpus."},
+    {"pfs3", "LD_PFS3", 2048U, 200U, LDTM_CREATOR_PFS3,
+     "Amiga Professional File System 3; first-party raw C creator uses the standard 200 MiB "
+     "heterogeneous fragmented corpus in the qualified small-disk subset."},
+    {"hfs", "LD_HFS", 2048U, 200U, LDTM_CREATOR_HFS, ""},
+    {"hfsplus", "LD_HFSPLUS", 2048U, 200U, LDTM_CREATOR_HFSPLUS, ""},
+    {"minix", "LD_MINIX", 2048U, 200U, LDTM_CREATOR_MINIX, ""},
+    {"ufs", "LD_UFS", 2048U, 200U, LDTM_CREATOR_UFS,
+     "Built-in first-party bounded UFS2/FFS creator writes the qualification image directly and "
+     "requires exact allocation/fragmentation analysis before native mutation testing."},
+    {"zfs", "LD_ZFS", 2048U, 200U, LDTM_CREATOR_ZFS,
+     "First-party raw C creator writes a bounded legacy-version-28 single-disk ZFS fixture with "
+     "Fletcher-4 block checksums; the native exact analyser verifies allocation and fragmentation. "
+     "Analysis-only by design."},
+    {"apfs", "LD_APFS", 2048U, 200U, LDTM_CREATOR_APFS,
+     "Built-in first-party raw C creator manufactures a 2 GiB qualified bounded APFS "
+     "checkpoint/spaceman/flat-tree fixture with the standard 200 MiB heterogeneous fragmented "
+     "corpus."},
+    {"swap", "LD_SWAP", 2048U, 0U, LDTM_CREATOR_SWAP, "Swap contains no files."}};
 
 const LdtmFilesystemSpec *ldtm_specs(void) { return LDTM_SPECS; }
 size_t ldtm_spec_count(void) { return LDTM_SPEC_COUNT; }
@@ -70,79 +78,21 @@ uint64_t ldtm_required_capacity_bytes(void) {
     return ldtm_allocated_capacity_bytes() + LDTM_GIB;
 }
 
-LdtmFragmentProfile ldtm_fragment_profile(const LdtmFilesystemSpec *spec) {
+LdtmFragmentProfile ldtm_fragment_profile(const LdtmFilesystemSpec *spec)
+{
     LdtmFragmentProfile profile = {
-        .anchors = 64U,
-        .anchor_kib = 2048U,
         .files = LDTM_TARGET_FILE_COUNT,
         .chunks = 30U,
         .chunk_kib = 2048U,
-        .directory_initial = 4096U,
-        .directory_second = 4096U,
+        .directory_initial = 0U,
+        .directory_second = 0U,
         .file_chunks = {2U, 3U, 5U, 8U, 13U, 17U, 22U, 30U},
     };
-    if (spec != NULL && strcmp(spec->key, "fat12") == 0) {
-        /*
-         * FAT12's 255 MiB geometry is constrained by cluster count, not by a
-         * 4 MiB payload ceiling. Keep temporary allocator pressure below the
-         * data capacity while retaining the same 200 MiB retained corpus.
-         */
-        profile.anchors = 32U;
-        profile.anchor_kib = 512U;
-        profile.directory_initial = 128U;
-        profile.directory_second = 128U;
-    } else if (spec != NULL && strcmp(spec->key, "xfs") == 0) {
-        /*
-         * The qualified XFS writer relocates regular-file data extents while
-         * directory blocks remain protected metadata. Keep the full 200 MiB
-         * heterogeneous fragmented-file corpus, but do not manufacture an
-         * intentionally fragmented directory that is outside that writer
-         * contract.
-         */
-        profile.directory_initial = 0U;
-        profile.directory_second = 0U;
-    } else if (spec != NULL && strcmp(spec->key, "btrfs") == 0) {
-        /*
-         * The bounded Btrfs writer is deliberately a level-0 mixed-group
-         * contract. The two-phase round-robin target writes already create
-         * two separated durable extents per retained file. Temporary anchor
-         * files add no retained-payload coverage and can permanently raise a
-         * mutable tree above level 0 even after those anchors are deleted.
-         * Keep the full heterogeneous 200 MiB payload while avoiding both
-         * temporary anchor metadata and unrelated directory churn.
-         */
-        profile.anchors = 0U;
-        profile.anchor_kib = 0U;
-        profile.directory_initial = 0U;
-        profile.directory_second = 0U;
-    } else if (spec != NULL && strcmp(spec->key, "ufs") == 0) {
-        /*
-         * The qualified UFS writer relocates regular-file data while leaving
-         * directory data in place.  The normal 8192-entry churn fixture can
-         * fragment directory blocks and split the per-cylinder-group runs the
-         * bounded writer intentionally preserves.  Keep the complete 200 MiB
-         * heterogeneous regular-file corpus and boundary-sized files, while
-         * leaving directory-fragmentation stress to exact analyser fixtures.
-         */
-        profile.directory_initial = 0U;
-        profile.directory_second = 0U;
-    } else if (spec != NULL && strcmp(spec->key, "zfs") == 0) {
-        /*
-         * ZFS is analysis-only and the exact reader intentionally has a
-         * bounded topology contract. Keep the full 200 MiB fragmented-file
-         * corpus but avoid manufacturing thousands of directory entries that
-         * only force the disposable pool outside that exact-reader contract.
-         */
-        profile.directory_initial = 0U;
-        profile.directory_second = 0U;
-    } else if (spec != NULL &&
-               (strcmp(spec->key, "sfs") == 0 ||
-                strcmp(spec->key, "pfs3") == 0)) {
-        /* Raw first-party creators manufacture their own fragmentation gaps. */
-        profile.anchors = 0U;
-        profile.anchor_kib = 0U;
-        profile.directory_initial = 0U;
-        profile.directory_second = 0U;
+    /* Classic Amiga fixtures additionally stress directory chains. The other
+     * bounded creators manufacture fragmentation directly in their records. */
+    if (spec != NULL && (strcmp(spec->key, "ofs") == 0 || strcmp(spec->key, "ffs") == 0)) {
+        profile.directory_initial = 4096U;
+        profile.directory_second = 4096U;
     }
     return profile;
 }
@@ -223,6 +173,11 @@ int ldtm_transport_is_field_media(int removable, const char *transport) {
     return 1;
 }
 
+int ldtm_canonicalize_device(const char *input, char *output, size_t output_capacity)
+{
+    return infiltratr_realpath_copy(input, output, output_capacity) ? 0 : -1;
+}
+
 int ldtm_decode_hex_byte(char high, char low, unsigned char *value) {
     char text[3] = {high, low, '\0'};
     uint64_t parsed = 0U;
@@ -235,60 +190,20 @@ int ldtm_decode_hex_byte(char high, char low, unsigned char *value) {
 
 const char *ldtm_creator_program(const LdtmFilesystemSpec *spec) {
     if (spec == NULL) return NULL;
-    switch (spec->creator) {
-        case LDTM_CREATOR_FAT12:
-        case LDTM_CREATOR_FAT16:
-        case LDTM_CREATOR_FAT32: return "mkfs.fat";
-        case LDTM_CREATOR_EXFAT: return "mkfs.exfat";
-        case LDTM_CREATOR_NTFS: return "mkntfs";
-        case LDTM_CREATOR_EXT2: return "mkfs.ext2";
-        case LDTM_CREATOR_EXT3: return "mkfs.ext3";
-        case LDTM_CREATOR_EXT4: return "mkfs.ext4";
-        case LDTM_CREATOR_XFS: return "mkfs.xfs";
-        case LDTM_CREATOR_BTRFS: return "mkfs.btrfs";
-        case LDTM_CREATOR_AFFS:
-            if (strcmp(spec->key, "ofs") == 0) return "/usr/lib/defragmenter/test-media-mkfs-ofs";
-            if (strcmp(spec->key, "ffs") == 0) return "/usr/lib/defragmenter/test-media-mkfs-ffs";
-            return NULL;
-        case LDTM_CREATOR_PFS3: return NULL;
-        case LDTM_CREATOR_HFS: return "hformat";
-        case LDTM_CREATOR_HFSPLUS: return "mkfs.hfsplus";
-        case LDTM_CREATOR_MINIX: return "mkfs.minix";
-        case LDTM_CREATOR_UFS: return "makefs";
-        case LDTM_CREATOR_SWAP: return "mkswap";
-        case LDTM_CREATOR_ZFS:
-        case LDTM_CREATOR_APFS:
-        case LDTM_CREATOR_MANUAL:
-            break;
+    if (spec->creator == LDTM_CREATOR_UFS)
+        return "makefs";
+    if (spec->creator == LDTM_CREATOR_AFFS) {
+        if (strcmp(spec->key, "ofs") == 0)
+            return "/usr/lib/defragmenter/test-media-mkfs-ofs";
+        if (strcmp(spec->key, "ffs") == 0)
+            return "/usr/lib/defragmenter/test-media-mkfs-ffs";
     }
     return NULL;
 }
 
-
 const char *ldtm_creator_display_name(const LdtmFilesystemSpec *spec) {
-    const char *program;
     if (spec == NULL) return "Unavailable";
-
-    if (spec->creator == LDTM_CREATOR_MANUAL) return "Manual";
-
-    /*
-     * These formats are constructed directly by Defragmenter's native
-     * test-media engine.  Their private helpers are package-owned rather than
-     * host filesystem dependencies, so the GUI presents one consistent native
-     * ownership boundary.
-     */
-    if ((spec->creator == LDTM_CREATOR_AFFS &&
-         (strcmp(spec->key, "ofs") == 0 ||
-          strcmp(spec->key, "ffs") == 0 ||
-          strcmp(spec->key, "sfs") == 0)) ||
-        spec->creator == LDTM_CREATOR_PFS3 ||
-        spec->creator == LDTM_CREATOR_UFS ||
-        spec->creator == LDTM_CREATOR_APFS) {
-        return "Built-in native";
-    }
-
-    program = ldtm_creator_program(spec);
-    return program != NULL ? program : "Unavailable";
+    return spec->creator == LDTM_CREATOR_MANUAL ? "Manual" : "Built-in native";
 }
 
 static int copy_resolved_program(const char *program, char *output,
@@ -351,7 +266,6 @@ int ldtm_program_available(const char *program) {
 
 int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
                                 char *detail, size_t detail_capacity) {
-    const char *program;
     if (detail == NULL || detail_capacity == 0U || spec == NULL) return 0;
     if (spec->creator == LDTM_CREATOR_AFFS && strcmp(spec->key, "ofs") == 0) {
         (void)snprintf(detail, detail_capacity, "Built-in raw C creator + payload engine: Amiga DOS\\0 OFS");
@@ -389,21 +303,7 @@ int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
         (void)snprintf(detail, detail_capacity, "Reserved: %s", spec->note);
         return 0;
     }
-    program = ldtm_creator_program(spec);
-    if (program != NULL && ldtm_program_available(program)) {
-        (void)snprintf(detail, detail_capacity, "Available: %s", program);
-        return 1;
-    }
-    if (spec->package_hint != NULL && *spec->package_hint != '\0') {
-        (void)snprintf(detail, detail_capacity, "Missing: %s (package: %s)",
-                       program != NULL ? program : "creator", spec->package_hint);
-    } else {
-        (void)snprintf(detail, detail_capacity, "Missing: %s",
-                       program != NULL ? program : "creator");
-    }
-    return 0;
-}
-
-int ldtm_canonicalize_device(const char *input, char *output, size_t output_capacity) {
-    return infiltratr_realpath_copy(input, output, output_capacity) ? 0 : -1;
+    (void)snprintf(detail, detail_capacity, "Built-in raw C creator + complete corpus verifier: %s",
+                   spec->key);
+    return 1;
 }
