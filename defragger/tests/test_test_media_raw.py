@@ -114,12 +114,13 @@ def qualify(fs: str, parent: Path) -> None:
 
 
 def main() -> None:
+    if len(sys.argv) != 3:
+        raise SystemExit("usage: test_test_media_raw.py <build-directory> <filesystem>")
+    fs = sys.argv[2]
     run(FIXTURE)
     with tempfile.TemporaryDirectory(prefix="defragmenter-native-fixtures-") as temporary:
-        for fs in ("fat12", "fat16", "fat32", "exfat", "ntfs", "ext2", "ext3",
-                   "ext4", "xfs", "btrfs", "hfs", "hfsplus", "minix", "ufs", "zfs", "swap"):
-            qualify(fs, Path(temporary))
-    print("all remaining Test Media native fixtures qualified")
+        qualify(fs, Path(temporary))
+    print(f"{fs}: native Test Media qualification complete", flush=True)
 
 
 if __name__ == "__main__":

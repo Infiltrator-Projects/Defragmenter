@@ -127,9 +127,20 @@ if(BUILD_TESTING)
     target_link_libraries(defragmenter-test-media-raw-test PRIVATE
         defragmenter-test-media-core defragmenter-ufs-native)
     add_test(NAME defragmenter-test-media-corpus-contract COMMAND defragmenter-test-media-raw-test)
-    add_test(NAME defragmenter-test-media-native-fixtures
-        COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_test_media_raw.py" "${CMAKE_BINARY_DIR}")
-    set_tests_properties(defragmenter-test-media-native-fixtures PROPERTIES TIMEOUT 1800)
+    # Every fixture creates private media and a private journal. Register them
+    # independently so CTest can bound and schedule each complete destructive
+    # qualification instead of timing out one serial multi-filesystem command.
+    # Start the longer EXT family early; no format, payload or assertion is skipped.
+    set(LDTM_NATIVE_FIXTURE_FORMATS
+        ext2 ext3 ext4 xfs btrfs ntfs
+        fat12 fat16 fat32 exfat hfs hfsplus minix ufs zfs swap)
+    foreach(ldtm_fs IN LISTS LDTM_NATIVE_FIXTURE_FORMATS)
+        add_test(NAME "defragmenter-test-media-native-${ldtm_fs}"
+            COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_test_media_raw.py"
+                "${CMAKE_BINARY_DIR}" "${ldtm_fs}")
+        set_tests_properties("defragmenter-test-media-native-${ldtm_fs}"
+            PROPERTIES TIMEOUT 1800)
+    endforeach()
     add_executable(defragmenter-test-media-gui-test
         tests/test_test_media_gui.c test_media/test_media_theme.c)
     target_include_directories(defragmenter-test-media-gui-test PRIVATE
