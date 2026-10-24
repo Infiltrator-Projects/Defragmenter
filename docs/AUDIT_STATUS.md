@@ -5,7 +5,7 @@ Status: **complete**
 Completed: 2026-10-23
 
 Applies to: audited source and release-governance baselines below
-Audited source commit: 11804bbb6ba94801aee6176613bb3eb4529240cb
+Audited source commit: 4115692274c5b630d64d834b3735f692e3d5ff4f
 Audited release-governance commit: d89dff435d41eb36c2e2fec8d679f87f0d7d4ada
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
@@ -163,3 +163,19 @@ The independent full-corpus CI run at `b075bc1dd5029f306ccfb0276c0e69a69736e106`
 Review of the first-party EXT direct workspace identified an unnecessary durability amplification: each short physically fragmented input run and each short canonical output run independently triggered `fsync`, irrespective of the configured maximum 64 MiB transaction budget. On the fragmented qualification corpus this creates thousands of device-wide syncs, contending with the three simultaneous EXT jobs. Source commit `11804bbb6ba94801aee6176613bb3eb4529240cb` changes both paths to accumulate transferred block counts *across* run boundaries and sync at each bounded budget or at phase completion. No journal or recovery format was changed; no postcondition was removed. The workspace is synced before its digest and `direct-staged` phase publish, canonical payloads are synced before metadata mutation, and restored source bytes are synced before discarding the recovery journal. Incomplete workspace staging still cannot modify live data. Timeout diagnostics now retain the trailing native phase transcript for subsequent root-cause analysis.
 
 This audit records the review and focused correction. The claim of release qualification remains conditional upon complete self-hosted CI, sanitizer, GTK, source-drift, artifact-installation and publication checks for the exact final head; testing a real power-loss interruption remains separate environment-dependent evidence.
+
+## EXT fallback placement transaction review — 2026-10-24
+
+The complete EXT2/3/4 Test Media corpus times out during working-image
+fallback permutation, not the earlier high-address direct workspace. The
+fallback stored each block's placement marker as a separate FULL-synchronous
+SQLite WAL transaction. Source 4115692274c5b630d64d834b3735f692e3d5ff4f groups placement bookkeeping into
+one transaction, synchronises the working-image bytes before committing its
+placement state, and rolls back incomplete bookkeeping on error. No original
+source bytes are touched by this fallback stage. The subsequent independent
+stage verification, journal and source-commit recovery barriers, Stop contract,
+mounted-target refusal, target binding and final payload checks are unchanged.
+
+The review is of the source and recovery boundary, not of a passing CI result.
+Complete normal and sanitizer qualification plus exact-artifact publishing
+remain mandatory for 1.8.0-272.
