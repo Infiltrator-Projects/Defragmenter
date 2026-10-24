@@ -5,7 +5,7 @@ Status: **complete**
 Completed: 2026-10-23
 
 Applies to: audited source and release-governance baselines below
-Audited source commit: d89dff435d41eb36c2e2fec8d679f87f0d7d4ada
+Audited source commit: 11804bbb6ba94801aee6176613bb3eb4529240cb
 Audited release-governance commit: d89dff435d41eb36c2e2fec8d679f87f0d7d4ada
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
@@ -155,3 +155,11 @@ The 1.8.0-272 full-corpus regression passed FAT12, FAT16, FAT32, exFAT, NTFS and
 The reviewed source at `d89dff435d41eb36c2e2fec8d679f87f0d7d4ada` replaces the serial sixteen-format Python driver invocation with one separately named CTest case per filesystem. Each case still executes the unchanged first-party creator, complete expected-file and byte oracle, exact native analyser, both actual relocation modes where supported, independently reopened postconditions and intentional live-payload corruption rejection. ZFS and swap retain their bounded analysis-only contracts. All sixteen cases use independent temporary images and journals, and the self-hosted quality and sanitizer lanes run them with bounded four-way concurrency after their remaining native/architecture/safety tests. Each case retains its 1,800-second watchdog; both job-level 45-minute bounds and unchanged exact-source/artifact publication gates remain in force.
 
 The source and the single affected workflow are audited at the same commit above; no filesystem writer, transaction, privilege, format codec, recovery policy or release-publisher implementation has changed. This audit records the justified reorganization of qualification, not a claim that the new exact release head has already passed. Publication still requires successful complete normal and sanitizer lanes, artifact installation, release-history validation and checksum-bound publication. Physical power-loss testing remains independent environment-dependent evidence.
+
+## EXT transaction flush-frequency correction — 2026-10-24
+
+The independent full-corpus CI run at `b075bc1dd5029f306ccfb0276c0e69a69736e106` passed all 47 regular non-fixture cases and all 46 sanitizer non-fixture cases. Thirteen of sixteen full-corpus filesystem cases, including XFS, NTFS and Btrfs, also passed in both lanes. EXT2, EXT3 and EXT4 alone timed out at the 900-second individual Defragment command watchdog; publication was correctly skipped. The log demonstrates a timeout, not a verified storage error or successful qualification.
+
+Review of the first-party EXT direct workspace identified an unnecessary durability amplification: each short physically fragmented input run and each short canonical output run independently triggered `fsync`, irrespective of the configured maximum 64 MiB transaction budget. On the fragmented qualification corpus this creates thousands of device-wide syncs, contending with the three simultaneous EXT jobs. Source commit `11804bbb6ba94801aee6176613bb3eb4529240cb` changes both paths to accumulate transferred block counts *across* run boundaries and sync at each bounded budget or at phase completion. No journal or recovery format was changed; no postcondition was removed. The workspace is synced before its digest and `direct-staged` phase publish, canonical payloads are synced before metadata mutation, and restored source bytes are synced before discarding the recovery journal. Incomplete workspace staging still cannot modify live data. Timeout diagnostics now retain the trailing native phase transcript for subsequent root-cause analysis.
+
+This audit records the review and focused correction. The claim of release qualification remains conditional upon complete self-hosted CI, sanitizer, GTK, source-drift, artifact-installation and publication checks for the exact final head; testing a real power-loss interruption remains separate environment-dependent evidence.

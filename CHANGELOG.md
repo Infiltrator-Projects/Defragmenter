@@ -9,6 +9,7 @@
 
 - Allow fifteen minutes for full-corpus relocation commands on slower qualification storage; retain shorter read/check limits and all existing correctness and publication gates.
 - Split the 16 native Test Media filesystem fixtures into independent CTest cases with four-way bounded CI scheduling; retain each full corpus, both supported relocation modes, corruption rejection, 30-minute per-format watchdog and 45-minute self-hosted job limits.
+- Coalesce EXT staging, placement and restore durability flushes across fragmented runs into bounded 64 MiB-or-smaller transactions with a mandatory final phase sync; preserve the workspace checksum, journal and Recover barriers. Include native phase output when a test worker times out.
 
 ## 1.8.0-271 — 2026-10-23
 
