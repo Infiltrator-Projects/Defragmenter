@@ -21,8 +21,20 @@ FIXTURE = BUILD / "defragmenter-test-media-raw-test"
 
 def run(*args: object, fails: bool = False,
         timeout: int = 240) -> subprocess.CompletedProcess[str]:
-    result = subprocess.run([str(a) for a in args], capture_output=True, text=True,
-                            timeout=timeout)
+    try:
+        result = subprocess.run([str(a) for a in args], capture_output=True,
+                                text=True, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        # Preserve bounded native phase/progress evidence when a slow runner
+        # times out. Without this, GitHub prints only the command arguments.
+        def tail(value: str | bytes | None) -> str:
+            if isinstance(value, bytes):
+                value = value.decode("utf-8", errors="replace")
+            return (value or "")[-8192:]
+        raise AssertionError(
+            f"native command exceeded {timeout}s: {args}\\n"
+            f"stdout tail:\\n{tail(exc.stdout)}\\n"
+            f"stderr tail:\\n{tail(exc.stderr)}") from exc
     if (result.returncode != 0) != fails:
         raise AssertionError(f"{args}\n{result.stdout}\n{result.stderr}")
     return result

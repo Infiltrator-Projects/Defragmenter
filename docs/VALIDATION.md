@@ -132,3 +132,7 @@ fixed HTTP responses and a real Debian fixture. It accepts the canonical
 package only when both catalogue and Packages index match the qualified
 version and SHA-256, and rejects stale versions or altered digests. Its retry
 clock is shortened in the fixture; the parsers and identity checks are real.
+
+## EXT fragmented-run durability batching — 2026-10-24
+
+After independent native Test Media cases were enabled, both self-hosted suites passed every non-EXT format but timed out the first Defragment operation on EXT2/3/4 at 900 seconds. The EXT high-address workspace copied and placed each fragmented run with a separate `fsync` regardless of run size, turning deliberately fragmented allocation maps into thousands of blocking device flushes. The native worker now accumulates actual transferred blocks across run boundaries and issues durable flushes only at the configured bounded transaction budget (maximum 64 MiB) and at the end of each stage or placement phase. A completed workspace stage is synchronised before its digest and durable phase publication; placed payloads are synchronised before metadata commit; restoration is synchronised before the recovery journal is retired. Incomplete staging never mutates the original allocation. Existing fail-closed recovery, full 200 MiB corpus and verified postconditions are unchanged. Timeouts now print the end of the worker's phase transcript so a recurrence can be distinguished from a writer failure. This explains the source correction but does not substitute for successful new CI qualification.

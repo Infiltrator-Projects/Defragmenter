@@ -316,30 +316,51 @@ static int copy_bytes(int fd, uint64_t source_offset, uint64_t destination_offse
     return 0;
 }
 
+/* A filesystem may contain thousands of isolated allocated blocks. Each
+ * allocated run is an I/O coalescing boundary, NOT a persistence boundary:
+ * syncing each run serializes thousands of full-device flushes. Batch actual
+ * written blocks across run boundaries, then sync before exposing any phase
+ * transition which relies on their durability. The phase journal remains
+ * authoritative during interruption; a staged workspace is only trusted
+ * after its final sync and matching SHA-256 digest. */
+static int sync_workspace_copy(int fd, const char *label,
+                               uint64_t completed, uint64_t total,
+                               char **error) {
+    if (fsync(fd) != 0) {
+        ext_set_error(error, "syncing EXT %s failed: %s", label, strerror(errno));
+        return -1;
+    }
+    printf("EXT %s: %" PRIu64 " of %" PRIu64 " blocks durable.\n",
+           label, completed, total);
+    fflush(stdout);
+    return 0;
+}
+
 static int copy_run(int fd, uint32_t block_size, uint64_t source,
                     uint64_t destination, uint64_t blocks,
                     uint64_t batch_blocks, uint8_t *buffer,
                     bool allow_stop, uint64_t *completed,
-                    uint64_t total, const char *label, char **error) {
+                    uint64_t *since_sync, uint64_t total,
+                    const char *label, char **error) {
     uint64_t offset = 0;
     while (offset < blocks) {
         uint64_t amount = blocks - offset;
-        if (amount > batch_blocks) amount = batch_blocks;
+        uint64_t boundary = batch_blocks - *since_sync;
+        if (amount > boundary) amount = boundary;
         uint64_t bytes = amount * (uint64_t)block_size;
         int copied = copy_bytes(fd,
             (source + offset) * (uint64_t)block_size,
             (destination + offset) * (uint64_t)block_size,
             bytes, buffer, allow_stop, error);
         if (copied != 0) return copied;
-        if (fsync(fd) != 0) {
-            ext_set_error(error, "syncing EXT %s failed: %s", label, strerror(errno));
-            return -1;
-        }
         offset += amount;
         *completed += amount;
-        printf("EXT %s: %" PRIu64 " of %" PRIu64 " blocks durable.\n",
-               label, *completed, total);
-        fflush(stdout);
+        *since_sync += amount;
+        if (*since_sync == batch_blocks) {
+            if (sync_workspace_copy(fd, label, *completed, total, error) != 0)
+                return -1;
+            *since_sync = 0;
+        }
         if (allow_stop && ld_stop_requested()) return -2;
     }
     return 0;
@@ -357,7 +378,7 @@ static int copy_workspace_runs(int fd, sqlite3 *db,
     uint8_t *buffer = ld_xmalloc(EXT_WORKSPACE_COPY_CHUNK);
     bool have_run = false;
     uint64_t run_source = 0, run_destination = 0, run_blocks = 0;
-    uint64_t completed = 0;
+    uint64_t completed = 0, since_sync = 0;
     int result = 0;
     int state;
     while ((state = sqlite3_step(stmt)) == SQLITE_ROW) {
@@ -377,7 +398,8 @@ static int copy_workspace_runs(int fd, sqlite3 *db,
             result = copy_run(fd, workspace->block_size, run_source,
                               run_destination, run_blocks,
                               workspace->batch_blocks, buffer, allow_stop,
-                              &completed, workspace->blocks, label, error);
+                              &completed, &since_sync, workspace->blocks,
+                              label, error);
             if (result != 0) break;
             run_source = source;
             run_destination = destination;
@@ -390,7 +412,14 @@ static int copy_workspace_runs(int fd, sqlite3 *db,
         result = copy_run(fd, workspace->block_size, run_source,
                           run_destination, run_blocks,
                           workspace->batch_blocks, buffer, allow_stop,
-                          &completed, workspace->blocks, label, error);
+                          &completed, &since_sync, workspace->blocks,
+                          label, error);
+    /* In particular, a successful stage must be durable before its checksum
+     * and the direct-staged journal phase can authorize source mutation.
+     * Restore likewise cannot retire its recovery journal before this sync. */
+    if (result == 0 && since_sync != 0)
+        result = sync_workspace_copy(fd, label, completed, workspace->blocks,
+                                     error);
     free(buffer);
     sqlite3_finalize(stmt);
     return result;
@@ -524,10 +553,14 @@ int ext_workspace_stage(int fd, sqlite3 *db, const ExtWorkspace *workspace,
     return 0;
 }
 
+/* Canonical block placement also keeps the workspace and recovery journal
+ * intact until all destination blocks are durable and metadata is committed.
+ * Runs are a coalescing unit; flush each bounded batch, not each short run. */
 static int flush_target_run(int fd, const ExtWorkspace *workspace,
                             uint8_t *buffer, uint64_t start,
                             uint64_t count, uint64_t *completed,
-                            uint64_t total, char **error) {
+                            uint64_t *since_sync, uint64_t total,
+                            char **error) {
     if (count == 0) return 0;
     uint64_t bytes = count * (uint64_t)workspace->block_size;
     ssize_t wrote = ld_pwrite_full(fd, buffer, (size_t)bytes,
@@ -536,14 +569,14 @@ static int flush_target_run(int fd, const ExtWorkspace *workspace,
         ext_set_error(error, "short write placing EXT canonical target blocks");
         return -1;
     }
-    if (fsync(fd) != 0) {
-        ext_set_error(error, "syncing EXT canonical placement failed: %s", strerror(errno));
-        return -1;
-    }
     *completed += count;
-    printf("EXT canonical placement: %" PRIu64 " of %" PRIu64 " moved blocks durable.\n",
-           *completed, total);
-    fflush(stdout);
+    *since_sync += count;
+    if (*since_sync == workspace->batch_blocks) {
+        if (sync_workspace_copy(fd, "canonical placement", *completed, total,
+                                error) != 0)
+            return -1;
+        *since_sync = 0;
+    }
     if (ld_stop_requested()) return -2;
     return 0;
 }
@@ -565,7 +598,7 @@ int ext_workspace_place(int fd, sqlite3 *db, const ExtWorkspace *workspace,
     }
     uint8_t *buffer = ld_xmalloc((size_t)buffer_bytes);
     uint64_t run_start = 0, run_count = 0, previous_target = 0;
-    uint64_t completed = 0, total = 0;
+    uint64_t completed = 0, since_sync = 0, total = 0;
     sqlite3_stmt *count_stmt = NULL;
     if (sqlite3_prepare_v2(db,
             "SELECT COUNT(*) FROM blocks WHERE old<>target",
@@ -585,9 +618,10 @@ int ext_workspace_place(int fd, sqlite3 *db, const ExtWorkspace *workspace,
         uint64_t target = (uint64_t)sqlite3_column_int64(stmt, 0);
         uint64_t slot = (uint64_t)sqlite3_column_int64(stmt, 1);
         if (run_count != 0 &&
-            (target != previous_target + 1U || run_count == workspace->batch_blocks)) {
+            (target != previous_target + 1U ||
+             run_count == workspace->batch_blocks - since_sync)) {
             result = flush_target_run(fd, workspace, buffer, run_start, run_count,
-                                      &completed, total, error);
+                                      &completed, &since_sync, total, error);
             if (result != 0) break;
             run_count = 0;
         }
@@ -608,7 +642,12 @@ int ext_workspace_place(int fd, sqlite3 *db, const ExtWorkspace *workspace,
         result = workspace_sql_error(db, error, "reading EXT canonical workspace placement");
     if (result == 0 && run_count != 0)
         result = flush_target_run(fd, workspace, buffer, run_start, run_count,
-                                  &completed, total, error);
+                                  &completed, &since_sync, total, error);
+    /* The next journal phase may commit inode and bitmap metadata, so no
+     * canonical payload writes may still be only in volatile cache. */
+    if (result == 0 && since_sync != 0)
+        result = sync_workspace_copy(fd, "canonical placement", completed,
+                                     total, error);
     free(buffer);
     sqlite3_finalize(stmt);
     return result;
