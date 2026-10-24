@@ -311,6 +311,16 @@ int ext_permute_payloads(const char *stage, sqlite3 *db, uint32_t block_size,
         sqlite3_prepare_v2(db, "SELECT old FROM blocks WHERE old<>target AND placed=0 LIMIT 1", -1, &unplaced, NULL) != SQLITE_OK) {
         close(fd); return sql_error(db, error, "preparing EXT block permutation");
     }
+    /* Fallback placement modifies only a disposable staged image. Keep all
+     * block-placement marks in one database transaction instead of forcing
+     * one FULL-synchronous WAL commit per block. The stage is synced before
+     * its placement state commits and before source-device mutation. */
+    if (sql_exec(db, "BEGIN IMMEDIATE", error) != 0) {
+        sqlite3_finalize(terminals); sqlite3_finalize(predecessor);
+        sqlite3_finalize(mark); sqlite3_finalize(unplaced);
+        close(fd);
+        return -1;
+    }
     uint64_t placed = 0;
     int state;
     while ((state = sqlite3_step(terminals)) == SQLITE_ROW) {
@@ -375,10 +385,16 @@ int ext_permute_payloads(const char *stage, sqlite3 *db, uint32_t block_size,
     }
     sqlite3_finalize(check);
     sqlite3_finalize(terminals); sqlite3_finalize(predecessor); sqlite3_finalize(mark); sqlite3_finalize(unplaced);
+    if (sql_exec(db, "COMMIT", error) != 0) {
+        (void)sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL);
+        close(fd);
+        return -1;
+    }
     close(fd);
     return 0;
 fail:
     sqlite3_finalize(terminals); sqlite3_finalize(predecessor); sqlite3_finalize(mark); sqlite3_finalize(unplaced);
+    (void)sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL);
     close(fd);
     return -1;
 }
