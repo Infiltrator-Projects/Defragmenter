@@ -44,7 +44,7 @@ cmake --build "$BUILD" -j"$BUILD_JOBS_EFFECTIVE"
 DESTDIR="$STAGE/root" cmake --install "$BUILD"
 
 # The native OS keeps all launchable programs directly in /Programs.
-# Private filesystem workers remain under /usr/lib/defragmenter.
+# Private filesystem workers are installed in the native /System/Filesystems tree.
 for program in defragmenter defragmenter-desktop defragmenter-test-media; do
     [ -x "$STAGE/root/Programs/$program" ] || {
         printf "Missing /Programs/%s from package stage\n" "$program" >&2
@@ -56,9 +56,30 @@ for program in defragmenter defragmenter-desktop defragmenter-test-media; do
     }
 done
 
+# The old Linux private application roots must not remain in this package.
+for old in usr/lib/defragmenter usr/share/doc/defragmenter; do
+    [ ! -e "$STAGE/root/$old" ] || {
+        printf 'Obsolete private Defragmenter path still packaged: %s\n' "$old" >&2
+        exit 1
+    }
+done
+for resource in \
+    System/Filesystems/Defragmenter/fat/defragmenter-fat-worker \
+    System/Filesystems/Defragmenter/ext4/ext-metadata-worker \
+    System/Filesystems/Defragmenter/defragmenter-privileged-helper \
+    System/Resources/Documentation/Defragmenter/README.md \
+    System/Resources/Documentation/Defragmenter/COPYING.GPL-3.0 \
+    System/Resources/Themes/Defragmenter/art/hero-landscape.jpg
+do
+    [ -f "$STAGE/root/$resource" ] || {
+        printf 'Missing required native system resource: %s\n' "$resource" >&2
+        exit 1
+    }
+done
+
 SOURCE_ICON="$ROOT/packaging/io.github.defragmenter.png"
 for INSTALLED_ICON in \
-    "$STAGE/root/usr/lib/defragmenter/defragmenter-icon.png" \
+    "$STAGE/root/System/Resources/Icons/defragmenter.png" \
     "$STAGE/root/usr/share/icons/hicolor/96x96/apps/io.github.defragmenter.png" \
     "$STAGE/root/usr/share/app-install/icons/defragmenter.png"
 do
@@ -73,10 +94,10 @@ if find "$STAGE/root" -type f -name 'mb_corpo_*.ttf' | grep -q .; then
     exit 1
 fi
 install -D -m 0755 "$ROOT/packaging/ensure-native-fonts.sh" \
-    "$STAGE/root/usr/lib/defragmenter/ensure-native-fonts"
+    "$STAGE/root/System/Commands/defragmenter-ensure-fonts"
 
 mkdir -p "$STAGE/root/DEBIAN"
-INSTALLED_SIZE=$(du -sk "$STAGE/root/usr" "$STAGE/root/Programs" | awk '{sum += $1} END {print sum}')
+INSTALLED_SIZE=$(du -sk "$STAGE/root/usr" "$STAGE/root/Programs" "$STAGE/root/System" | awk '{sum += $1} END {print sum}')
 {
     printf 'Package: defragmenter\n'
     printf 'Version: %s\n' "$PACKAGE_VERSION"
@@ -99,7 +120,7 @@ INSTALLED_SIZE=$(du -sk "$STAGE/root/usr" "$STAGE/root/Programs" | awk '{sum += 
 cat >"$STAGE/root/DEBIAN/postinst" <<'EOF'
 #!/bin/sh
 set -e
-/usr/lib/defragmenter/ensure-native-fonts
+/System/Commands/defragmenter-ensure-fonts
 command -v update-desktop-database >/dev/null 2>&1 && \
     update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
 command -v gtk-update-icon-cache >/dev/null 2>&1 && \
@@ -120,7 +141,7 @@ EOF
 chmod 0755 "$STAGE/root/DEBIAN/postinst" "$STAGE/root/DEBIAN/postrm"
 (
     cd "$STAGE/root"
-    find usr Programs -type f -print0 | sort -z | xargs -0 md5sum >DEBIAN/md5sums
+    find usr Programs System -type f -print0 | sort -z | xargs -0 md5sum >DEBIAN/md5sums
 )
 chmod 0644 "$STAGE/root/DEBIAN/control" "$STAGE/root/DEBIAN/md5sums"
 dpkg-deb --root-owner-group --build "$STAGE/root" "$OUTPUT"
