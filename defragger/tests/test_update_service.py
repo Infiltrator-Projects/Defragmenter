@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_defragmenter_uses_system_update_manager_only() -> None:
     desktop = (ROOT / "packaging" / "io.github.defragmenter.desktop").read_text()
-    wrapper = (ROOT / "packaging" / "defragmenter").read_text()
+    cmake_main = (ROOT / "cmake" / "test_media.cmake").read_text()
     package_builder = (ROOT / "cmake" / "project.cmake").read_text()
     local_runner = (ROOT / "packaging" / "local-run-header.sh.in").read_text()
     desktop_code = (ROOT / "native" / "desktop.cpp").read_text()
@@ -19,12 +19,11 @@ def test_defragmenter_uses_system_update_manager_only() -> None:
     assert "CheckUpdates" not in desktop
     assert "--check-updates" not in desktop
 
-    assert "/Programs/defragmenter-desktop" not in wrapper
+    assert "OUTPUT_NAME defragmenter" in cmake_main
+    assert "install(TARGETS defragmenter-desktop RUNTIME DESTINATION /Programs)" in cmake_main
+    assert "install(PROGRAMS packaging/defragmenter" not in package_builder
+    assert not (ROOT / "packaging" / "defragmenter").exists()
     assert "/usr/bin/defragmenter" not in desktop
-    assert "/usr/bin/defragmenter" not in wrapper
-    assert "python" not in wrapper.lower()
-    assert "update_launcher.py" not in wrapper
-    assert "pkexec" not in wrapper
 
     # Opening the GUI must not summon pkexec. The privileged helper is
     # started only after the user explicitly requests a protected operation.
