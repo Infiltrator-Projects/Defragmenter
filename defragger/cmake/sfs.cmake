@@ -27,7 +27,7 @@ target_link_libraries(defragmenter-sfs-worker PRIVATE
     defragmenter-sfs-native defragmenter-core OpenSSL::Crypto)
 
 install(TARGETS defragmenter-sfs-worker
-        RUNTIME DESTINATION lib/defragmenter/filesystems/sfs)
+        RUNTIME DESTINATION /System/Filesystems/Defragmenter/sfs)
 
 if(BUILD_TESTING)
     add_executable(defragmenter-sfs-native-test
