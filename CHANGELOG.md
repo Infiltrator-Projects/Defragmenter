@@ -1,3 +1,21 @@
+## 1.8.0-275 — Two native programs; private workers out of Filesystems
+
+- Install actual GTK executable as `/Programs/defragmenter` instead of a
+  `/Programs/defragmenter` shell wrapper forwarding to a third program.
+  Preserve only the separate `/Programs/defragmenter-test-media` as a second
+  user-facing binary. Remove obsolete wrapper source.
+- Move Defragmenter's filesystem-specific private workers, mapper, operation
+  engine, privileged helper and Test Media creators out of
+  `/System/Filesystems/Defragmenter` into `/System/Commands/Defragmenter`.
+  Update all code references, CMake targets, package contracts and tests.
+  Reserve `/System/Filesystems` for OS filesystem implementations.
+- Point both .desktop launchers to the existing native Defragmenter PNG in
+  `/System/Resources/Icons`, without duplicating artwork or creating fake
+  icons. Raw executable icons in Nemo are user metadata, not application menu
+  icons.
+- Retain safe packaging, canonical native build/install, GUI/privileged
+  separation and APT upgrades.
+
 # Changelog
 
 ## 1.8.0-274 — 2026-10-25
