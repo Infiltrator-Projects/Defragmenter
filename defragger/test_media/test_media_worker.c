@@ -416,8 +416,8 @@ static const char *production_mapper_program(void) {
     if (configured != NULL && *configured != '\0' &&
         access(configured, X_OK) == 0)
         return configured;
-    if (access("/System/Filesystems/Defragmenter/defragmenter-mapper", X_OK) == 0)
-        return "/System/Filesystems/Defragmenter/defragmenter-mapper";
+    if (access("/System/Commands/Defragmenter/defragmenter-mapper", X_OK) == 0)
+        return "/System/Commands/Defragmenter/defragmenter-mapper";
     if (ldtm_program_available("defragmenter-mapper"))
         return "defragmenter-mapper";
     return NULL;
@@ -2344,7 +2344,7 @@ int ldtm_worker_qualify(const char *device)
         return 2;
     }
     if (ldtm_resolve_program(
-            "/System/Filesystems/Defragmenter/defragmenter-operation-engine",
+            "/System/Commands/Defragmenter/defragmenter-operation-engine",
             engine, sizeof(engine)) != 0) {
         fputs("The installed production Defragmenter operation engine is unavailable.\n",
               stderr);
