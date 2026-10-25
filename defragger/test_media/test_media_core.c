@@ -194,9 +194,9 @@ const char *ldtm_creator_program(const LdtmFilesystemSpec *spec) {
         return "makefs";
     if (spec->creator == LDTM_CREATOR_AFFS) {
         if (strcmp(spec->key, "ofs") == 0)
-            return "/System/Filesystems/Defragmenter/test-media-mkfs-ofs";
+            return "/System/Commands/Defragmenter/test-media-mkfs-ofs";
         if (strcmp(spec->key, "ffs") == 0)
-            return "/System/Filesystems/Defragmenter/test-media-mkfs-ffs";
+            return "/System/Commands/Defragmenter/test-media-mkfs-ffs";
     }
     return NULL;
 }
@@ -238,7 +238,7 @@ int ldtm_resolve_program(const char *program, char *output,
      */
     if (strcmp(program, "makefs") == 0)
         return copy_resolved_program(
-            "/System/Filesystems/Defragmenter/test-media-mkfs-ufs",
+            "/System/Commands/Defragmenter/test-media-mkfs-ufs",
             output, output_capacity);
 
     if (strchr(program, '/') != NULL) {
@@ -291,7 +291,7 @@ int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
             return 1;
         }
         (void)snprintf(detail, detail_capacity,
-                       "Missing bundled UFS2 creator: /System/Filesystems/Defragmenter/test-media-mkfs-ufs");
+                       "Missing bundled UFS2 creator: /System/Commands/Defragmenter/test-media-mkfs-ufs");
         return 0;
     }
     if (spec->creator == LDTM_CREATOR_APFS) {
