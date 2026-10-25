@@ -5,7 +5,7 @@ Status: **complete**
 Completed: 2026-10-23
 
 Applies to: audited source and release-governance baselines below
-Audited source commit: 449d079c963a4ab6250fa064bba86008dd425f62
+Audited source commit: 76803476484156faacccb713b9cdcbb509e610d2
 Audited release-governance commit: d89dff435d41eb36c2e2fec8d679f87f0d7d4ada
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
@@ -19,6 +19,30 @@ The second 2026-10-14 forensic pass identified a release-recovery hole rather th
 The 2026-10-16 incremental review covers the two subsequent UFS Test Media commits, `00f8287b8c10efefc87f6b54c1c4b440e5a05078` and `7424678c7adc283da5e14cf52b426afcce0261d7`. The first bundles a bounded, little-endian UFS2 fixture creator, installs and resolves that package-owned helper, removes the external makefs prerequisite, and adds mandatory creation/analysis/defragmentation and staged-install coverage. The second runs that same creator/worker integration from release-artifact qualification. The creator's geometry, allocation bounds, inode/direct/indirect block construction, source-copy error handling and metadata accounting were reviewed alongside the build, installation, resolver and test changes. Existing filesystem mutation and recovery engines are unchanged. The former feature branches have identical changed-file contents on main; their separate commit ancestry is a result of squash integration.
 
 The existing qualification of this exact source completed all 46 CTest cases and the ASan/UBSan lane; publication stopped at the correctly enforced stale-audit-baseline check. That UFS baseline subsequently qualified and published as 1.8.0-266. The current baselines also include the reviewed qualification and retry changes below. No release assertion, audit-drift check, history protection or test has been disabled or relaxed.
+
+## Reviewed packaging-boundary correction — 2026-10-25
+
+Audit baseline advanced to `76803476484156faacccb713b9cdcbb509e610d2`
+for the Defragmenter **installation location and graphical entrypoint** change
+introduced in PR #51. Source review examined the revised CMake target naming,
+worker destination mapping, every application resolver and privileged-helper
+path, Test Media creator lookup, package stage contracts, desktop entries and
+corresponding tests. The GTK binary is now installed directly as
+`/Programs/defragmenter`, with `/Programs/defragmenter-test-media` remaining
+the second launchable application; the discarded third shell wrapper is not
+installed. The application-owned worker tree is now under
+`/System/Commands/Defragmenter`, so `/System/Filesystems` is not polluted
+with Defragmenter-only programs. These changes do **not** alter filesystem
+parsers, allocation writers, format-specific transactions, durable journal
+semantics or recovery engines.
+
+The full self-hosted release qualification against that exact source completed
+all 47 native CTest tests and all 16 Test Media native filesystem checks, plus
+the independent ASan/UBSan lane. The first run stopped at the intended
+post-change audited-baseline drift control; the new audit commit advances only
+the reviewed source baseline, without changing release-governance baselines,
+checks or test enforcement. The resulting immutable release remains subject
+to passing the new CI run and publisher's exact-SHA checks.
 
 ## Current safety case
 
