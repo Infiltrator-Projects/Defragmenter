@@ -6,7 +6,7 @@ The current software version is defined by [VERSION](VERSION).
 
 ## Compatibility naming
 
-The user-facing product is **Defragmenter**. The Debian/APT package identity is `defragmenter`. Established executable, desktop application ID, runtime/configuration paths and recovery/journal identities retain their `defragmenter` compatibility names so upgrades and persisted state continue to work.
+The user-facing product is **Defragmenter**. The Debian/APT package identity is `defragmenter`. The Debian package and desktop identity remain `defragmenter`. The graphical launcher is `/Programs/defragmenter`, and the graphical Test Media utility is `/Programs/defragmenter-test-media`, following InfiltratorOS's single native user-launchable application namespace. Private filesystem workers and privileged helpers remain package-owned under `/usr/lib/defragmenter`; journal and recovery identities are unchanged.
 
 ## Filesystem support
 
