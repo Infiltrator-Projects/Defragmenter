@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.8.0-274 — 2026-10-25
+
+- Finish the InfiltratorOS native layout migration: move private filesystem engines and authenticated helper to `/System/Filesystems/Defragmenter`, the font bootstrap to `/System/Commands`, the approved artwork to native `/System/Resources` categories and package documentation to `/System/Resources/Documentation/Defragmenter`.
+- Remove the old `/usr/lib/defragmenter` and `/usr/share/doc/defragmenter` package-owned trees through an ordinary dpkg upgrade; retain only conventional Linux desktop registration/icon metadata needed for Mint compatibility.
+- Rename the installed EXT4 metadata worker to `ext-metadata-worker` (shorter than OFS's maximum 30-character filename component). Align worker resolution, tests and source-build paths.
+- Keep the previous 1.8.0-273 user-facing executable migration and deferred privilege request; no filesystem mutation or recovery algorithm is changed.
+
 ## 1.8.0-273 — 2026-10-25
 
 - Install the Defragmenter launcher, graphical desktop and Test Media GUI under InfiltratorOS `/Programs` without compatibility copies in `/usr/bin`; retain private filesystem engines and the privileged helper in their existing package-owned infrastructure paths.
