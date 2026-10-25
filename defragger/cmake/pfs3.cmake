@@ -19,7 +19,7 @@ target_compile_definitions(defragmenter-pfs3-worker PRIVATE _FILE_OFFSET_BITS=64
 target_link_libraries(defragmenter-pfs3-worker PRIVATE
     defragmenter-pfs3-native defragmenter-core OpenSSL::Crypto)
 install(TARGETS defragmenter-pfs3-worker
-        RUNTIME DESTINATION lib/defragmenter/filesystems/pfs3)
+        RUNTIME DESTINATION /System/Filesystems/Defragmenter/pfs3)
 
 if(BUILD_TESTING)
     add_executable(defragmenter-pfs3-native-test tests/test_pfs3_native.c)
