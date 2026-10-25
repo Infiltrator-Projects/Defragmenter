@@ -19,15 +19,14 @@ endif()
 
 foreach(_path IN ITEMS
     "Programs/defragmenter-test-media"
-    "Programs/defragmenter-desktop"
     "Programs/defragmenter"
-    "System/Filesystems/Defragmenter/ext4/ext-metadata-worker"
+    "System/Commands/Defragmenter/ext4/ext-metadata-worker"
     "System/Resources/Icons/defragmenter.png"
     "System/Resources/Documentation/Defragmenter/README.md"
     "System/Resources/Themes/Defragmenter/art/hero-landscape.jpg"
-    "System/Filesystems/Defragmenter/test-media-mkfs-ofs"
-    "System/Filesystems/Defragmenter/test-media-mkfs-ffs"
-    "System/Filesystems/Defragmenter/test-media-mkfs-ufs"
+    "System/Commands/Defragmenter/test-media-mkfs-ofs"
+    "System/Commands/Defragmenter/test-media-mkfs-ffs"
+    "System/Commands/Defragmenter/test-media-mkfs-ufs"
     "usr/share/applications/io.github.defragmenter.TestMedia.desktop")
     if(NOT EXISTS "${_root}/${_path}")
         message(FATAL_ERROR "staged Test Media install is missing ${_path}")
