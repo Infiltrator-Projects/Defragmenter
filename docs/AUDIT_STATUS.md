@@ -220,7 +220,7 @@ begun by 1.8.0-273. All user-facing programs remain in `/Programs`.
 Filesystem-specific private workers, the mapper, operation engine,
 privileged helper, and Test Media format creators move from the
 package-owned `/usr/lib/defragmenter` tree to
-`/System/Filesystems/Defragmenter`; the font bootstrap moves to
+`/System/Commands/Defragmenter`; the font bootstrap moves to
 `/System/Commands/defragmenter-ensure-fonts`.
 The approved runtime icon and UI artwork are installed under the native
 `/System/Resources/Icons` and `/System/Resources/Themes/Defragmenter`
@@ -248,3 +248,14 @@ resources already satisfy OFS's filename limits. Complete normal and
 sanitizer self-hosted CI, exact-artifact and publication gates remain
 mandatory before official release; physical OFS/InfiltratorFS boot qualification
 is separate.
+
+### Native layout correction (1.8.0-275)
+
+The real GTK executable is installed as `/Programs/defragmenter` (no redundant
+shell launcher or `defragmenter-desktop` copy); Test Media is the second
+program. Defragmenter's private command workers are now in
+`/System/Commands/Defragmenter`, never in
+`/System/Filesystems`. Both menu icon fields point to the canonical
+`/System/Resources/Icons/defragmenter.png`. Raw ELF icon rendering inside
+Nemo requires per-user custom icon metadata; do not claim that menu icons
+change executable file icons.
