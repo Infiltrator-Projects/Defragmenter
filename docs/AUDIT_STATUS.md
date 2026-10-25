@@ -6,7 +6,7 @@ Completed: 2026-10-23
 
 Applies to: audited source and release-governance baselines below
 Audited source commit: 76803476484156faacccb713b9cdcbb509e610d2
-Audited release-governance commit: d89dff435d41eb36c2e2fec8d679f87f0d7d4ada
+Audited release-governance commit: 76803476484156faacccb713b9cdcbb509e610d2
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
@@ -22,7 +22,7 @@ The existing qualification of this exact source completed all 46 CTest cases and
 
 ## Reviewed packaging-boundary correction — 2026-10-25
 
-Audit baseline advanced to `76803476484156faacccb713b9cdcbb509e610d2`
+Audit source and release-governance baselines advanced to `76803476484156faacccb713b9cdcbb509e610d2`
 for the Defragmenter **installation location and graphical entrypoint** change
 introduced in PR #51. Source review examined the revised CMake target naming,
 worker destination mapping, every application resolver and privileged-helper
@@ -39,9 +39,11 @@ semantics or recovery engines.
 The full self-hosted release qualification against that exact source completed
 all 47 native CTest tests and all 16 Test Media native filesystem checks, plus
 the independent ASan/UBSan lane. The first run stopped at the intended
-post-change audited-baseline drift control; the new audit commit advances only
-the reviewed source baseline, without changing release-governance baselines,
-checks or test enforcement. The resulting immutable release remains subject
+post-change audited-baseline drift control. The only change to a release-governance
+input since the former baseline was the GTK/Xvfb smoke-test executable rename
+from `./build/defragmenter-desktop` to `./build/defragmenter`, matching the
+actual renamed binary. Both reviewed baselines now refer to that qualified
+source/workflow commit; no audit check, approval restriction or test was disabled. The resulting immutable release remains subject
 to passing the new CI run and publisher's exact-SHA checks.
 
 ## Current safety case
