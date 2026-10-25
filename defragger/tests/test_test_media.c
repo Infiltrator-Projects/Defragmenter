@@ -637,8 +637,8 @@ int main(void) {
     CHECK(ofs->creator == LDTM_CREATOR_AFFS);
     CHECK(ffs->creator == LDTM_CREATOR_AFFS);
     CHECK(sfs->creator == LDTM_CREATOR_AFFS);
-    CHECK(strcmp(ldtm_creator_program(ofs), "/System/Filesystems/Defragmenter/test-media-mkfs-ofs") == 0);
-    CHECK(strcmp(ldtm_creator_program(ffs), "/System/Filesystems/Defragmenter/test-media-mkfs-ffs") == 0);
+    CHECK(strcmp(ldtm_creator_program(ofs), "/System/Commands/Defragmenter/test-media-mkfs-ofs") == 0);
+    CHECK(strcmp(ldtm_creator_program(ffs), "/System/Commands/Defragmenter/test-media-mkfs-ffs") == 0);
     CHECK(ldtm_creator_program(sfs) == NULL);
     CHECK(strcmp(ldtm_creator_display_name(fat12), "Built-in native") == 0);
     CHECK(strcmp(ldtm_creator_display_name(ofs), "Built-in native") == 0);
