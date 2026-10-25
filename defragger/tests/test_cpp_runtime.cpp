@@ -378,7 +378,7 @@ int main() {
         1000U);
     ok = check(
         helper.executable ==
-            "/usr/lib/defragmenter/defragmenter-operation-engine",
+            "/System/Filesystems/Defragmenter/defragmenter-operation-engine",
         "privileged operation-engine allowlist") && ok;
     bool rejected_journal = false;
     try {
