@@ -5,7 +5,7 @@ Status: **complete**
 Completed: 2026-10-23
 
 Applies to: audited source and release-governance baselines below
-Audited source commit: 61cf2032642ea1a6207fddbc3e8763e97d8ab9b5
+Audited source commit: 449d079c963a4ab6250fa064bba86008dd425f62
 Audited release-governance commit: d89dff435d41eb36c2e2fec8d679f87f0d7d4ada
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
@@ -212,3 +212,39 @@ declare CI or physical hardware qualification complete: both mandatory
 self-hosted normal and sanitizer lanes must pass on the exact subsequent
 revision before promotion or a versioned release. The release-governance audit
 baseline is unchanged.
+
+## Native OS private runtime and documentation migration — 2026-10-25
+
+The bounded application packaging change through `449d079c963a4ab6250fa064bba86008dd425f62` finishes the migration
+begun by 1.8.0-273. All user-facing programs remain in `/Programs`.
+Filesystem-specific private workers, the mapper, operation engine,
+privileged helper, and Test Media format creators move from the
+package-owned `/usr/lib/defragmenter` tree to
+`/System/Filesystems/Defragmenter`; the font bootstrap moves to
+`/System/Commands/defragmenter-ensure-fonts`.
+The approved runtime icon and UI artwork are installed under the native
+`/System/Resources/Icons` and `/System/Resources/Themes/Defragmenter`
+categories, and product README/license under
+`/System/Resources/Documentation/Defragmenter`.
+Legacy package-owned `/usr/lib/defragmenter` and
+`/usr/share/doc/defragmenter` paths are intentionally omitted. Linux
+desktop launcher/icon-cache metadata is retained solely for integration with
+the transitional Mint host.
+
+Installed paths, static privileged-command allowlisting, runtime resolution,
+packaging manifests, staged install, and end-to-end installer fixtures are
+updated together. CMake's build target retains the stable name
+`defragmenter-ext-metadata-worker` but uses the installed and build-output
+filename `ext-metadata-worker` to fit OFS's 30-character name limit.
+No parser, allocation planner, low-level mutation writer, recovery
+transaction phase, journal schema, mounted-target safety policy, authorization
+policy or command allowlist semantics are loosened. Root-owned installed
+helpers still use direct absolute paths and user-initiated `pkexec` elevation.
+
+The native path classification is reviewed against InfiltratorOS's actual
+filesystem specification. This is a source/packaging-path audit only;
+it does not declare this exact head CI-qualified or imply that all OS
+resources already satisfy OFS's filename limits. Complete normal and
+sanitizer self-hosted CI, exact-artifact and publication gates remain
+mandatory before official release; physical OFS/InfiltratorFS boot qualification
+is separate.
