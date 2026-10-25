@@ -17,7 +17,7 @@ set_target_properties(defragmenter-ext-metadata-worker PROPERTIES
     OUTPUT_NAME ext-metadata-worker)
 
 install(TARGETS defragmenter-ext-metadata-worker
-        RUNTIME DESTINATION /System/Filesystems/Defragmenter/ext4)
+        RUNTIME DESTINATION /System/Commands/Defragmenter/ext4)
 
 if(BUILD_TESTING)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
