@@ -41,7 +41,7 @@ def main() -> None:
     )
 
     primary = BUILD / "defragmenter-ext-worker"
-    metadata = BUILD / "defragmenter-ext-metadata-worker"
+    metadata = BUILD / "ext-metadata-worker"
     mapper = BUILD / "defragmenter-mapper"
     fixture = BUILD / "defragmenter-ext-fixture"
     for program in (primary, metadata, mapper, fixture):
