@@ -13,12 +13,14 @@ def test_defragmenter_uses_system_update_manager_only() -> None:
     package_builder = (ROOT / "cmake" / "project.cmake").read_text()
     local_runner = (ROOT / "packaging" / "local-run-header.sh.in").read_text()
 
-    assert "Exec=/usr/bin/defragmenter" in desktop
-    assert "TryExec=/usr/bin/defragmenter" in desktop
+    assert "Exec=/Programs/defragmenter" in desktop
+    assert "TryExec=/Programs/defragmenter" in desktop
     assert "CheckUpdates" not in desktop
     assert "--check-updates" not in desktop
 
-    assert "/usr/bin/defragmenter-desktop" in wrapper
+    assert "/Programs/defragmenter-desktop" in wrapper
+    assert "/usr/bin/defragmenter" not in desktop
+    assert "/usr/bin/defragmenter" not in wrapper
     assert "python" not in wrapper.lower()
     assert "update_launcher.py" not in wrapper
     assert "pkexec" not in wrapper
