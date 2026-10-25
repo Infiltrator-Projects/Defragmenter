@@ -1,7 +1,0 @@
-#!/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Defragmenter
-# Author: Shannon Smith
-# Purpose: Launch the installed native GTK application. Updates are managed by APT.
-
-exec /Programs/defragmenter-desktop "$@"
