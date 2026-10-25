@@ -4,4 +4,4 @@
 # Author: Shannon Smith
 # Purpose: Launch the installed native GTK application. Updates are managed by APT.
 
-exec /usr/bin/defragmenter-desktop "$@"
+exec /Programs/defragmenter-desktop "$@"
