@@ -16,8 +16,15 @@ if [ "${LD_TEST_FAKE_CMAKE:-0}" = 1 ]; then
         : "${LD_TEST_SOURCE_ROOT:?LD_TEST_SOURCE_ROOT is required for the fake install}"
         mkdir -p \
             "$DESTDIR/usr/lib/defragmenter/filesystems/fat" \
+            "$DESTDIR/Programs" \
             "$DESTDIR/usr/share/icons/hicolor/96x96/apps" \
             "$DESTDIR/usr/share/app-install/icons"
+        cp "$LD_TEST_SOURCE_ROOT/packaging/defragmenter" "$DESTDIR/Programs/defragmenter"
+        chmod 0755 "$DESTDIR/Programs/defragmenter"
+        for program in defragmenter-desktop defragmenter-test-media; do
+            printf '#!/bin/sh\nexit 0\n' >"$DESTDIR/Programs/$program"
+            chmod 0755 "$DESTDIR/Programs/$program"
+        done
         : >"$DESTDIR/usr/lib/defragmenter/filesystems/fat/defragmenter-fat-worker"
         chmod 0755 "$DESTDIR/usr/lib/defragmenter/filesystems/fat/defragmenter-fat-worker"
         cp "$LD_TEST_SOURCE_ROOT/packaging/io.github.defragmenter.png" \
@@ -56,5 +63,15 @@ OUTPUT_PATH="$PACKAGE" \
 [ "$(dpkg-deb -f "$PACKAGE" Version)" = "$NATIVE_VERSION" ]
 [ "$(dpkg-deb -f "$PACKAGE" Architecture)" = amd64 ]
 [ "$(dpkg-deb -f "$PACKAGE" X-Defragmenter-Build)" = native ]
+
+dpkg-deb -x "$PACKAGE" "$WORK/extracted"
+for program in defragmenter defragmenter-desktop defragmenter-test-media; do
+    [ -x "$WORK/extracted/Programs/$program" ]
+    [ ! -e "$WORK/extracted/usr/bin/$program" ]
+done
+dpkg-deb -e "$PACKAGE" "$WORK/metadata"
+for program in defragmenter defragmenter-desktop defragmenter-test-media; do
+    grep -Fq "Programs/$program" "$WORK/metadata/md5sums"
+done
 
 printf '%s\n' 'Debian package-version metadata test passed.'
