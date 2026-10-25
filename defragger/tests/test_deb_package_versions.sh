@@ -15,28 +15,26 @@ if [ "${LD_TEST_FAKE_CMAKE:-0}" = 1 ]; then
         : "${DESTDIR:?DESTDIR is required for the fake install}"
         : "${LD_TEST_SOURCE_ROOT:?LD_TEST_SOURCE_ROOT is required for the fake install}"
         mkdir -p \
-            "$DESTDIR/System/Filesystems/Defragmenter/fat" \
-            "$DESTDIR/System/Filesystems/Defragmenter/ext4" \
+            "$DESTDIR/System/Commands/Defragmenter/fat" \
+            "$DESTDIR/System/Commands/Defragmenter/ext4" \
             "$DESTDIR/System/Resources/Icons" \
             "$DESTDIR/System/Resources/Documentation/Defragmenter" \
             "$DESTDIR/System/Resources/Themes/Defragmenter/art" \
             "$DESTDIR/Programs" \
             "$DESTDIR/usr/share/icons/hicolor/96x96/apps" \
             "$DESTDIR/usr/share/app-install/icons"
-        cp "$LD_TEST_SOURCE_ROOT/packaging/defragmenter" "$DESTDIR/Programs/defragmenter"
-        chmod 0755 "$DESTDIR/Programs/defragmenter"
-        for program in defragmenter-desktop defragmenter-test-media; do
+                for program in defragmenter defragmenter-test-media; do
             printf '#!/bin/sh\nexit 0\n' >"$DESTDIR/Programs/$program"
             chmod 0755 "$DESTDIR/Programs/$program"
         done
-        : >"$DESTDIR/System/Filesystems/Defragmenter/fat/defragmenter-fat-worker"
-        chmod 0755 "$DESTDIR/System/Filesystems/Defragmenter/fat/defragmenter-fat-worker"
+        : >"$DESTDIR/System/Commands/Defragmenter/fat/defragmenter-fat-worker"
+        chmod 0755 "$DESTDIR/System/Commands/Defragmenter/fat/defragmenter-fat-worker"
         for program in defragmenter-privileged-helper defragmenter-operation-engine defragmenter-mapper; do
-            printf '#!/bin/sh\nexit 0\n' >"$DESTDIR/System/Filesystems/Defragmenter/$program"
-            chmod 0755 "$DESTDIR/System/Filesystems/Defragmenter/$program"
+            printf '#!/bin/sh\nexit 0\n' >"$DESTDIR/System/Commands/Defragmenter/$program"
+            chmod 0755 "$DESTDIR/System/Commands/Defragmenter/$program"
         done
-        printf '#!/bin/sh\nexit 0\n' >"$DESTDIR/System/Filesystems/Defragmenter/ext4/ext-metadata-worker"
-        chmod 0755 "$DESTDIR/System/Filesystems/Defragmenter/ext4/ext-metadata-worker"
+        printf '#!/bin/sh\nexit 0\n' >"$DESTDIR/System/Commands/Defragmenter/ext4/ext-metadata-worker"
+        chmod 0755 "$DESTDIR/System/Commands/Defragmenter/ext4/ext-metadata-worker"
         cp "$LD_TEST_SOURCE_ROOT/README.md" "$DESTDIR/System/Resources/Documentation/Defragmenter/README.md"
         cp "$LD_TEST_SOURCE_ROOT/LICENSE" "$DESTDIR/System/Resources/Documentation/Defragmenter/COPYING.GPL-3.0"
         cp "$LD_TEST_SOURCE_ROOT/gui/ui/art/hero-landscape.jpg" "$DESTDIR/System/Resources/Themes/Defragmenter/art/hero-landscape.jpg"
@@ -78,13 +76,13 @@ OUTPUT_PATH="$PACKAGE" \
 [ "$(dpkg-deb -f "$PACKAGE" X-Defragmenter-Build)" = native ]
 
 dpkg-deb -x "$PACKAGE" "$WORK/extracted"
-for program in defragmenter defragmenter-desktop defragmenter-test-media; do
+for program in defragmenter defragmenter-test-media; do
     [ -x "$WORK/extracted/Programs/$program" ]
     [ ! -e "$WORK/extracted/usr/bin/$program" ]
 done
 for resource in \
-    System/Filesystems/Defragmenter/fat/defragmenter-fat-worker \
-    System/Filesystems/Defragmenter/ext4/ext-metadata-worker \
+    System/Commands/Defragmenter/fat/defragmenter-fat-worker \
+    System/Commands/Defragmenter/ext4/ext-metadata-worker \
     System/Resources/Icons/defragmenter.png \
     System/Resources/Documentation/Defragmenter/README.md
 do
