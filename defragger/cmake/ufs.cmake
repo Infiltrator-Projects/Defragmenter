@@ -27,7 +27,7 @@ target_link_libraries(defragmenter-ufs-worker PRIVATE
     defragmenter-ufs-native defragmenter-core OpenSSL::Crypto)
 
 install(TARGETS defragmenter-ufs-worker
-        RUNTIME DESTINATION /System/Filesystems/Defragmenter/ufs)
+        RUNTIME DESTINATION /System/Commands/Defragmenter/ufs)
 
 if(BUILD_TESTING)
     add_executable(defragmenter-ufs-native-test tests/test_ufs_native.c)
