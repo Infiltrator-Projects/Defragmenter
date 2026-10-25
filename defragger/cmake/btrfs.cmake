@@ -24,7 +24,7 @@ target_link_libraries(defragmenter-btrfs-worker PRIVATE
     defragmenter-btrfs-native defragmenter-core OpenSSL::Crypto)
 
 install(TARGETS defragmenter-btrfs-worker
-        RUNTIME DESTINATION /System/Filesystems/Defragmenter/btrfs)
+        RUNTIME DESTINATION /System/Commands/Defragmenter/btrfs)
 
 if(BUILD_TESTING)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
