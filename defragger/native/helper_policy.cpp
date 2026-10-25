@@ -15,9 +15,9 @@ namespace defragger {
 namespace {
 
 constexpr std::string_view kMapper =
-    "/usr/lib/defragmenter/defragmenter-mapper";
+    "/System/Filesystems/Defragmenter/defragmenter-mapper";
 constexpr std::string_view kOperationEngine =
-    "/usr/lib/defragmenter/defragmenter-operation-engine";
+    "/System/Filesystems/Defragmenter/defragmenter-operation-engine";
 constexpr std::string_view kUdisksctl = "/usr/bin/udisksctl";
 constexpr std::string_view kStateRoot = "/var/lib/defragmenter/state";
 
