@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.0-273 — 2026-10-25
+
+- Install the Defragmenter launcher, graphical desktop and Test Media GUI under InfiltratorOS `/Programs` without compatibility copies in `/usr/bin`; retain private filesystem engines and the privileged helper in their existing package-owned infrastructure paths.
+- Align desktop entries, program resolution, Debian file checksums and sizes, the local native installer and staged installation tests with the new application layout.
+- Open the GTK desktop without an unsolicited administrator-authentication request; request elevation when a user begins an operation that requires the protected helper, leaving the existing safety checks and recovery controls unchanged.
+
 ## 1.8.0-272 — 2026-10-23
 
 - Make all 21 Test Media slots first-party native C creators with raw verification, including ZFS. Remove host filesystem formatters, target mounts, pool-tool orchestration and optional host-package hints.
