@@ -85,6 +85,12 @@ do
     }
 done
 
+# Menu launchers must point to canonical native artwork. Nemo's icon for
+# an executable file is a separate per-user metadata concern.
+grep -Fxq 'Icon=/System/Resources/Icons/defragmenter.png' \
+    "$ROOT/packaging/io.github.defragmenter.desktop"
+grep -Fxq 'Icon=/System/Resources/Icons/defragmenter.png' \
+    "$ROOT/packaging/io.github.defragmenter.TestMedia.desktop"
 SOURCE_ICON="$ROOT/packaging/io.github.defragmenter.png"
 for INSTALLED_ICON in \
     "$STAGE/root/System/Resources/Icons/defragmenter.png" \
