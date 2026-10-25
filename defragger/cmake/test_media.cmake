@@ -14,7 +14,7 @@ target_compile_definitions(defragmenter-desktop PRIVATE
     _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(defragmenter-desktop PRIVATE
     defragmenter-runtime-cpp PkgConfig::GTK3)
-install(TARGETS defragmenter-desktop RUNTIME DESTINATION bin)
+install(TARGETS defragmenter-desktop RUNTIME DESTINATION /Programs)
 
 set_source_files_properties(test_media/test_media_amiga.c PROPERTIES
     COMPILE_DEFINITIONS "ldtm_format_amiga_volume=ldtm_format_amiga_volume_affs")
@@ -109,7 +109,7 @@ target_compile_definitions(defragmenter-test-media-mkfs-ufs PRIVATE
 set_target_properties(defragmenter-test-media-mkfs-ufs PROPERTIES
     OUTPUT_NAME test-media-mkfs-ufs)
 
-install(TARGETS defragmenter-test-media RUNTIME DESTINATION bin)
+install(TARGETS defragmenter-test-media RUNTIME DESTINATION /Programs)
 install(TARGETS
     defragmenter-test-media-mkfs-ofs
     defragmenter-test-media-mkfs-ffs
