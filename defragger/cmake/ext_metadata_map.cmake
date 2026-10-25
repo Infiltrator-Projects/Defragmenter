@@ -13,8 +13,11 @@ target_compile_definitions(defragmenter-ext-metadata-worker PRIVATE
 target_link_libraries(defragmenter-ext-metadata-worker PRIVATE
     defragmenter-ext-native defragmenter-core)
 
+set_target_properties(defragmenter-ext-metadata-worker PROPERTIES
+    OUTPUT_NAME ext-metadata-worker)
+
 install(TARGETS defragmenter-ext-metadata-worker
-        RUNTIME DESTINATION lib/defragmenter/filesystems/ext4)
+        RUNTIME DESTINATION /System/Filesystems/Defragmenter/ext4)
 
 if(BUILD_TESTING)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
