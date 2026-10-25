@@ -80,7 +80,7 @@ jobs:
       - name: Smoke-test the shipped native GTK desktop under Xvfb
         run: |
           set +e
-          xvfb-run -a timeout --signal=TERM 5s ./build/defragmenter-desktop \
+          xvfb-run -a timeout --signal=TERM 5s ./build/defragmenter \
             >native-desktop-smoke.log 2>&1
           status=$?
           set -e
