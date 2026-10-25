@@ -18,7 +18,9 @@ if(NOT _install_result EQUAL 0)
 endif()
 
 foreach(_path IN ITEMS
-    "usr/bin/defragmenter-test-media"
+    "Programs/defragmenter-test-media"
+    "Programs/defragmenter-desktop"
+    "Programs/defragmenter"
     "usr/lib/defragmenter/test-media-mkfs-ofs"
     "usr/lib/defragmenter/test-media-mkfs-ffs"
     "usr/lib/defragmenter/test-media-mkfs-ufs"
