@@ -557,7 +557,7 @@ install(TARGETS
 
 # The installed product is native C/C++. The retired Python presentation
 # tree remains source/test material only and is never installed at runtime.
-install(PROGRAMS packaging/defragmenter DESTINATION bin)
+install(PROGRAMS packaging/defragmenter DESTINATION /Programs)
 install(FILES packaging/io.github.defragmenter.desktop
         DESTINATION share/applications)
 install(FILES packaging/io.github.defragmenter.png
