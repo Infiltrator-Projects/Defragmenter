@@ -16,6 +16,9 @@ def test_defragmenter_uses_system_update_manager_only() -> None:
 
     assert "Exec=/Programs/defragmenter" in desktop
     assert "TryExec=/Programs/defragmenter" in desktop
+    assert "Icon=/System/Resources/Icons/defragmenter.png" in desktop
+    test_media = (ROOT / "packaging" / "io.github.defragmenter.TestMedia.desktop").read_text()
+    assert "Icon=/System/Resources/Icons/defragmenter.png" in test_media
     assert "CheckUpdates" not in desktop
     assert "--check-updates" not in desktop
 
