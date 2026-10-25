@@ -3,8 +3,8 @@
 Type=Application
 Name=Defragmenter
 Comment=Analyse filesystems and create packed or growth-reserved layouts
-TryExec=/usr/bin/defragmenter
-Exec=/usr/bin/defragmenter
+TryExec=/Programs/defragmenter
+Exec=/Programs/defragmenter
 Icon=io.github.defragmenter
 Terminal=false
 Categories=System;Utility;Filesystem;
