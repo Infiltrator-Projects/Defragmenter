@@ -14,6 +14,7 @@ target_compile_definitions(defragmenter-desktop PRIVATE
     _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(defragmenter-desktop PRIVATE
     defragmenter-runtime-cpp PkgConfig::GTK3)
+set_target_properties(defragmenter-desktop PROPERTIES OUTPUT_NAME defragmenter)
 install(TARGETS defragmenter-desktop RUNTIME DESTINATION /Programs)
 
 set_source_files_properties(test_media/test_media_amiga.c PROPERTIES
@@ -114,7 +115,7 @@ install(TARGETS
     defragmenter-test-media-mkfs-ofs
     defragmenter-test-media-mkfs-ffs
     defragmenter-test-media-mkfs-ufs
-    RUNTIME DESTINATION /System/Filesystems/Defragmenter)
+    RUNTIME DESTINATION /System/Commands/Defragmenter)
 install(FILES packaging/io.github.defragmenter.TestMedia.desktop
         DESTINATION share/applications)
 
