@@ -5,7 +5,7 @@ Status: **complete**
 Completed: 2026-10-23
 
 Applies to: audited source and release-governance baselines below
-Audited source commit: 4115692274c5b630d64d834b3735f692e3d5ff4f
+Audited source commit: 61cf2032642ea1a6207fddbc3e8763e97d8ab9b5
 Audited release-governance commit: d89dff435d41eb36c2e2fec8d679f87f0d7d4ada
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
@@ -179,3 +179,36 @@ mounted-target refusal, target binding and final payload checks are unchanged.
 The review is of the source and recovery boundary, not of a passing CI result.
 Complete normal and sanitizer qualification plus exact-artifact publishing
 remain mandatory for 1.8.0-272.
+
+## InfiltratorOS native executable layout and administrator-session review — 2026-10-25
+
+The source change through `61cf2032642ea1a6207fddbc3e8763e97d8ab9b5` migrates all three user-launchable
+Defragmenter entry points to the established InfiltratorOS `/Programs`
+namespace: `defragmenter` (launcher), `defragmenter-desktop` (GTK program)
+and `defragmenter-test-media` (GTK test-media program). The same
+source revision updates both desktop launchers, the Test Media program resolver,
+the Debian package installation inventory and size/accounting, and staged
+package/native-installer regression fixtures. The independently installed
+package remains named `defragmenter`; private filesystem workers and the
+privileged helper remain under `/usr/lib/defragmenter`. A dpkg-managed upgrade
+removes obsolete package-owned `/usr/bin` files; no alias or duplicate public
+executable is deliberately added.
+
+The graphical desktop previously scheduled a privileged helper launch 200 ms
+after opening its window, before any protected operation was requested. The
+new behaviour retains unprivileged volume discovery and requests authorization
+only when `run()` needs the helper; privileged operations still pass through the
+unchanged `pkexec` helper, authorization, target-safety checks, journal and
+filesystem-specific recovery controls. A focused regression asserts that
+the eager startup timer is absent while the requested-operation helper route
+remains present. Dismissing authorization must not be confused with a broken
+application executable.
+
+The safety review is limited to installation paths, desktop launch policy,
+packaging and their qualification tests. No disk-format parser, allocation
+planner, mutation engine, durable recovery protocol, helper command whitelist
+or privileged-helper executable is changed. This audit entry does **not**
+declare CI or physical hardware qualification complete: both mandatory
+self-hosted normal and sanitizer lanes must pass on the exact subsequent
+revision before promotion or a versioned release. The release-governance audit
+baseline is unchanged.
