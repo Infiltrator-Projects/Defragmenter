@@ -43,6 +43,19 @@ cmake "$@"
 cmake --build "$BUILD" -j"$BUILD_JOBS_EFFECTIVE"
 DESTDIR="$STAGE/root" cmake --install "$BUILD"
 
+# The native OS keeps all launchable programs directly in /Programs.
+# Private filesystem workers remain under /usr/lib/defragmenter.
+for program in defragmenter defragmenter-desktop defragmenter-test-media; do
+    [ -x "$STAGE/root/Programs/$program" ] || {
+        printf "Missing /Programs/%s from package stage\n" "$program" >&2
+        exit 1
+    }
+    [ ! -e "$STAGE/root/usr/bin/$program" ] || {
+        printf "Obsolete /usr/bin/%s shipped by package\n" "$program" >&2
+        exit 1
+    }
+done
+
 SOURCE_ICON="$ROOT/packaging/io.github.defragmenter.png"
 for INSTALLED_ICON in \
     "$STAGE/root/usr/lib/defragmenter/defragmenter-icon.png" \
@@ -63,7 +76,7 @@ install -D -m 0755 "$ROOT/packaging/ensure-native-fonts.sh" \
     "$STAGE/root/usr/lib/defragmenter/ensure-native-fonts"
 
 mkdir -p "$STAGE/root/DEBIAN"
-INSTALLED_SIZE=$(du -sk "$STAGE/root/usr" | awk '{print $1}')
+INSTALLED_SIZE=$(du -sk "$STAGE/root/usr" "$STAGE/root/Programs" | awk '{sum += $1} END {print sum}')
 {
     printf 'Package: defragmenter\n'
     printf 'Version: %s\n' "$PACKAGE_VERSION"
@@ -107,7 +120,7 @@ EOF
 chmod 0755 "$STAGE/root/DEBIAN/postinst" "$STAGE/root/DEBIAN/postrm"
 (
     cd "$STAGE/root"
-    find usr -type f -print0 | sort -z | xargs -0 md5sum >DEBIAN/md5sums
+    find usr Programs -type f -print0 | sort -z | xargs -0 md5sum >DEBIAN/md5sums
 )
 chmod 0644 "$STAGE/root/DEBIAN/control" "$STAGE/root/DEBIAN/md5sums"
 dpkg-deb --root-owner-group --build "$STAGE/root" "$OUTPUT"
