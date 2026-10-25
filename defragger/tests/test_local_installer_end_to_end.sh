@@ -40,8 +40,15 @@ if [ "${LD_INSTALLER_TEST_COMMAND:-0}" = 1 ]; then
                 : "${LD_INSTALLER_TEST_SOURCE_ROOT:?source root is required for the fake install}"
                 mkdir -p \
                     "$DESTDIR/usr/lib/defragmenter/filesystems/fat" \
+                    "$DESTDIR/Programs" \
                     "$DESTDIR/usr/share/icons/hicolor/96x96/apps" \
                     "$DESTDIR/usr/share/app-install/icons"
+                cp "$LD_INSTALLER_TEST_SOURCE_ROOT/packaging/defragmenter" "$DESTDIR/Programs/defragmenter"
+                chmod 0755 "$DESTDIR/Programs/defragmenter"
+                for program in defragmenter-desktop defragmenter-test-media; do
+                    printf '#!/bin/sh\nexit 0\n' >"$DESTDIR/Programs/$program"
+                    chmod 0755 "$DESTDIR/Programs/$program"
+                done
                 : >"$DESTDIR/usr/lib/defragmenter/filesystems/fat/defragmenter-fat-worker"
                 chmod 0755 "$DESTDIR/usr/lib/defragmenter/filesystems/fat/defragmenter-fat-worker"
                 cp "$LD_INSTALLER_TEST_SOURCE_ROOT/packaging/io.github.defragmenter.png" \
