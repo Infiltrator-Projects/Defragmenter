@@ -87,3 +87,16 @@ The package/install contract is described in the repository [README](../README.m
 - [Validation](../docs/VALIDATION.md)
 - [Audit status](../docs/AUDIT_STATUS.md)
 - [References](../docs/REFERENCES.md)
+
+## Installed program and icon layout
+
+Exactly two user-facing executables are installed: `/Programs/defragmenter`
+(the native GTK binary itself) and `/Programs/defragmenter-test-media`.
+There is no `/Programs/defragmenter-desktop` launcher copy or shell wrapper.
+Private Defragmenter command executables and filesystem-specific worker programs
+reside in `/System/Commands/Defragmenter`, **not** in the operating system's
+`/System/Filesystems` driver namespace. The two Cinnamon menu desktop
+entries use the approved native `/System/Resources/Icons/defragmenter.png`.
+Nemo's icon for the raw executable file is controlled by per-user file metadata,
+and is not changed merely by a `.desktop` Icon line. No second icon artwork
+has been invented for Test Media.
