@@ -83,7 +83,7 @@ struct RasterImageCache {
 };
 
 fs::path artwork(const char* name) {
-    const fs::path installed = fs::path("/usr/lib/defragmenter/ui/art") / name;
+    const fs::path installed = fs::path("/System/Resources/Themes/Defragmenter/art") / name;
     if (fs::is_regular_file(installed)) return installed;
     const auto local = fs::path("defragger/gui/ui/art") / name;
     if (fs::is_regular_file(local)) return local;
@@ -145,7 +145,7 @@ GdkPixbuf* scaled_cover_pixbuf(
 GtkWidget* app_icon_image(int size)
 {
     const fs::path candidates[] = {
-        "/usr/lib/defragmenter/defragmenter-icon.png",
+        "/System/Resources/Icons/defragmenter.png",
         "/usr/share/icons/hicolor/96x96/apps/io.github.defragmenter.png",
         fs::path("defragger/packaging/io.github.defragmenter.png"),
         fs::path("packaging/io.github.defragmenter.png"),
@@ -170,7 +170,7 @@ GtkWidget* app_icon_image(int size)
 void apply_window_icon(GtkWindow* window)
 {
     const fs::path candidates[] = {
-        "/usr/lib/defragmenter/defragmenter-icon.png",
+        "/System/Resources/Icons/defragmenter.png",
         "/usr/share/icons/hicolor/96x96/apps/io.github.defragmenter.png",
         fs::path("defragger/packaging/io.github.defragmenter.png"),
         fs::path("packaging/io.github.defragmenter.png"),
