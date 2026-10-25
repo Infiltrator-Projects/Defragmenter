@@ -80,6 +80,8 @@ for program in defragmenter defragmenter-test-media; do
     [ -x "$WORK/extracted/Programs/$program" ]
     [ ! -e "$WORK/extracted/usr/bin/$program" ]
 done
+[ ! -e "$WORK/extracted/Programs/defragmenter-desktop" ]
+[ ! -e "$WORK/extracted/System/Filesystems/Defragmenter" ]
 for resource in \
     System/Commands/Defragmenter/fat/defragmenter-fat-worker \
     System/Commands/Defragmenter/ext4/ext-metadata-worker \
@@ -91,7 +93,7 @@ done
 [ ! -e "$WORK/extracted/usr/lib/defragmenter" ]
 [ ! -e "$WORK/extracted/usr/share/doc/defragmenter" ]
 dpkg-deb -e "$PACKAGE" "$WORK/metadata"
-for program in defragmenter defragmenter-desktop defragmenter-test-media; do
+for program in defragmenter defragmenter-test-media; do
     grep -Fq "Programs/$program" "$WORK/metadata/md5sums"
 done
 
