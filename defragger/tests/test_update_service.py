@@ -12,6 +12,7 @@ def test_defragmenter_uses_system_update_manager_only() -> None:
     wrapper = (ROOT / "packaging" / "defragmenter").read_text()
     package_builder = (ROOT / "cmake" / "project.cmake").read_text()
     local_runner = (ROOT / "packaging" / "local-run-header.sh.in").read_text()
+    desktop_code = (ROOT / "native" / "desktop.cpp").read_text()
 
     assert "Exec=/Programs/defragmenter" in desktop
     assert "TryExec=/Programs/defragmenter" in desktop
@@ -24,6 +25,12 @@ def test_defragmenter_uses_system_update_manager_only() -> None:
     assert "python" not in wrapper.lower()
     assert "update_launcher.py" not in wrapper
     assert "pkexec" not in wrapper
+
+    # Opening the GUI must not summon pkexec. The privileged helper is
+    # started only after the user explicitly requests a protected operation.
+    assert "auth_timer_" not in desktop_code
+    assert "else start_helper();" in desktop_code
+    assert "void start_helper()" in desktop_code
 
     assert "gui/update_helper.py" not in package_builder
     assert not (ROOT / "gui" / "update_helper.py").exists()
