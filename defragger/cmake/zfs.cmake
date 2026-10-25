@@ -27,7 +27,7 @@ target_link_libraries(defragmenter-zfs-worker PRIVATE
     defragmenter-zfs-native defragmenter-core)
 
 install(TARGETS defragmenter-zfs-worker
-        RUNTIME DESTINATION lib/defragmenter/filesystems/zfs)
+        RUNTIME DESTINATION /System/Filesystems/Defragmenter/zfs)
 
 if(BUILD_TESTING)
     add_executable(defragmenter-zfs-native-test tests/test_zfs_native.c)
