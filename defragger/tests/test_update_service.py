@@ -19,7 +19,7 @@ def test_defragmenter_uses_system_update_manager_only() -> None:
     assert "CheckUpdates" not in desktop
     assert "--check-updates" not in desktop
 
-    assert "/Programs/defragmenter-desktop" in wrapper
+    assert "/Programs/defragmenter-desktop" not in wrapper
     assert "/usr/bin/defragmenter" not in desktop
     assert "/usr/bin/defragmenter" not in wrapper
     assert "python" not in wrapper.lower()
