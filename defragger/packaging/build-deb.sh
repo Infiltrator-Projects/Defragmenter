@@ -44,8 +44,9 @@ cmake --build "$BUILD" -j"$BUILD_JOBS_EFFECTIVE"
 DESTDIR="$STAGE/root" cmake --install "$BUILD"
 
 # The native OS keeps all launchable programs directly in /Programs.
-# Private filesystem workers are installed in the native /System/Filesystems tree.
-for program in defragmenter defragmenter-desktop defragmenter-test-media; do
+# Defragmenter's private executables live in /System/Commands/Defragmenter,
+# not in the OS-owned filesystem implementation namespace.
+for program in defragmenter defragmenter-test-media; do
     [ -x "$STAGE/root/Programs/$program" ] || {
         printf "Missing /Programs/%s from package stage\n" "$program" >&2
         exit 1
@@ -56,6 +57,13 @@ for program in defragmenter defragmenter-desktop defragmenter-test-media; do
     }
 done
 
+# The shipped package has exactly two user-launchable Defragmenter files.
+[ ! -e "$STAGE/root/Programs/defragmenter-desktop" ] || {
+    echo 'Unapproved third Defragmenter executable' >&2; exit 1;
+}
+[ ! -e "$STAGE/root/System/Filesystems/Defragmenter" ] || {
+    echo 'Defragmenter private programs must not be filesystem drivers' >&2; exit 1;
+}
 # The old Linux private application roots must not remain in this package.
 for old in usr/lib/defragmenter usr/share/doc/defragmenter; do
     [ ! -e "$STAGE/root/$old" ] || {
@@ -64,9 +72,9 @@ for old in usr/lib/defragmenter usr/share/doc/defragmenter; do
     }
 done
 for resource in \
-    System/Filesystems/Defragmenter/fat/defragmenter-fat-worker \
-    System/Filesystems/Defragmenter/ext4/ext-metadata-worker \
-    System/Filesystems/Defragmenter/defragmenter-privileged-helper \
+    System/Commands/Defragmenter/fat/defragmenter-fat-worker \
+    System/Commands/Defragmenter/ext4/ext-metadata-worker \
+    System/Commands/Defragmenter/defragmenter-privileged-helper \
     System/Resources/Documentation/Defragmenter/README.md \
     System/Resources/Documentation/Defragmenter/COPYING.GPL-3.0 \
     System/Resources/Themes/Defragmenter/art/hero-landscape.jpg
