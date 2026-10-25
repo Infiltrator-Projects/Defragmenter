@@ -114,7 +114,7 @@ install(TARGETS
     defragmenter-test-media-mkfs-ofs
     defragmenter-test-media-mkfs-ffs
     defragmenter-test-media-mkfs-ufs
-    RUNTIME DESTINATION lib/defragmenter)
+    RUNTIME DESTINATION /System/Filesystems/Defragmenter)
 install(FILES packaging/io.github.defragmenter.TestMedia.desktop
         DESTINATION share/applications)
 
