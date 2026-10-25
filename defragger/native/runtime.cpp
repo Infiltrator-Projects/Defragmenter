@@ -148,7 +148,7 @@ constexpr std::array<ProgramSpec, 21> kPrograms{{
      "/usr/lib/defragmenter/defragmenter-privileged-helper",
      "defragmenter-privileged-helper"},
     {"test-media", "DEFRAGMENTER_TEST_MEDIA",
-     "/usr/bin/defragmenter-test-media",
+     "/Programs/defragmenter-test-media",
      "defragmenter-test-media"},
 }};
 
