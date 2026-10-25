@@ -934,18 +934,14 @@ public:
 
         gtk_widget_show_all(window_);
         if (!start_services) return;
+        // Read-only volume discovery must not force administrator authentication.
+        // An explicit operation that needs the privileged helper calls
+        // start_helper() from run() only after the user's request.
         refresh();
-        auth_timer_ = g_timeout_add(200, [](gpointer data) -> gboolean {
-            auto* self = static_cast<Desktop*>(data);
-            self->start_helper();
-            self->auth_timer_ = 0;
-            return G_SOURCE_REMOVE;
-        }, this);
     }
 
     ~Desktop() {
         if (analysis_timer_) g_source_remove(analysis_timer_);
-        if (auth_timer_) g_source_remove(auth_timer_);
         if (local_stop_timer_) g_source_remove(local_stop_timer_);
         if (selection_analysis_timer_) g_source_remove(selection_analysis_timer_);
         if (helper_transport_) {
@@ -999,7 +995,6 @@ private:
     gint64 analysis_started_ = 0;
     std::string analysis_phase_;
     bool analysis_has_progress_ = false;
-    guint auth_timer_ = 0;
     guint local_stop_timer_ = 0;
     guint selection_analysis_timer_ = 0;
     std::uint64_t map_generation_ = 1U;
