@@ -525,27 +525,27 @@ target_link_libraries(defragmenter-hfs-worker PRIVATE
 set_target_properties(defragmenter-hfs-worker PROPERTIES OUTPUT_NAME hfs_analyser)
 
 install(TARGETS defragmenter-affs-worker
-        RUNTIME DESTINATION /System/Filesystems/Defragmenter/affs)
+        RUNTIME DESTINATION /System/Commands/Defragmenter/affs)
 install(TARGETS defragmenter-fat-worker
-        RUNTIME DESTINATION /System/Filesystems/Defragmenter/fat)
+        RUNTIME DESTINATION /System/Commands/Defragmenter/fat)
 install(TARGETS defragmenter-apfs-worker
-        RUNTIME DESTINATION /System/Filesystems/Defragmenter/apfs)
+        RUNTIME DESTINATION /System/Commands/Defragmenter/apfs)
 install(TARGETS defragmenter-minix-worker
-        RUNTIME DESTINATION /System/Filesystems/Defragmenter/minix)
+        RUNTIME DESTINATION /System/Commands/Defragmenter/minix)
 install(TARGETS defragmenter-swap-worker
-        RUNTIME DESTINATION /System/Filesystems/Defragmenter/swap)
+        RUNTIME DESTINATION /System/Commands/Defragmenter/swap)
 install(TARGETS defragmenter-xfs-worker
-        RUNTIME DESTINATION /System/Filesystems/Defragmenter/xfs)
+        RUNTIME DESTINATION /System/Commands/Defragmenter/xfs)
 install(TARGETS defragmenter-ext-worker
-        RUNTIME DESTINATION /System/Filesystems/Defragmenter/ext4)
+        RUNTIME DESTINATION /System/Commands/Defragmenter/ext4)
 install(TARGETS defragmenter-ntfs-worker
-        RUNTIME DESTINATION /System/Filesystems/Defragmenter/ntfs)
+        RUNTIME DESTINATION /System/Commands/Defragmenter/ntfs)
 install(TARGETS defragmenter-exfat-worker
-        RUNTIME DESTINATION /System/Filesystems/Defragmenter/exfat)
+        RUNTIME DESTINATION /System/Commands/Defragmenter/exfat)
 install(TARGETS defragmenter-hfsplus-worker
-        RUNTIME DESTINATION /System/Filesystems/Defragmenter/hfsplus)
+        RUNTIME DESTINATION /System/Commands/Defragmenter/hfsplus)
 install(TARGETS defragmenter-hfs-worker
-        RUNTIME DESTINATION /System/Filesystems/Defragmenter/hfs)
+        RUNTIME DESTINATION /System/Commands/Defragmenter/hfs)
 
 # Native C++ application services are the only mapper, operation dispatcher
 # and privileged helper in both source and installed application.
@@ -553,11 +553,10 @@ install(TARGETS
         defragmenter-operation-engine-cpp
         defragmenter-mapper-cpp
         defragmenter-privileged-helper-cpp
-        RUNTIME DESTINATION /System/Filesystems/Defragmenter)
+        RUNTIME DESTINATION /System/Commands/Defragmenter)
 
 # The installed product is native C/C++. The retired Python presentation
 # tree remains source/test material only and is never installed at runtime.
-install(PROGRAMS packaging/defragmenter DESTINATION /Programs)
 install(FILES packaging/io.github.defragmenter.desktop
         DESTINATION share/applications)
 install(FILES packaging/io.github.defragmenter.png
