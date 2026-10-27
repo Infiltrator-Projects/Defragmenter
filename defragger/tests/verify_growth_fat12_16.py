@@ -27,6 +27,9 @@ with p.open('rb') as f:
     first = struct.unpack_from('<H', entry, 26)[0]
     f.seek(reserved * bps)
     fat = f.read(spf * bps)
+    for copy in range(1, fats):
+        f.seek((reserved + copy * spf) * bps)
+        assert f.read(spf * bps) == fat, ('FAT copies disagree', copy)
 
     def fv(c: int) -> int:
         if kind == 'fat12':

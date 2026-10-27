@@ -11,6 +11,9 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#ifdef IFS_FAT_TESTING
+#include <stdatomic.h>
+#endif
 
 #ifndef IFS_FAT_MODULE_PARENT
 #define IFS_FAT_MODULE_PARENT "/System"
@@ -48,6 +51,16 @@ static int test_atomic_file_write(const char *path, InfiltratrAtomicFileMode mod
         ++writes == strtoul(value, NULL, 10)) _exit(86);
     return status;
 }
+
+static ssize_t test_pwrite_full(int fd, const void *buffer, size_t length,
+                                uint64_t offset) {
+    ssize_t result = ld_pwrite_full(fd, buffer, length, offset);
+    const char *value = getenv("IFS_TEST_CRASH_AFTER_DEVICE_WRITE");
+    static _Atomic unsigned long writes;
+    if (result >= 0 && (size_t)result == length && value != NULL && *value != '\0' &&
+        atomic_fetch_add(&writes, 1) + 1 == strtoul(value, NULL, 10)) _exit(87);
+    return result;
+}
 #endif
 
 int main(int argc, char **argv) {
@@ -73,6 +86,7 @@ int main(int argc, char **argv) {
     host.err = stderr;
 #ifdef IFS_FAT_TESTING
     host.infiltratr_atomic_file_write = test_atomic_file_write;
+    host.ld_pwrite_full = test_pwrite_full;
 #endif
 
     const char *module_parent = IFS_FAT_MODULE_PARENT;
