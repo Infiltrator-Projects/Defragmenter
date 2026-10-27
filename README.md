@@ -53,11 +53,11 @@ Linux filesystem metadata and Test Media GPT labels are routing hints, not write
 
 The canonical implementation lives under `defragger/`.
 
-Filesystem implementations are organised below `defragger/gui/filesystems/<format>/native/`. Filesystem-neutral device safety, raw I/O and Stop handling live under `defragger/src/core/`. The C++17 application-service layer in `defragger/native/` is the sole registry, allocation-map translation, operation-dispatch, privileged-helper control plane and installed GTK desktop. There is no retained Python application, presentation, capability or privilege-policy layer; Python under `defragger/tests/` is limited to independent fixture construction and black-box test orchestration.
+Most filesystem implementations are organised below `defragger/gui/filesystems/<format>/native/`. FAT12/16/32 analysis, relocation and recovery live in the matching installed Filesystems `.so`, called through a versioned child-process host. Filesystem-neutral device safety, raw I/O and Stop handling live under `defragger/src/core/`. The C++17 application-service layer in `defragger/native/` is the sole registry, allocation-map translation, operation-dispatch, privileged-helper control plane and installed GTK desktop. There is no retained Python application, presentation, capability or privilege-policy layer; Python under `defragger/tests/` is limited to independent fixture construction and black-box test orchestration.
 
 The operating system supplies raw block I/O, but filesystem parsing, placement planning, staging and metadata updates are owned by the project. Architecture and regression tests reject known external filesystem mutation/repair orchestration and duplicate implementation paths.
 
-Shared first-party primitives are consumed from the exact pinned Common 1.19.46 dependency; filesystem-specific rules remain in Defragmenter. Common supplies the generic numeric, arithmetic, byte-order, exact-I/O, durable-file, design/typography and font-provenance contracts used here, while Defragmenter keeps filesystem interpretation, target safety, placement and recovery semantics local.
+Shared first-party primitives are consumed from the exact pinned Common 1.19.46 dependency. Common supplies generic numeric, arithmetic, byte-order, exact-I/O, durable-file, design/typography and font-provenance contracts. Defragmenter retains generic target safety and supplies host services to the installed FAT module, which owns FAT interpretation, placement and recovery.
 
 ## Build and test
 

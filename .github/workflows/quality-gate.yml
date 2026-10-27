@@ -40,6 +40,28 @@ jobs:
       - name: Verify self-hosted runner contract
         run: ./ci/preflight.sh quality
 
+      - name: Read the Filesystems test revision
+        id: filesystems_revision
+        run: echo "sha=$(tr -d '\r\n' < shared/filesystems-fat-revision)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the qualified Filesystems source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: Infiltrator-Projects/Filesystems
+          ref: ${{ steps.filesystems_revision.outputs.sha }}
+          path: ci-filesystems
+          submodules: true
+
+      - name: Build the FAT modules for isolated tests
+        run: |
+          set -euo pipefail
+          fs="$GITHUB_WORKSPACE/ci-filesystems"
+          cmp native/fat_defrag_abi.h "$fs/native/filesystems/fat/defrag/fat_defrag_abi.h"
+          cmake -S "$fs" -B "$RUNNER_TEMP/filesystems-fat-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=OFF
+          cmake --build "$RUNNER_TEMP/filesystems-fat-$GITHUB_RUN_ID-$GITHUB_JOB" --target filesystems-fat12-module filesystems-fat16-module filesystems-fat32-module -j2
+          install -d -m 0755 "$PWD/build/fat-module-test/Filesystems"
+          install -m 0644 "$RUNNER_TEMP/filesystems-fat-$GITHUB_RUN_ID-$GITHUB_JOB"/FAT{12,16,32}.so "$PWD/build/fat-module-test/Filesystems/"
+
       - name: Detect explicit release intent
         id: release_intent
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -73,6 +95,8 @@ jobs:
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DLD_ENABLE_WERROR=ON \
+            -DFAT_DEFRAG_SOURCE_DIR="$GITHUB_WORKSPACE/ci-filesystems/native/filesystems/fat/defrag" \
+            -DFAT_DEFRAG_TEST_MODULE_PARENT="$PWD/build/fat-module-test" \
             -DBUILD_TESTING=ON
           cmake --build build -j2
           cmake --build build --target defragmenter-desktop -j2
@@ -158,12 +182,38 @@ jobs:
       - name: Verify self-hosted sanitizer runner contract
         run: ./ci/preflight.sh sanitizers
 
+      - name: Read the Filesystems test revision
+        id: filesystems_revision
+        run: echo "sha=$(tr -d '\r\n' < shared/filesystems-fat-revision)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the qualified Filesystems source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: Infiltrator-Projects/Filesystems
+          ref: ${{ steps.filesystems_revision.outputs.sha }}
+          path: ci-filesystems
+          submodules: true
+
+      - name: Build the FAT modules for isolated tests
+        run: |
+          set -euo pipefail
+          fs="$GITHUB_WORKSPACE/ci-filesystems"
+          cmp native/fat_defrag_abi.h "$fs/native/filesystems/fat/defrag/fat_defrag_abi.h"
+          cmake -S "$fs" -B "$RUNNER_TEMP/filesystems-fat-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=OFF \
+            -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
+            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
+          cmake --build "$RUNNER_TEMP/filesystems-fat-$GITHUB_RUN_ID-$GITHUB_JOB" --target filesystems-fat12-module filesystems-fat16-module filesystems-fat32-module -j2
+          install -d -m 0755 "$PWD/build-sanitize/fat-module-test/Filesystems"
+          install -m 0644 "$RUNNER_TEMP/filesystems-fat-$GITHUB_RUN_ID-$GITHUB_JOB"/FAT{12,16,32}.so "$PWD/build-sanitize/fat-module-test/Filesystems/"
+
       - name: Build with AddressSanitizer and UndefinedBehaviorSanitizer
         run: |
           cmake -S . -B build-sanitize \
             -DCMAKE_BUILD_TYPE=Debug \
             -DLD_ENABLE_WERROR=ON \
             -DLD_ENABLE_SANITIZERS=ON \
+            -DFAT_DEFRAG_SOURCE_DIR="$GITHUB_WORKSPACE/ci-filesystems/native/filesystems/fat/defrag" \
+            -DFAT_DEFRAG_TEST_MODULE_PARENT="$PWD/build-sanitize/fat-module-test" \
             -DBUILD_TESTING=ON
           cmake --build build-sanitize -j2
 

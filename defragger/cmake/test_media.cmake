@@ -140,7 +140,8 @@ if(BUILD_TESTING)
             COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_test_media_raw.py"
                 "${CMAKE_BINARY_DIR}" "${ldtm_fs}")
         set_tests_properties("defragmenter-test-media-native-${ldtm_fs}"
-            PROPERTIES TIMEOUT 1800)
+            PROPERTIES TIMEOUT 1800
+                ENVIRONMENT "DEFRAGMENTER_FAT_WORKER=${FAT_WORKER_FOR_TESTS}")
     endforeach()
     add_executable(defragmenter-test-media-gui-test
         tests/test_test_media_gui.c test_media/test_media_theme.c)

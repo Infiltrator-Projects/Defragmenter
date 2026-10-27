@@ -257,27 +257,34 @@ target_compile_definitions(defragmenter-privileged-helper-cpp PRIVATE
 target_link_libraries(defragmenter-privileged-helper-cpp PRIVATE
     defragmenter-runtime-cpp defragmenter-core Threads::Threads)
 
-# FAT remains native C and is a private implementation detail behind the
-# authoritative C++ registry. There is deliberately no second filesystem
-# registry or plugin ABI.
-add_executable(defragmenter-fat-worker
-    gui/filesystems/fat/native/writer.c
-    gui/filesystems/fat/native/fat_analysis.c
-    gui/filesystems/fat/native/fat_directory.c
-    gui/filesystems/fat/native/fat_relayout.c
-    gui/filesystems/fat/native/fat_io.c
-    gui/filesystems/fat/native/fat_journal.c
-    gui/filesystems/fat/native/fat_relocation.c
-    gui/filesystems/fat/native/fat_volume.c)
+# A child-process host locates the matching root-owned Filesystems module.
+# The filesystem algorithms and durable journal implementation live in FAT*.so.
+add_executable(defragmenter-fat-worker native/fat_module_loader.c)
 target_include_directories(defragmenter-fat-worker PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/fat/native"
+    "${CMAKE_CURRENT_SOURCE_DIR}/native" "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
     "${LD_GENERATED_DIR}")
 target_compile_options(defragmenter-fat-worker PRIVATE ${LD_WARNING_FLAGS})
-target_compile_definitions(defragmenter-fat-worker PRIVATE
-    _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+target_compile_definitions(defragmenter-fat-worker PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(defragmenter-fat-worker PRIVATE
-    defragmenter-core Threads::Threads)
+    defragmenter-core Threads::Threads ${CMAKE_DL_LIBS})
+
+# Test-only overrides are compiled into a separate binary, never the installed host.
+set(FAT_DEFRAG_SOURCE_DIR "" CACHE PATH "Filesystems FAT defrag source for unit tests")
+set(FAT_DEFRAG_TEST_MODULE_PARENT "" CACHE PATH "Disposable FAT module test parent")
+set(FAT_WORKER_FOR_TESTS "$<TARGET_FILE:defragmenter-fat-worker>")
+if(BUILD_TESTING AND FAT_DEFRAG_TEST_MODULE_PARENT)
+    add_executable(defragmenter-fat-test-worker native/fat_module_loader.c)
+    target_include_directories(defragmenter-fat-test-worker PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/native" "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
+        "${LD_GENERATED_DIR}")
+    target_compile_options(defragmenter-fat-test-worker PRIVATE ${LD_WARNING_FLAGS})
+    target_compile_definitions(defragmenter-fat-test-worker PRIVATE
+        _FILE_OFFSET_BITS=64 _GNU_SOURCE IFS_FAT_TESTING
+        "IFS_FAT_MODULE_PARENT=\"${FAT_DEFRAG_TEST_MODULE_PARENT}\"")
+    target_link_libraries(defragmenter-fat-test-worker PRIVATE
+        defragmenter-core Threads::Threads ${CMAKE_DL_LIBS})
+    set(FAT_WORKER_FOR_TESTS "$<TARGET_FILE:defragmenter-fat-test-worker>")
+endif()
 
 # APFS exact bounded analysis and the fail-closed offline staged writer share
 # one native checkpoint/spaceman/catalog implementation.
@@ -762,71 +769,40 @@ if(BUILD_TESTING)
     target_link_libraries(defragmenter-mounted-image-identity-test PRIVATE defragmenter-core)
     add_test(NAME defragmenter-mounted-image-identity
         COMMAND defragmenter-mounted-image-identity-test)
-    add_executable(defragmenter-fat-volume-test
-        tests/test_fat_volume.c
-        gui/filesystems/fat/native/fat_io.c
-        gui/filesystems/fat/native/fat_volume.c)
-    target_include_directories(defragmenter-fat-volume-test PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-        "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/fat/native"
-        "${LD_GENERATED_DIR}")
-    target_compile_options(defragmenter-fat-volume-test PRIVATE
-        ${LD_WARNING_FLAGS})
-    target_compile_definitions(defragmenter-fat-volume-test PRIVATE
-        _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-    target_link_libraries(defragmenter-fat-volume-test PRIVATE
-        defragmenter-core Threads::Threads)
-    add_test(NAME defragmenter-fat-volume
-        COMMAND defragmenter-fat-volume-test)
-    add_executable(defragmenter-fat-directory-test
-        tests/test_fat_directory.c
-        gui/filesystems/fat/native/fat_directory.c
-        gui/filesystems/fat/native/fat_volume.c)
-    target_include_directories(defragmenter-fat-directory-test PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-        "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/fat/native"
-        "${LD_GENERATED_DIR}")
-    target_compile_options(defragmenter-fat-directory-test PRIVATE
-        ${LD_WARNING_FLAGS})
-    target_compile_definitions(defragmenter-fat-directory-test PRIVATE
-        _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-    target_link_libraries(defragmenter-fat-directory-test PRIVATE
-        defragmenter-core)
-    add_test(NAME defragmenter-fat-directory
-        COMMAND defragmenter-fat-directory-test)
-    add_executable(defragmenter-fat-journal-test
-        tests/test_fat_journal.c
-        gui/filesystems/fat/native/fat_journal.c
-        gui/filesystems/fat/native/fat_volume.c)
-    target_include_directories(defragmenter-fat-journal-test PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-        "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/fat/native"
-        "${LD_GENERATED_DIR}")
-    target_compile_options(defragmenter-fat-journal-test PRIVATE
-        ${LD_WARNING_FLAGS})
-    target_compile_definitions(defragmenter-fat-journal-test PRIVATE
-        _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-    target_link_libraries(defragmenter-fat-journal-test PRIVATE
-        defragmenter-core)
-    add_test(NAME defragmenter-fat-journal
-        COMMAND defragmenter-fat-journal-test)
-    add_executable(defragmenter-fat-relayout-model-test
-        tests/test_fat_relayout.c
-        gui/filesystems/fat/native/fat_directory.c
-        gui/filesystems/fat/native/fat_relayout.c
-        gui/filesystems/fat/native/fat_volume.c)
-    target_include_directories(defragmenter-fat-relayout-model-test PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-        "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/fat/native"
-        "${LD_GENERATED_DIR}")
-    target_compile_options(defragmenter-fat-relayout-model-test PRIVATE
-        ${LD_WARNING_FLAGS})
-    target_compile_definitions(defragmenter-fat-relayout-model-test PRIVATE
-        _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-    target_link_libraries(defragmenter-fat-relayout-model-test PRIVATE
-        defragmenter-core)
-    add_test(NAME defragmenter-fat-relayout-model
-        COMMAND defragmenter-fat-relayout-model-test)
+    # Keep the existing filesystem unit tests, compiling their source from
+    # Filesystems instead of retaining a second engine inside Defragmenter.
+    if(FAT_DEFRAG_SOURCE_DIR)
+        if(NOT EXISTS "${FAT_DEFRAG_SOURCE_DIR}/fat_volume.c")
+            message(FATAL_ERROR "FAT_DEFRAG_SOURCE_DIR must name the Filesystems defrag source")
+        endif()
+        function(ld_fat_module_unit_test target test_source)
+            add_executable(${target} "${test_source}"
+                tests/fat_module_unit_host.c ${ARGN})
+            target_include_directories(${target} PRIVATE
+                "${CMAKE_CURRENT_SOURCE_DIR}/native"
+                "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
+                "${FAT_DEFRAG_SOURCE_DIR}" "${FAT_DEFRAG_SOURCE_DIR}/host"
+                "${LD_GENERATED_DIR}")
+            target_compile_options(${target} PRIVATE ${LD_WARNING_FLAGS})
+            target_compile_definitions(${target} PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+            target_link_libraries(${target} PRIVATE defragmenter-core Threads::Threads)
+        endfunction()
+        ld_fat_module_unit_test(defragmenter-fat-volume-test tests/test_fat_volume.c
+            "${FAT_DEFRAG_SOURCE_DIR}/fat_io.c" "${FAT_DEFRAG_SOURCE_DIR}/fat_volume.c")
+        ld_fat_module_unit_test(defragmenter-fat-directory-test tests/test_fat_directory.c
+            "${FAT_DEFRAG_SOURCE_DIR}/fat_directory.c" "${FAT_DEFRAG_SOURCE_DIR}/fat_volume.c")
+        ld_fat_module_unit_test(defragmenter-fat-journal-test tests/test_fat_journal.c
+            "${FAT_DEFRAG_SOURCE_DIR}/fat_journal.c" "${FAT_DEFRAG_SOURCE_DIR}/fat_volume.c")
+        ld_fat_module_unit_test(defragmenter-fat-relayout-model-test tests/test_fat_relayout.c
+            "${FAT_DEFRAG_SOURCE_DIR}/fat_directory.c" "${FAT_DEFRAG_SOURCE_DIR}/fat_relayout.c"
+            "${FAT_DEFRAG_SOURCE_DIR}/fat_volume.c")
+        add_test(NAME defragmenter-fat-volume COMMAND defragmenter-fat-volume-test)
+        add_test(NAME defragmenter-fat-directory COMMAND defragmenter-fat-directory-test)
+        add_test(NAME defragmenter-fat-journal COMMAND defragmenter-fat-journal-test)
+        add_test(NAME defragmenter-fat-relayout-model COMMAND defragmenter-fat-relayout-model-test)
+    else()
+        message(STATUS "FAT source unit tests require FAT_DEFRAG_SOURCE_DIR")
+    endif()
     add_executable(defragmenter-fat12-small-workspace-fixture
         tests/fat12_small_workspace_fixture.c)
     target_compile_options(defragmenter-fat12-small-workspace-fixture PRIVATE
@@ -836,5 +812,15 @@ if(BUILD_TESTING)
 
     add_test(NAME defragmenter-tests
              COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_tests.sh
-                     $<TARGET_FILE:defragmenter-fat-worker>)
+                     ${FAT_WORKER_FOR_TESTS})
+    set_tests_properties(defragmenter-tests PROPERTIES
+        ENVIRONMENT "DEFRAGMENTER_FAT_WORKER=${FAT_WORKER_FOR_TESTS}")
+    if(TARGET defragmenter-fat-test-worker)
+        add_test(NAME defragmenter-fat-module-recovery
+            COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_fat_module_recovery.sh"
+                ${FAT_WORKER_FOR_TESTS})
+        add_test(NAME defragmenter-fat-module-safety
+            COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_fat_module_safety.sh"
+                ${FAT_WORKER_FOR_TESTS} "${FAT_DEFRAG_TEST_MODULE_PARENT}/Filesystems")
+    endif()
 endif()
