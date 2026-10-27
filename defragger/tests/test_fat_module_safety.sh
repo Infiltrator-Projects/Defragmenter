@@ -5,6 +5,7 @@ set -euo pipefail
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 worker=${1:?pass the test-only host}
 modules=${2:?pass the directory containing the built FAT modules}
+boundary_fixture=${3:-}
 work=$(mktemp -d "${TMPDIR:-/tmp}/fat-module-safety.XXXXXX")
 trap 'rm -rf -- "$work"' EXIT
 mkdir -m 0755 "$work/Filesystems"
@@ -44,4 +45,18 @@ fi
 [[ $(sha256sum "$work/12.img") == "$before" && ! -e "$work/wrong.journal" ]] || {
     echo 'incorrect confirmation changed the target or created a journal' >&2; exit 1;
 }
+if [[ -n $boundary_fixture ]]; then
+    python3 "$boundary_fixture" "$work/boundary"
+    "$worker" identify "$work/boundary/boundary-4084.img" | grep -q '"bits":12'
+    "$worker" identify "$work/boundary/boundary-4086.img" | grep -q '"bits":16'
+    ambiguous="$work/boundary/boundary-4085.img"
+    before=$(sha256sum "$ambiguous")
+    if "$worker" defrag "$ambiguous" --write --confirm "$ambiguous" \
+            --journal "$work/boundary.journal" >"$work/failure.log" 2>&1; then
+        echo 'accepted the ambiguous 4085-cluster FAT boundary' >&2; exit 1
+    fi
+    [[ $(sha256sum "$ambiguous") == "$before" && ! -e "$work/boundary.journal" ]] || {
+        echo 'ambiguous FAT boundary changed the target or created a journal' >&2; exit 1;
+    }
+fi
 echo 'FAT module identity, trust and write-confirmation checks passed'

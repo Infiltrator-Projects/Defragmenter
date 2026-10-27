@@ -819,8 +819,14 @@ if(BUILD_TESTING)
         add_test(NAME defragmenter-fat-module-recovery
             COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_fat_module_recovery.sh"
                 ${FAT_WORKER_FOR_TESTS})
+        set(FAT_BOUNDARY_FIXTURE "")
+        if(FAT_DEFRAG_SOURCE_DIR)
+            get_filename_component(FAT_BOUNDARY_FIXTURE
+                "${FAT_DEFRAG_SOURCE_DIR}/../../../../tests/fat_boundary_fixture.py" ABSOLUTE)
+        endif()
         add_test(NAME defragmenter-fat-module-safety
             COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_fat_module_safety.sh"
-                ${FAT_WORKER_FOR_TESTS} "${FAT_DEFRAG_TEST_MODULE_PARENT}/Filesystems")
+                ${FAT_WORKER_FOR_TESTS} "${FAT_DEFRAG_TEST_MODULE_PARENT}/Filesystems"
+                "${FAT_BOUNDARY_FIXTURE}")
     endif()
 endif()
