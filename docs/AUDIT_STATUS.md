@@ -2,15 +2,53 @@
 
 Status: **complete**
 
-Completed: 2026-10-23
+Completed: 2026-10-28
 
 Applies to: audited source and release-governance baselines below
-Audited source commit: 76803476484156faacccb713b9cdcbb509e610d2
-Audited release-governance commit: 76803476484156faacccb713b9cdcbb509e610d2
+Audited source commit: f4941ec61ed2f61f938658592851cc82f2eed6f6
+Audited release-governance commit: f4941ec61ed2f61f938658592851cc82f2eed6f6
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
 This document records the current release safety case for the exact audited source baseline above. Publication still requires the exact release head to pass the self-hosted Project quality gate and the release-governance drift checks.
+
+## Incremental FAT module migration review — 2026-10-28
+
+The reviewed Defragmenter source and governance baseline is
+`f4941ec61ed2f61f938658592851cc82f2eed6f6`; its tree is identical to the
+tested FAT module-host branch. It uses the Filesystems source at
+`3592e9db5f95824b608ccf269ce22fcefab05328`, which is included in the
+Filesystems main-branch merge. The new host-service declarations match the
+module ABI and the existing generic core declarations. The review compared the
+migrated FAT source with the previously audited implementation: the meaningful
+changes are the host-service redirection, opened-target FAT-width validation,
+rejection of the ambiguous 4,085-cluster boundary and fixed-root journal
+recovery validation.
+
+The loader runs in a child process, opens the installed module through checked
+root-owned paths without following symlinks, verifies its ABI and width, and
+retains it through process exit. The FAT engine repeats the width check on the
+opened target. Generic target identity, mounted-device checks, exclusive
+locking, confirmation, journal paths and Stop handling remain in force. Test
+path overrides and crash injection are compiled only into a separate test
+executable; they are absent from the production loader.
+
+The qualification evidence includes warnings-as-errors builds, independent
+FAT format/read/write and filesystem checks, the full FAT12/16/32 Test Media
+payload and relayout cases, incorrect-module and wrong-target rejection, and
+recovery after four durable journal stages and twelve individual target writes
+per format. FAT copies were checked after recovery. Both the host and modules
+passed ASan/UBSan tests. The Filesystems Linux and OVMF runtime lanes passed for
+FAT12 and FAT16, including a 255 MiB FAT12 volume with 64 KiB clusters. The
+local device-topology test was skipped in this environment. These results do
+not establish physical-media or actual power-loss behaviour.
+
+The quality workflow now retrieves the exact Filesystems revision and builds
+test modules in an isolated test directory, including instrumented modules in
+the sanitizer lane. Its release decision, exact-source checks, artifact handoff
+and publication controls were not relaxed. The mandatory self-hosted quality,
+sanitizer and release verification lanes must still pass for the exact release
+head.
 
 The 2026-10-14 repository-wide forensic pass rechecked dependency ownership and removed the FAT catalogue's private pathname-concatenation implementation. FAT now uses the same checked arithmetic and Common-owned lexical path contract already used elsewhere, so generic pathname construction has one stronger implementation while filesystem interpretation remains locally owned.
 
