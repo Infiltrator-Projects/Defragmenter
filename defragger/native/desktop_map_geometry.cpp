@@ -18,18 +18,30 @@ DesktopMapRasterGeometry desktop_map_raster_geometry(
     DesktopMapRasterGeometry raster;
     if (capacity == 0U || cells.empty()) return raster;
 
-    // Input is the native boundary's bounded, ordered allocation-cell array.
-    // Keep those cells whole: FAT clusters are never expanded into sector
-    // pixels, and additional screen capacity never repeats a storage unit.
-    raster.pixels = std::min(capacity, cells.size());
+    // Restore the full-surface contract from 2026-10-01: all native device
+    // pixels represent an ordered part of the analysed physical address span.
+    // Fewer cells than pixels means visual magnification of the *same* source
+    // allocation state. It is not subdivision or newly discovered disk detail.
+    raster.pixels = capacity;
+    raster.enlarged = cells.size() < capacity;
     raster.minimum_units = std::numeric_limits<std::uint64_t>::max();
-    for (std::size_t pixel = 0U; pixel < raster.pixels; ++pixel) {
-        const std::size_t begin = pixel * cells.size() / raster.pixels;
-        const std::size_t end = (pixel + 1U) * cells.size() / raster.pixels;
-        const std::uint64_t span =
-            number(cells[end - 1U], "end") - number(cells[begin], "start") + 1U;
-        raster.minimum_units = std::min(raster.minimum_units, span);
-        raster.maximum_units = std::max(raster.maximum_units, span);
+    if (raster.enlarged) {
+        for (const auto& cell : cells) {
+            const std::uint64_t start = number(cell, "start");
+            const std::uint64_t end = number(cell, "end");
+            const std::uint64_t span = end - start + 1U;
+            raster.minimum_units = std::min(raster.minimum_units, span);
+            raster.maximum_units = std::max(raster.maximum_units, span);
+        }
+    } else {
+        for (std::size_t pixel = 0U; pixel < raster.pixels; ++pixel) {
+            const std::size_t begin = pixel * cells.size() / raster.pixels;
+            const std::size_t end = (pixel + 1U) * cells.size() / raster.pixels;
+            const std::uint64_t span =
+                number(cells[end - 1U], "end") - number(cells[begin], "start") + 1U;
+            raster.minimum_units = std::min(raster.minimum_units, span);
+            raster.maximum_units = std::max(raster.maximum_units, span);
+        }
     }
     return raster;
 }
