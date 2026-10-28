@@ -167,9 +167,18 @@ gboolean desktop_draw_map(
 
     const auto raster = desktop_map_raster_geometry(cells, display_count);
     if (raster.pixels == 0U) return FALSE;
+    std::size_t previously_rendered_source = source_count;
     for (std::size_t pixel = 0U; pixel < raster.pixels; ++pixel) {
         const std::size_t begin =
             pixel * source_count / raster.pixels;
+        // Restore the full-surface magnification of small volumes.
+        // Copy the colour of the same genuine allocation cell for adjacent
+        // pixels, rather than fabricating a sector or sub-cluster state.
+        if (raster.enlarged && begin == previously_rendered_source) {
+            pixels[pixel] = pixels[pixel - 1U];
+            continue;
+        }
+        previously_rendered_source = begin;
         const std::size_t end = std::max<std::size_t>(
             begin + 1U,
             (pixel + 1U) * source_count / raster.pixels);
