@@ -2,11 +2,13 @@
 
 # Defragmenter
 
+**Unified filesystem architecture:** [one authoritative `.so` per format, shared by Defragmenter, BOOT and the kernel](docs/FILESYSTEM_ENGINE_OWNERSHIP.md). Defragmenter owns generic safety, scheduling and I/O orchestration, while the `.so` owns format-specific allocation, relocation, mutation and recovery. Current internal filesystem engines are transitional until independently proven equivalent to their loaded modules.
+
 **Project copyright:** © 1993-2026 Shannon Smith
 
 [![Project quality gate](https://github.com/Infiltrator-Projects/Defragmenter/actions/workflows/quality-gate.yml/badge.svg)](https://github.com/Infiltrator-Projects/Defragmenter/actions/workflows/quality-gate.yml)
 
-Defragmenter is a C-first offline filesystem allocation analyser and defragmenter for Linux. Native C owns the raw filesystem engines and storage-safety core; C++17 owns selected filesystem-neutral application services where RAII, stronger value types and explicit process/protocol ownership improve the implementation. Write-capable engines operate directly on unmounted block devices or filesystem images and do not delegate production mutations to mounted kernel filesystem drivers or external repair/defragmentation tools.
+Defragmenter is a C-first offline filesystem allocation analyser and defragmenter for Linux. Native C currently contains transitional filesystem-specific engines and owns the storage-safety core; in the target architecture the matching installed `.so` exclusively owns filesystem semantics and operations; C++17 owns selected filesystem-neutral application services where RAII, stronger value types and explicit process/protocol ownership improve the implementation. Write-capable engines operate directly on unmounted block devices or filesystem images and do not delegate production mutations to mounted kernel filesystem drivers or external repair/defragmentation tools.
 
 **Version authority:** `defragger/VERSION` is the source authority; a published version is additionally bound to its exact qualified `main` commit, version tag and verified release assets.
 

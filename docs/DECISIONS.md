@@ -1,6 +1,8 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Architectural decision record
 
+**Filesystem ownership decision (2026-10-29):** [one authoritative `.so` per format](FILESYSTEM_ENGINE_OWNERSHIP.md). Existing internal format engines are temporary until module integration passes independent tests; they are not permanent alternatives to the same filesystem's canonical driver.
+
 ## Purpose
 
 This document records the small set of architectural decisions that materially
