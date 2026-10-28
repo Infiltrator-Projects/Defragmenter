@@ -66,23 +66,31 @@ int main() {
         {"start":0,"end":5}, {"start":6,"end":11}, {"start":12,"end":13}
     ])").array();
     auto raster = desktop_map_raster_geometry(grouped, 100U);
-    CHECK(raster.pixels == 3U);
+    CHECK(raster.pixels == 100U && raster.enlarged);
     CHECK(raster.minimum_units == 2U && raster.maximum_units == 6U);
     raster = desktop_map_raster_geometry(grouped, 2U);
-    CHECK(raster.pixels == 2U);
+    CHECK(raster.pixels == 2U && !raster.enlarged);
     CHECK(raster.minimum_units == 6U && raster.maximum_units == 8U);
     CHECK(desktop_map_raster_geometry(grouped, 0U).pixels == 0U);
 
     const auto clusters = Json::parse(R"([
         {"start":2,"end":2}, {"start":3,"end":3}
     ])").array();
-    // FAT's validated cluster cells remain one cluster per pixel even when
-    // the physical canvas has room for many more sector-sized pixels.
+    // A small exact FAT volume must use the full available raster, restoring
+    // the October 1 rendering contract without claiming finer cluster detail.
     raster = desktop_map_raster_geometry(clusters, 100U);
-    CHECK(raster.pixels == 2U);
+    CHECK(raster.pixels == 100U && raster.enlarged);
     CHECK(raster.minimum_units == 1U && raster.maximum_units == 1U);
     raster = desktop_map_raster_geometry(clusters, 1U);
-    CHECK(raster.pixels == 1U);
+    CHECK(raster.pixels == 1U && !raster.enlarged);
     CHECK(raster.minimum_units == 2U && raster.maximum_units == 2U);
+    // Aggregated cells are enlarged visually too; no sub-cell allocation
+    // states are inferred from their repeated colour.
+    const auto aggregated = Json::parse(R"([
+        {"start":0,"end":31}, {"start":32,"end":63}
+    ])").array();
+    raster = desktop_map_raster_geometry(aggregated, 512U);
+    CHECK(raster.pixels == 512U && raster.enlarged);
+    CHECK(raster.minimum_units == 32U && raster.maximum_units == 32U);
     CHECK(desktop_map_raster_geometry({}, 100U).pixels == 0U);
 }
