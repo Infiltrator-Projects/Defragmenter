@@ -26,6 +26,11 @@ with p.open("rb") as f:
     f.seek(coff(2)); root = f.read(cluster_size)
     first = (struct.unpack_from("<H", root, 20)[0] << 16) | struct.unpack_from("<H", root, 26)[0]
     f.seek((reserved + active * fatsz) * bps); fat = f.read(fatsz * bps)
+    flags = struct.unpack_from("<H", boot, 40)[0]
+    if not flags & 0x80:
+        for copy in range(fats):
+            f.seek((reserved + copy * fatsz) * bps)
+            assert f.read(fatsz * bps) == fat, ("FAT copies disagree", copy)
     def fv(c): return struct.unpack_from("<I", fat, c * 4)[0] & 0x0FFFFFFF
     chain = []
     c = first

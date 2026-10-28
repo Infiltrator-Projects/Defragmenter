@@ -6,7 +6,7 @@ Defragmenter separates GTK presentation, filesystem-neutral safety/runtime servi
 
 Defragmenter starts from filesystem structures, durability rules and target-safety requirements rather than treating a mounted filesystem driver or external repair utility as the specification.
 
-First principles does not mean reimplementing every mechanism. Linux supplies raw block I/O and process primitives; GTK supplies presentation; system libraries may provide documented in-process APIs; Libraries supplies reusable first-party primitives. Defragmenter retains ownership of filesystem interpretation, placement, mutation, recovery and user-visible safety policy.
+First principles does not mean reimplementing every mechanism. Linux supplies raw block I/O and process primitives; GTK supplies presentation; system libraries may provide documented in-process APIs; Libraries supplies reusable first-party primitives. Defragmenter retains the user-visible safety policy and generic target protections; the selected filesystem implementation owns its interpretation, placement, mutation and recovery rules.
 
 A dependency is chosen because its contract is stronger for the job, not because it is convenient. Unsupported or ambiguous layouts remain unsupported instead of being guessed.
 
@@ -48,7 +48,7 @@ defragger/
 
 ## Contracts and ownership
 
-`native/runtime.cpp` is the single application registry used by the production C++ mapper, operation dispatcher and GTK manifest loader. The former Python registry, filesystem plugin declarations, presentation model and dispatcher/helper compatibility graph have been removed rather than retained as a second knowledge base. Each native filesystem directory owns its probe, analyser, placement rules, writer and verifier.
+`native/runtime.cpp` is the single application registry used by the production C++ mapper, operation dispatcher and GTK manifest loader. The former Python registry, filesystem plugin declarations, presentation model and dispatcher/helper compatibility graph have been removed rather than retained as a second knowledge base. Most native filesystem directories own their probe, analyser, placement rules, writer and verifier. FAT12, FAT16 and FAT32 use the corresponding installed Filesystems module through a versioned child-process host. The module includes the shared FAT relocation and journal engine; its host supplies the same generic device, I/O and Stop services.
 
 `src/core/` owns mechanics that are genuinely filesystem-neutral: exact raw I/O adaptation, one-open canonical target/identity/capacity binding, descriptor-level identity revalidation, overlap-aware mounted-target rejection, Stop state, resource defaults and machine-readable result emission. Filesystem geometry, volume identity, metadata interpretation, transaction stages and recovery rules stay with the owning filesystem.
 
@@ -72,7 +72,7 @@ The privileged helper accepts a constrained command contract and a user-specific
 
 Every GUI mutation, including a user-owned image and Recover, uses that privileged journal namespace. Child stdin is isolated from the GUI protocol. Stop waits for writer initialisation but can interrupt silent read-only analysis immediately. Completion is emitted only after the child is reaped and the session can accept the next request.
 
-The mapper probes FAT geometry when discovery supplies only a generic FAT name. Its map-output allowance scales with the requested cell count and remains bounded by the GUI maximum; ordinary child-command capture retains its separate default limit. Mounted-image checks compare device and inode identity so hard-link aliases do not bypass refusal.
+The mapper probes FAT geometry when discovery supplies only a generic FAT name. The FAT host opens only root-owned, non-writable module paths without following symlinks, validates the module ABI and width, and the engine checks the width again on the opened target. Its map-output allowance scales with the requested cell count and remains bounded by the GUI maximum; ordinary child-command capture retains its separate default limit. Mounted-image checks compare device and inode identity so hard-link aliases do not bypass refusal.
 
 Paths and device-provided metadata are external input. A previously valid path may refer to a different object later, so persistent transactions bind to stable target and filesystem identity where the format exposes it.
 

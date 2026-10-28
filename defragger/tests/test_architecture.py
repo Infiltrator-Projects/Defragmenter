@@ -87,6 +87,8 @@ def _native_package(backend_id: str, backend: dict[str, object]) -> str:
         assert worker.endswith("-native"), (
             f"{backend_id} operation worker is not a native package: {worker!r}"
         )
+        if backend_id in {"fat12", "fat16", "fat32"} and worker == "fat-native":
+            return "fat"
         candidates.append(worker.removesuffix("-native"))
 
     for candidate in dict.fromkeys(candidates):
@@ -166,6 +168,12 @@ def test_filesystem_policy_remains_owned_by_native_packages() -> None:
     for backend_id, backend in _backends_by_id().items():
         package = _native_package(backend_id, backend)
         native = GUI / "filesystems" / package / "native"
+        if package == "fat":
+            assert not native.exists(), "FAT engine must live in Filesystems"
+            loader = _read(ROOT / "native" / "fat_module_loader.c")
+            assert "infiltrator_filesystem_defrag_v1" in loader
+            assert "trusted_module" in loader and "O_NOFOLLOW" in loader
+            continue
         native_sources = [
             path for path in native.iterdir()
             if path.is_file() and path.suffix in {".c", ".h", ".cpp", ".hpp"}

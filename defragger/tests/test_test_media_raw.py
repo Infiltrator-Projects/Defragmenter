@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import mmap
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -106,7 +107,7 @@ def qualify(fs: str, parent: Path) -> None:
             return  # ZFS is analysis-only by design.
         assert before["defrag_qualified"] and before["growth_qualified"], before
         worker = ("hfs_analyser" if fs == "hfs" else
-                  "defragmenter-fat-worker" if fs.startswith("fat") else
+                  os.environ.get("DEFRAGMENTER_FAT_WORKER", "defragmenter-fat-worker") if fs.startswith("fat") else
                   "defragmenter-ext-worker" if fs.startswith("ext") else
                   f"defragmenter-{fs}-worker")
         for operation in ("defrag", "growth-defrag"):

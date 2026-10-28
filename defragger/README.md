@@ -32,11 +32,16 @@ The user-facing product is **Defragmenter**. The Debian/APT package identity is 
 | Linux swap | Exact inactive / aggregate active analysis | Not applicable | Not applicable | No |
 
 Unsupported or structurally ambiguous layouts fail closed.
+FAT operations require the matching current `FAT12.so`, `FAT16.so` or
+`FAT32.so` installed by Filesystems in `/System/Filesystems`. The FAT worker is
+a child-process module host; the filesystem and journal engine lives in the
+selected module. If that module is absent or older than the defrag ABI, the
+operation fails with an install/update message.
 
 ## Source layout
 
 - `gui/ui/art/` — native desktop artwork only; there is no Python application/presentation implementation.
-- `gui/filesystems/<format>/native/` — authoritative per-filesystem native implementations.
+- `gui/filesystems/<format>/native/` — native implementations retained by Defragmenter; FAT is supplied by Filesystems.
 - `native/` — authoritative C++17 GTK desktop, registry, mapper, operation dispatcher and privileged session.
 - `src/core/` — filesystem-neutral native safety/runtime services.
 - `test_media/` — separate destructive sacrificial-media utility.
@@ -69,6 +74,12 @@ ctest --test-dir build --output-on-failure
 ```
 
 The aggregate suite covers native/filesystem behaviour, native GUI/service contracts, safety/transaction invariants, packaging and release gates. Python is used only where an independent fixture generator or black-box test driver gives stronger evidence than testing native implementation details through itself. Hosted CI also runs ASan/UBSan qualification.
+
+For FAT-specific source unit tests, set `FAT_DEFRAG_SOURCE_DIR` to the
+matching Filesystems `native/filesystems/fat/defrag` directory at configure
+time. Normal runtime and integration tests also require the installed FAT
+modules. CI builds the pinned Filesystems revision and uses a separate test-only
+loader and disposable module directory instead of changing `/System`.
 
 ## Packaging
 

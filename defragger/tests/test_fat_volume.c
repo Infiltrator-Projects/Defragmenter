@@ -90,6 +90,27 @@ static uint32_t fuzz_next(uint32_t *state) {
 }
 
 static void test_authoritative_geometry_parser(void) {
+    /* The two FAT classifiers disagree at 4085 clusters. Refuse that
+     * geometry instead of letting the module write it under either width. */
+    for (uint32_t clusters = 4084; clusters <= 4086; ++clusters) {
+        uint8_t boot[512];
+        FatGeometry geometry;
+        char error[160];
+        make_boot_sector(boot, FAT_TYPE_16);
+        boot[13] = 1;
+        uint16_t fat_sectors = clusters == 4084 ? 12 : 16;
+        put_u16(boot, 22, fat_sectors);
+        put_u16(boot, 19, (uint16_t)(1u + 2u * fat_sectors + 32u + clusters));
+        put_u32(boot, 32, 0);
+        bool accepted = fat_geometry_parse(boot, UINT64_MAX, &geometry,
+                                           error, sizeof(error));
+        if (clusters == 4085) {
+            CHECK(!accepted);
+        } else {
+            CHECK(accepted);
+            CHECK(geometry.fat_type == (clusters == 4084 ? FAT_TYPE_12 : FAT_TYPE_16));
+        }
+    }
     for (unsigned bits = 12; bits <= 32; bits += bits == 12 ? 4u : 16u) {
         uint8_t boot[512];
         FatType expected = bits == 12 ? FAT_TYPE_12 :
