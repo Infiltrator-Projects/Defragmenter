@@ -1,5 +1,7 @@
 # Roadmap
 
+**Filesystem module ownership:** [one authoritative `.so` per format, shared by Defragmenter, BOOT and the kernel](FILESYSTEM_ENGINE_OWNERSHIP.md). Defragmenter supplies generic safety/orchestration; filesystem-specific semantics belong to the loaded module. Older internal engines remain transitional pending tested migration; do not mistake a working UI for proof the module was called.
+
 This document defines the Linux feature-completion target. The released source and tests remain authoritative for what is supported today; unchecked items are not release claims.
 
 ## Current foundation

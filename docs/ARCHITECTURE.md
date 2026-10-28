@@ -1,5 +1,7 @@
 # Architecture
 
+**Filesystem module ownership:** [one authoritative `.so` per format, shared by Defragmenter, BOOT and the kernel](FILESYSTEM_ENGINE_OWNERSHIP.md). Defragmenter supplies generic safety/orchestration; filesystem-specific semantics belong to the loaded module. Older internal engines remain transitional pending tested migration; do not mistake a working UI for proof the module was called.
+
 Defragmenter separates GTK presentation, filesystem-neutral safety/runtime services, per-filesystem engines, recovery state and reusable Common mechanisms. That separation is a correctness boundary: the UI expresses intent and presents completed state, while raw-storage and filesystem code owns the rules that can change on-disk data.
 
 ## First-principles design
