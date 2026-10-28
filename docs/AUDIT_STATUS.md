@@ -5,12 +5,39 @@ Status: **complete**
 Completed: 2026-10-28
 
 Applies to: audited source and release-governance baselines below
-Audited source commit: f4941ec61ed2f61f938658592851cc82f2eed6f6
+Audited source commit: 4951b3149125e8338a7ead4f5270df04b9de1cfa
 Audited release-governance commit: f4941ec61ed2f61f938658592851cc82f2eed6f6
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
 This document records the current release safety case for the exact audited source baseline above. Publication still requires the exact release head to pass the self-hosted Project quality gate and the release-governance drift checks.
+
+## Full-surface allocation map qualification review — 2026-10-28
+
+The incremental source delta from the previously audited FAT-module revision
+`f4941ec61ed2f61f938658592851cc82f2eed6f6` to
+`4951b3149125e8338a7ead4f5270df04b9de1cfa` consists of the
+1.8.0-276 version decision and the reviewed desktop allocation-raster correction.
+The correction changes desktop map geometry, raster painting, summary wording,
+one native regression and the documented visual contract. It restores full-canvas
+rendering for small volumes by magnifying the colours of genuine ordered native
+allocation cells; it does not subdivide those cells or invent finer-grained
+physical allocation data. Larger volumes still combine adjacent cells in
+physical order. The added regression exercises magnification of individual and
+already aggregated cells and the smaller-canvas reduction path.
+
+The change does not alter filesystem detection, FAT module resolution or ABI,
+writer placement, target admission, privilege checks, journal formats, durable
+recovery or the publication scripts and workflows. The exact commit's
+self-hosted quality lane passed its warnings-as-errors build, native GTK smoke
+and complete native/filesystem/GUI test suite; its independent ASan/UBSan lane
+also passed. Publication stopped at the deliberately strict audited-source
+drift check, because this newer UI source and regression were not part of the
+earlier FAT-module audit baseline. This review advances only the source
+baseline to the exact inspected commit above. The governance baseline remains
+at `f4941ec61ed2f61f938658592851cc82f2eed6f6`; no gate or release
+assertion is relaxed. A fresh exact-head qualification, installer-artifact
+checks and publication verification remain mandatory.
 
 ## Incremental FAT module migration review — 2026-10-28
 
