@@ -1375,6 +1375,27 @@ private:
         const auto raster = defragger::desktop_map_raster_geometry(
             cells_, static_cast<std::size_t>(display_pixels));
         if (raster.pixels == 0U) return;
+        if (raster.enlarged) {
+            const std::uint64_t minimum_pixels = raster.pixels / cells_.size();
+            const std::uint64_t maximum_pixels =
+                minimum_pixels + (raster.pixels % cells_.size() != 0U ? 1U : 0U);
+            std::string density = std::to_string(minimum_pixels);
+            if (maximum_pixels != minimum_pixels)
+                density += "–" + std::to_string(maximum_pixels);
+            const bool single_units =
+                raster.minimum_units == 1U && raster.maximum_units == 1U;
+            if (single_units && !unit_label.empty() && unit_label.back() == 's')
+                unit_label.pop_back();
+            const std::string source_name =
+                single_units ? unit_label : "analyser cell";
+            const std::string caption =
+                "Physical allocation raster · " + density +
+                " display pixels per " + source_name +
+                " · visual magnification (no additional filesystem detail)" +
+                suffix;
+            gtk_label_set_text(GTK_LABEL(summary_), caption.c_str());
+            return;
+        }
         std::string density = std::to_string(raster.minimum_units);
         if (raster.maximum_units != raster.minimum_units)
             density += "–" + std::to_string(raster.maximum_units);
