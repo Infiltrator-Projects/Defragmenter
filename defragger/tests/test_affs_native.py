@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = Path(os.environ.get("DEFRAGMENTER_BUILD_DIR", ROOT / "build"))
-WORKER = BUILD / "defragmenter-affs-worker"
+WORKER = Path(os.environ.get("DEFRAGMENTER_AFFS_WORKER", BUILD / "defragmenter-affs-worker"))
 MAPPER = BUILD / "defragmenter-mapper"
 BLOCK_SIZE = 512
 
@@ -133,6 +133,7 @@ def mutate(path: Path, operation: str) -> None:
     assert f'@@RESULT {{"operation":"{operation}","status":"completed"' in completed.stdout
     assert not journal.exists()
     assert not Path(str(journal) + ".affs-stage").exists()
+    assert not Path(str(journal) + ".ofs-stage").exists()
 
 
 def test_mutation_paths(work: Path) -> None:
@@ -150,6 +151,8 @@ def test_mutation_paths(work: Path) -> None:
         assert mapped_before["total_units"] == before["total_blocks"]
         assert mapped_before["fragmented_files"] == before["fragmented_files"]
         mutate(path, operation)
+        if variant == "OFS":
+            assert 'authoritative OFS.so' in run("identify", path).stderr
         after = analyse(path)
         assert after["fragmented_files"] == 0
         assert map_cpp(path)["fragmented_files"] == 0

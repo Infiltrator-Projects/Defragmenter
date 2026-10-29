@@ -268,8 +268,12 @@ int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
                                 char *detail, size_t detail_capacity) {
     if (detail == NULL || detail_capacity == 0U || spec == NULL) return 0;
     if (spec->creator == LDTM_CREATOR_AFFS && strcmp(spec->key, "ofs") == 0) {
-        (void)snprintf(detail, detail_capacity, "Built-in raw C creator + payload engine: Amiga DOS\\0 OFS");
-        return 1;
+        extern int ldtm_ofs_module_available(void);
+        const int ready = ldtm_ofs_module_available();
+        (void)snprintf(detail, detail_capacity, "%s", ready ?
+            "OFS driver is ready to create and populate test media." :
+            "Install or update the OFS filesystem driver before creating test media.");
+        return ready;
     }
     if (spec->creator == LDTM_CREATOR_AFFS && strcmp(spec->key, "ffs") == 0) {
         (void)snprintf(detail, detail_capacity, "Built-in raw C creator + payload engine: Amiga DOS\\1 FFS");

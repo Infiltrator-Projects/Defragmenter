@@ -38,6 +38,7 @@ add_library(defragmenter-test-media-core STATIC
     test_media/test_media_amiga.c
     test_media/test_media_amiga_payload.c
     test_media/test_media_amiga_dispatch.c
+    test_media/test_media_ofs_module.c
     test_media/test_media_sfs.c
     test_media/test_media_pfs3.c
     test_media/test_media_apfs.c)
@@ -56,7 +57,7 @@ target_compile_options(defragmenter-test-media-core PRIVATE ${LD_WARNING_FLAGS})
 target_compile_definitions(defragmenter-test-media-core PRIVATE
     _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(defragmenter-test-media-core PUBLIC
-    OpenSSL::Crypto InfiltratrCommon::Common defragmenter-core)
+    OpenSSL::Crypto InfiltratrCommon::Common defragmenter-core defragmenter-filesystem-module-host)
 target_link_libraries(defragmenter-test-media-core PRIVATE
     defragmenter-affs-native defragmenter-sfs-native
     defragmenter-pfs3-native defragmenter-apfs-native
@@ -189,4 +190,14 @@ if(BUILD_TESTING)
         COMMAND /bin/sh "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_ufs_makefs.sh"
             "$<TARGET_FILE:defragmenter-test-media-mkfs-ufs>"
             "$<TARGET_FILE:defragmenter-ufs-worker>")
+endif()
+
+# Test processes resolve modules only from the explicitly provisioned disposable
+# root. Installed tools remain linked to the production host without overrides.
+if(TARGET defragmenter-filesystem-module-test-host)
+    foreach(test_program defragmenter-test-media-test defragmenter-test-media-raw-test)
+        if(TARGET ${test_program})
+            target_link_libraries(${test_program} PRIVATE defragmenter-filesystem-module-test-host)
+        endif()
+    endforeach()
 endif()

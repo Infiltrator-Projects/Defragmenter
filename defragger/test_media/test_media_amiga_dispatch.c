@@ -9,6 +9,8 @@
 #include <unistd.h>
 
 int ldtm_format_amiga_volume_affs(const char *path, uint8_t dostype, const char *label);
+int ldtm_format_ofs_module(const char *path, const char *label);
+int ldtm_populate_ofs_module(const char *path, const LdtmFragmentProfile *profile);
 int ldtm_populate_amiga_volume_affs(const char *path, uint8_t dostype,
                                     const LdtmFragmentProfile *profile);
 int ldtm_verify_amiga_payload_affs(const char *path, uint8_t dostype,
@@ -60,14 +62,16 @@ int ldtm_format_amiga_volume(const char *path, uint8_t dostype, const char *labe
         return ldtm_format_sfs_volume(path);
     if (label != NULL && strcmp(label, "LD_PFS3") == 0)
         return ldtm_format_pfs3_volume(path);
-    return ldtm_format_amiga_volume_affs(path, dostype, label);
+    return dostype == 0U ? ldtm_format_ofs_module(path, label) :
+                          ldtm_format_amiga_volume_affs(path, dostype, label);
 }
 
 int ldtm_populate_amiga_volume(const char *path, uint8_t dostype,
                                const LdtmFragmentProfile *profile) {
     if (path_is_sfs(path)) return ldtm_populate_sfs_volume(path, profile);
     if (path_is_pfs3(path)) return ldtm_populate_pfs3_volume(path, profile);
-    return ldtm_populate_amiga_volume_affs(path, dostype, profile);
+    return dostype == 0U ? ldtm_populate_ofs_module(path, profile) :
+                          ldtm_populate_amiga_volume_affs(path, dostype, profile);
 }
 
 int ldtm_verify_amiga_payload(const char *path, uint8_t dostype,

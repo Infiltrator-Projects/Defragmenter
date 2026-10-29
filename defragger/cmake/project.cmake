@@ -475,6 +475,18 @@ target_compile_options(defragmenter-affs-native PRIVATE ${LD_WARNING_FLAGS})
 target_compile_definitions(defragmenter-affs-native PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(defragmenter-affs-native PUBLIC defragmenter-core)
 
+# Filesystem-neutral process host: the loaded SO owns the on-disk semantics,
+# placement algorithm and journal schema. The existing AFFS registry entry
+# dispatches OFS here and retains the FFS worker until its separate migration.
+add_library(defragmenter-filesystem-module-host STATIC native/filesystem_module_host.c)
+target_include_directories(defragmenter-filesystem-module-host PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/native"
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/core" "${LD_GENERATED_DIR}")
+target_compile_options(defragmenter-filesystem-module-host PRIVATE ${LD_WARNING_FLAGS})
+target_compile_definitions(defragmenter-filesystem-module-host PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+target_link_libraries(defragmenter-filesystem-module-host PUBLIC
+    defragmenter-core OpenSSL::Crypto ${CMAKE_DL_LIBS})
+
 add_executable(defragmenter-affs-worker
     gui/filesystems/affs/native/affs_worker.c)
 target_include_directories(defragmenter-affs-worker PRIVATE
@@ -483,7 +495,33 @@ target_include_directories(defragmenter-affs-worker PRIVATE
     "${LD_GENERATED_DIR}")
 target_compile_options(defragmenter-affs-worker PRIVATE ${LD_WARNING_FLAGS})
 target_compile_definitions(defragmenter-affs-worker PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-target_link_libraries(defragmenter-affs-worker PRIVATE defragmenter-affs-native defragmenter-core)
+target_link_libraries(defragmenter-affs-worker PRIVATE defragmenter-affs-native
+    defragmenter-core defragmenter-filesystem-module-host)
+
+set(OFS_DEFRAG_TEST_MODULE_PARENT "" CACHE PATH "Disposable OFS module test parent")
+set(AFFS_WORKER_FOR_TESTS "$<TARGET_FILE:defragmenter-affs-worker>")
+if(BUILD_TESTING AND OFS_DEFRAG_TEST_MODULE_PARENT)
+    add_library(defragmenter-filesystem-module-test-host STATIC native/filesystem_module_host.c)
+    target_include_directories(defragmenter-filesystem-module-test-host PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/native"
+        PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/core" "${LD_GENERATED_DIR}")
+    target_compile_options(defragmenter-filesystem-module-test-host PRIVATE ${LD_WARNING_FLAGS})
+    target_compile_definitions(defragmenter-filesystem-module-test-host PRIVATE
+        _FILE_OFFSET_BITS=64 _GNU_SOURCE IFS_MODULE_TESTING)
+    target_link_libraries(defragmenter-filesystem-module-test-host PUBLIC
+        defragmenter-core OpenSSL::Crypto ${CMAKE_DL_LIBS})
+    add_executable(defragmenter-affs-test-worker
+        gui/filesystems/affs/native/affs_worker.c)
+    target_include_directories(defragmenter-affs-test-worker PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/native" "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
+        "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/affs/native" "${LD_GENERATED_DIR}")
+    target_compile_options(defragmenter-affs-test-worker PRIVATE ${LD_WARNING_FLAGS})
+    target_compile_definitions(defragmenter-affs-test-worker PRIVATE
+        _FILE_OFFSET_BITS=64 _GNU_SOURCE IFS_MODULE_TESTING)
+    target_link_libraries(defragmenter-affs-test-worker PRIVATE
+        defragmenter-affs-native defragmenter-core defragmenter-filesystem-module-test-host)
+    set(AFFS_WORKER_FOR_TESTS "$<TARGET_FILE:defragmenter-affs-test-worker>")
+endif()
 add_library(defragmenter-hfsplus-native STATIC
     gui/filesystems/hfsplus/native/hfsplus_native.c)
 target_include_directories(defragmenter-hfsplus-native PUBLIC

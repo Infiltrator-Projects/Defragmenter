@@ -1871,6 +1871,10 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device,
         fputs("Test-media prepare worker must run as root.\n", stderr);
         return 2;
     }
+    if (!ldtm_spec_creator_available(ldtm_find_spec("ofs"), safety, sizeof(safety))) {
+        fprintf(stderr, "%s\n", safety);
+        return 2;
+    }
     if (ldtm_canonicalize_device(device, canonical, sizeof(canonical)) != 0 ||
         ldtm_canonicalize_device(confirmed_device, confirmed, sizeof(confirmed)) != 0 ||
         strcmp(canonical, confirmed) != 0) {

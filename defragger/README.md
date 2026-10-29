@@ -38,6 +38,13 @@ a child-process module host; the filesystem and journal engine lives in the
 selected module. If that module is absent or older than the defrag ABI, the
 operation fails with an install/update message.
 
+OFS likewise requires current `OFS.so`, with Defrag V2 and V3. The Amiga worker
+selects that module for DOS0/2/4/6; it handles all seven block sizes, analysis,
+metadata/data relocation, exact Growth reserve and staged recovery. OFS Test
+Media formatting and population also use that SO. FFS and already-issued legacy
+AFFS journals retain their separate compatibility implementation. Boot uses its
+generic SO interface; Linux still uses native KOs until the later kernel bridge.
+
 ## Source layout
 
 - `gui/ui/art/` — native desktop artwork only; there is no Python application/presentation implementation.

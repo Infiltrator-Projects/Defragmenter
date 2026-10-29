@@ -11,6 +11,7 @@
 #include "ld_runtime.h"
 #include "ld_protocol.h"
 #include "ld_stop.h"
+#include "filesystem_module_host.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -571,6 +572,27 @@ int main(int argc, char **argv) {
     }
     const char *mode = argv[1];
     const char *device = argv[2];
+    /* This is discovery only; the selected module validates the complete
+     * format before interpreting or changing a block. Recovery dispatch uses
+     * the new module's journal marker even when an interrupted source graph
+     * cannot yet be mounted. Previously issued AFFS journals keep their exact
+     * recovery implementation; missing SOs never fall back for new OFS work. */
+    const char *selected_journal = NULL;
+    for (int i = 3; i + 1 < argc; ++i)
+        if (strcmp(argv[i], "--journal") == 0) selected_journal = argv[i + 1];
+    const bool recovering = strcmp(mode, "recover") == 0;
+    unsigned char signature[4] = {0};
+    int discovery = open(device, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    if (discovery >= 0) {
+        if (pread(discovery, signature, sizeof(signature), 0) != (ssize_t)sizeof(signature))
+            memset(signature, 0, sizeof(signature));
+        close(discovery);
+    }
+    const bool ofs = signature[0] == 'D' && signature[1] == 'O' &&
+        signature[2] == 'S' && signature[3] <= 6 && (signature[3] & 1U) == 0;
+    if ((!recovering && ofs) ||
+        (recovering && ifs_filesystem_journal_matches(selected_journal, "ofs")))
+        return ifs_filesystem_module_run("ofs", "OFS.so", argc, argv);
     char *error = NULL;
     if (strcmp(mode, "identify") == 0) {
         AffsVolume volume;
