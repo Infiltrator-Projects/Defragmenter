@@ -62,6 +62,25 @@ jobs:
           install -d -m 0755 "$PWD/build/fat-module-test/Filesystems"
           install -m 0644 "$RUNNER_TEMP/filesystems-fat-$GITHUB_RUN_ID-$GITHUB_JOB"/FAT{12,16,32}.so "$PWD/build/fat-module-test/Filesystems/"
 
+      - name: Read the OFS module test revision
+        id: ofs_revision
+        run: echo "sha=$(tr -d '\r\n' < shared/ofs-module-revision)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the exact OFS implementation
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-OFS
+          ref: ${{ steps.ofs_revision.outputs.sha }}
+          path: ci-ofs
+
+      - name: Build authoritative OFS.so for consumer and Test Media qualification
+        run: |
+          set -euo pipefail
+          ofs="$GITHUB_WORKSPACE/ci-ofs"
+          cmp native/filesystem_defrag_abi.h "$ofs/native/include/infiltratr/fs/defrag_module.h"
+          cmp native/ofs_module_abi.h "$ofs/native/filesystems/ofs/module/ofs_v3.h"
+          python3 "$ofs/standalone/build.py" --output "$PWD/build/fat-module-test/Filesystems/OFS.so"
+
       - name: Detect explicit release intent
         id: release_intent
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -97,6 +116,7 @@ jobs:
             -DLD_ENABLE_WERROR=ON \
             -DFAT_DEFRAG_SOURCE_DIR="$GITHUB_WORKSPACE/ci-filesystems/native/filesystems/fat/defrag" \
             -DFAT_DEFRAG_TEST_MODULE_PARENT="$PWD/build/fat-module-test" \
+            -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build/fat-module-test" \
             -DBUILD_TESTING=ON
           cmake --build build -j2
           cmake --build build --target defragmenter-desktop -j2
@@ -119,6 +139,8 @@ jobs:
           PYTHONDONTWRITEBYTECODE: "1"
           PYTHONPATH: ${{ github.workspace }}/defragger/tests
           DEFRAGMENTER_BUILD_DIR: ${{ github.workspace }}/defragger/build
+          IFS_TEST_MODULE_PARENT: ${{ github.workspace }}/defragger/build/fat-module-test
+          DEFRAGMENTER_AFFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-affs-test-worker
         run: |
           ctest --test-dir build --output-on-failure \
             -E '^defragmenter-test-media-native-'
@@ -206,6 +228,34 @@ jobs:
           install -d -m 0755 "$PWD/build-sanitize/fat-module-test/Filesystems"
           install -m 0644 "$RUNNER_TEMP/filesystems-fat-$GITHUB_RUN_ID-$GITHUB_JOB"/FAT{12,16,32}.so "$PWD/build-sanitize/fat-module-test/Filesystems/"
 
+      - name: Read the OFS module test revision
+        id: ofs_revision
+        run: echo "sha=$(tr -d '\r\n' < shared/ofs-module-revision)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the exact OFS implementation
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-OFS
+          ref: ${{ steps.ofs_revision.outputs.sha }}
+          path: ci-ofs
+
+      - name: Instrument the authoritative OFS implementation
+        run: |
+          set -euo pipefail
+          ofs="$GITHUB_WORKSPACE/ci-ofs"
+          cmp native/filesystem_defrag_abi.h "$ofs/native/include/infiltratr/fs/defrag_module.h"
+          cmp native/ofs_module_abi.h "$ofs/native/filesystems/ofs/module/ofs_v3.h"
+          OFS_SOURCE="$ofs" python3 - <<'PY'
+          import os, sys
+          from pathlib import Path
+          sys.path.insert(0, os.environ['OFS_SOURCE'] + '/standalone')
+          import build
+          build.compile_module(Path('build-sanitize/fat-module-test/Filesystems/OFS.so').resolve(),
+              ['-std=c11', '-O1', '-g', '-fPIC', '-fvisibility=hidden', '-mno-red-zone',
+               '-fno-builtin', '-fno-tree-loop-distribute-patterns',
+               '-fsanitize=address,undefined', '-fno-omit-frame-pointer'], training=True)
+          PY
+
       - name: Build with AddressSanitizer and UndefinedBehaviorSanitizer
         run: |
           cmake -S . -B build-sanitize \
@@ -214,6 +264,7 @@ jobs:
             -DLD_ENABLE_SANITIZERS=ON \
             -DFAT_DEFRAG_SOURCE_DIR="$GITHUB_WORKSPACE/ci-filesystems/native/filesystems/fat/defrag" \
             -DFAT_DEFRAG_TEST_MODULE_PARENT="$PWD/build-sanitize/fat-module-test" \
+            -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build-sanitize/fat-module-test" \
             -DBUILD_TESTING=ON
           cmake --build build-sanitize -j2
 
@@ -224,6 +275,8 @@ jobs:
           PYTHONDONTWRITEBYTECODE: "1"
           PYTHONPATH: ${{ github.workspace }}/defragger/tests
           DEFRAGMENTER_BUILD_DIR: ${{ github.workspace }}/defragger/build-sanitize
+          IFS_TEST_MODULE_PARENT: ${{ github.workspace }}/defragger/build-sanitize/fat-module-test
+          DEFRAGMENTER_AFFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-affs-test-worker
         run: |
           ctest --test-dir build-sanitize --output-on-failure \
             -E '^(defragmenter-tests|defragmenter-test-media-native-)'
