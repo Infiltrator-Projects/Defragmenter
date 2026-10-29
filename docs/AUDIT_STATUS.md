@@ -5,14 +5,21 @@ Status: **complete**
 Completed: 2026-10-29
 
 Applies to: audited source and release-governance baselines below
-Audited source commit: 4b3fcae7b2977aaf5d3b4e2d80467647e0e18a79
-Audited release-governance commit: 4b3fcae7b2977aaf5d3b4e2d80467647e0e18a79
+Audited source commit: 89c47c03288dd3dc4673ae6be186544d0d07a54a
+Audited release-governance commit: 89c47c03288dd3dc4673ae6be186544d0d07a54a
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
 This document records the current release safety case for the exact audited source baseline above. Publication still requires the exact release head to pass the self-hosted Project quality gate and the release-governance drift checks.
 
 ## Mandatory OFS module integration review — 2026-10-29
+
+The final incremental review includes the exact canonical OFS revision in the
+consumer pin and the mirrored public header's kernel-only type includes. ABI
+layout and process behavior are unchanged by those includes. OFS now compiles
+its canonical engine into the native KO as well as the SO; all four DOS types
+and seven block sizes have native read/write VM coverage. The process-host
+write/recovery suite and its ASan/UBSan lane were rerun against the revised SO.
 
 The source and governance delta through the exact baseline above migrates OFS
 analysis, Defrag, Growth Defrag and new-journal Recover to the authoritative
