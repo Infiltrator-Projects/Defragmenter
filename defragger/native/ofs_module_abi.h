@@ -1,8 +1,21 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #ifndef INFILTRATOR_OFS_V3_H
 #define INFILTRATOR_OFS_V3_H
+#ifdef __KERNEL__
+#include <linux/types.h>
+#include <linux/limits.h>
+#ifndef UINT32_C
+#define UINT32_C(x) x##U
+#define UINT64_C(x) x##ULL
+#endif
+#ifndef UINT32_MAX
+#define UINT32_MAX U32_MAX
+#define UINT64_MAX U64_MAX
+#endif
+#else
 #include <stdint.h>
 #include <stddef.h>
+#endif
 
 #define IFS_OFS_ABI_V3 3u
 #define IFS_OFS_READ_ONLY 1u
