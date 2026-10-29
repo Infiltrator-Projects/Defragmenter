@@ -2,15 +2,58 @@
 
 Status: **complete**
 
-Completed: 2026-10-28
+Completed: 2026-10-29
 
 Applies to: audited source and release-governance baselines below
-Audited source commit: 4951b3149125e8338a7ead4f5270df04b9de1cfa
-Audited release-governance commit: f4941ec61ed2f61f938658592851cc82f2eed6f6
+Audited source commit: 4b3fcae7b2977aaf5d3b4e2d80467647e0e18a79
+Audited release-governance commit: 4b3fcae7b2977aaf5d3b4e2d80467647e0e18a79
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
 This document records the current release safety case for the exact audited source baseline above. Publication still requires the exact release head to pass the self-hosted Project quality gate and the release-governance drift checks.
+
+## Mandatory OFS module integration review — 2026-10-29
+
+The source and governance delta through the exact baseline above migrates OFS
+analysis, Defrag, Growth Defrag and new-journal Recover to the authoritative
+OFS.so. A generic process host owns only descriptor I/O, stable target binding,
+mounted-overlap refusal, advisory locks, trusted private durable files, SHA-256
+and cooperative Stop. The module owns parsing, allocation, placement, journal
+schema and recovery. Its no-import Boot profile is preserved; Linux keeps its
+separate native KO until a future generic kernel SO bridge.
+
+The reviewed write invariant is a complete, canonical, verified stage before
+any source write. Strict journal fields bind canonical target path, stable
+identity, capacity, geometry, immutable volume token and used-block hashes.
+The staged/committing/committed phases precede source mutation or cleanup;
+allocated blocks are committed with the root last and readback is verified.
+Recover refuses altered stages and different targets. A staged-only journal
+also requires the original used-block hash. Interrupted commits retain the
+complete stage and journal. Missing/incompatible SOs never select the old
+writer for a new OFS command. FFS and previously issued AFFS recovery journals
+retain their exact compatibility path.
+
+Test Media's OFS format and populate producers now call the same SO's V3 API.
+Dataset generation stays in the application and the retained AFFS reader is an
+independent payload oracle. The GUI and privileged preparation worker check the
+required module before destructive preparation. Production hosts do not
+contain test module-path overrides or fault-injection controls.
+
+Local evidence includes warnings-as-errors builds, the native filesystem/core
+suite and full Test Media corpus, standalone OFS Test Media verification,
+portable/native OFS module mutation at all 28 profiles, independent content and
+allocation checks, journal/device-write interruption and Stop recovery, wrong
+target and altered-source/stage refusal, and the actual OFS engine plus generic
+host under ASan/UBSan. The released FAT16 SO independently passed the existing
+Defragmenter host's write/recovery suite and Boot Linux handoff. These are image
+and VM results, not physical-media certification.
+
+Both quality lanes now fetch the exact OFS implementation recorded in
+`defragger/shared/ofs-module-revision`, compare both public ABI headers, and
+provision isolated normal/instrumented modules. The source and governance drift
+gates remain exact. Publication still requires the complete exact-head quality
+and sanitizer lanes, immutable tested packages and release verification; this
+review does not waive or predeclare those hosted results.
 
 ## Full-surface allocation map qualification review — 2026-10-28
 

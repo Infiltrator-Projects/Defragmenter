@@ -1,3 +1,16 @@
+## 1.8.0-278 — Mandatory OFS.so integration
+
+- Run OFS analysis, Defrag, Growth Defrag and new-journal Recover inside the
+  independently installed OFS.so. Retain filesystem-neutral target safety,
+  private durable I/O, hashing, Stop and trusted module loading in the host.
+- Use that SO's V3 format/create/write API for OFS Test Media and require it
+  before destructive preparation. Keep independent payload verification.
+- Preserve FFS and previously issued AFFS journal recovery without permitting
+  a private-engine fallback for new OFS operations.
+- Pin the exact OFS source and both ABI headers in normal/sanitizer release
+  qualification. Boot continues through the generic SO loader; Linux keeps its
+  native KO until the later generic kernel bridge.
+
 ## 1.8.0-275 — Two native programs; private workers out of Filesystems
 
 - Install actual GTK executable as `/Programs/defragmenter` instead of a
