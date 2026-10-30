@@ -50,12 +50,12 @@ jobs:
           build/defragmenter-test-media-raw-test verify xfs build/xfs-test.img
           # Real Defrag/Growth on disposable, independently verified XFS media.
           IFS_TEST_MODULE_PARENT="$PWD/build/modules" \
-            build/defragmenter-xfs-test-worker defrag build/xfs-test.img \
-              --write --confirm build/xfs-test.img --journal build/xfs-defrag.journal
+            build/defragmenter-xfs-test-worker defrag "$PWD/build/xfs-test.img" \
+              --write --confirm "$PWD/build/xfs-test.img" --journal "$PWD/build/xfs-defrag.journal"
           build/defragmenter-test-media-raw-test verify xfs build/xfs-test.img
           IFS_TEST_MODULE_PARENT="$PWD/build/modules" \
-            build/defragmenter-xfs-test-worker growth-defrag build/xfs-test.img \
-              --write --confirm build/xfs-test.img --journal build/xfs-growth.journal \
+            build/defragmenter-xfs-test-worker growth-defrag "$PWD/build/xfs-test.img" \
+              --write --confirm "$PWD/build/xfs-test.img" --journal "$PWD/build/xfs-growth.journal" \
               --growth-percent 10
           build/defragmenter-test-media-raw-test verify xfs build/xfs-test.img
           mkdir -p build/missing/Filesystems
