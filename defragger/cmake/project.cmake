@@ -191,6 +191,16 @@ target_compile_options(defragmenter-core PRIVATE ${LD_WARNING_FLAGS})
 target_compile_definitions(defragmenter-core PUBLIC _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(defragmenter-core PUBLIC InfiltratrCommon::Common)
 
+# Application-owned, filesystem-neutral callbacks supplied to trusted SOs.
+add_library(defragmenter-fs-host-services STATIC native/ifs_defrag_services_v1.c)
+target_include_directories(defragmenter-fs-host-services PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/native"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core")
+target_compile_options(defragmenter-fs-host-services PRIVATE ${LD_WARNING_FLAGS})
+target_compile_definitions(defragmenter-fs-host-services PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+target_link_libraries(defragmenter-fs-host-services PUBLIC defragmenter-core)
+
+
 # C++17 owns application-level contracts and orchestration where value types,
 # scoped state and RAII improve the implementation. Filesystem parsing and
 # mutation remain in the existing native C engines.

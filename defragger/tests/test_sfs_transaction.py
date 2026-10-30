@@ -14,7 +14,7 @@ from pathlib import Path
 
 BUILD = Path(os.environ["DEFRAGMENTER_BUILD_DIR"])
 FIXTURE = BUILD / "defragmenter-sfs-native-test"
-WORKER = BUILD / "defragmenter-sfs-worker"
+WORKER = Path(os.environ.get("DEFRAGMENTER_SFS_WORKER", str(BUILD / "defragmenter-sfs-worker")))
 
 
 def run(*args: object) -> subprocess.CompletedProcess[str]:

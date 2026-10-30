@@ -295,6 +295,14 @@ int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
            "Install or update the ZFS filesystem driver before creating test media.");
         return ready;
     }
+    if (spec->creator == LDTM_CREATOR_AFFS && strcmp(spec->key, "sfs") == 0) {
+        extern int ldtm_sfs_module_available(void);
+        const int ready = ldtm_sfs_module_available();
+        (void)snprintf(detail,detail_capacity,"%s",ready ?
+            "SFS driver ready to format and verify test media." :
+            "Install or update the SFS filesystem driver before creating test media.");
+        return ready;
+    }
     if (spec->creator == LDTM_CREATOR_AFFS && strcmp(spec->key, "ofs") == 0) {
         extern int ldtm_ofs_module_available(void);
         const int ready = ldtm_ofs_module_available();
@@ -305,10 +313,6 @@ int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
     }
     if (spec->creator == LDTM_CREATOR_AFFS && strcmp(spec->key, "ffs") == 0) {
         (void)snprintf(detail, detail_capacity, "Built-in raw C creator + payload engine: Amiga DOS\\1 FFS");
-        return 1;
-    }
-    if (spec->creator == LDTM_CREATOR_AFFS && strcmp(spec->key, "sfs") == 0) {
-        (void)snprintf(detail, detail_capacity, "Built-in raw C creator + payload engine: Amiga SFS0 v3, 100-fragment native fixture");
         return 1;
     }
     if (spec->creator == LDTM_CREATOR_PFS3) {
@@ -344,7 +348,8 @@ int ldtm_required_modules_available(char *detail, size_t detail_capacity) {
     for (size_t i = 0U; i < ldtm_spec_count(); ++i) {
         const LdtmFilesystemSpec *spec = &ldtm_specs()[i];
         if ((spec->creator == LDTM_CREATOR_FAT12 || spec->creator == LDTM_CREATOR_FAT16 ||
-             strcmp(spec->key, "ofs") == 0 || spec->creator == LDTM_CREATOR_SWAP ||
+             strcmp(spec->key, "ofs") == 0 || strcmp(spec->key, "sfs") == 0 ||
+             spec->creator == LDTM_CREATOR_SWAP ||
              spec->creator == LDTM_CREATOR_ZFS) &&
             !ldtm_spec_creator_available(spec, detail, detail_capacity)) return 0;
     }

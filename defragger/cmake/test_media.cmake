@@ -50,8 +50,8 @@ target_include_directories(defragmenter-test-media-core PUBLIC
     "${LD_GENERATED_DIR}")
 target_include_directories(defragmenter-test-media-core PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
+    "${CMAKE_CURRENT_SOURCE_DIR}/native"
     "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/affs/native"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/sfs/native"
     "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/pfs3/native"
     "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/apfs/native"
     "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/ufs/native"
@@ -60,9 +60,9 @@ target_compile_options(defragmenter-test-media-core PRIVATE ${LD_WARNING_FLAGS})
 target_compile_definitions(defragmenter-test-media-core PRIVATE
     _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(defragmenter-test-media-core PUBLIC
-    OpenSSL::Crypto InfiltratrCommon::Common defragmenter-core defragmenter-filesystem-module-host)
+    OpenSSL::Crypto InfiltratrCommon::Common defragmenter-core defragmenter-filesystem-module-host defragmenter-fs-host-services)
 target_link_libraries(defragmenter-test-media-core PRIVATE
-    defragmenter-affs-native defragmenter-sfs-native
+    defragmenter-affs-native
     defragmenter-pfs3-native defragmenter-apfs-native
     defragmenter-ufs-native)
 target_link_libraries(defragmenter-test-media-core PRIVATE
@@ -182,7 +182,7 @@ if(BUILD_TESTING)
         _FILE_OFFSET_BITS=64 _GNU_SOURCE)
     target_link_libraries(defragmenter-test-media-test PRIVATE
         defragmenter-test-media-core defragmenter-affs-native
-        defragmenter-sfs-native defragmenter-pfs3-native
+        defragmenter-pfs3-native
         defragmenter-apfs-native OpenSSL::Crypto)
     add_test(NAME defragmenter-test-media-core COMMAND defragmenter-test-media-test)
     add_test(NAME defragmenter-test-media-install
