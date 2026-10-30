@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Infiltrator-Projects/Filesystem-XFS
-          ref: fb3ef50c0d79bffd0341cade94cf6ce217b3a74f
+          ref: 9f8abf907b350fde111c4d307e4839e6ce5c1974
           path: ci-xfs
       - name: Build XFS.so and verify its interface
         run: |
@@ -34,7 +34,7 @@ jobs:
           cd defragger
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
             -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build/modules" -DLD_ENABLE_WERROR=ON
-          cmake --build build --parallel 2 --target defragmenter-xfs-worker defragmenter-xfs-test-worker
+          cmake --build build --parallel 2 --target defragmenter-xfs-worker defragmenter-xfs-test-worker defragmenter-test-media-raw-test
       - name: Verify module dispatch and reject missing driver
         run: |
           set -euo pipefail
@@ -43,7 +43,11 @@ jobs:
           install -m 0644 /tmp/xfs-so/XFS.so build/modules/Filesystems/XFS.so
           cmp native/ifs_xfs_module_v1.h ../ci-xfs/include/ifs_xfs_module_v1.h
           cmp native/ifs_defrag_services_v1.h ../ci-xfs/include/ifs_defrag_services_v1.h
+          cmp test_media/ifs_xfs_fixture_v1.h ../ci-xfs/include/ifs_xfs_fixture_v1.h
           IFS_TEST_MODULE_PARENT="$PWD/build/modules" build/defragmenter-xfs-test-worker --version | grep -F '1.0.0'
+          export IFS_TEST_MODULE_PARENT="$PWD/build/modules"
+          build/defragmenter-test-media-raw-test create xfs build/xfs-test.img
+          build/defragmenter-test-media-raw-test verify xfs build/xfs-test.img
           mkdir -p build/missing/Filesystems
           if IFS_TEST_MODULE_PARENT="$PWD/build/missing" build/defragmenter-xfs-test-worker --version; then
              echo "ERROR: XFS used an internal engine" >&2; exit 1

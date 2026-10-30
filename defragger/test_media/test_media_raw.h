@@ -62,6 +62,7 @@ int ldtm_hfs_module_fixture(const LdtmFilesystemSpec *,const char *,bool);
 int ldtm_raw_mac(const LdtmFilesystemSpec *, const char *, bool);
 int ldtm_ntfs_module_available(const LdtmFilesystemSpec *);
 int ldtm_raw_ntfs(const LdtmFilesystemSpec *, const char *, bool);
+int ldtm_xfs_module_available(const LdtmFilesystemSpec *);
 int ldtm_raw_xfs(const LdtmFilesystemSpec *, const char *, bool);
 int ldtm_btrfs_module_available(const LdtmFilesystemSpec *);
 int ldtm_btrfs_module_fixture(const LdtmFilesystemSpec *,const char *,bool);

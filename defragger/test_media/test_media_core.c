@@ -311,6 +311,14 @@ int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
             "Install or update the HFSPLUS.so filesystem driver.");
         return ready;
     }
+    if (spec->creator == LDTM_CREATOR_XFS) {
+        extern int ldtm_xfs_module_available(const LdtmFilesystemSpec *);
+        const int ready = ldtm_xfs_module_available(spec);
+        (void)snprintf(detail, detail_capacity, "%s", ready ?
+            "XFS.so is ready to create and verify disposable test media." :
+            "Install or update XFS.so before preparing Test Media.");
+        return ready;
+    }
     if (spec->creator == LDTM_CREATOR_NTFS) {
         extern int ldtm_ntfs_module_available(const LdtmFilesystemSpec *);
         const int ready = ldtm_ntfs_module_available(spec);

@@ -205,6 +205,12 @@ int ldtm_raw_fixture(const LdtmFilesystemSpec *spec, const char *path, bool crea
             (void)snprintf(detail, capacity, "Install or update the %s filesystem driver.", spec->key);
         return -1;
     }
+    if (create && spec->creator == LDTM_CREATOR_XFS &&
+        !ldtm_xfs_module_available(spec)) {
+        if (detail && capacity)
+            (void)snprintf(detail, capacity, "Install or update XFS.so.");
+        return -1;
+    }
     if (create && spec->creator == LDTM_CREATOR_NTFS &&
         !ldtm_ntfs_module_available(spec)) {
         if (detail && capacity)

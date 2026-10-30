@@ -34,7 +34,7 @@ add_library(defragmenter-test-media-core STATIC
     test_media/test_media_hfs_module.c
     test_media/test_media_hfsplus_module.c
     test_media/test_media_ntfs_module.c
-    test_media/test_media_raw_xfs.c
+    test_media/test_media_xfs_module.c
     test_media/test_media_btrfs_module.c
     test_media/test_media_raw_zfs.c
     test_media/test_media_worker.c
@@ -65,8 +65,7 @@ target_link_libraries(defragmenter-test-media-core PRIVATE
     defragmenter-affs-native
     defragmenter-ufs-native)
 target_link_libraries(defragmenter-test-media-core PRIVATE
-    defragmenter-ext-native
-    defragmenter-xfs-native)
+    defragmenter-ext-native)
 
 add_executable(defragmenter-test-media
     test_media/test_media_main.c
