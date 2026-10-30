@@ -1,0 +1,64 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Verify independent HFSPLUS integration
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  hfsplus-integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config \
+            libgtk-3-dev libssl-dev libsqlite3-dev libext2fs-dev
+      - uses: actions/checkout@v4
+        with:
+          repository: Infiltrator-Projects/Filesystem-HFSPlus
+          ref: 8c074822cfacce95112cf56cd09b29e91296b182
+          path: ci-hfsplus
+      - name: Build HFSPLUS.so and run module tests
+        run: |
+          cmake -S ci-hfsplus -B /tmp/hfsplus-so -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          cmake --build /tmp/hfsplus-so --parallel 2
+          ctest --test-dir /tmp/hfsplus-so --output-on-failure
+      - name: Build real Defragmenter host and mapper
+        run: |
+          set -euo pipefail
+          cd defragger
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build/modules" \
+            -DLD_ENABLE_WERROR=ON
+          cmake --build build --parallel 2 --target \
+            defragmenter-hfsplus-worker defragmenter-hfsplus-test-worker \
+            defragmenter-mapper-cpp
+      - name: Verify actual HFS+ and HFSX Defrag, Growth and Recover
+        run: |
+          set -euo pipefail
+          cd defragger
+          mkdir -p build/modules/Filesystems
+          install -m 0644 /tmp/hfsplus-so/HFSPLUS.so build/modules/Filesystems/HFSPLUS.so
+          cmp native/ifs_hfsplus_module_v1.h ../ci-hfsplus/include/ifs_hfsplus_module_v1.h
+          cmp native/ifs_defrag_services_v1.h ../ci-hfsplus/include/ifs_defrag_services_v1.h
+          export IFS_TEST_MODULE_PARENT="$PWD/build/modules"
+          export DEFRAGMENTER_HFSPLUS_WORKER="$PWD/build/defragmenter-hfsplus-test-worker"
+          export DEFRAGMENTER_BUILD_DIR="$PWD/build"
+          "$DEFRAGMENTER_HFSPLUS_WORKER" --version | grep -F 'defragmenter-hfsplus-worker'
+          python3 tests/test_hfsplus_native.py
+      - name: Missing module must fail closed
+        run: |
+          set -euo pipefail
+          cd defragger
+          mkdir -p build/without-driver/Filesystems
+          if IFS_TEST_MODULE_PARENT="$PWD/build/without-driver" \
+             build/defragmenter-hfsplus-test-worker --version; then
+             echo "ERROR: HFS+ silently fell back to an internal engine" >&2
+             exit 1
+          fi

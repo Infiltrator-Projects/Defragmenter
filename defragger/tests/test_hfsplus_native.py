@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = Path(os.environ.get("DEFRAGMENTER_BUILD_DIR", ROOT / "build"))
-WORKER = BUILD / "defragmenter-hfsplus-worker"
+WORKER = Path(os.environ.get("DEFRAGMENTER_HFSPLUS_WORKER", BUILD / "defragmenter-hfsplus-worker"))
 MAPPER = BUILD / "defragmenter-mapper"
 FIXTURE = ROOT / "tests" / "make_hfsplus_fixture.py"
 sys.path.insert(0, str(ROOT / "tests"))

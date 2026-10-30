@@ -535,15 +535,27 @@ target_compile_options(defragmenter-hfsplus-native PRIVATE ${LD_WARNING_FLAGS})
 target_compile_definitions(defragmenter-hfsplus-native PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(defragmenter-hfsplus-native PUBLIC defragmenter-core OpenSSL::Crypto)
 
-add_executable(defragmenter-hfsplus-worker
-    gui/filesystems/hfsplus/native/hfsplus_worker.c)
+# HFS+/HFSX parse, Defrag, Growth Defrag and recovery are in HFSPLUS.so.
+# Only this format-neutral, fail-closed loader remains in Defragmenter.
+add_executable(defragmenter-hfsplus-worker native/hfsplus_module_loader.c)
 target_include_directories(defragmenter-hfsplus-worker PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/hfsplus/native"
-    "${LD_GENERATED_DIR}")
+    "${CMAKE_CURRENT_SOURCE_DIR}/native"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core" "${LD_GENERATED_DIR}")
 target_compile_options(defragmenter-hfsplus-worker PRIVATE ${LD_WARNING_FLAGS})
 target_compile_definitions(defragmenter-hfsplus-worker PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-target_link_libraries(defragmenter-hfsplus-worker PRIVATE defragmenter-hfsplus-native defragmenter-core OpenSSL::Crypto)
+target_link_libraries(defragmenter-hfsplus-worker PRIVATE
+    defragmenter-fs-host-services defragmenter-filesystem-module-host)
+if(BUILD_TESTING AND OFS_DEFRAG_TEST_MODULE_PARENT)
+    add_executable(defragmenter-hfsplus-test-worker native/hfsplus_module_loader.c)
+    target_include_directories(defragmenter-hfsplus-test-worker PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/native"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/core" "${LD_GENERATED_DIR}")
+    target_compile_options(defragmenter-hfsplus-test-worker PRIVATE ${LD_WARNING_FLAGS})
+    target_compile_definitions(defragmenter-hfsplus-test-worker PRIVATE
+        _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+    target_link_libraries(defragmenter-hfsplus-test-worker PRIVATE
+        defragmenter-fs-host-services defragmenter-filesystem-module-test-host)
+endif()
 
 add_executable(defragmenter-xfs-worker
     gui/filesystems/xfs/native/xfs_worker.c)
