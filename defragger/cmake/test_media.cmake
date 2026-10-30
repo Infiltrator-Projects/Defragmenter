@@ -28,7 +28,7 @@ add_library(defragmenter-test-media-core STATIC
     test_media/test_media_raw_fat.c
     test_media/test_media_fat_module.c
     test_media/test_media_raw_exfat.c
-    test_media/test_media_raw_unix.c
+    test_media/test_media_ext_module.c
     test_media/test_media_minix_module.c
     test_media/test_media_swap_module.c
     test_media/test_media_hfs_module.c
@@ -64,8 +64,6 @@ target_link_libraries(defragmenter-test-media-core PUBLIC
 target_link_libraries(defragmenter-test-media-core PRIVATE
     defragmenter-affs-native
     defragmenter-ufs-native)
-target_link_libraries(defragmenter-test-media-core PRIVATE
-    defragmenter-ext-native)
 
 add_executable(defragmenter-test-media
     test_media/test_media_main.c

@@ -30,14 +30,8 @@ def ranges_overlap(left: tuple[int, int], right: tuple[int, int]) -> bool:
 
 
 def main() -> None:
-    worker_source = (
-        ROOT / "gui" / "filesystems" / "ext4" / "native" / "ext_worker.c"
-    ).read_text(encoding="utf-8")
-    analyse_source = worker_source.split("static int analyse_json", 1)[1].split(
-        "static int writer_preflight", 1
-    )[0]
-    assert "ld_path_is_mounted" not in analyse_source, (
-        "read-only EXT analysis must not depend on fail-closed mutation topology validation"
+    assert not (ROOT / "gui" / "filesystems" / "ext4" / "native").exists(), (
+        "EXT filesystem parsing must be owned by external EXT2/3/4.so modules"
     )
 
     primary = BUILD / "defragmenter-ext-worker"

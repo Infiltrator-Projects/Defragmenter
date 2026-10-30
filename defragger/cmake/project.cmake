@@ -345,38 +345,24 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test_media/test_media_raw_ntfs.c")
     message(FATAL_ERROR "NTFS filesystem codec must be in Filesystem-NTFS/NTFS.so, never in Defragmenter")
 endif()
 
-# EXT2/3/4 production parsing, allocation accounting and mapping mutation are
-# first-party native C. libext2fs is retained only below as an independent
-# BUILD_TESTING fixture/oracle and is not a production/runtime dependency.
-add_library(defragmenter-ext-native STATIC
-    gui/filesystems/ext4/native/ext_disk.c
-    gui/filesystems/ext4/native/ext_common.c
-    gui/filesystems/ext4/native/ext_catalog.c
-    gui/filesystems/ext4/native/ext_plan.c
-    gui/filesystems/ext4/native/ext_workspace.c)
-target_include_directories(defragmenter-ext-native PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/ext4/native"
-    "${LD_GENERATED_DIR}")
-target_compile_options(defragmenter-ext-native PRIVATE
-    ${LD_WARNING_FLAGS})
-target_compile_definitions(defragmenter-ext-native PRIVATE
-    _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-target_link_libraries(defragmenter-ext-native PUBLIC
-    defragmenter-core SQLite::SQLite3 OpenSSL::Crypto)
-
-add_executable(defragmenter-ext-worker
-    gui/filesystems/ext4/native/ext_worker.c)
+# EXT2/3/4 have independent EXT2.so, EXT3.so and EXT4.so engines.
+# Defragmenter owns the trusted module loader and host services, not the
+# filesystem on-disk codec, planner, metadata parser, worker, or formatter.
+file(GLOB_RECURSE LD_EMBEDDED_EXT_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/ext4/native/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/ext4/native/*.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_media/test_media_raw_unix.c")
+if(LD_EMBEDDED_EXT_SOURCES)
+    message(FATAL_ERROR "EXT2/3/4 filesystem engines must be inside EXT*.so, not Defragmenter")
+endif()
+add_executable(defragmenter-ext-worker native/ext_module_loader.c)
 target_include_directories(defragmenter-ext-worker PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/ext4/native"
-    "${LD_GENERATED_DIR}")
-target_compile_options(defragmenter-ext-worker PRIVATE
-    ${LD_WARNING_FLAGS})
-target_compile_definitions(defragmenter-ext-worker PRIVATE
-    _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+    "${CMAKE_CURRENT_SOURCE_DIR}/native"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core" "${LD_GENERATED_DIR}")
+target_compile_options(defragmenter-ext-worker PRIVATE ${LD_WARNING_FLAGS})
+target_compile_definitions(defragmenter-ext-worker PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(defragmenter-ext-worker PRIVATE
-    defragmenter-ext-native defragmenter-core SQLite::SQLite3 OpenSSL::Crypto)
+    defragmenter-fs-host-services defragmenter-filesystem-module-host)
 
 # NTFS implementations are now owned by independent NTFS.so.
 add_executable(defragmenter-ntfs-worker native/ntfs_module_loader.c)
