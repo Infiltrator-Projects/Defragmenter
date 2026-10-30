@@ -193,7 +193,7 @@ const char *ldtm_creator_program(const LdtmFilesystemSpec *spec) {
     if (spec->creator == LDTM_CREATOR_UFS)
         return "makefs";
     if (spec->creator == LDTM_CREATOR_AFFS) {
-        if (strcmp(spec->key, "ofs") == 0 || strcmp(spec->key, "ffs") == 0)
+        if (strcmp(spec->key, "ofs") == 0)
             return "/System/Commands/Defragmenter/test-media-mkfs-ofs";
         if (strcmp(spec->key, "ffs") == 0)
             return "/System/Commands/Defragmenter/test-media-mkfs-ffs";
@@ -203,10 +203,8 @@ const char *ldtm_creator_program(const LdtmFilesystemSpec *spec) {
 
 const char *ldtm_creator_display_name(const LdtmFilesystemSpec *spec) {
     if (spec == NULL) return "Unavailable";
-    if (spec->creator == LDTM_CREATOR_FAT12 || spec->creator == LDTM_CREATOR_FAT16 ||
-        strcmp(spec->key, "ofs") == 0)
-        return "Filesystem driver";
-    return spec->creator == LDTM_CREATOR_MANUAL ? "Manual" : "Built-in native";
+    return spec->creator == LDTM_CREATOR_MANUAL ?
+        "Manual" : "Filesystem driver";
 }
 
 static int copy_resolved_program(const char *program, char *output,
@@ -414,9 +412,10 @@ int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
         (void)snprintf(detail, detail_capacity, "Reserved: %s", spec->note);
         return 0;
     }
-    (void)snprintf(detail, detail_capacity, "Built-in raw C creator + complete corpus verifier: %s",
-                   spec->key);
-    return 1;
+    (void)snprintf(detail, detail_capacity,
+        "No qualified filesystem shared-object implementation is registered for %s",
+        spec->key);
+    return 0;
 }
 
 int ldtm_required_modules_available(char *detail, size_t detail_capacity) {
@@ -426,7 +425,7 @@ int ldtm_required_modules_available(char *detail, size_t detail_capacity) {
               spec->creator == LDTM_CREATOR_FAT12 || spec->creator == LDTM_CREATOR_FAT16 ||
               spec->creator == LDTM_CREATOR_EXT2 || spec->creator == LDTM_CREATOR_EXT3 ||
               spec->creator == LDTM_CREATOR_EXT4 ||
-             strcmp(spec->key, "ofs") == 0 || strcmp(spec->key, "sfs") == 0 ||
+             strcmp(spec->key, "ofs") == 0 || strcmp(spec->key, "ffs") == 0 || strcmp(spec->key, "sfs") == 0 ||
              spec->creator == LDTM_CREATOR_PFS3 ||
              spec->creator == LDTM_CREATOR_APFS ||
              spec->creator == LDTM_CREATOR_SWAP ||
