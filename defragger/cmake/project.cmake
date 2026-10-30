@@ -394,19 +394,17 @@ target_compile_definitions(defragmenter-ntfs-native PRIVATE
 target_link_libraries(defragmenter-ntfs-native PUBLIC
     defragmenter-core SQLite::SQLite3 OpenSSL::Crypto Threads::Threads)
 
-add_executable(defragmenter-ntfs-worker
-    gui/filesystems/ntfs/native/ntfs_worker.c
-    gui/filesystems/ntfs/native/ntfs_transaction.c)
+# The installed worker has no internal NTFS parsing or relocation engine.
+# The retained native static library is still used by Test Media until its
+# format/populate functionality moves to NTFS.so.
+add_executable(defragmenter-ntfs-worker native/ntfs_module_loader.c)
 target_include_directories(defragmenter-ntfs-worker PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/ntfs/native"
+    "${CMAKE_CURRENT_SOURCE_DIR}/native" "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
     "${LD_GENERATED_DIR}")
 target_compile_options(defragmenter-ntfs-worker PRIVATE ${LD_WARNING_FLAGS})
-target_compile_definitions(defragmenter-ntfs-worker PRIVATE
-    _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+target_compile_definitions(defragmenter-ntfs-worker PRIVATE _GNU_SOURCE _FILE_OFFSET_BITS=64)
 target_link_libraries(defragmenter-ntfs-worker PRIVATE
-    defragmenter-ntfs-native defragmenter-core SQLite::SQLite3 OpenSSL::Crypto)
-set_property(TARGET defragmenter-ntfs-worker PROPERTY LINKER_LANGUAGE CXX)
+    defragmenter-filesystem-module-host defragmenter-defrag-services)
 
 add_library(defragmenter-exfat-native STATIC
     gui/filesystems/exfat/native/exfat_common.c

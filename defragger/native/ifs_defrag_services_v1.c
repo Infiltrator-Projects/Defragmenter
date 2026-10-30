@@ -34,6 +34,12 @@ const IfsDefragServicesV1 *ifs_defrag_services_v1(void) {
   .ld_stop_clear=ld_stop_clear,
   .ld_stop_install_handlers=ld_stop_install_handlers,
   .ld_stop_report_ready=ld_stop_report_ready,
+  .ld_die=ld_die,
+  .ld_xstrndup=ld_xstrndup,
+  .ld_device_number_is_mounted=ld_device_number_is_mounted,
+  .ld_fd_matches_identity=ld_fd_matches_identity,
+  .ld_device_open=ld_device_open,
+  .ld_device_close=ld_device_close,
  };
  return &services;
 }

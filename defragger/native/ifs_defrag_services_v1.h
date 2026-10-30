@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <sys/types.h>
+#include "ld_device.h"
 #define IFS_DEFRAG_SERVICES_V1 1u
 typedef struct {
     uint32_t abi_version;
@@ -33,5 +34,14 @@ typedef struct {
     void(*ld_stop_clear)(void);
     void(*ld_stop_install_handlers)(void);
     void(*ld_stop_report_ready)(void);
+    /* NTFS workers require these additional filesystem-neutral safety hooks.
+     * Appended fields preserve the existing prefix; structure_bytes guards
+     * against loading a host with an older incomplete table. */
+    void (*ld_die)(const char *message);
+    char *(*ld_xstrndup)(const char *, size_t);
+    bool (*ld_device_number_is_mounted)(dev_t);
+    bool (*ld_fd_matches_identity)(int, const char *, uint64_t);
+    LdDevice (*ld_device_open)(const char *, bool);
+    void (*ld_device_close)(LdDevice *);
 } IfsDefragServicesV1;
 #endif
