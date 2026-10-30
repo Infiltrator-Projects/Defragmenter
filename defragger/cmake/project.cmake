@@ -405,6 +405,16 @@ target_compile_options(defragmenter-ntfs-worker PRIVATE ${LD_WARNING_FLAGS})
 target_compile_definitions(defragmenter-ntfs-worker PRIVATE _GNU_SOURCE _FILE_OFFSET_BITS=64)
 target_link_libraries(defragmenter-ntfs-worker PRIVATE
     defragmenter-filesystem-module-host defragmenter-fs-host-services)
+if(BUILD_TESTING AND OFS_DEFRAG_TEST_MODULE_PARENT)
+    add_executable(defragmenter-ntfs-test-worker native/ntfs_module_loader.c)
+    target_include_directories(defragmenter-ntfs-test-worker PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/native"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/core" "${LD_GENERATED_DIR}")
+    target_compile_options(defragmenter-ntfs-test-worker PRIVATE ${LD_WARNING_FLAGS})
+    target_compile_definitions(defragmenter-ntfs-test-worker PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+    target_link_libraries(defragmenter-ntfs-test-worker PRIVATE
+        defragmenter-fs-host-services defragmenter-filesystem-module-test-host)
+endif()
 
 add_library(defragmenter-exfat-native STATIC
     gui/filesystems/exfat/native/exfat_common.c
