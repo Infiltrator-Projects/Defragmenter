@@ -5,12 +5,38 @@ Status: **complete**
 Completed: 2026-10-29
 
 Applies to: audited source and release-governance baselines below
-Audited source commit: 89c47c03288dd3dc4673ae6be186544d0d07a54a
-Audited release-governance commit: 89c47c03288dd3dc4673ae6be186544d0d07a54a
+Audited source commit: 662258c4d47a3ca388a3cf9799f098993c7bdb4e
+Audited release-governance commit: 662258c4d47a3ca388a3cf9799f098993c7bdb4e
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
 This document records the current release safety case for the exact audited source baseline above. Publication still requires the exact release head to pass the self-hosted Project quality gate and the release-governance drift checks.
+
+## FAT12/16 Test Media module integration review — 2026-10-30
+
+The reviewed baseline above removes FAT12/16 formatting, FAT-entry writes and
+directory-entry construction from Test Media. V4 formatting and V3 file APIs
+run in the trusted installed SO; interleaved appends create the existing eight
+large fragmented files and eight boundary files. The independent raw verifier
+uses the actual data-area byte offset, including module layouts which are not
+aligned to an absolute allocation-unit boundary. FAT32 retains an isolated,
+explicitly temporary FAT32-only creator; no FAT12/16 fallback remains.
+
+The shared host retains directory/file ownership and permission checks, bounded
+descriptor I/O and mounted-target refusal. Defrag V2 still receives its complete
+identity/capability validation. Other interfaces must validate their own ABI,
+format identity and methods before opening a writable target. The OFS V3 caller
+now checks every required method as well. FAT readiness is checked before disk
+partitioning, and a loaded validated module is held across signature clearing,
+formatting and population. The FAT ABI header is compared with the immutable
+provider used by both CI lanes.
+
+Local warnings-as-errors builds, full FAT12/16/32 corpus/relocation verification,
+corruption rejection, eight missing/wrong-interface/identity/permission refusal
+cases, OFS integration and Test Media core/install tests passed. The FAT16
+consumer also passed with the exact released v0.1.6 SO. The affected full-corpus
+and refusal cases passed ASan/UBSan. Publication still requires both complete
+hosted quality lanes, package/install validation and exact-source/artifact gates.
 
 ## Mandatory OFS module integration review — 2026-10-29
 
