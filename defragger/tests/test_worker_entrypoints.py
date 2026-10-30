@@ -13,16 +13,18 @@ BUILD = Path(os.environ.get("DEFRAGMENTER_BUILD_DIR", ROOT / "build"))
 
 
 def _run_version(name: str) -> None:
+    worker_env = {
+        "defragmenter-ext-worker": "DEFRAGMENTER_EXT_WORKER",
+        "defragmenter-ntfs-worker": "DEFRAGMENTER_NTFS_WORKER",
+        "defragmenter-exfat-worker": "DEFRAGMENTER_EXFAT_WORKER",
+        "defragmenter-xfs-worker": "DEFRAGMENTER_XFS_WORKER",
+        "defragmenter-fat-worker": "DEFRAGMENTER_FAT_WORKER",
+        "defragmenter-affs-worker": "DEFRAGMENTER_AFFS_WORKER",
+        "defragmenter-hfsplus-worker": "DEFRAGMENTER_HFSPLUS_WORKER",
+    }
+    worker_path = Path(os.environ.get(worker_env[name], str(BUILD / name)))
     completed = subprocess.run(
-        [str(Path(os.environ.get({
-            "defragmenter-ext-worker": "DEFRAGMENTER_EXT_WORKER",
-            "defragmenter-ntfs-worker": "DEFRAGMENTER_NTFS_WORKER",
-            "defragmenter-exfat-worker": "DEFRAGMENTER_EXFAT_WORKER",
-            "defragmenter-xfs-worker": "DEFRAGMENTER_XFS_WORKER",
-            "defragmenter-fat-worker": "DEFRAGMENTER_FAT_WORKER",
-            "defragmenter-affs-worker": "DEFRAGMENTER_AFFS_WORKER",
-            "defragmenter-hfsplus-worker": "DEFRAGMENTER_HFSPLUS_WORKER",
-        }[name], BUILD / name)), "--version"],
+        [str(worker_path), "--version"],
         cwd="/",
         text=True,
         stdout=subprocess.PIPE,
