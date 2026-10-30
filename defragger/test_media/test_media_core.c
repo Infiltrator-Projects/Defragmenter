@@ -279,6 +279,14 @@ int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
             "Install or update the %s filesystem driver before creating test media.", spec->key);
         return ready;
     }
+    if (spec->creator == LDTM_CREATOR_MINIX) {
+        extern int ldtm_minix_module_available(const LdtmFilesystemSpec *);
+        const int ready=ldtm_minix_module_available(spec);
+        (void)snprintf(detail,detail_capacity,"%s",ready ?
+            "MINIX.so is ready to format and verify test media." :
+            "Install or update MINIX.so.");
+        return ready;
+    }
     if (spec->creator == LDTM_CREATOR_BTRFS) {
         extern int ldtm_btrfs_module_available(const LdtmFilesystemSpec *);
         const int ready=ldtm_btrfs_module_available(spec);
@@ -385,7 +393,8 @@ int ldtm_required_modules_available(char *detail, size_t detail_capacity) {
              spec->creator == LDTM_CREATOR_ZFS ||
              spec->creator == LDTM_CREATOR_HFSPLUS ||
              spec->creator == LDTM_CREATOR_HFS ||
-             spec->creator == LDTM_CREATOR_BTRFS) &&
+             spec->creator == LDTM_CREATOR_BTRFS ||
+             spec->creator == LDTM_CREATOR_MINIX) &&
             !ldtm_spec_creator_available(spec, detail, detail_capacity)) return 0;
     }
     return 1;

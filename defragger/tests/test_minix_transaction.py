@@ -13,8 +13,8 @@ from pathlib import Path
 
 
 BUILD = Path(os.environ["DEFRAGMENTER_BUILD_DIR"])
-FIXTURE = BUILD / "defragmenter-minix-native-test"
-WORKER = BUILD / "defragmenter-minix-worker"
+FIXTURE = Path(os.environ.get("DEFRAGMENTER_MINIX_FIXTURE", BUILD / "defragmenter-minix-native-test"))
+WORKER = Path(os.environ.get("DEFRAGMENTER_MINIX_WORKER", BUILD / "defragmenter-minix-worker"))
 
 
 def run(*args: object) -> subprocess.CompletedProcess[str]:

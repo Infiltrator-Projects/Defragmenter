@@ -320,28 +320,14 @@ if(BUILD_TESTING AND APFS_NATIVE_TEST_SOURCE_DIR)
 endif()
 
 # Minix exact analysis, offline staging, mutation and recovery are native C.
-add_library(defragmenter-minix-native STATIC
-    gui/filesystems/minix/native/minix_native.c)
-target_include_directories(defragmenter-minix-native PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/minix/native"
-    "${LD_GENERATED_DIR}")
-target_compile_options(defragmenter-minix-native PRIVATE ${LD_WARNING_FLAGS})
-target_compile_definitions(defragmenter-minix-native PRIVATE
-    _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-target_link_libraries(defragmenter-minix-native PUBLIC defragmenter-core)
-
-add_executable(defragmenter-minix-worker
-    gui/filesystems/minix/native/minix_worker.c)
+# Minix layout and writer own canonical MINIX.so; host is format-neutral.
+add_executable(defragmenter-minix-worker native/minix_module_loader.c)
 target_include_directories(defragmenter-minix-worker PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/minix/native"
-    "${LD_GENERATED_DIR}")
+ "${CMAKE_CURRENT_SOURCE_DIR}/native" "${CMAKE_CURRENT_SOURCE_DIR}/src/core" "${LD_GENERATED_DIR}")
 target_compile_options(defragmenter-minix-worker PRIVATE ${LD_WARNING_FLAGS})
-target_compile_definitions(defragmenter-minix-worker PRIVATE
-    _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+target_compile_definitions(defragmenter-minix-worker PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(defragmenter-minix-worker PRIVATE
-    defragmenter-minix-native defragmenter-core OpenSSL::Crypto)
+ defragmenter-fs-host-services defragmenter-filesystem-module-host)
 
 find_package(SQLite3 REQUIRED)
 
@@ -514,6 +500,14 @@ if(BUILD_TESTING AND OFS_DEFRAG_TEST_MODULE_PARENT)
     target_link_libraries(defragmenter-affs-test-worker PRIVATE
         defragmenter-affs-native defragmenter-core defragmenter-filesystem-module-test-host)
     set(AFFS_WORKER_FOR_TESTS "$<TARGET_FILE:defragmenter-affs-test-worker>")
+    add_executable(defragmenter-minix-test-worker native/minix_module_loader.c)
+    target_include_directories(defragmenter-minix-test-worker PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/native" "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
+        "${LD_GENERATED_DIR}")
+    target_compile_options(defragmenter-minix-test-worker PRIVATE ${LD_WARNING_FLAGS})
+    target_compile_definitions(defragmenter-minix-test-worker PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+    target_link_libraries(defragmenter-minix-test-worker PRIVATE
+        defragmenter-fs-host-services defragmenter-filesystem-module-test-host)
     # Test worker shares the exact production loader but trusts only a
     # disposable, user-owned SO root. Never install the test worker.
     add_executable(defragmenter-swap-test-worker native/swap_module_loader.c)
@@ -735,24 +729,24 @@ if(BUILD_TESTING)
         TIMEOUT 120)
 
     endif()
-    add_executable(defragmenter-minix-native-test
-        tests/test_minix_native.c)
-    target_include_directories(defragmenter-minix-native-test PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/minix/native"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/core" "${LD_GENERATED_DIR}")
-    target_compile_options(defragmenter-minix-native-test PRIVATE ${LD_WARNING_FLAGS})
-    target_compile_definitions(defragmenter-minix-native-test PRIVATE
-        _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-    target_link_libraries(defragmenter-minix-native-test PRIVATE
-        defragmenter-minix-native defragmenter-core)
-    add_test(NAME defragmenter-minix-native COMMAND defragmenter-minix-native-test)
-
-    add_test(NAME defragmenter-minix-transaction
-        COMMAND "${LD_HELPER_TEST_PYTHON}"
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_minix_transaction.py")
-    set_tests_properties(defragmenter-minix-transaction PROPERTIES
-        ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1;DEFRAGMENTER_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}"
-        TIMEOUT 120)
+    # Original Minix native fixture and regression now live in Filesystem-Minix.
+    # Only the independently built fixture is used to exercise Defragmenter's
+    # SO loader in transaction tests.
+    set(MINIX_NATIVE_FIXTURE_PATH "" CACHE FILEPATH
+        "Path to the qualified independent Minix test-media fixture")
+    if(MINIX_NATIVE_FIXTURE_PATH AND BUILD_TESTING)
+        add_test(NAME defragmenter-minix-transaction
+            COMMAND "${LD_HELPER_TEST_PYTHON}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_minix_transaction.py")
+        if(TARGET defragmenter-minix-test-worker)
+            set(MINIX_TEST_WORKER "$<TARGET_FILE:defragmenter-minix-test-worker>")
+        else()
+            set(MINIX_TEST_WORKER "$<TARGET_FILE:defragmenter-minix-worker>")
+        endif()
+        set_tests_properties(defragmenter-minix-transaction PROPERTIES
+            ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1;DEFRAGMENTER_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR};DEFRAGMENTER_MINIX_FIXTURE=${MINIX_NATIVE_FIXTURE_PATH};DEFRAGMENTER_MINIX_WORKER=${MINIX_TEST_WORKER}"
+            TIMEOUT 120)
+    endif()
 
     # Native SWAP engine regression moved to Filesystem-Swap's independent CI.
 
