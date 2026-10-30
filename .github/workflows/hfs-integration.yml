@@ -50,6 +50,7 @@ jobs:
           cmp native/ifs_defrag_services_v1.h ../ci-hfs/include/ifs_defrag_services_v1.h
           export IFS_TEST_MODULE_PARENT="$PWD/build/modules"
           export DEFRAGMENTER_HFS_WORKER="$PWD/build/defragmenter-hfs-test-worker"
+          export DEFRAGMENTER_HFS_ANALYSER="$DEFRAGMENTER_HFS_WORKER"
           export DEFRAGMENTER_BUILD_DIR="$PWD/build"
           "$DEFRAGMENTER_HFS_WORKER" --version
           python3 tests/test_hfs_native.py
