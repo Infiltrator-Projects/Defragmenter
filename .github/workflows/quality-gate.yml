@@ -360,7 +360,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: Infiltrator-Projects/Filesystem-UFS
-          ref: 7366c9c63b7e7cfbdb543b956a5753c18ff4dc85
+          ref: a64350b9f7bd13456689415f7c52171439d72758
           path: ci-ufs
 
       - name: Build and qualify UFS.so and the first-party formatter
@@ -870,7 +870,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: Infiltrator-Projects/Filesystem-UFS
-          ref: 7366c9c63b7e7cfbdb543b956a5753c18ff4dc85
+          ref: a64350b9f7bd13456689415f7c52171439d72758
           path: ci-ufs
 
       - name: Instrument first-party UFS.so and formatting engine
