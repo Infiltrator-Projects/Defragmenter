@@ -135,6 +135,18 @@ if(BUILD_TESTING)
         target_link_libraries(defragmenter-sfs-so-fixture-test PRIVATE
             defragmenter-filesystem-module-test-host)
     endif()
+    add_executable(defragmenter-pfs3-so-fixture-test tests/test_pfs3_so_fixture.c)
+    target_include_directories(defragmenter-pfs3-so-fixture-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/test_media"
+        "${CMAKE_CURRENT_SOURCE_DIR}/native"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/core")
+    target_compile_options(defragmenter-pfs3-so-fixture-test PRIVATE ${LD_WARNING_FLAGS})
+    target_compile_definitions(defragmenter-pfs3-so-fixture-test PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+    target_link_libraries(defragmenter-pfs3-so-fixture-test PRIVATE defragmenter-test-media-core)
+    if(TARGET defragmenter-filesystem-module-test-host)
+        target_link_libraries(defragmenter-pfs3-so-fixture-test PRIVATE
+            defragmenter-filesystem-module-test-host)
+    endif()
     # The standalone hosted integration runs this on its own disposable image.
     add_executable(defragmenter-test-media-raw-test tests/test_test_media_raw.c)
     target_include_directories(defragmenter-test-media-raw-test PRIVATE
