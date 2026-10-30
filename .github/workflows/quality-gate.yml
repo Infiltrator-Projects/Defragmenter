@@ -19,7 +19,9 @@ permissions:
 
 concurrency:
   group: quality-gate-v7-${{ github.ref }}
-  cancel-in-progress: false
+  # A newer pull-request commit supersedes stale candidate builds.
+  # Main-branch release qualification is never cancelled.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   quality-gate:
