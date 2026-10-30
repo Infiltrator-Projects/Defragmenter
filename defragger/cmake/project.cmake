@@ -379,24 +379,7 @@ target_compile_definitions(defragmenter-ext-worker PRIVATE
 target_link_libraries(defragmenter-ext-worker PRIVATE
     defragmenter-ext-native defragmenter-core SQLite::SQLite3 OpenSSL::Crypto)
 
-add_library(defragmenter-ntfs-native STATIC
-    gui/filesystems/ntfs/native/ntfs_common.c
-    gui/filesystems/ntfs/native/ntfs_catalog.c
-    gui/filesystems/ntfs/native/ntfs_plan.c
-    gui/filesystems/ntfs/native/ntfs_plan_db.cpp)
-target_include_directories(defragmenter-ntfs-native PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/ntfs/native"
-    "${LD_GENERATED_DIR}")
-target_compile_options(defragmenter-ntfs-native PRIVATE ${LD_WARNING_FLAGS})
-target_compile_definitions(defragmenter-ntfs-native PRIVATE
-    _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-target_link_libraries(defragmenter-ntfs-native PUBLIC
-    defragmenter-core SQLite::SQLite3 OpenSSL::Crypto Threads::Threads)
-
-# The installed worker has no internal NTFS parsing or relocation engine.
-# The retained native static library is still used by Test Media until its
-# format/populate functionality moves to NTFS.so.
+# NTFS implementations are now owned by independent NTFS.so.
 add_executable(defragmenter-ntfs-worker native/ntfs_module_loader.c)
 target_include_directories(defragmenter-ntfs-worker PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/native" "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
@@ -674,12 +657,7 @@ if(BUILD_TESTING)
     target_compile_definitions(defragmenter-ext-bitmap-cache-test PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
     add_test(NAME defragmenter-ext-bitmap-cache COMMAND defragmenter-ext-bitmap-cache-test)
 
-    add_executable(defragmenter-ntfs-stream-index-test tests/test_ntfs_stream_index.c)
-    target_link_libraries(defragmenter-ntfs-stream-index-test PRIVATE defragmenter-ntfs-native)
-    target_compile_options(defragmenter-ntfs-stream-index-test PRIVATE ${LD_WARNING_FLAGS})
-    set_property(TARGET defragmenter-ntfs-stream-index-test PROPERTY LINKER_LANGUAGE CXX)
-    add_test(NAME defragmenter-ntfs-stream-index COMMAND defragmenter-ntfs-stream-index-test)
-    set_tests_properties(defragmenter-ntfs-stream-index PROPERTIES TIMEOUT 20)
+    # NTFS native stream-index tests run from Filesystem-NTFS CI.
 
     add_executable(defragmenter-privileged-helper-test
         native/privileged_helper.cpp)
