@@ -34,7 +34,7 @@ add_library(defragmenter-test-media-core STATIC
     test_media/test_media_hfsplus_module.c
     test_media/test_media_raw_ntfs.c
     test_media/test_media_raw_xfs.c
-    test_media/test_media_raw_btrfs.c
+    test_media/test_media_btrfs_module.c
     test_media/test_media_raw_zfs.c
     test_media/test_media_worker.c
     test_media/test_media_reserved.c
