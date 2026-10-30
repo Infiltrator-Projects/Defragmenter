@@ -177,7 +177,7 @@ jobs:
           set -euo pipefail
           apfs="$GITHUB_WORKSPACE/ci-apfs"
           cmake -S "$apfs" -B "$RUNNER_TEMP/apfs-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=ON
-          cmake --build "$RUNNER_TEMP/apfs-$GITHUB_RUN_ID-$GITHUB_JOB" --target apfs-driver apfs-module-test -j2
+          cmake --build "$RUNNER_TEMP/apfs-$GITHUB_RUN_ID-$GITHUB_JOB" --target apfs-driver apfs-module-test apfs-original-native-test -j2
           ctest --test-dir "$RUNNER_TEMP/apfs-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
           bash tests/verify_legacy_fs_services_abi.sh "$apfs/include/ifs_defrag_services_v1.h"
           cmp native/ifs_apfs_module_v1.h "$apfs/include/ifs_apfs_module_v1.h"
