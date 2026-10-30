@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# No APFS-specific parsing, bitmap, relocation, journaling or formatting is
+# compiled into Defragmenter's installable binaries.
+name: Verify independent APFS integration
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  apfs-integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Defragmenter with exact Common
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config \
+            libgtk-3-dev libssl-dev libsqlite3-dev libext2fs-dev
+      - name: Checkout authoritative APFS.so
+        uses: actions/checkout@v4
+        with:
+          repository: Infiltrator-Projects/Filesystem-APFS
+          ref: c3c30738d92d2cc2730ab1ef18846b0f4e1ffa6b
+          path: ci-apfs
+      - name: Build and run APFS module self-tests
+        run: |
+          cmake -S ci-apfs -B /tmp/apfs-so -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          cmake --build /tmp/apfs-so --parallel 2
+          ctest --test-dir /tmp/apfs-so --output-on-failure
+      - name: Build Defragmenter against its generic host interface
+        run: |
+          set -euo pipefail
+          cd defragger
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            -DLD_ENABLE_WERROR=ON \
+            -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build/modules" \
+            -DAPFS_NATIVE_TEST_SOURCE_DIR="$GITHUB_WORKSPACE/ci-apfs"
+          cmake --build build --parallel 2 --target \
+            defragmenter-apfs-worker defragmenter-apfs-test-worker \
+            defragmenter-apfs-so-fixture-test defragmenter-mapper-cpp
+      - name: Run real APFS checkpoint Defrag, Growth, Recover and Test Media tests
+        run: |
+          set -euo pipefail
+          cd defragger
+          install -d -m 0755 build/modules/Filesystems
+          install -m 0644 /tmp/apfs-so/APFS.so build/modules/Filesystems/APFS.so
+          cmp native/ifs_defrag_services_v1.h ../ci-apfs/include/ifs_defrag_services_v1.h
+          cmp native/ifs_apfs_module_v1.h ../ci-apfs/include/ifs_apfs_module_v1.h
+          cmp test_media/ifs_apfs_fixture_host_v1.h ../ci-apfs/include/ifs_apfs_fixture_host_v1.h
+          export IFS_TEST_MODULE_PARENT="$PWD/build/modules"
+          export DEFRAGMENTER_APFS_WORKER="$PWD/build/defragmenter-apfs-test-worker"
+          export DEFRAGMENTER_BUILD_DIR="$PWD/build"
+          build/defragmenter-apfs-test-worker --version | grep -F 'defragmenter-apfs-worker'
+          python3 tests/test_apfs_native.py
+          build/defragmenter-apfs-so-fixture-test build/apfs-fixture.img
+      - name: Reject missing or incompatible APFS.so before filesystem writes
+        run: |
+          set -euo pipefail
+          cd defragger
+          mkdir -p build/missing/Filesystems
+          if IFS_TEST_MODULE_PARENT="$PWD/build/missing" \
+            build/defragmenter-apfs-test-worker --version; then
+            echo "APFS module worker fell back without its shared object" >&2
+            exit 1
+          fi
+          if IFS_TEST_MODULE_PARENT="$PWD/build/missing" \
+            build/defragmenter-apfs-so-fixture-test build/must-not-create.img; then
+            echo "APFS fixture formatter fell back without APFS.so" >&2
+            exit 1
+          fi
+          test ! -e build/must-not-create.img
