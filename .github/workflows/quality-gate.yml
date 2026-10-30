@@ -146,6 +146,25 @@ jobs:
           cmp test_media/ifs_sfs_fixture_host_v1.h "$sfs/include/ifs_sfs_fixture_host_v1.h"
           install -m 0644 "$RUNNER_TEMP/sfs-$GITHUB_RUN_ID-$GITHUB_JOB/SFS.so" "$PWD/build/fat-module-test/Filesystems/SFS.so"
 
+      - name: Checkout authoritative independent PFS3 driver
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-PFS3
+          ref: 35a09a348bfe934aed75d1ac7eac18ce1a11fda5
+          path: ci-pfs3
+
+      - name: Build qualified PFS3.so and native source for test fixtures
+        run: |
+          set -euo pipefail
+          pfs3="$GITHUB_WORKSPACE/ci-pfs3"
+          cmake -S "$pfs3" -B "$RUNNER_TEMP/pfs3-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=ON
+          cmake --build "$RUNNER_TEMP/pfs3-$GITHUB_RUN_ID-$GITHUB_JOB" --target pfs3-driver pfs3-module-test -j2
+          ctest --test-dir "$RUNNER_TEMP/pfs3-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
+          cmp native/ifs_defrag_services_v1.h "$pfs3/include/ifs_defrag_services_v1.h"
+          cmp native/ifs_pfs3_module_v1.h "$pfs3/include/ifs_pfs3_module_v1.h"
+          cmp test_media/ifs_pfs3_fixture_host_v1.h "$pfs3/include/ifs_pfs3_fixture_host_v1.h"
+          install -m 0644 "$RUNNER_TEMP/pfs3-$GITHUB_RUN_ID-$GITHUB_JOB/PFS3.so" "$PWD/build/fat-module-test/Filesystems/PFS3.so"
+
       - name: Detect explicit release intent
         id: release_intent
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -183,6 +202,7 @@ jobs:
             -DFAT_DEFRAG_TEST_MODULE_PARENT="$PWD/build/fat-module-test" \
             -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build/fat-module-test" \
             -DSFS_NATIVE_TEST_SOURCE_DIR="$GITHUB_WORKSPACE/ci-sfs" \
+            -DPFS3_NATIVE_TEST_SOURCE_DIR="$GITHUB_WORKSPACE/ci-pfs3" \
             -DBUILD_TESTING=ON
           cmake --build build -j2
           cmake --build build --target defragmenter-desktop -j2
@@ -208,6 +228,7 @@ jobs:
           DEFRAGMENTER_SWAP_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-swap-test-worker
           DEFRAGMENTER_ZFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-zfs-test-worker
           DEFRAGMENTER_SFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-sfs-test-worker
+          DEFRAGMENTER_PFS3_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-pfs3-test-worker
           IFS_TEST_MODULE_PARENT: ${{ github.workspace }}/defragger/build/fat-module-test
           DEFRAGMENTER_AFFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-affs-test-worker
         run: |
@@ -403,6 +424,26 @@ jobs:
           cmp test_media/ifs_sfs_fixture_host_v1.h "$sfs/include/ifs_sfs_fixture_host_v1.h"
           install -m 0644 "$RUNNER_TEMP/sfs-san-$GITHUB_RUN_ID-$GITHUB_JOB/SFS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/SFS.so"
 
+      - name: Checkout PFS3.so for sanitizer qualification
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-PFS3
+          ref: 35a09a348bfe934aed75d1ac7eac18ce1a11fda5
+          path: ci-pfs3
+
+      - name: Build instrumented authoritative PFS3.so
+        run: |
+          set -euo pipefail
+          pfs3="$GITHUB_WORKSPACE/ci-pfs3"
+          cmake -S "$pfs3" -B "$RUNNER_TEMP/pfs3-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=OFF \
+            -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
+            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
+          cmake --build "$RUNNER_TEMP/pfs3-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target pfs3-driver -j2
+          cmp native/ifs_defrag_services_v1.h "$pfs3/include/ifs_defrag_services_v1.h"
+          cmp native/ifs_pfs3_module_v1.h "$pfs3/include/ifs_pfs3_module_v1.h"
+          cmp test_media/ifs_pfs3_fixture_host_v1.h "$pfs3/include/ifs_pfs3_fixture_host_v1.h"
+          install -m 0644 "$RUNNER_TEMP/pfs3-san-$GITHUB_RUN_ID-$GITHUB_JOB/PFS3.so" "$PWD/build-sanitize/fat-module-test/Filesystems/PFS3.so"
+
       - name: Build with AddressSanitizer and UndefinedBehaviorSanitizer
         run: |
           cmake -S . -B build-sanitize \
@@ -426,6 +467,7 @@ jobs:
           DEFRAGMENTER_SWAP_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-swap-test-worker
           DEFRAGMENTER_ZFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-zfs-test-worker
           DEFRAGMENTER_SFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-sfs-test-worker
+          DEFRAGMENTER_PFS3_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-pfs3-test-worker
           IFS_TEST_MODULE_PARENT: ${{ github.workspace }}/defragger/build-sanitize/fat-module-test
           DEFRAGMENTER_AFFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-affs-test-worker
         run: |
