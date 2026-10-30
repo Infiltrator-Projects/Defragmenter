@@ -281,6 +281,42 @@ jobs:
           cmp test_media/ifs_minix_fixture_v1.h "$src/include/ifs_minix_fixture_v1.h"
           install -m 0644 "$RUNNER_TEMP/minix-$GITHUB_RUN_ID-$GITHUB_JOB/MINIX.so" "$PWD/build/fat-module-test/Filesystems/MINIX.so"
 
+      - name: Check out independently qualified NTFS.so
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-NTFS
+          ref: c9cc724351f35c2f6a821239c9381be4f80de8c2
+          path: ci-ntfs
+
+      - name: Build and qualify canonical NTFS.so
+        run: |
+          set -euo pipefail
+          src="$GITHUB_WORKSPACE/ci-ntfs"
+          bash tests/verify_ntfs_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
+          cmp native/ifs_ntfs_module_v1.h "$src/include/ifs_ntfs_module_v1.h"
+          cmake -S "$src" -B "$RUNNER_TEMP/ntfs-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$RUNNER_TEMP/ntfs-$GITHUB_RUN_ID-$GITHUB_JOB" -j2
+          ctest --test-dir "$RUNNER_TEMP/ntfs-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
+          install -m 0644 "$RUNNER_TEMP/ntfs-$GITHUB_RUN_ID-$GITHUB_JOB/NTFS.so" "$PWD/build/fat-module-test/Filesystems/NTFS.so"
+
+      - name: Check out independently qualified XFS.so
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-XFS
+          ref: a00af79ad330282440d55c3b7327b9ffde5d5601
+          path: ci-xfs
+
+      - name: Build and qualify canonical XFS.so
+        run: |
+          set -euo pipefail
+          src="$GITHUB_WORKSPACE/ci-xfs"
+          cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
+          cmp native/ifs_xfs_module_v1.h "$src/include/ifs_xfs_module_v1.h"
+          cmake -S "$src" -B "$RUNNER_TEMP/xfs-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$RUNNER_TEMP/xfs-$GITHUB_RUN_ID-$GITHUB_JOB" -j2
+          ctest --test-dir "$RUNNER_TEMP/xfs-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
+          install -m 0644 "$RUNNER_TEMP/xfs-$GITHUB_RUN_ID-$GITHUB_JOB/XFS.so" "$PWD/build/fat-module-test/Filesystems/XFS.so"
+
       - name: Detect explicit release intent
         id: release_intent
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -691,6 +727,45 @@ jobs:
           cmp native/ifs_minix_defrag_v1.h "$src/include/ifs_minix_defrag_v1.h"
           cmp test_media/ifs_minix_fixture_v1.h "$src/include/ifs_minix_fixture_v1.h"
           install -m 0644 "$RUNNER_TEMP/minix-san-$GITHUB_RUN_ID-$GITHUB_JOB/MINIX.so" "$PWD/build-sanitize/fat-module-test/Filesystems/MINIX.so"
+
+      - name: Check out canonical NTFS.so for sanitizers
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-NTFS
+          ref: c9cc724351f35c2f6a821239c9381be4f80de8c2
+          path: ci-ntfs
+
+      - name: Instrument native NTFS.so and preserve regression tests
+        run: |
+          set -euo pipefail
+          src="$GITHUB_WORKSPACE/ci-ntfs"
+          bash tests/verify_ntfs_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
+          cmp native/ifs_ntfs_module_v1.h "$src/include/ifs_ntfs_module_v1.h"
+          cmake -S "$src" -B "$RUNNER_TEMP/ntfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
+            -DCMAKE_CXX_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
+            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
+          cmake --build "$RUNNER_TEMP/ntfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target ntfs-driver -j2
+          install -m 0644 "$RUNNER_TEMP/ntfs-san-$GITHUB_RUN_ID-$GITHUB_JOB/NTFS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/NTFS.so"
+
+      - name: Check out canonical XFS.so for sanitizers
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-XFS
+          ref: a00af79ad330282440d55c3b7327b9ffde5d5601
+          path: ci-xfs
+
+      - name: Instrument native XFS.so for Defragmenter tests
+        run: |
+          set -euo pipefail
+          src="$GITHUB_WORKSPACE/ci-xfs"
+          cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
+          cmp native/ifs_xfs_module_v1.h "$src/include/ifs_xfs_module_v1.h"
+          cmake -S "$src" -B "$RUNNER_TEMP/xfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
+            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
+          cmake --build "$RUNNER_TEMP/xfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target xfs-driver -j2
+          install -m 0644 "$RUNNER_TEMP/xfs-san-$GITHUB_RUN_ID-$GITHUB_JOB/XFS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/XFS.so"
 
       - name: Build with AddressSanitizer and UndefinedBehaviorSanitizer
         run: |
