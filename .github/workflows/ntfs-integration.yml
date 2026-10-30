@@ -1,0 +1,58 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Verify independent NTFS integration
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ntfs-integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install compiler and native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config \
+            libgtk-3-dev libssl-dev libsqlite3-dev libext2fs-dev
+      - uses: actions/checkout@v4
+        with:
+          repository: Infiltrator-Projects/Filesystem-NTFS
+          ref: 57ce5a8dca8b6bc2cbb57dbccd993fd21ff2893d
+          path: ci-ntfs
+      - name: Build NTFS.so and verify export and contract
+        run: |
+          cmake -S ci-ntfs -B /tmp/ntfs-so -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/ntfs-so --parallel 2
+          ctest --test-dir /tmp/ntfs-so --output-on-failure
+      - name: Compile actual Defragmenter NTFS loader
+        run: |
+          cd defragger
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build/modules" \
+            -DBUILD_TESTING=ON -DLD_ENABLE_WERROR=ON
+          cmake --build build --parallel 2 --target defragmenter-ntfs-worker defragmenter-ntfs-test-worker
+      - name: Exercise real NTFS.so dispatch
+        run: |
+          set -euo pipefail
+          cd defragger
+          mkdir -p build/modules/Filesystems
+          install -m 0644 /tmp/ntfs-so/NTFS.so build/modules/Filesystems/NTFS.so
+          cmp native/ifs_ntfs_module_v1.h ../ci-ntfs/include/ifs_ntfs_module_v1.h
+          cmp native/ifs_defrag_services_v1.h ../ci-ntfs/include/ifs_defrag_services_v1.h
+          export IFS_TEST_MODULE_PARENT="$PWD/build/modules"
+          build/defragmenter-ntfs-test-worker --version | grep -F '1.0.0'
+      - name: Require module rather than fallback
+        run: |
+          set -euo pipefail
+          cd defragger
+          mkdir -p build/without-driver/Filesystems
+          if IFS_TEST_MODULE_PARENT="$PWD/build/without-driver" \
+             build/defragmenter-ntfs-test-worker --version; then
+             echo "NTFS worker used an internal fallback without NTFS.so" >&2
+             exit 1
+          fi
