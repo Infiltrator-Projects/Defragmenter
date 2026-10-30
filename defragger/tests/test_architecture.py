@@ -159,7 +159,16 @@ def test_filesystem_policy_remains_owned_by_native_packages() -> None:
         loader = ROOT / "native" / f"{module}_module_loader.c"
         assert loader.is_file(), (backend_id, loader)
         contents = _read(loader)
-        assert "module" in contents and "ifs_" in contents, (
+        # FAT uses its own older, strictly verified dlopen/dlsym host.
+        # Other filesystems use the common trusted module-call host.
+        # Requiring lowercase "ifs_" would falsely reject valid uppercase
+        # IFS_FAT_* ABI names despite genuine module-only dispatch.
+        trusted_dispatch = (
+            "ifs_filesystem_module_call" in contents
+            or "ifs_filesystem_module_run" in contents
+            or ("dlopen(" in contents and "dlsym(" in contents)
+        )
+        assert ".so" in contents and trusted_dispatch, (
             f"{backend_id} must use a trusted module ABI, not local filesystem code"
         )
     filesystem_dir = GUI / "filesystems"
