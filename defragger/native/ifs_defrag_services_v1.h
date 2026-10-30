@@ -34,7 +34,7 @@ typedef struct {
     void(*ld_stop_clear)(void);
     void(*ld_stop_install_handlers)(void);
     void(*ld_stop_report_ready)(void);
-    /* NTFS workers require these additional filesystem-neutral safety hooks.
+    /* XFS workers require these additional filesystem-neutral safety hooks.
      * Appended fields preserve the existing prefix; structure_bytes guards
      * against loading a host with an older incomplete table. */
     void (*ld_die)(const char *message);
@@ -43,5 +43,10 @@ typedef struct {
     bool (*ld_fd_matches_identity)(int, const char *, uint64_t);
     LdDevice (*ld_device_open)(const char *, bool);
     void (*ld_device_close)(LdDevice *);
+    /* Appended filesystem-neutral XFS safety and allocation callbacks. */
+    void *(*ld_xcalloc)(size_t,size_t);
+    int (*ld_device_try_open)(const char *, bool, LdDevice *);
+    int (*ld_device_format_identity)(const LdDevice *, char *, size_t);
+    bool (*ld_device_matches_identity)(const LdDevice *, const char *, uint64_t);
 } IfsDefragServicesV1;
 #endif

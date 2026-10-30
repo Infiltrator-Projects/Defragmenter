@@ -40,6 +40,10 @@ const IfsDefragServicesV1 *ifs_defrag_services_v1(void) {
   .ld_fd_matches_identity=ld_fd_matches_identity,
   .ld_device_open=ld_device_open,
   .ld_device_close=ld_device_close,
+  .ld_xcalloc=ld_xcalloc,
+  .ld_device_try_open=ld_device_try_open,
+  .ld_device_format_identity=ld_device_format_identity,
+  .ld_device_matches_identity=ld_device_matches_identity,
  };
  return &services;
 }

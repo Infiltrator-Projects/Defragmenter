@@ -43,7 +43,7 @@ jobs:
           mkdir -p build/modules/Filesystems
           install -m 0644 /tmp/ntfs-so/NTFS.so build/modules/Filesystems/NTFS.so
           cmp native/ifs_ntfs_module_v1.h ../ci-ntfs/include/ifs_ntfs_module_v1.h
-          cmp native/ifs_defrag_services_v1.h ../ci-ntfs/include/ifs_defrag_services_v1.h
+          bash tests/verify_ntfs_fs_services_abi.sh ../ci-ntfs/include/ifs_defrag_services_v1.h
           cmp test_media/ifs_ntfs_fixture_v1.h ../ci-ntfs/include/ifs_ntfs_fixture_v1.h
           export IFS_TEST_MODULE_PARENT="$PWD/build/modules"
           build/defragmenter-ntfs-test-worker --version | grep -F '1.0.0'
