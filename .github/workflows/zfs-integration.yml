@@ -1,0 +1,86 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Validate the installed ZFS.so is the only source of filesystem analysis and
+# disposable ZFS media creation. No system mkfs or libzfs executables are used.
+name: Verify independent ZFS integration
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  zfs-integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout Defragmenter and its Common gitlink
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install first-party native build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config \
+            libgtk-3-dev libssl-dev libsqlite3-dev libext2fs-dev
+      - name: Checkout exact independent filesystem source
+        uses: actions/checkout@v4
+        with:
+          repository: Infiltrator-Projects/Filesystem-ZFS
+          ref: 38c520ad85fb061619ce7869f045e94fd5680359
+          path: ci-zfs
+      - name: Build and test authoritative ZFS.so
+        run: |
+          cmake -S ci-zfs -B /tmp/zfs-so -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          cmake --build /tmp/zfs-so --parallel 2
+          ctest --test-dir /tmp/zfs-so --output-on-failure
+      - name: Build the real Defragmenter modules and Test Media
+        run: |
+          set -euo pipefail
+          cd defragger
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=ON \
+            -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build/modules" \
+            -DLD_ENABLE_WERROR=ON
+          cmake --build build --parallel 2 --target \
+            defragmenter-zfs-worker defragmenter-zfs-test-worker \
+            defragmenter-test-media-raw-test defragmenter-mapper-cpp
+      - name: Exercise real ZFS.so parsing and disposable-media creation
+        run: |
+          set -euo pipefail
+          cd defragger
+          install -d -m 0755 build/modules/Filesystems
+          install -m 0644 /tmp/zfs-so/ZFS.so build/modules/Filesystems/ZFS.so
+          cmp native/ifs_zfs_module_v1.h ../ci-zfs/include/ifs_zfs_module_v1.h
+          cmp test_media/ifs_zfs_fixture_v1.h ../ci-zfs/include/ifs_zfs_fixture_v1.h
+          export IFS_TEST_MODULE_PARENT="$PWD/build/modules"
+          export DEFRAGMENTER_ZFS_WORKER="$PWD/build/defragmenter-zfs-test-worker"
+          build/defragmenter-zfs-test-worker --version | grep -F 'defragmenter-zfs-worker'
+          build/defragmenter-test-media-raw-test create zfs build/zfs-fixture.img
+          build/defragmenter-test-media-raw-test verify zfs build/zfs-fixture.img
+          build/defragmenter-zfs-test-worker map build/zfs-fixture.img --cells 8 > build/zfs-map.json
+          python3 - <<'PY'
+          import json
+          with open("build/zfs-map.json", encoding="utf-8") as stream:
+              data = json.load(stream)
+          assert data["filesystem"] == "zfs", data
+          assert data["map_accuracy"] == "exact", data
+          assert data.get("unknown_bytes", 1) == 0, data
+          print("ZFS.so format, read-only analysis and exact map passed")
+          PY
+      - name: Prove the runtime cannot fall back to filesystem code in Defragmenter
+        run: |
+          set -euo pipefail
+          cd defragger
+          mkdir -p build/no-zfs/Filesystems
+          before="$(stat -c '%Y:%s' build/zfs-fixture.img)"
+          if IFS_TEST_MODULE_PARENT="$PWD/build/no-zfs" \
+            build/defragmenter-zfs-test-worker --version; then
+            echo "ZFS worker incorrectly succeeded without ZFS.so" >&2
+            exit 1
+          fi
+          if IFS_TEST_MODULE_PARENT="$PWD/build/no-zfs" \
+            build/defragmenter-test-media-raw-test recreate zfs build/zfs-fixture.img; then
+            echo "ZFS fixture writer incorrectly succeeded without ZFS.so" >&2
+            exit 1
+          fi
+          test "$before" = "$(stat -c '%Y:%s' build/zfs-fixture.img)"
