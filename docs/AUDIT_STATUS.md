@@ -1,5 +1,41 @@
 # Safety audit status
 
+## Release-gate and FAT32 SO candidate audit — 2026-10-30
+
+The incremental source baseline advances from
+`662258c4d47a3ca388a3cf9799f098993c7bdb4e` to
+`30af892d8897d3aeaeefeac1bfcdb9620a0a5c72`.
+The only qualified-source changes since the earlier audit remove the
+remaining FAT32-only Test Media formatter and local FAT/directory allocation
+writer, replace them with mandatory FAT32.so V4 formatting and V3 file
+population, and preserve independent read-only corpus verification.
+The new module is required and ABI-checked before destructive partitioning.
+Test Media no longer supplies a FAT32 formatting fallback; its removable
+FAT32-specific raw generator is no longer built. No Defragmenter
+relocation/journal/recovery writer changes occur in this delta.
+
+The exact main-branch candidate `30af892d8897d3aeaeefeac1bfcdb9620a0a5c72`
+completed its C/C++ warnings-as-errors build, native GTK desktop smoke,
+complete normal native/filesystem/GUI suite, all Test Media native
+filesystem cases and separate ASan/UBSan job. Its release invariant test
+failed because the workflow contained an unintended `pull_request`
+trigger and cancellable PR concurrency, contrary to the existing
+exact-main serial-release contract. Publication was correctly skipped.
+
+The audited workflow correction at
+`412b550451c91dd443a7855c3112976d3275404a`
+removes that extraneous trigger and reestablishes
+`cancel-in-progress: false` without disabling or changing the
+release invariant test, artifact checks, audit drift checks, source
+qualification or mandatory sanitizer lane. It restores the established
+policy rather than weakening it.
+
+These source and governance baselines are exact ancestors and no
+subsequent reviewed source or governance changes are permitted before
+publication. This audit does not predeclare successful requalification
+of the corrected workflow, release artifacts or physical-media testing.
+
+
 ## FAT32 Test Media source-ownership candidate — 2026-10-30
 
 The FAT32-only local Test Media formatter and FAT/directory allocation writer
@@ -18,8 +54,8 @@ Status: **complete**
 Completed: 2026-10-29
 
 Applies to: audited source and release-governance baselines below
-Audited source commit: 662258c4d47a3ca388a3cf9799f098993c7bdb4e
-Audited release-governance commit: 662258c4d47a3ca388a3cf9799f098993c7bdb4e
+Audited source commit: 30af892d8897d3aeaeefeac1bfcdb9620a0a5c72
+Audited release-governance commit: 412b550451c91dd443a7855c3112976d3275404a
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
