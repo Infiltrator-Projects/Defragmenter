@@ -58,7 +58,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: Infiltrator-Projects/Filesystem-FAT32
-          ref: 8b9e98c1ba20976f11ef674408671749c1bdc36d
+          ref: 939f6d0b5f024f98041e476b7f9d1d3b10adbba8
           path: ci-fat32
 
       - name: Build the FAT modules for isolated tests

@@ -59,7 +59,9 @@ static int create_fixture(const IfsDefragHostV2 *host, void *symbol, void *opaqu
     if (!api) return -1;
     f->host = host;
     if (host->open_target(host->context, f->path, 1, NULL, 0, &f->target)) return -1;
-    const uint32_t unit = f->spec->creator == LDTM_CREATOR_FAT32 ? 4096U : 65536U;
+    /* A 2-GiB FAT32 fixture with 16-KiB clusters stays >65,525 clusters;
+     * use this volume-valid geometry to avoid 4-KiB-per-file-sync overhead. */
+    const uint32_t unit = f->spec->creator == LDTM_CREATOR_FAT32 ? 16384U : 65536U;
     const IfsFatfsIo io = {f, f->target.bytes, 512U, read_io, write_io, flush_io, timestamp_io};
     int result = -1;
     if (f->target.bytes != (uint64_t)f->spec->size_mib * LDTM_MIB ||

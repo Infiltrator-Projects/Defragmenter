@@ -1,5 +1,18 @@
 # Safety audit status
 
+## FAT32 Test Media source-ownership candidate — 2026-10-30
+
+The FAT32-only local Test Media formatter and FAT/directory allocation writer
+are removed on the current candidate. Test Media invokes independent FAT32.so
+V4 format and V3 create/write APIs, uses module-selected native allocation and
+keeps an independent read-only raw payload verifier. It fails closed before
+partitioning when the module or ABI is absent. A 2-GiB volume with 16-KiB
+clusters preserves FAT32 format identity. The main and sanitizer CI gates are
+pinned to the matching independently built FAT32.so, not the older Filesystems
+test copy. All legacy dated FAT12/FAT16 assertions below are historical and
+do not override this revised source-ownership contract.
+
+
 Status: **complete**
 
 Completed: 2026-10-29
