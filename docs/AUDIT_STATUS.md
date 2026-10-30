@@ -4,10 +4,10 @@
 
 Status: **complete**
 
-Audited source commit: 07d6847f0477a01f85fe053eab5e8ba83cfffb67
+Audited source commit: 0880de932d2fd61573c9e2e5ea8f8fac88f5f95a
 Audited release-governance commit: 07d6847f0477a01f85fe053eab5e8ba83cfffb67
 
-Scope: Defragmenter 1.8.0-281 migration candidate. This is the frozen
+Scope: Defragmenter 1.8.0-281 migration candidate, including corrected user-visible backend descriptions. This is the frozen
 source/test/installer and CI governance baseline; it does **not** claim that
 future GitHub Actions or physical-device qualification has passed. Both the
 complete self-hosted normal quality gate and independent ASan/UBSan gate remain
