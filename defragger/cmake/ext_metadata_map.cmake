@@ -29,16 +29,21 @@ if(BUILD_TESTING AND TARGET defragmenter-filesystem-module-test-host)
     target_link_libraries(defragmenter-ext-metadata-test-worker PRIVATE
         defragmenter-fs-host-services defragmenter-filesystem-module-test-host)
     set(EXT_METADATA_WORKER_FOR_TESTS "$<TARGET_FILE:defragmenter-ext-metadata-test-worker>")
+endif()
+set(EXT_WORKER_FOR_TESTS "$<TARGET_FILE:defragmenter-ext-worker>")
+if(TARGET defragmenter-ext-test-worker)
+    set(EXT_WORKER_FOR_TESTS "$<TARGET_FILE:defragmenter-ext-test-worker>")
+endif()
+
+# Both executable selectors are now defined. Bind composite tests to the
+# hermetic EXT worker + metadata worker instead of their installed versions.
+if(BUILD_TESTING AND TARGET defragmenter-filesystem-module-test-host)
     # The mapper launches both an EXT worker and a separate metadata classifier.
     # Never let the latter fall back to the production filesystem module root
     # when testing isolated, independently compiled candidate modules.
     set_property(TEST defragmenter-tests APPEND PROPERTY ENVIRONMENT
         "DEFRAGMENTER_EXT_WORKER=${EXT_WORKER_FOR_TESTS}"
         "DEFRAGMENTER_EXT_METADATA_WORKER=${EXT_METADATA_WORKER_FOR_TESTS}")
-endif()
-set(EXT_WORKER_FOR_TESTS "$<TARGET_FILE:defragmenter-ext-worker>")
-if(TARGET defragmenter-ext-test-worker)
-    set(EXT_WORKER_FOR_TESTS "$<TARGET_FILE:defragmenter-ext-test-worker>")
 endif()
 
 install(TARGETS defragmenter-ext-metadata-worker
