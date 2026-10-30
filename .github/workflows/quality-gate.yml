@@ -6,6 +6,12 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'defragger/**'
+      - '.github/workflows/quality-gate.yml'
   workflow_dispatch:
 
 permissions:
