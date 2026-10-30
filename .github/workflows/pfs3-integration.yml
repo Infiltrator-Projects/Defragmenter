@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# No PFS3-specific parsing, bitmap, relocation, journaling or formatting is
+# compiled into Defragmenter's installable binaries.
+name: Verify independent PFS3 integration
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  pfs3-integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Defragmenter with exact Common
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config \
+            libgtk-3-dev libssl-dev libsqlite3-dev libext2fs-dev
+      - name: Checkout authoritative PFS3.so
+        uses: actions/checkout@v4
+        with:
+          repository: Infiltrator-Projects/Filesystem-PFS3
+          ref: 35a09a348bfe934aed75d1ac7eac18ce1a11fda5
+          path: ci-pfs3
+      - name: Build and run PFS3 module self-tests
+        run: |
+          cmake -S ci-pfs3 -B /tmp/pfs3-so -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          cmake --build /tmp/pfs3-so --parallel 2
+          ctest --test-dir /tmp/pfs3-so --output-on-failure
+      - name: Build Defragmenter against its generic host interface
+        run: |
+          set -euo pipefail
+          cd defragger
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            -DLD_ENABLE_WERROR=ON \
+            -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build/modules" \
+            -DPFS3_NATIVE_TEST_SOURCE_DIR="$GITHUB_WORKSPACE/ci-pfs3"
+          cmake --build build --parallel 2 --target \
+            defragmenter-pfs3-worker defragmenter-pfs3-test-worker \
+            defragmenter-pfs3-native-test defragmenter-pfs3-so-fixture-test
+      - name: Run real PFS3 Defrag, Growth, and Recover tests
+        run: |
+          set -euo pipefail
+          cd defragger
+          install -d -m 0755 build/modules/Filesystems
+          install -m 0644 /tmp/pfs3-so/PFS3.so build/modules/Filesystems/PFS3.so
+          cmp native/ifs_defrag_services_v1.h ../ci-pfs3/include/ifs_defrag_services_v1.h
+          cmp native/ifs_pfs3_module_v1.h ../ci-pfs3/include/ifs_pfs3_module_v1.h
+          cmp test_media/ifs_pfs3_fixture_host_v1.h ../ci-pfs3/include/ifs_pfs3_fixture_host_v1.h
+          export IFS_TEST_MODULE_PARENT="$PWD/build/modules"
+          export DEFRAGMENTER_PFS3_WORKER="$PWD/build/defragmenter-pfs3-test-worker"
+          export DEFRAGMENTER_BUILD_DIR="$PWD/build"
+          ctest --test-dir build --output-on-failure -R '^defragmenter-pfs3-native$'
+          python3 tests/test_pfs3_transaction.py
+          build/defragmenter-pfs3-so-fixture-test build/pfs3-fixture.img
+      - name: Reject missing or incompatible PFS3.so before filesystem writes
+        run: |
+          set -euo pipefail
+          cd defragger
+          mkdir -p build/missing/Filesystems
+          if IFS_TEST_MODULE_PARENT="$PWD/build/missing" \
+            build/defragmenter-pfs3-test-worker --version; then
+            echo "PFS3 module worker fell back without its shared object" >&2
+            exit 1
+          fi
+          if IFS_TEST_MODULE_PARENT="$PWD/build/missing" \
+            build/defragmenter-pfs3-so-fixture-test build/must-not-create.img; then
+            echo "PFS3 fixture formatter fell back without PFS3.so" >&2
+            exit 1
+          fi
+          test ! -e build/must-not-create.img
