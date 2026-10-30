@@ -518,6 +518,11 @@ jobs:
       - name: Build and verify release artefacts once
         if: steps.release_intent.outputs.release == 'true'
         shell: bash
+        env:
+          # Release qualification must use the same isolated, independently
+          # compiled filesystem SOs as the preceding native test suite.
+          # Never fall back to /System/Filesystems on the runner.
+          IFS_TEST_MODULE_PARENT: ${{ github.workspace }}/defragger/build/fat-module-test
         run: |
           set -euo pipefail
           ./tests/test_release_artifacts.sh
