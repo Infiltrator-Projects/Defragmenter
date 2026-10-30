@@ -260,6 +260,27 @@ jobs:
           cmp test_media/ifs_btrfs_fixture_v1.h "$src/include/ifs_btrfs_fixture_v1.h"
           install -m 0644 "$RUNNER_TEMP/btrfs-$GITHUB_RUN_ID-$GITHUB_JOB/BTRFS.so" "$PWD/build/fat-module-test/Filesystems/BTRFS.so"
 
+      - name: Check out canonical MINIX.so
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-Minix
+          ref: d146cb736cf0e45d27e8bc0598d83bf40870d7d8
+          path: ci-minix
+
+      - name: Build MINIX.so and preserve the independent regression fixture
+        run: |
+          set -euo pipefail
+          src="$GITHUB_WORKSPACE/ci-minix"
+          cmake -S "$src" -B "$RUNNER_TEMP/minix-$GITHUB_RUN_ID-$GITHUB_JOB" \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          cmake --build "$RUNNER_TEMP/minix-$GITHUB_RUN_ID-$GITHUB_JOB" \
+            --target minix-driver minix-native-test minix-defrag-test minix-v1-v2-module-test -j2
+          ctest --test-dir "$RUNNER_TEMP/minix-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
+          cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
+          cmp native/ifs_minix_defrag_v1.h "$src/include/ifs_minix_defrag_v1.h"
+          cmp test_media/ifs_minix_fixture_v1.h "$src/include/ifs_minix_fixture_v1.h"
+          install -m 0644 "$RUNNER_TEMP/minix-$GITHUB_RUN_ID-$GITHUB_JOB/MINIX.so" "$PWD/build/fat-module-test/Filesystems/MINIX.so"
+
       - name: Detect explicit release intent
         id: release_intent
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -296,6 +317,7 @@ jobs:
             -DFAT_DEFRAG_SOURCE_DIR="$GITHUB_WORKSPACE/ci-filesystems/native/filesystems/fat/defrag" \
             -DFAT_DEFRAG_TEST_MODULE_PARENT="$PWD/build/fat-module-test" \
             -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build/fat-module-test" \
+            -DMINIX_NATIVE_FIXTURE_PATH="$RUNNER_TEMP/minix-$GITHUB_RUN_ID-$GITHUB_JOB/minix-native-test" \
             -DSFS_NATIVE_TEST_SOURCE_DIR="$GITHUB_WORKSPACE/ci-sfs" \
             -DPFS3_NATIVE_TEST_SOURCE_DIR="$GITHUB_WORKSPACE/ci-pfs3" \
             -DAPFS_NATIVE_TEST_SOURCE_DIR="$GITHUB_WORKSPACE/ci-apfs" \
@@ -330,6 +352,8 @@ jobs:
           DEFRAGMENTER_HFS_ANALYSER: ${{ github.workspace }}/defragger/build/defragmenter-hfs-test-worker
           DEFRAGMENTER_HFSPLUS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-hfsplus-test-worker
           DEFRAGMENTER_BTRFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-btrfs-test-worker
+          DEFRAGMENTER_MINIX_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-minix-test-worker
+          DEFRAGMENTER_MINIX_FIXTURE: ${{ runner.temp }}/minix-${{ github.run_id }}-${{ github.job }}/minix-native-test
           IFS_TEST_MODULE_PARENT: ${{ github.workspace }}/defragger/build/fat-module-test
           DEFRAGMENTER_AFFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-affs-test-worker
         run: |
@@ -645,6 +669,29 @@ jobs:
           cmp test_media/ifs_btrfs_fixture_v1.h "$src/include/ifs_btrfs_fixture_v1.h"
           install -m 0644 "$RUNNER_TEMP/btrfs-san-$GITHUB_RUN_ID-$GITHUB_JOB/BTRFS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/BTRFS.so"
 
+      - name: Check out canonical MINIX.so for sanitizers
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-Minix
+          ref: d146cb736cf0e45d27e8bc0598d83bf40870d7d8
+          path: ci-minix
+
+      - name: Build MINIX.so and preserve the independent regression fixture under sanitizers
+        run: |
+          set -euo pipefail
+          src="$GITHUB_WORKSPACE/ci-minix"
+          cmake -S "$src" -B "$RUNNER_TEMP/minix-san-$GITHUB_RUN_ID-$GITHUB_JOB" \
+            -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON \
+            -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
+            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined' \
+            -DCMAKE_EXE_LINKER_FLAGS='-fsanitize=address,undefined'
+          cmake --build "$RUNNER_TEMP/minix-san-$GITHUB_RUN_ID-$GITHUB_JOB" \
+            --target minix-driver minix-native-test minix-defrag-test minix-v1-v2-module-test -j2
+          cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
+          cmp native/ifs_minix_defrag_v1.h "$src/include/ifs_minix_defrag_v1.h"
+          cmp test_media/ifs_minix_fixture_v1.h "$src/include/ifs_minix_fixture_v1.h"
+          install -m 0644 "$RUNNER_TEMP/minix-san-$GITHUB_RUN_ID-$GITHUB_JOB/MINIX.so" "$PWD/build-sanitize/fat-module-test/Filesystems/MINIX.so"
+
       - name: Build with AddressSanitizer and UndefinedBehaviorSanitizer
         run: |
           cmake -S . -B build-sanitize \
@@ -654,6 +701,7 @@ jobs:
             -DFAT_DEFRAG_SOURCE_DIR="$GITHUB_WORKSPACE/ci-filesystems/native/filesystems/fat/defrag" \
             -DFAT_DEFRAG_TEST_MODULE_PARENT="$PWD/build-sanitize/fat-module-test" \
             -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build-sanitize/fat-module-test" \
+            -DMINIX_NATIVE_FIXTURE_PATH="$RUNNER_TEMP/minix-san-$GITHUB_RUN_ID-$GITHUB_JOB/minix-native-test" \
             -DSFS_NATIVE_TEST_SOURCE_DIR="$GITHUB_WORKSPACE/ci-sfs" \
             -DBUILD_TESTING=ON
           cmake --build build-sanitize -j2
@@ -674,6 +722,8 @@ jobs:
           DEFRAGMENTER_HFS_ANALYSER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-hfs-test-worker
           DEFRAGMENTER_HFSPLUS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-hfsplus-test-worker
           DEFRAGMENTER_BTRFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-btrfs-test-worker
+          DEFRAGMENTER_MINIX_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-minix-test-worker
+          DEFRAGMENTER_MINIX_FIXTURE: ${{ runner.temp }}/minix-san-${{ github.run_id }}-${{ github.job }}/minix-native-test
           IFS_TEST_MODULE_PARENT: ${{ github.workspace }}/defragger/build-sanitize/fat-module-test
           DEFRAGMENTER_AFFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-affs-test-worker
         run: |
