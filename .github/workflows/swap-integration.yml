@@ -43,7 +43,7 @@ jobs:
             -DLD_ENABLE_WERROR=ON
           cmake --build build --target \
             defragmenter-swap-worker defragmenter-swap-test-worker \
-            defragmenter-test-media-raw-test defragmenter-mapper --parallel 2
+            defragmenter-test-media-raw-test defragmenter-mapper-cpp --parallel 2
       - name: Verify trusted module dispatch and real SWAP test media
         run: |
           set -euo pipefail
