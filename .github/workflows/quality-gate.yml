@@ -483,6 +483,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/defragger/tests
           DEFRAGMENTER_BUILD_DIR: ${{ github.workspace }}/defragger/build
           DEFRAGMENTER_EXT_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-ext-test-worker
+          DEFRAGMENTER_EXT_METADATA_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-ext-metadata-test-worker
           DEFRAGMENTER_NTFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-ntfs-test-worker
           DEFRAGMENTER_EXFAT_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-exfat-test-worker
           DEFRAGMENTER_XFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-xfs-test-worker
@@ -997,6 +998,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/defragger/tests
           DEFRAGMENTER_BUILD_DIR: ${{ github.workspace }}/defragger/build-sanitize
           DEFRAGMENTER_EXT_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-ext-test-worker
+          DEFRAGMENTER_EXT_METADATA_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-ext-metadata-test-worker
           DEFRAGMENTER_NTFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-ntfs-test-worker
           DEFRAGMENTER_EXFAT_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-exfat-test-worker
           DEFRAGMENTER_XFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-xfs-test-worker
