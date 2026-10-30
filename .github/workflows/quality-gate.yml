@@ -107,7 +107,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: Infiltrator-Projects/Filesystem-FFS
-          ref: 1d125f270dc81ffcf6686d7d71dd749e9607c5e4
+          ref: 1aa54368ee44e465aaaf39a139b63bf5fa7c17db
           path: ci-ffs
 
       - name: Compile trusted FFS.so native engine and fixture ABI
@@ -629,7 +629,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: Infiltrator-Projects/Filesystem-FFS
-          ref: 1d125f270dc81ffcf6686d7d71dd749e9607c5e4
+          ref: 1aa54368ee44e465aaaf39a139b63bf5fa7c17db
           path: ci-ffs
 
       - name: Compile trusted FFS.so for sanitizer-host qualification
