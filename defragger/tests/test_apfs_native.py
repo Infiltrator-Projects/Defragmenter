@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = Path(os.environ.get("DEFRAGMENTER_BUILD_DIR", ROOT / "build"))
-WORKER = BUILD / "defragmenter-apfs-worker"
+WORKER = Path(os.environ.get("DEFRAGMENTER_APFS_WORKER", str(BUILD / "defragmenter-apfs-worker")))
 MAKER = ROOT / "tests" / "make_apfs_fixture.py"
 
 
