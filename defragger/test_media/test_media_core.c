@@ -279,6 +279,13 @@ int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
             "Install or update the %s filesystem driver before creating test media.", spec->key);
         return ready;
     }
+    if (spec->creator == LDTM_CREATOR_EXFAT) {
+        const int ready = ldtm_fat_module_available(spec);
+        (void)snprintf(detail, detail_capacity, "%s", ready ?
+            "exFAT.so V5 is ready to create and verify temporary media." :
+            "Install or update the exFAT.so V5 filesystem driver.");
+        return ready;
+    }
     if (spec->creator == LDTM_CREATOR_EXT2 ||
         spec->creator == LDTM_CREATOR_EXT3 ||
         spec->creator == LDTM_CREATOR_EXT4) {
@@ -411,7 +418,8 @@ int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
 int ldtm_required_modules_available(char *detail, size_t detail_capacity) {
     for (size_t i = 0U; i < ldtm_spec_count(); ++i) {
         const LdtmFilesystemSpec *spec = &ldtm_specs()[i];
-        if ((spec->creator == LDTM_CREATOR_FAT12 || spec->creator == LDTM_CREATOR_FAT16 ||
+        if ((spec->creator == LDTM_CREATOR_EXFAT ||
+              spec->creator == LDTM_CREATOR_FAT12 || spec->creator == LDTM_CREATOR_FAT16 ||
               spec->creator == LDTM_CREATOR_EXT2 || spec->creator == LDTM_CREATOR_EXT3 ||
               spec->creator == LDTM_CREATOR_EXT4 ||
              strcmp(spec->key, "ofs") == 0 || strcmp(spec->key, "sfs") == 0 ||

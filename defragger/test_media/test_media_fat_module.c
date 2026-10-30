@@ -5,6 +5,7 @@
 #include "test_media_raw.h"
 #include "filesystem_module_host.h"
 #include "fat_module_abi.h"
+#include "exfat_module_abi.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -38,10 +39,27 @@ static uint32_t timestamp_verify_io(void *opaque) {
     return 0U;
 }
 static const IfsFatfsModuleV4 *interface(void *symbol, const LdtmFilesystemSpec *spec) {
-    const IfsFatfsModuleV4 *(*entry)(void) = NULL;
-    _Static_assert(sizeof(entry) == sizeof(symbol), "module symbol width");
-    memcpy(&entry, &symbol, sizeof(entry));
-    const IfsFatfsModuleV4 *api = entry ? entry() : NULL;
+    const IfsFatfsModuleV4 *api = NULL;
+    if (spec->creator == LDTM_CREATOR_EXFAT) {
+        const IfsExfatModuleV5 *(*entry)(void) = NULL;
+        _Static_assert(sizeof(entry) == sizeof(symbol), "module symbol width");
+        memcpy(&entry, &symbol, sizeof(entry));
+        const IfsExfatModuleV5 *v5 = entry ? entry() : NULL;
+        if (!v5 || v5->abi_version != IFS_EXFAT_ABI_VERSION_V5 ||
+            v5->structure_bytes < sizeof(*v5) || !v5->format_id ||
+            strcmp(v5->format_id, "exfat") != 0 || !v5->compat_v4 ||
+            !v5->read64 || !v5->stat64 ||
+            (v5->capabilities &
+             (IFS_EXFAT_CAP_READ64 | IFS_EXFAT_CAP_STAT64)) !=
+             (IFS_EXFAT_CAP_READ64 | IFS_EXFAT_CAP_STAT64))
+            return NULL;
+        api = v5->compat_v4;
+    } else {
+        const IfsFatfsModuleV4 *(*entry)(void) = NULL;
+        _Static_assert(sizeof(entry) == sizeof(symbol), "module symbol width");
+        memcpy(&entry, &symbol, sizeof(entry));
+        api = entry ? entry() : NULL;
+    }
     const uint64_t required = IFS_FATFS_CAP_FORMAT;
     if (!api || api->abi_version != IFS_FATFS_MODULE_ABI_V4 ||
         api->structure_bytes < sizeof(*api) || !api->format_id ||
@@ -118,6 +136,9 @@ done:
     return result;
 }
 static int call_module(FatFixture *f, IfsFilesystemCall call) {
+    if (f->spec->creator == LDTM_CREATOR_EXFAT)
+        return ifs_filesystem_module_call("exfat", "exFAT.so",
+            "infiltrator_filesystem_module_v5", call, f);
     const unsigned bits = f->spec->creator == LDTM_CREATOR_FAT12 ? 12U :
                           f->spec->creator == LDTM_CREATOR_FAT16 ? 16U :
                           f->spec->creator == LDTM_CREATOR_FAT32 ? 32U : 0U;
@@ -205,4 +226,11 @@ int ldtm_raw_fat(const LdtmFilesystemSpec *spec, const char *path, bool create) 
     if (create) return ldtm_fat_module_create(spec, path);
     FatFixture f = { .spec = spec, .path = path };
     return call_module(&f, verify_fixture);
+}
+
+/* Legacy Test Media name, but no exFAT on-disk codec remains in the host.
+ * exFAT.so V5 backs both creation and corpus verification. */
+int ldtm_raw_exfat(const LdtmFilesystemSpec *spec, const char *path, bool create) {
+    return spec && spec->creator == LDTM_CREATOR_EXFAT
+        ? ldtm_raw_fat(spec, path, create) : -1;
 }
