@@ -215,9 +215,9 @@ jobs:
           set -euo pipefail
           src="$GITHUB_WORKSPACE/ci-hfs"
           cmake -S "$src" -B "$RUNNER_TEMP/hfs-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=ON
-          cmake --build "$RUNNER_TEMP/hfs-$GITHUB_RUN_ID-$GITHUB_JOB" --target hfs-driver -j2
+          cmake --build "$RUNNER_TEMP/hfs-$GITHUB_RUN_ID-$GITHUB_JOB" --target hfs-driver hfs-module-test -j2
           ctest --test-dir "$RUNNER_TEMP/hfs-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
+          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
           cmp native/ifs_hfs_module_v1.h "$src/include/ifs_hfs_module_v1.h"
           cmp test_media/ifs_hfs_fixture_v1.h "$src/include/ifs_hfs_fixture_v1.h"
           install -m 0644 "$RUNNER_TEMP/hfs-$GITHUB_RUN_ID-$GITHUB_JOB/HFS.so" "$PWD/build/fat-module-test/Filesystems/HFS.so"
@@ -236,7 +236,7 @@ jobs:
           cmake -S "$src" -B "$RUNNER_TEMP/hfsplus-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=ON
           cmake --build "$RUNNER_TEMP/hfsplus-$GITHUB_RUN_ID-$GITHUB_JOB" --target hfsplus-driver -j2
           ctest --test-dir "$RUNNER_TEMP/hfsplus-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
+          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
           cmp native/ifs_hfsplus_module_v1.h "$src/include/ifs_hfsplus_module_v1.h"
           cmp test_media/ifs_hfsplus_fixture_v1.h "$src/include/ifs_hfsplus_fixture_v1.h"
           install -m 0644 "$RUNNER_TEMP/hfsplus-$GITHUB_RUN_ID-$GITHUB_JOB/HFSPLUS.so" "$PWD/build/fat-module-test/Filesystems/HFSPLUS.so"
@@ -720,7 +720,7 @@ jobs:
             -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
             -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
           cmake --build "$RUNNER_TEMP/hfsplus-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target hfsplus-driver -j2
-          cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
+          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
           cmp native/ifs_hfsplus_module_v1.h "$src/include/ifs_hfsplus_module_v1.h"
           cmp test_media/ifs_hfsplus_fixture_v1.h "$src/include/ifs_hfsplus_fixture_v1.h"
           install -m 0644 "$RUNNER_TEMP/hfsplus-san-$GITHUB_RUN_ID-$GITHUB_JOB/HFSPLUS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/HFSPLUS.so"
