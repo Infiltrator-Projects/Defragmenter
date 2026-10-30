@@ -179,14 +179,30 @@ def main() -> None:
     release_script = _read(RELEASE_SCRIPT)
     audit = _read(AUDIT_FILE)
 
-    # The maintained workflow surface is deliberately complete and minimal:
-    # one Linux qualification workflow and one publication workflow. Ad-hoc
-    # runner probes, experiments and historical helper workflows must stay out
-    # of the product repository because they create an unaudited CI control plane.
-    assert {path.name for path in WORKFLOWS.glob("*.yml")} == {
-        "quality-gate.yml",
-        "release.yml",
+    # Preserve the independently maintained, read-only cross-filesystem
+    # integration qualifications. They test actual external SO dispatch and
+    # missing-module refusal, not publication. Only quality-gate.yml and
+    # release.yml form the release control plane; reject unknown workflows.
+    integration_workflows = {
+        "apfs-integration.yml", "btrfs-integration.yml",
+        "ext-integration.yml", "fat-exfat-fixture-integration.yml",
+        "hfs-integration.yml", "hfsplus-integration.yml",
+        "minix-integration.yml", "ntfs-integration.yml",
+        "pfs3-integration.yml", "sfs-integration.yml",
+        "swap-integration.yml", "ufs-integration.yml",
+        "xfs-integration.yml", "zfs-integration.yml",
     }
+    assert {path.name for path in WORKFLOWS.glob("*.yml")} == (
+        integration_workflows | {"quality-gate.yml", "release.yml"}
+    ), "Unknown or missing release/integration workflow"
+    for workflow in integration_workflows:
+        source = _read(WORKFLOWS / workflow)
+        assert "permissions:\\n  contents: read" in source, workflow
+        assert "workflow_dispatch:" in source and "  push:" in source, workflow
+        assert "    branches: [main]" in source, workflow
+        assert "contents: write" not in source, workflow
+        assert "workflow_call:" not in source and "workflow_run:" not in source, workflow
+        assert "gh release" not in source, workflow
 
     # Qualify PR changes before merge, but only main may create release intent.
     # Main qualifications never cancel each other; only superseded PR checks
