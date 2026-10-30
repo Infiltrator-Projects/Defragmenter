@@ -197,7 +197,7 @@ def main() -> None:
     ), "Unknown or missing release/integration workflow"
     for workflow in integration_workflows:
         source = _read(WORKFLOWS / workflow)
-        assert "permissions:\\n  contents: read" in source, workflow
+        assert "permissions:\n  contents: read" in source, workflow
         assert "workflow_dispatch:" in source and "  push:" in source, workflow
         assert "    branches: [main]" in source, workflow
         assert "contents: write" not in source, workflow
