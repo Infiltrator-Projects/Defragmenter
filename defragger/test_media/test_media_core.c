@@ -279,6 +279,14 @@ int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
             "Install or update the %s filesystem driver before creating test media.", spec->key);
         return ready;
     }
+    if (spec->creator == LDTM_CREATOR_SWAP) {
+        extern int ldtm_swap_module_available(const LdtmFilesystemSpec *);
+        const int ready = ldtm_swap_module_available(spec);
+        (void)snprintf(detail, detail_capacity, "%s", ready ?
+            "SWAP driver is ready to format disposable test media." :
+            "Install or update the SWAP filesystem driver before creating test media.");
+        return ready;
+    }
     if (spec->creator == LDTM_CREATOR_AFFS && strcmp(spec->key, "ofs") == 0) {
         extern int ldtm_ofs_module_available(void);
         const int ready = ldtm_ofs_module_available();
@@ -328,7 +336,7 @@ int ldtm_required_modules_available(char *detail, size_t detail_capacity) {
     for (size_t i = 0U; i < ldtm_spec_count(); ++i) {
         const LdtmFilesystemSpec *spec = &ldtm_specs()[i];
         if ((spec->creator == LDTM_CREATOR_FAT12 || spec->creator == LDTM_CREATOR_FAT16 ||
-             strcmp(spec->key, "ofs") == 0) &&
+             strcmp(spec->key, "ofs") == 0 || spec->creator == LDTM_CREATOR_SWAP) &&
             !ldtm_spec_creator_available(spec, detail, detail_capacity)) return 0;
     }
     return 1;
