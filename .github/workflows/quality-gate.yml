@@ -127,6 +127,25 @@ jobs:
           cmp test_media/ifs_zfs_fixture_v1.h "$zfs/include/ifs_zfs_fixture_v1.h"
           install -m 0644 "$RUNNER_TEMP/zfs-native-$GITHUB_RUN_ID-$GITHUB_JOB/ZFS.so" "$PWD/build/fat-module-test/Filesystems/ZFS.so"
 
+      - name: Checkout authoritative independent SFS driver
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-SFS
+          ref: c0c13362692d6660fa0b62e680f9c10d3c5b6181
+          path: ci-sfs
+
+      - name: Build qualified SFS.so and native source for test fixtures
+        run: |
+          set -euo pipefail
+          sfs="$GITHUB_WORKSPACE/ci-sfs"
+          cmake -S "$sfs" -B "$RUNNER_TEMP/sfs-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=ON
+          cmake --build "$RUNNER_TEMP/sfs-$GITHUB_RUN_ID-$GITHUB_JOB" --target sfs-driver sfs-module-test -j2
+          ctest --test-dir "$RUNNER_TEMP/sfs-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
+          cmp native/ifs_defrag_services_v1.h "$sfs/include/ifs_defrag_services_v1.h"
+          cmp native/ifs_sfs_module_v1.h "$sfs/include/ifs_sfs_module_v1.h"
+          cmp test_media/ifs_sfs_fixture_host_v1.h "$sfs/include/ifs_sfs_fixture_host_v1.h"
+          install -m 0644 "$RUNNER_TEMP/sfs-$GITHUB_RUN_ID-$GITHUB_JOB/SFS.so" "$PWD/build/fat-module-test/Filesystems/SFS.so"
+
       - name: Detect explicit release intent
         id: release_intent
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -163,6 +182,7 @@ jobs:
             -DFAT_DEFRAG_SOURCE_DIR="$GITHUB_WORKSPACE/ci-filesystems/native/filesystems/fat/defrag" \
             -DFAT_DEFRAG_TEST_MODULE_PARENT="$PWD/build/fat-module-test" \
             -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build/fat-module-test" \
+            -DSFS_NATIVE_TEST_SOURCE_DIR="$GITHUB_WORKSPACE/ci-sfs" \
             -DBUILD_TESTING=ON
           cmake --build build -j2
           cmake --build build --target defragmenter-desktop -j2
@@ -187,6 +207,7 @@ jobs:
           DEFRAGMENTER_BUILD_DIR: ${{ github.workspace }}/defragger/build
           DEFRAGMENTER_SWAP_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-swap-test-worker
           DEFRAGMENTER_ZFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-zfs-test-worker
+          DEFRAGMENTER_SFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-sfs-test-worker
           IFS_TEST_MODULE_PARENT: ${{ github.workspace }}/defragger/build/fat-module-test
           DEFRAGMENTER_AFFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-affs-test-worker
         run: |
@@ -362,6 +383,26 @@ jobs:
           cmp test_media/ifs_zfs_fixture_v1.h "$zfs/include/ifs_zfs_fixture_v1.h"
           install -m 0644 "$RUNNER_TEMP/zfs-san-$GITHUB_RUN_ID-$GITHUB_JOB/ZFS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/ZFS.so"
 
+      - name: Checkout SFS.so for sanitizer qualification
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-SFS
+          ref: c0c13362692d6660fa0b62e680f9c10d3c5b6181
+          path: ci-sfs
+
+      - name: Build instrumented authoritative SFS.so
+        run: |
+          set -euo pipefail
+          sfs="$GITHUB_WORKSPACE/ci-sfs"
+          cmake -S "$sfs" -B "$RUNNER_TEMP/sfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=OFF \
+            -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
+            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
+          cmake --build "$RUNNER_TEMP/sfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target sfs-driver -j2
+          cmp native/ifs_defrag_services_v1.h "$sfs/include/ifs_defrag_services_v1.h"
+          cmp native/ifs_sfs_module_v1.h "$sfs/include/ifs_sfs_module_v1.h"
+          cmp test_media/ifs_sfs_fixture_host_v1.h "$sfs/include/ifs_sfs_fixture_host_v1.h"
+          install -m 0644 "$RUNNER_TEMP/sfs-san-$GITHUB_RUN_ID-$GITHUB_JOB/SFS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/SFS.so"
+
       - name: Build with AddressSanitizer and UndefinedBehaviorSanitizer
         run: |
           cmake -S . -B build-sanitize \
@@ -371,6 +412,7 @@ jobs:
             -DFAT_DEFRAG_SOURCE_DIR="$GITHUB_WORKSPACE/ci-filesystems/native/filesystems/fat/defrag" \
             -DFAT_DEFRAG_TEST_MODULE_PARENT="$PWD/build-sanitize/fat-module-test" \
             -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build-sanitize/fat-module-test" \
+            -DSFS_NATIVE_TEST_SOURCE_DIR="$GITHUB_WORKSPACE/ci-sfs" \
             -DBUILD_TESTING=ON
           cmake --build build-sanitize -j2
 
@@ -383,6 +425,7 @@ jobs:
           DEFRAGMENTER_BUILD_DIR: ${{ github.workspace }}/defragger/build-sanitize
           DEFRAGMENTER_SWAP_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-swap-test-worker
           DEFRAGMENTER_ZFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-zfs-test-worker
+          DEFRAGMENTER_SFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-sfs-test-worker
           IFS_TEST_MODULE_PARENT: ${{ github.workspace }}/defragger/build-sanitize/fat-module-test
           DEFRAGMENTER_AFFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-affs-test-worker
         run: |
