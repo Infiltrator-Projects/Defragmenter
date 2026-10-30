@@ -47,7 +47,7 @@ jobs:
           install -m 0644 /tmp/hfs-so/HFS.so build/modules/Filesystems/HFS.so
           cmp native/ifs_hfs_module_v1.h ../ci-hfs/include/ifs_hfs_module_v1.h
           cmp test_media/ifs_hfs_fixture_v1.h ../ci-hfs/include/ifs_hfs_fixture_v1.h
-          cmp native/ifs_defrag_services_v1.h ../ci-hfs/include/ifs_defrag_services_v1.h
+          bash tests/verify_legacy_fs_services_abi.sh ../ci-hfs/include/ifs_defrag_services_v1.h
           export IFS_TEST_MODULE_PARENT="$PWD/build/modules"
           export DEFRAGMENTER_HFS_WORKER="$PWD/build/defragmenter-hfs-test-worker"
           export DEFRAGMENTER_HFS_ANALYSER="$DEFRAGMENTER_HFS_WORKER"

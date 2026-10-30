@@ -50,7 +50,7 @@ jobs:
           cd defragger
           install -d -m 0755 build/modules/Filesystems
           install -m 0644 /tmp/apfs-so/APFS.so build/modules/Filesystems/APFS.so
-          cmp native/ifs_defrag_services_v1.h ../ci-apfs/include/ifs_defrag_services_v1.h
+          bash tests/verify_legacy_fs_services_abi.sh ../ci-apfs/include/ifs_defrag_services_v1.h
           cmp native/ifs_apfs_module_v1.h ../ci-apfs/include/ifs_apfs_module_v1.h
           cmp test_media/ifs_apfs_fixture_host_v1.h ../ci-apfs/include/ifs_apfs_fixture_host_v1.h
           export IFS_TEST_MODULE_PARENT="$PWD/build/modules"

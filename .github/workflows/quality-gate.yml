@@ -141,7 +141,7 @@ jobs:
           cmake -S "$sfs" -B "$RUNNER_TEMP/sfs-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=ON
           cmake --build "$RUNNER_TEMP/sfs-$GITHUB_RUN_ID-$GITHUB_JOB" --target sfs-driver sfs-module-test -j2
           ctest --test-dir "$RUNNER_TEMP/sfs-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          cmp native/ifs_defrag_services_v1.h "$sfs/include/ifs_defrag_services_v1.h"
+          bash tests/verify_legacy_fs_services_abi.sh "$sfs/include/ifs_defrag_services_v1.h"
           cmp native/ifs_sfs_module_v1.h "$sfs/include/ifs_sfs_module_v1.h"
           cmp test_media/ifs_sfs_fixture_host_v1.h "$sfs/include/ifs_sfs_fixture_host_v1.h"
           install -m 0644 "$RUNNER_TEMP/sfs-$GITHUB_RUN_ID-$GITHUB_JOB/SFS.so" "$PWD/build/fat-module-test/Filesystems/SFS.so"
@@ -160,7 +160,7 @@ jobs:
           cmake -S "$pfs3" -B "$RUNNER_TEMP/pfs3-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=ON
           cmake --build "$RUNNER_TEMP/pfs3-$GITHUB_RUN_ID-$GITHUB_JOB" --target pfs3-driver pfs3-module-test -j2
           ctest --test-dir "$RUNNER_TEMP/pfs3-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          cmp native/ifs_defrag_services_v1.h "$pfs3/include/ifs_defrag_services_v1.h"
+          bash tests/verify_legacy_fs_services_abi.sh "$pfs3/include/ifs_defrag_services_v1.h"
           cmp native/ifs_pfs3_module_v1.h "$pfs3/include/ifs_pfs3_module_v1.h"
           cmp test_media/ifs_pfs3_fixture_host_v1.h "$pfs3/include/ifs_pfs3_fixture_host_v1.h"
           install -m 0644 "$RUNNER_TEMP/pfs3-$GITHUB_RUN_ID-$GITHUB_JOB/PFS3.so" "$PWD/build/fat-module-test/Filesystems/PFS3.so"
@@ -179,7 +179,7 @@ jobs:
           cmake -S "$apfs" -B "$RUNNER_TEMP/apfs-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=ON
           cmake --build "$RUNNER_TEMP/apfs-$GITHUB_RUN_ID-$GITHUB_JOB" --target apfs-driver apfs-module-test -j2
           ctest --test-dir "$RUNNER_TEMP/apfs-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          cmp native/ifs_defrag_services_v1.h "$apfs/include/ifs_defrag_services_v1.h"
+          bash tests/verify_legacy_fs_services_abi.sh "$apfs/include/ifs_defrag_services_v1.h"
           cmp native/ifs_apfs_module_v1.h "$apfs/include/ifs_apfs_module_v1.h"
           cmp test_media/ifs_apfs_fixture_host_v1.h "$apfs/include/ifs_apfs_fixture_host_v1.h"
           install -m 0644 "$RUNNER_TEMP/apfs-$GITHUB_RUN_ID-$GITHUB_JOB/APFS.so" "$PWD/build/fat-module-test/Filesystems/APFS.so"
@@ -198,7 +198,7 @@ jobs:
           cmake -S "$pfs3" -B "$RUNNER_TEMP/pfs3-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=ON
           cmake --build "$RUNNER_TEMP/pfs3-$GITHUB_RUN_ID-$GITHUB_JOB" --target pfs3-driver pfs3-module-test -j2
           ctest --test-dir "$RUNNER_TEMP/pfs3-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          cmp native/ifs_defrag_services_v1.h "$pfs3/include/ifs_defrag_services_v1.h"
+          bash tests/verify_legacy_fs_services_abi.sh "$pfs3/include/ifs_defrag_services_v1.h"
           cmp native/ifs_pfs3_module_v1.h "$pfs3/include/ifs_pfs3_module_v1.h"
           cmp test_media/ifs_pfs3_fixture_host_v1.h "$pfs3/include/ifs_pfs3_fixture_host_v1.h"
           install -m 0644 "$RUNNER_TEMP/pfs3-$GITHUB_RUN_ID-$GITHUB_JOB/PFS3.so" "$PWD/build/fat-module-test/Filesystems/PFS3.so"
@@ -217,7 +217,7 @@ jobs:
           cmake -S "$src" -B "$RUNNER_TEMP/hfs-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=ON
           cmake --build "$RUNNER_TEMP/hfs-$GITHUB_RUN_ID-$GITHUB_JOB" --target hfs-driver -j2
           ctest --test-dir "$RUNNER_TEMP/hfs-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
+          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
           cmp native/ifs_hfs_module_v1.h "$src/include/ifs_hfs_module_v1.h"
           cmp test_media/ifs_hfs_fixture_v1.h "$src/include/ifs_hfs_fixture_v1.h"
           install -m 0644 "$RUNNER_TEMP/hfs-$GITHUB_RUN_ID-$GITHUB_JOB/HFS.so" "$PWD/build/fat-module-test/Filesystems/HFS.so"
@@ -236,7 +236,7 @@ jobs:
           cmake -S "$src" -B "$RUNNER_TEMP/hfsplus-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=ON
           cmake --build "$RUNNER_TEMP/hfsplus-$GITHUB_RUN_ID-$GITHUB_JOB" --target hfsplus-driver -j2
           ctest --test-dir "$RUNNER_TEMP/hfsplus-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
+          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
           cmp native/ifs_hfsplus_module_v1.h "$src/include/ifs_hfsplus_module_v1.h"
           cmp test_media/ifs_hfsplus_fixture_v1.h "$src/include/ifs_hfsplus_fixture_v1.h"
           install -m 0644 "$RUNNER_TEMP/hfsplus-$GITHUB_RUN_ID-$GITHUB_JOB/HFSPLUS.so" "$PWD/build/fat-module-test/Filesystems/HFSPLUS.so"
@@ -255,7 +255,7 @@ jobs:
           cmake -S "$src" -B "$RUNNER_TEMP/btrfs-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=ON
           cmake --build "$RUNNER_TEMP/btrfs-$GITHUB_RUN_ID-$GITHUB_JOB" --target btrfs-driver -j2
           ctest --test-dir "$RUNNER_TEMP/btrfs-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
+          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
           cmp native/ifs_btrfs_module_v1.h "$src/include/ifs_btrfs_module_v1.h"
           cmp test_media/ifs_btrfs_fixture_v1.h "$src/include/ifs_btrfs_fixture_v1.h"
           install -m 0644 "$RUNNER_TEMP/btrfs-$GITHUB_RUN_ID-$GITHUB_JOB/BTRFS.so" "$PWD/build/fat-module-test/Filesystems/BTRFS.so"
@@ -276,7 +276,7 @@ jobs:
           cmake --build "$RUNNER_TEMP/minix-$GITHUB_RUN_ID-$GITHUB_JOB" \
             --target minix-driver minix-native-test minix-defrag-test minix-v1-v2-module-test -j2
           ctest --test-dir "$RUNNER_TEMP/minix-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
+          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
           cmp native/ifs_minix_defrag_v1.h "$src/include/ifs_minix_defrag_v1.h"
           cmp test_media/ifs_minix_fixture_v1.h "$src/include/ifs_minix_fixture_v1.h"
           install -m 0644 "$RUNNER_TEMP/minix-$GITHUB_RUN_ID-$GITHUB_JOB/MINIX.so" "$PWD/build/fat-module-test/Filesystems/MINIX.so"
@@ -544,7 +544,7 @@ jobs:
             -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
             -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
           cmake --build "$RUNNER_TEMP/sfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target sfs-driver -j2
-          cmp native/ifs_defrag_services_v1.h "$sfs/include/ifs_defrag_services_v1.h"
+          bash tests/verify_legacy_fs_services_abi.sh "$sfs/include/ifs_defrag_services_v1.h"
           cmp native/ifs_sfs_module_v1.h "$sfs/include/ifs_sfs_module_v1.h"
           cmp test_media/ifs_sfs_fixture_host_v1.h "$sfs/include/ifs_sfs_fixture_host_v1.h"
           install -m 0644 "$RUNNER_TEMP/sfs-san-$GITHUB_RUN_ID-$GITHUB_JOB/SFS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/SFS.so"
@@ -564,7 +564,7 @@ jobs:
             -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
             -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
           cmake --build "$RUNNER_TEMP/pfs3-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target pfs3-driver -j2
-          cmp native/ifs_defrag_services_v1.h "$pfs3/include/ifs_defrag_services_v1.h"
+          bash tests/verify_legacy_fs_services_abi.sh "$pfs3/include/ifs_defrag_services_v1.h"
           cmp native/ifs_pfs3_module_v1.h "$pfs3/include/ifs_pfs3_module_v1.h"
           cmp test_media/ifs_pfs3_fixture_host_v1.h "$pfs3/include/ifs_pfs3_fixture_host_v1.h"
           install -m 0644 "$RUNNER_TEMP/pfs3-san-$GITHUB_RUN_ID-$GITHUB_JOB/PFS3.so" "$PWD/build-sanitize/fat-module-test/Filesystems/PFS3.so"
@@ -584,7 +584,7 @@ jobs:
             -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
             -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
           cmake --build "$RUNNER_TEMP/apfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target apfs-driver -j2
-          cmp native/ifs_defrag_services_v1.h "$apfs/include/ifs_defrag_services_v1.h"
+          bash tests/verify_legacy_fs_services_abi.sh "$apfs/include/ifs_defrag_services_v1.h"
           cmp native/ifs_apfs_module_v1.h "$apfs/include/ifs_apfs_module_v1.h"
           cmp test_media/ifs_apfs_fixture_host_v1.h "$apfs/include/ifs_apfs_fixture_host_v1.h"
           install -m 0644 "$RUNNER_TEMP/apfs-san-$GITHUB_RUN_ID-$GITHUB_JOB/APFS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/APFS.so"
@@ -604,7 +604,7 @@ jobs:
             -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
             -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
           cmake --build "$RUNNER_TEMP/pfs3-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target pfs3-driver -j2
-          cmp native/ifs_defrag_services_v1.h "$pfs3/include/ifs_defrag_services_v1.h"
+          bash tests/verify_legacy_fs_services_abi.sh "$pfs3/include/ifs_defrag_services_v1.h"
           cmp native/ifs_pfs3_module_v1.h "$pfs3/include/ifs_pfs3_module_v1.h"
           cmp test_media/ifs_pfs3_fixture_host_v1.h "$pfs3/include/ifs_pfs3_fixture_host_v1.h"
           install -m 0644 "$RUNNER_TEMP/pfs3-san-$GITHUB_RUN_ID-$GITHUB_JOB/PFS3.so" "$PWD/build-sanitize/fat-module-test/Filesystems/PFS3.so"
@@ -624,7 +624,7 @@ jobs:
             -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
             -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
           cmake --build "$RUNNER_TEMP/hfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target hfs-driver -j2
-          cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
+          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
           cmp native/ifs_hfs_module_v1.h "$src/include/ifs_hfs_module_v1.h"
           cmp test_media/ifs_hfs_fixture_v1.h "$src/include/ifs_hfs_fixture_v1.h"
           install -m 0644 "$RUNNER_TEMP/hfs-san-$GITHUB_RUN_ID-$GITHUB_JOB/HFS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/HFS.so"
@@ -644,7 +644,7 @@ jobs:
             -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
             -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
           cmake --build "$RUNNER_TEMP/hfsplus-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target hfsplus-driver -j2
-          cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
+          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
           cmp native/ifs_hfsplus_module_v1.h "$src/include/ifs_hfsplus_module_v1.h"
           cmp test_media/ifs_hfsplus_fixture_v1.h "$src/include/ifs_hfsplus_fixture_v1.h"
           install -m 0644 "$RUNNER_TEMP/hfsplus-san-$GITHUB_RUN_ID-$GITHUB_JOB/HFSPLUS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/HFSPLUS.so"
@@ -664,7 +664,7 @@ jobs:
             -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
             -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
           cmake --build "$RUNNER_TEMP/btrfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target btrfs-driver -j2
-          cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
+          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
           cmp native/ifs_btrfs_module_v1.h "$src/include/ifs_btrfs_module_v1.h"
           cmp test_media/ifs_btrfs_fixture_v1.h "$src/include/ifs_btrfs_fixture_v1.h"
           install -m 0644 "$RUNNER_TEMP/btrfs-san-$GITHUB_RUN_ID-$GITHUB_JOB/BTRFS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/BTRFS.so"
@@ -687,7 +687,7 @@ jobs:
             -DCMAKE_EXE_LINKER_FLAGS='-fsanitize=address,undefined'
           cmake --build "$RUNNER_TEMP/minix-san-$GITHUB_RUN_ID-$GITHUB_JOB" \
             --target minix-driver minix-native-test minix-defrag-test minix-v1-v2-module-test -j2
-          cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
+          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
           cmp native/ifs_minix_defrag_v1.h "$src/include/ifs_minix_defrag_v1.h"
           cmp test_media/ifs_minix_fixture_v1.h "$src/include/ifs_minix_fixture_v1.h"
           install -m 0644 "$RUNNER_TEMP/minix-san-$GITHUB_RUN_ID-$GITHUB_JOB/MINIX.so" "$PWD/build-sanitize/fat-module-test/Filesystems/MINIX.so"

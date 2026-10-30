@@ -48,7 +48,7 @@ jobs:
           install -m 0644 /tmp/minix-so/MINIX.so build/modules/Filesystems/MINIX.so
           cmp native/ifs_minix_defrag_v1.h ../ci-minix/include/ifs_minix_defrag_v1.h
           cmp test_media/ifs_minix_fixture_v1.h ../ci-minix/include/ifs_minix_fixture_v1.h
-          cmp native/ifs_defrag_services_v1.h ../ci-minix/include/ifs_defrag_services_v1.h
+          bash tests/verify_legacy_fs_services_abi.sh ../ci-minix/include/ifs_defrag_services_v1.h
           export IFS_TEST_MODULE_PARENT="$PWD/build/modules"
           export DEFRAGMENTER_MINIX_WORKER="$PWD/build/defragmenter-minix-test-worker"
           export DEFRAGMENTER_MINIX_FIXTURE="/tmp/minix-so/minix-native-test"

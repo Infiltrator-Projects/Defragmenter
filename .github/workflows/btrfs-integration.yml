@@ -47,7 +47,7 @@ jobs:
           install -m 0644 /tmp/btrfs-so/BTRFS.so build/modules/Filesystems/BTRFS.so
           cmp native/ifs_btrfs_module_v1.h ../ci-btrfs/include/ifs_btrfs_module_v1.h
           cmp test_media/ifs_btrfs_fixture_v1.h ../ci-btrfs/include/ifs_btrfs_fixture_v1.h
-          cmp native/ifs_defrag_services_v1.h ../ci-btrfs/include/ifs_defrag_services_v1.h
+          bash tests/verify_legacy_fs_services_abi.sh ../ci-btrfs/include/ifs_defrag_services_v1.h
           export IFS_TEST_MODULE_PARENT="$PWD/build/modules"
           export DEFRAGMENTER_BTRFS_WORKER="$PWD/build/defragmenter-btrfs-test-worker"
           export DEFRAGMENTER_BUILD_DIR="$PWD/build"

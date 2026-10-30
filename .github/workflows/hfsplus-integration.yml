@@ -46,7 +46,7 @@ jobs:
           mkdir -p build/modules/Filesystems
           install -m 0644 /tmp/hfsplus-so/HFSPLUS.so build/modules/Filesystems/HFSPLUS.so
           cmp native/ifs_hfsplus_module_v1.h ../ci-hfsplus/include/ifs_hfsplus_module_v1.h
-          cmp native/ifs_defrag_services_v1.h ../ci-hfsplus/include/ifs_defrag_services_v1.h
+          bash tests/verify_legacy_fs_services_abi.sh ../ci-hfsplus/include/ifs_defrag_services_v1.h
           export IFS_TEST_MODULE_PARENT="$PWD/build/modules"
           export DEFRAGMENTER_HFSPLUS_WORKER="$PWD/build/defragmenter-hfsplus-test-worker"
           export DEFRAGMENTER_BUILD_DIR="$PWD/build"

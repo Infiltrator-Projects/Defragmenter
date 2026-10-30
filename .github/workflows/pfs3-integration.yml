@@ -50,7 +50,7 @@ jobs:
           cd defragger
           install -d -m 0755 build/modules/Filesystems
           install -m 0644 /tmp/pfs3-so/PFS3.so build/modules/Filesystems/PFS3.so
-          cmp native/ifs_defrag_services_v1.h ../ci-pfs3/include/ifs_defrag_services_v1.h
+          bash tests/verify_legacy_fs_services_abi.sh ../ci-pfs3/include/ifs_defrag_services_v1.h
           cmp native/ifs_pfs3_module_v1.h ../ci-pfs3/include/ifs_pfs3_module_v1.h
           cmp test_media/ifs_pfs3_fixture_host_v1.h ../ci-pfs3/include/ifs_pfs3_fixture_host_v1.h
           export IFS_TEST_MODULE_PARENT="$PWD/build/modules"
