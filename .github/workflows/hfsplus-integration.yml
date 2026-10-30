@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Infiltrator-Projects/Filesystem-HFSPlus
-          ref: 8c074822cfacce95112cf56cd09b29e91296b182
+          ref: eecd478d23426432c9de2dc034a3ed99ef44c4f8
           path: ci-hfsplus
       - name: Build HFSPLUS.so and run module tests
         run: |
@@ -38,7 +38,7 @@ jobs:
             -DLD_ENABLE_WERROR=ON
           cmake --build build --parallel 2 --target \
             defragmenter-hfsplus-worker defragmenter-hfsplus-test-worker \
-            defragmenter-mapper-cpp
+            defragmenter-mapper-cpp defragmenter-test-media-raw-test
       - name: Verify actual HFS+ and HFSX Defrag, Growth and Recover
         run: |
           set -euo pipefail
@@ -52,6 +52,18 @@ jobs:
           export DEFRAGMENTER_BUILD_DIR="$PWD/build"
           "$DEFRAGMENTER_HFSPLUS_WORKER" --version | grep -Fx '1.0.0'
           python3 tests/test_hfsplus_native.py
+          cmp test_media/ifs_hfsplus_fixture_v1.h ../ci-hfsplus/include/ifs_hfsplus_fixture_v1.h
+          build/defragmenter-test-media-raw-test create hfsplus build/hfsplus-test-media.img
+          build/defragmenter-test-media-raw-test verify hfsplus build/hfsplus-test-media.img
+          build/defragmenter-mapper build/hfsplus-test-media.img --fstype hfsplus --cells 8 > build/hfsplus-map.json
+          python3 - <<'PY'
+          import json
+          with open('build/hfsplus-map.json',encoding='utf-8') as f:
+              m=json.load(f)
+          assert m['filesystem']=='hfsplus',m
+          assert m['map_accuracy']=='exact',m
+          assert m.get('unknown_bytes',1)==0,m
+          PY
       - name: Missing module must fail closed
         run: |
           set -euo pipefail
@@ -62,3 +74,10 @@ jobs:
              echo "ERROR: HFS+ silently fell back to an internal engine" >&2
              exit 1
           fi
+          before="$(sha256sum build/hfsplus-test-media.img)"
+          if IFS_TEST_MODULE_PARENT="$PWD/build/without-driver" \
+            build/defragmenter-test-media-raw-test recreate hfsplus build/hfsplus-test-media.img; then
+            echo "ERROR: Test Media ran without HFSPLUS.so" >&2
+            exit 1
+          fi
+          test "$before" = "$(sha256sum build/hfsplus-test-media.img)"
