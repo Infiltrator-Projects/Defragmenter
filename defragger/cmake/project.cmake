@@ -331,20 +331,15 @@ target_link_libraries(defragmenter-minix-worker PRIVATE
 
 find_package(SQLite3 REQUIRED)
 
-add_library(defragmenter-xfs-native STATIC
-    gui/filesystems/xfs/native/xfs_common.c
-    gui/filesystems/xfs/native/xfs_catalog.c
-    gui/filesystems/xfs/native/xfs_plan.c
-    gui/filesystems/xfs/native/xfs_metadata.c)
-target_include_directories(defragmenter-xfs-native PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/xfs/native"
-    "${LD_GENERATED_DIR}")
-target_compile_options(defragmenter-xfs-native PRIVATE ${LD_WARNING_FLAGS})
-target_compile_definitions(defragmenter-xfs-native PRIVATE
-    _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-target_link_libraries(defragmenter-xfs-native PUBLIC
-    defragmenter-core SQLite::SQLite3 OpenSSL::Crypto)
+# XFS filesystem logic and all native regression tests belong exclusively to
+# Filesystem-XFS, which builds XFS.so. The application runs that module through
+# native/xfs_module_loader.c and test_media/test_media_xfs_module.c.
+file(GLOB_RECURSE LD_EMBEDDED_XFS_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/xfs/native/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_media/test_media_raw_xfs.c")
+if(LD_EMBEDDED_XFS_SOURCES)
+    message(FATAL_ERROR "XFS filesystem implementation must be in Filesystem-XFS/XFS.so, never in Defragmenter")
+endif()
 
 # EXT2/3/4 production parsing, allocation accounting and mapping mutation are
 # first-party native C. libext2fs is retained only below as an independent
@@ -745,29 +740,8 @@ if(BUILD_TESTING)
 
     # Native SWAP engine regression moved to Filesystem-Swap's independent CI.
 
-    add_executable(defragmenter-xfs-metadata-test
-        tests/test_xfs_metadata_whitebox.c
-        gui/filesystems/xfs/native/xfs_common.c)
-    target_include_directories(defragmenter-xfs-metadata-test PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/xfs/native"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/core" "${LD_GENERATED_DIR}")
-    target_compile_options(defragmenter-xfs-metadata-test PRIVATE ${LD_WARNING_FLAGS})
-    target_compile_definitions(defragmenter-xfs-metadata-test PRIVATE
-        _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-    target_link_libraries(defragmenter-xfs-metadata-test PRIVATE
-        defragmenter-core SQLite::SQLite3)
-    add_test(NAME defragmenter-xfs-metadata COMMAND defragmenter-xfs-metadata-test)
-
-    add_executable(defragmenter-xfs-native-test tests/test_xfs_native.c)
-    target_include_directories(defragmenter-xfs-native-test PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/xfs/native"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/core" "${LD_GENERATED_DIR}")
-    target_compile_options(defragmenter-xfs-native-test PRIVATE ${LD_WARNING_FLAGS})
-    target_compile_definitions(defragmenter-xfs-native-test PRIVATE
-        _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-    target_link_libraries(defragmenter-xfs-native-test PRIVATE
-        defragmenter-xfs-native defragmenter-core SQLite::SQLite3 OpenSSL::Crypto)
-    add_test(NAME defragmenter-xfs-native COMMAND defragmenter-xfs-native-test)
+    # XFS native and metadata regression tests are compiled and run by the
+    # independent Filesystem-XFS build, not from copied source here.
 
     # libext2fs is a test-only independent fixture/oracle. A production build
     # with BUILD_TESTING=OFF must configure and link without e2fsprogs headers
