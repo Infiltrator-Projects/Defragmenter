@@ -279,6 +279,16 @@ int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
             "Install or update the %s filesystem driver before creating test media.", spec->key);
         return ready;
     }
+    if (spec->creator == LDTM_CREATOR_EXT2 ||
+        spec->creator == LDTM_CREATOR_EXT3 ||
+        spec->creator == LDTM_CREATOR_EXT4) {
+        extern int ldtm_ext_module_available(const LdtmFilesystemSpec *);
+        const int ready = ldtm_ext_module_available(spec);
+        (void)snprintf(detail, detail_capacity, "%s", ready ?
+            "EXT.so driver is ready to create and verify disposable test media." :
+            "Install or update the matching EXT2.so, EXT3.so or EXT4.so driver.");
+        return ready;
+    }
     if (spec->creator == LDTM_CREATOR_MINIX) {
         extern int ldtm_minix_module_available(const LdtmFilesystemSpec *);
         const int ready=ldtm_minix_module_available(spec);
@@ -402,6 +412,8 @@ int ldtm_required_modules_available(char *detail, size_t detail_capacity) {
     for (size_t i = 0U; i < ldtm_spec_count(); ++i) {
         const LdtmFilesystemSpec *spec = &ldtm_specs()[i];
         if ((spec->creator == LDTM_CREATOR_FAT12 || spec->creator == LDTM_CREATOR_FAT16 ||
+              spec->creator == LDTM_CREATOR_EXT2 || spec->creator == LDTM_CREATOR_EXT3 ||
+              spec->creator == LDTM_CREATOR_EXT4 ||
              strcmp(spec->key, "ofs") == 0 || strcmp(spec->key, "sfs") == 0 ||
              spec->creator == LDTM_CREATOR_PFS3 ||
              spec->creator == LDTM_CREATOR_APFS ||
