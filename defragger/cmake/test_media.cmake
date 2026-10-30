@@ -60,8 +60,7 @@ target_compile_definitions(defragmenter-test-media-core PRIVATE
 target_link_libraries(defragmenter-test-media-core PUBLIC
     OpenSSL::Crypto InfiltratrCommon::Common defragmenter-core defragmenter-filesystem-module-host defragmenter-fs-host-services)
 target_link_libraries(defragmenter-test-media-core PRIVATE
-    defragmenter-affs-native
-    defragmenter-ufs-native)
+    defragmenter-affs-native)
 
 add_executable(defragmenter-test-media
     test_media/test_media_main.c
@@ -188,7 +187,7 @@ if(BUILD_TESTING)
     target_compile_options(defragmenter-test-media-raw-test PRIVATE ${LD_WARNING_FLAGS})
     target_compile_definitions(defragmenter-test-media-raw-test PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
     target_link_libraries(defragmenter-test-media-raw-test PRIVATE
-        defragmenter-test-media-core defragmenter-ufs-native)
+        defragmenter-test-media-core)
     add_test(NAME defragmenter-test-media-corpus-contract COMMAND defragmenter-test-media-raw-test)
     # Every fixture creates private media and a private journal. Register them
     # independently so CTest can bound and schedule each complete destructive
