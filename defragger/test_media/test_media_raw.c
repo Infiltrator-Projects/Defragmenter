@@ -198,7 +198,8 @@ int ldtm_raw_fixture(const LdtmFilesystemSpec *spec, const char *path, bool crea
     /* A missing/wrong module must be rejected before stale signatures are
      * erased. The privileged whole-disk worker also checks before partitioning. */
     if (create && (spec->creator == LDTM_CREATOR_FAT12 ||
-                   spec->creator == LDTM_CREATOR_FAT16) &&
+                   spec->creator == LDTM_CREATOR_FAT16 ||
+                   spec->creator == LDTM_CREATOR_FAT32) &&
         !ldtm_fat_module_available(spec)) {
         if (detail != NULL && capacity != 0U)
             (void)snprintf(detail, capacity, "Install or update the %s filesystem driver.", spec->key);

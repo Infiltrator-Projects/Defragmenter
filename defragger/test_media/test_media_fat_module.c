@@ -59,7 +59,7 @@ static int create_fixture(const IfsDefragHostV2 *host, void *symbol, void *opaqu
     if (!api) return -1;
     f->host = host;
     if (host->open_target(host->context, f->path, 1, NULL, 0, &f->target)) return -1;
-    const uint32_t unit = 65536U;
+    const uint32_t unit = f->spec->creator == LDTM_CREATOR_FAT32 ? 4096U : 65536U;
     const IfsFatfsIo io = {f, f->target.bytes, 512U, read_io, write_io, flush_io, timestamp_io};
     int result = -1;
     if (f->target.bytes != (uint64_t)f->spec->size_mib * LDTM_MIB ||
@@ -112,7 +112,7 @@ done:
 static int call_module(FatFixture *f, IfsFilesystemCall call) {
     const unsigned bits = f->spec->creator == LDTM_CREATOR_FAT12 ? 12U :
                           f->spec->creator == LDTM_CREATOR_FAT16 ? 16U :
-                          0U;
+                          f->spec->creator == LDTM_CREATOR_FAT32 ? 32U : 0U;
     if (!bits) return -1;
     char module[16];
     (void)snprintf(module, sizeof(module), "FAT%u.so", bits);

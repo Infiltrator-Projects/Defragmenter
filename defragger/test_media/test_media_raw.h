@@ -46,7 +46,6 @@ int ldtm_raw_check_finish(const LdtmRawCheck *check);
 uint32_t ldtm_raw_crc32c(const void *data, size_t bytes);
 
 int ldtm_raw_fat(const LdtmFilesystemSpec *, const char *, bool);
-int ldtm_raw_fat32_create(const LdtmFilesystemSpec *, const char *);
 int ldtm_fat_module_available(const LdtmFilesystemSpec *);
 int ldtm_fat_module_create(const LdtmFilesystemSpec *, const char *);
 int ldtm_raw_exfat(const LdtmFilesystemSpec *, const char *, bool);

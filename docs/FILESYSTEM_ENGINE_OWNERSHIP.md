@@ -27,14 +27,14 @@ Its deterministic dataset remains application-owned, and its retained AFFS
 read-only payload verifier is an independent oracle. The privileged prepare
 worker rechecks the required SO before any repartitioning.
 
-FAT12/16 Test Media likewise calls the matching SO's V4 formatter and V3 file
+FAT12/16/32 Test Media calls the matching SO's V4 formatter and V3 file
 APIs. Interleaved appends manufacture the existing 200 MiB fragmented corpus
 and eight boundary files without writing FAT or directory records locally.
 The independent raw reader follows the module's actual data-area offset;
 filesystem structures need not begin on an absolute cluster-size boundary.
 Readiness and privileged preparation reject missing/incompatible modules before
-erasing signatures or partitioning. FAT32 retains its explicitly separate
-temporary fixture producer; this change does not claim its migration.
+erasing signatures or partitioning. FAT32's local FAT and directory writer has been retired; Test Media keeps
+only the independent read-only payload verifier.
 
 Existing internal filesystem engines and test-media writers can remain **temporary reference/compatibility implementations** until the matching `.so` covers their verified functions. Removing them before equivalence tests risks data loss. A user-visible successful defrag is **not** proof that the `.so` was called: instrument and test actual `dlopen`/ABI dispatch, reject wrong format, compare independent before/after allocation maps and filesystem integrity, check Stop/rollback and exercise files across multiple clusters, names and failure modes.
 
