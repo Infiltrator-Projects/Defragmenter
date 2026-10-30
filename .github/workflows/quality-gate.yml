@@ -103,6 +103,25 @@ jobs:
           install -m 0644 "$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB/exFAT.so" \
             "$PWD/build/fat-module-test/Filesystems/exFAT.so"
 
+      - name: Check out canonical FFS.so native migration candidate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-FFS
+          ref: 1d125f270dc81ffcf6686d7d71dd749e9607c5e4
+          path: ci-ffs
+
+      - name: Compile trusted FFS.so native engine and fixture ABI
+        run: |
+          set -euo pipefail
+          src="$GITHUB_WORKSPACE/ci-ffs"
+          cmake -S "$src" -B "$RUNNER_TEMP/ffs-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=ON
+          cmake --build "$RUNNER_TEMP/ffs-$GITHUB_RUN_ID-$GITHUB_JOB" --target ffs-unified ffs-fixture-test -j2
+          ctest --test-dir "$RUNNER_TEMP/ffs-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
+          nm -D "$RUNNER_TEMP/ffs-$GITHUB_RUN_ID-$GITHUB_JOB/FFS.so" | grep -F 'infiltrator_filesystem_ffs_defrag_v1'
+          nm -D "$RUNNER_TEMP/ffs-$GITHUB_RUN_ID-$GITHUB_JOB/FFS.so" | grep -F 'infiltrator_filesystem_ffs_fixture_v1'
+          install -d -m 0755 "$PWD/build/fat-module-test/Filesystems"
+          install -m 0644 "$RUNNER_TEMP/ffs-$GITHUB_RUN_ID-$GITHUB_JOB/FFS.so" "$PWD/build/fat-module-test/Filesystems/FFS.so"
+
       - name: Read the OFS module test revision
         id: ofs_revision
         run: echo "sha=$(tr -d '\r\n' < shared/ofs-module-revision)" >> "$GITHUB_OUTPUT"
@@ -605,6 +624,25 @@ jobs:
           nm -D "$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB/exFAT.so" | grep -F 'infiltrator_filesystem_exfat_defrag_v1'
           install -m 0644 "$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB/exFAT.so" \
             "$PWD/build-sanitize/fat-module-test/Filesystems/exFAT.so"
+
+      - name: Check out canonical FFS.so for sanitizer host
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-FFS
+          ref: 1d125f270dc81ffcf6686d7d71dd749e9607c5e4
+          path: ci-ffs
+
+      - name: Compile trusted FFS.so for sanitizer-host qualification
+        run: |
+          set -euo pipefail
+          src="$GITHUB_WORKSPACE/ci-ffs"
+          cmake -S "$src" -B "$RUNNER_TEMP/ffs-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=ON
+          cmake --build "$RUNNER_TEMP/ffs-$GITHUB_RUN_ID-$GITHUB_JOB" --target ffs-unified ffs-fixture-test -j2
+          ctest --test-dir "$RUNNER_TEMP/ffs-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
+          nm -D "$RUNNER_TEMP/ffs-$GITHUB_RUN_ID-$GITHUB_JOB/FFS.so" | grep -F 'infiltrator_filesystem_ffs_defrag_v1'
+          nm -D "$RUNNER_TEMP/ffs-$GITHUB_RUN_ID-$GITHUB_JOB/FFS.so" | grep -F 'infiltrator_filesystem_ffs_fixture_v1'
+          install -d -m 0755 "$PWD/build-sanitize/fat-module-test/Filesystems"
+          install -m 0644 "$RUNNER_TEMP/ffs-$GITHUB_RUN_ID-$GITHUB_JOB/FFS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/FFS.so"
 
       - name: Read the OFS module test revision
         id: ofs_revision

@@ -439,16 +439,16 @@ target_compile_options(defragmenter-swap-worker PRIVATE ${LD_WARNING_FLAGS})
 target_compile_definitions(defragmenter-swap-worker PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(defragmenter-swap-worker PRIVATE defragmenter-filesystem-module-host)
 
-add_executable(defragmenter-affs-worker
-    gui/filesystems/affs/native/affs_worker.c)
+# OFS and FFS are always dispatched to their independent filesystem SO.
+# This process owns only signature-based dispatch and trusted module loading.
+add_executable(defragmenter-affs-worker native/affs_module_loader.c)
 target_include_directories(defragmenter-affs-worker PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/affs/native"
-    "${LD_GENERATED_DIR}")
+    "${CMAKE_CURRENT_SOURCE_DIR}/native"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core" "${LD_GENERATED_DIR}")
 target_compile_options(defragmenter-affs-worker PRIVATE ${LD_WARNING_FLAGS})
 target_compile_definitions(defragmenter-affs-worker PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-target_link_libraries(defragmenter-affs-worker PRIVATE defragmenter-affs-native
-    defragmenter-core defragmenter-filesystem-module-host)
+target_link_libraries(defragmenter-affs-worker PRIVATE
+    defragmenter-filesystem-module-host defragmenter-fs-host-services)
 
 set(OFS_DEFRAG_TEST_MODULE_PARENT "" CACHE PATH "Disposable OFS module test parent")
 set(AFFS_WORKER_FOR_TESTS "$<TARGET_FILE:defragmenter-affs-worker>")
@@ -472,16 +472,15 @@ if(BUILD_TESTING AND OFS_DEFRAG_TEST_MODULE_PARENT)
     target_link_libraries(defragmenter-exfat-test-worker PRIVATE
         defragmenter-fs-host-services defragmenter-filesystem-module-test-host)
     set(EXFAT_WORKER_FOR_TESTS "$<TARGET_FILE:defragmenter-exfat-test-worker>")
-    add_executable(defragmenter-affs-test-worker
-        gui/filesystems/affs/native/affs_worker.c)
+    add_executable(defragmenter-affs-test-worker native/affs_module_loader.c)
     target_include_directories(defragmenter-affs-test-worker PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/native" "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-        "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/affs/native" "${LD_GENERATED_DIR}")
+        "${LD_GENERATED_DIR}")
     target_compile_options(defragmenter-affs-test-worker PRIVATE ${LD_WARNING_FLAGS})
     target_compile_definitions(defragmenter-affs-test-worker PRIVATE
         _FILE_OFFSET_BITS=64 _GNU_SOURCE IFS_MODULE_TESTING)
     target_link_libraries(defragmenter-affs-test-worker PRIVATE
-        defragmenter-affs-native defragmenter-core defragmenter-filesystem-module-test-host)
+        defragmenter-fs-host-services defragmenter-filesystem-module-test-host)
     set(AFFS_WORKER_FOR_TESTS "$<TARGET_FILE:defragmenter-affs-test-worker>")
     add_executable(defragmenter-minix-test-worker native/minix_module_loader.c)
     target_include_directories(defragmenter-minix-test-worker PRIVATE

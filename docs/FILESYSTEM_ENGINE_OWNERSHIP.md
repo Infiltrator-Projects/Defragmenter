@@ -45,8 +45,12 @@ ABI-dispatch host with no local parser, allocator, relayout or journal;
 missing or incompatible exFAT.so fails closed. The module exposes both the
 V5 Test Media file/format contract and its separate defrag V1 contract.
 
-Known remaining locally compiled Amiga format engine: FFS defragmentation
-and Test Media formatting/population. FFS.so is currently a read-only adapter;
+FFS defragmentation now dispatches into the independent Filesystem-FFS/FFS.so;
+its native code is no longer compiled into the production AFFS worker.
+
+Known remaining locally compiled Amiga format engine: FFS Test Media formatting
+and population. The new FFS.so candidate additionally exports defrag and
+fixture interfaces, with independent disposable-image format/populate tests;
 the locally compiled implementation must not be removed until an equivalent
 write/defrag/recovery/format ABI and independent tests exist.
 
