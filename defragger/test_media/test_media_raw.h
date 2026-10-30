@@ -51,6 +51,7 @@ int ldtm_fat_module_create(const LdtmFilesystemSpec *, const char *);
 int ldtm_raw_exfat(const LdtmFilesystemSpec *, const char *, bool);
 int ldtm_raw_ext(const LdtmFilesystemSpec *, const char *, bool);
 int ldtm_raw_minix(const LdtmFilesystemSpec *, const char *, bool);
+int ldtm_swap_module_available(const LdtmFilesystemSpec *);
 int ldtm_raw_swap(const LdtmFilesystemSpec *, const char *, bool);
 int ldtm_raw_mac(const LdtmFilesystemSpec *, const char *, bool);
 int ldtm_raw_ntfs(const LdtmFilesystemSpec *, const char *, bool);

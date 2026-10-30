@@ -50,6 +50,24 @@ static int swap_module_call(const IfsDefragHostV2 *host, void *symbol, void *opa
     host->close_target(host->context, &f->target);
     return status;
 }
+static int swap_available(const IfsDefragHostV2 *host, void *symbol, void *opaque) {
+    (void)host;
+    (void)opaque;
+    const IfsSwapModuleV1 *(*entry)(void) = NULL;
+    memcpy(&entry, &symbol, sizeof(entry));
+    const IfsSwapModuleV1 *api = entry ? entry() : NULL;
+    return api && api->abi_version == IFS_SWAP_MODULE_V1 &&
+        api->structure_bytes >= sizeof(*api) && api->format_id &&
+        strcmp(api->format_id, "swap") == 0 &&
+        (api->capabilities & (IFS_SWAP_CAP_FORMAT | IFS_SWAP_CAP_VERIFY)) ==
+            (IFS_SWAP_CAP_FORMAT | IFS_SWAP_CAP_VERIFY) &&
+        api->format && api->verify ? 0 : 1;
+}
+int ldtm_swap_module_available(const LdtmFilesystemSpec *spec) {
+    return spec && spec->creator == LDTM_CREATOR_SWAP &&
+        ifs_filesystem_module_call("swap", "SWAP.so",
+            "infiltrator_filesystem_swap_v1", swap_available, NULL) == 0;
+}
 int ldtm_raw_swap(const LdtmFilesystemSpec *spec, const char *path, bool create) {
     if (!spec || !path || spec->creator != LDTM_CREATOR_SWAP) return -1;
     SwapFixture f = { .spec = spec, .path = path, .create = create ? 1 : 0 };
