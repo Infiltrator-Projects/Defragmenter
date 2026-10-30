@@ -1,0 +1,77 @@
+name: Verify FAT and exFAT Test Media SO-only operation
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  fat-exfat-modules:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config libgtk-3-dev \
+            libssl-dev libsqlite3-dev
+      - name: Locate exact independent FAT module revision
+        id: fat
+        run: echo "sha=$(tr -d '\r\n' < defragger/shared/filesystems-fat-revision)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: Infiltrator-Projects/Filesystems
+          ref: ${{ steps.fat.outputs.sha }}
+          path: ci-filesystems
+          submodules: recursive
+      - name: Locate exact independent exFAT module revision
+        id: exfat
+        run: echo "sha=$(tr -d '\r\n' < defragger/shared/exfat-module-revision)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: Infiltrator-Projects/Filesystem-exFAT
+          ref: ${{ steps.exfat.outputs.sha }}
+          path: ci-exfat
+      - name: Build independent FAT12.so FAT16.so exFAT.so
+        run: |
+          set -euo pipefail
+          cmake -S ci-filesystems -B /tmp/ifs-fat-ci -DBUILD_TESTING=OFF
+          cmake --build /tmp/ifs-fat-ci --target filesystems-fat12-module filesystems-fat16-module --parallel 2
+          make -C ci-exfat OUT=/tmp/ifs-exfat-ci
+          sed 's|#include "../../fat/portable/fatfs_module.h"|#include "fat_module_abi.h"|' \
+            ci-exfat/native/filesystems/exfat/module/exfat_api.h |
+              cmp defragger/native/exfat_module_abi.h -
+      - name: Build Defragmenter without bundled FAT or exFAT filesystem codec
+        run: |
+          set -euo pipefail
+          cmake -S defragger -B defragger/build-fixture -DBUILD_TESTING=ON \
+            -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/defragger/build-fixture/test-modules"
+          cmake --build defragger/build-fixture --target defragmenter-test-media-raw-test --parallel 2
+          test ! -e defragger/test_media/test_media_raw_fat.c
+          test ! -e defragger/test_media/test_media_raw_exfat.c
+      - name: Run disposable-media create and verify through the independent SOs
+        run: |
+          set -euo pipefail
+          mkdir -p defragger/build-fixture/test-modules/Filesystems
+          install -m 0644 /tmp/ifs-fat-ci/FAT{12,16}.so /tmp/ifs-exfat-ci/exFAT.so \
+            defragger/build-fixture/test-modules/Filesystems/
+          export IFS_TEST_MODULE_PARENT="$PWD/defragger/build-fixture/test-modules"
+          raw=defragger/build-fixture/defragmenter-test-media-raw-test
+          for format in fat12 fat16 exfat; do
+            "$raw" create "$format" "defragger/build-fixture/${format}.img"
+            "$raw" verify "$format" "defragger/build-fixture/${format}.img"
+          done
+          mkdir -p defragger/build-fixture/missing/Filesystems
+          if IFS_TEST_MODULE_PARENT="$PWD/defragger/build-fixture/missing" \
+            "$raw" create fat16 defragger/build-fixture/fat16-missing.img; then
+            echo "ERROR: FAT16 formatter succeeded without FAT16.so" >&2
+            exit 1
+          fi
+          if IFS_TEST_MODULE_PARENT="$PWD/defragger/build-fixture/missing" \
+            "$raw" verify exfat defragger/build-fixture/exfat.img; then
+            echo "ERROR: exFAT verification succeeded without exFAT.so" >&2
+            exit 1
+          fi
