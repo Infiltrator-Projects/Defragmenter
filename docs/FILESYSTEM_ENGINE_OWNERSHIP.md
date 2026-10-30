@@ -39,10 +39,16 @@ rather than falling back to a private parser. Qualification must check the
 resulting media with independent external evidence as well as its own
 module's verifier.
 
-Known remaining locally compiled format engines: exFAT defragmentation and
-FFS defragmentation/Test Media creation and population. Their SOs do not yet
-expose sufficient equivalent mutation/recovery interfaces, so neither can
-be deleted or claimed migrated without validated replacement functionality.
+The exFAT defragmentation implementation is now owned and compiled exclusively
+by Filesystem-exFAT/exFAT.so. Defragmenter's exFAT worker is a verified
+ABI-dispatch host with no local parser, allocator, relayout or journal;
+missing or incompatible exFAT.so fails closed. The module exposes both the
+V5 Test Media file/format contract and its separate defrag V1 contract.
+
+Known remaining locally compiled Amiga format engine: FFS defragmentation
+and Test Media formatting/population. FFS.so is currently a read-only adapter;
+the locally compiled implementation must not be removed until an equivalent
+write/defrag/recovery/format ABI and independent tests exist.
 
 FAT12/16/32 Test Media calls the matching SO's V4 formatter and V3 file
 APIs. Interleaved appends manufacture the existing 200 MiB fragmented corpus

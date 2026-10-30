@@ -395,31 +395,17 @@ if(BUILD_TESTING AND OFS_DEFRAG_TEST_MODULE_PARENT)
         defragmenter-fs-host-services defragmenter-filesystem-module-test-host)
 endif()
 
-add_library(defragmenter-exfat-native STATIC
-    gui/filesystems/exfat/native/exfat_common.c
-    gui/filesystems/exfat/native/exfat_plan.c
-    gui/filesystems/exfat/native/exfat_relayout.c)
-target_include_directories(defragmenter-exfat-native PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/exfat/native"
-    "${LD_GENERATED_DIR}")
-target_compile_options(defragmenter-exfat-native PRIVATE ${LD_WARNING_FLAGS})
-target_compile_definitions(defragmenter-exfat-native PRIVATE
-    _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-target_link_libraries(defragmenter-exfat-native PUBLIC
-    defragmenter-core OpenSSL::Crypto)
-
-add_executable(defragmenter-exfat-worker
-    gui/filesystems/exfat/native/exfat_worker.c)
+# The canonical exFAT.so owns the filesystem's analyser, allocation planner,
+# relayout, journal and recovery. Only the trusted, format-neutral host remains.
+add_executable(defragmenter-exfat-worker native/exfat_module_loader.c)
 target_include_directories(defragmenter-exfat-worker PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/exfat/native"
-    "${LD_GENERATED_DIR}")
+    "${CMAKE_CURRENT_SOURCE_DIR}/native"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core" "${LD_GENERATED_DIR}")
 target_compile_options(defragmenter-exfat-worker PRIVATE ${LD_WARNING_FLAGS})
-target_compile_definitions(defragmenter-exfat-worker PRIVATE
-    _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+target_compile_definitions(defragmenter-exfat-worker PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(defragmenter-exfat-worker PRIVATE
-    defragmenter-exfat-native defragmenter-core OpenSSL::Crypto)
+    defragmenter-fs-host-services defragmenter-filesystem-module-host)
+set(EXFAT_WORKER_FOR_TESTS "$<TARGET_FILE:defragmenter-exfat-worker>")
 
 add_library(defragmenter-affs-native STATIC
     gui/filesystems/affs/native/affs_native.c)
@@ -476,6 +462,16 @@ if(BUILD_TESTING AND OFS_DEFRAG_TEST_MODULE_PARENT)
         _FILE_OFFSET_BITS=64 _GNU_SOURCE IFS_MODULE_TESTING)
     target_link_libraries(defragmenter-filesystem-module-test-host PUBLIC
         defragmenter-core OpenSSL::Crypto ${CMAKE_DL_LIBS})
+    # Test-only SO lookup is isolated from the installed /System/Filesystems.
+    add_executable(defragmenter-exfat-test-worker native/exfat_module_loader.c)
+    target_include_directories(defragmenter-exfat-test-worker PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/native"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/core" "${LD_GENERATED_DIR}")
+    target_compile_options(defragmenter-exfat-test-worker PRIVATE ${LD_WARNING_FLAGS})
+    target_compile_definitions(defragmenter-exfat-test-worker PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+    target_link_libraries(defragmenter-exfat-test-worker PRIVATE
+        defragmenter-fs-host-services defragmenter-filesystem-module-test-host)
+    set(EXFAT_WORKER_FOR_TESTS "$<TARGET_FILE:defragmenter-exfat-test-worker>")
     add_executable(defragmenter-affs-test-worker
         gui/filesystems/affs/native/affs_worker.c)
     target_include_directories(defragmenter-affs-test-worker PRIVATE

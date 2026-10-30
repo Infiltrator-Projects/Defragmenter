@@ -79,18 +79,21 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: Infiltrator-Projects/Filesystem-exFAT
-          ref: 7427ab3edb112dcbf48e92d19d22d4eaf3e203e4
+          ref: 874906164600309de184f9de734091c48ac5b23d
           path: ci-exfat
 
       - name: Build canonical exFAT.so and validate V5 module ABI
         run: |
           set -euo pipefail
           src="$GITHUB_WORKSPACE/ci-exfat"
-          test "$(cat shared/exfat-module-revision)" = "7427ab3edb112dcbf48e92d19d22d4eaf3e203e4"
+          test "$(cat shared/exfat-module-revision)" = "874906164600309de184f9de734091c48ac5b23d"
           sed 's|#include "../../fat/portable/fatfs_module.h"|#include "fat_module_abi.h"|' "$src/native/filesystems/exfat/module/exfat_api.h" |
             cmp native/exfat_module_abi.h -
-          make -C "$src" OUT="$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB" all
+          # Build the *unified* module, not the legacy V5-only Makefile target.
+          cmake -S "$src" -B "$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=OFF
+          cmake --build "$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB" --target exfat-unified -j2
           nm -D "$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB/exFAT.so" | grep -F 'infiltrator_filesystem_module_v5'
+          nm -D "$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB/exFAT.so" | grep -F 'infiltrator_filesystem_exfat_defrag_v1'
           install -m 0644 "$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB/exFAT.so" \
             "$PWD/build/fat-module-test/Filesystems/exFAT.so"
 
@@ -579,18 +582,21 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: Infiltrator-Projects/Filesystem-exFAT
-          ref: 7427ab3edb112dcbf48e92d19d22d4eaf3e203e4
+          ref: 874906164600309de184f9de734091c48ac5b23d
           path: ci-exfat
 
       - name: Build canonical exFAT.so and validate V5 module ABI (sanitizer host)
         run: |
           set -euo pipefail
           src="$GITHUB_WORKSPACE/ci-exfat"
-          test "$(cat shared/exfat-module-revision)" = "7427ab3edb112dcbf48e92d19d22d4eaf3e203e4"
+          test "$(cat shared/exfat-module-revision)" = "874906164600309de184f9de734091c48ac5b23d"
           sed 's|#include "../../fat/portable/fatfs_module.h"|#include "fat_module_abi.h"|' "$src/native/filesystems/exfat/module/exfat_api.h" |
             cmp native/exfat_module_abi.h -
-          make -C "$src" OUT="$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB" all
+          # Build the *unified* module, not the legacy V5-only Makefile target.
+          cmake -S "$src" -B "$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=OFF
+          cmake --build "$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB" --target exfat-unified -j2
           nm -D "$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB/exFAT.so" | grep -F 'infiltrator_filesystem_module_v5'
+          nm -D "$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB/exFAT.so" | grep -F 'infiltrator_filesystem_exfat_defrag_v1'
           install -m 0644 "$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB/exFAT.so" \
             "$PWD/build-sanitize/fat-module-test/Filesystems/exFAT.so"
 

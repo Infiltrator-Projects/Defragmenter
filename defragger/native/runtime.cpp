@@ -302,8 +302,8 @@ const std::vector<BackendInfo>& backend_registry() {
             "exfat-native", MapAdapter::Exfat,
             standard_write_ops(
                 "exfat-native",
-                "exFAT writing uses Defragmenter's offline native C raw engine. No exFAT filesystem driver, mount, filesystem ioctl or external filesystem utility is used.",
-                "exFAT Growth Defrag uses the same native C raw engine and leaves an exact 10% free-cluster reserve after every regular file.")});
+                "exFAT writing is dispatched to the independently installed exFAT.so; the application has no private exFAT parser, allocator or journal.",
+                "exFAT Growth Defrag runs in exFAT.so and reserves 10% free clusters after each regular file.")});
         result.push_back({
             "ext4", "ext2/3/4", {"ext2", "ext3", "ext4"}, write, "exact",
             "ext-native", MapAdapter::Ext, standard_write_ops("ext-native"),
