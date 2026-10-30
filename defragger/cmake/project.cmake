@@ -336,9 +336,13 @@ find_package(SQLite3 REQUIRED)
 # native/xfs_module_loader.c and test_media/test_media_xfs_module.c.
 file(GLOB_RECURSE LD_EMBEDDED_XFS_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/xfs/native/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/xfs/native/*.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/test_media/test_media_raw_xfs.c")
 if(LD_EMBEDDED_XFS_SOURCES)
     message(FATAL_ERROR "XFS filesystem implementation must be in Filesystem-XFS/XFS.so, never in Defragmenter")
+endif()
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test_media/test_media_raw_ntfs.c")
+    message(FATAL_ERROR "NTFS filesystem codec must be in Filesystem-NTFS/NTFS.so, never in Defragmenter")
 endif()
 
 # EXT2/3/4 production parsing, allocation accounting and mapping mutation are
