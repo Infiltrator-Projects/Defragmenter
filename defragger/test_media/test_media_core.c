@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "test_media.h"
+#include "test_media_raw.h"
 
 #include "infiltratr/core.h"
 #include "infiltratr/posix.h"
