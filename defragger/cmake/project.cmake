@@ -364,6 +364,17 @@ target_compile_definitions(defragmenter-ext-worker PRIVATE _FILE_OFFSET_BITS=64 
 target_link_libraries(defragmenter-ext-worker PRIVATE
     defragmenter-fs-host-services defragmenter-filesystem-module-host)
 
+if(BUILD_TESTING AND OFS_DEFRAG_TEST_MODULE_PARENT)
+    add_executable(defragmenter-ext-test-worker native/ext_module_loader.c)
+    target_include_directories(defragmenter-ext-test-worker PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/native"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/core" "${LD_GENERATED_DIR}")
+    target_compile_options(defragmenter-ext-test-worker PRIVATE ${LD_WARNING_FLAGS})
+    target_compile_definitions(defragmenter-ext-test-worker PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+    target_link_libraries(defragmenter-ext-test-worker PRIVATE
+        defragmenter-fs-host-services defragmenter-filesystem-module-test-host)
+endif()
+
 # NTFS implementations are now owned by independent NTFS.so.
 add_executable(defragmenter-ntfs-worker native/ntfs_module_loader.c)
 target_include_directories(defragmenter-ntfs-worker PRIVATE

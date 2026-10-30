@@ -35,7 +35,7 @@ jobs:
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
             -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build/modules" -DLD_ENABLE_WERROR=ON
           cmake --build build --parallel 2 --target \
-            defragmenter-ext-worker defragmenter-ext-metadata-worker defragmenter-test-media-raw-test
+            defragmenter-ext-worker defragmenter-ext-test-worker defragmenter-ext-metadata-worker defragmenter-test-media-raw-test
       - name: Reject internal filesystem fallback and verify module dispatch
         run: |
           set -euo pipefail
@@ -46,18 +46,18 @@ jobs:
           mkdir -p build/modules/Filesystems build/missing/Filesystems
           install -m 0644 /tmp/ext-so/EXT{2,3,4}.so build/modules/Filesystems/
           export IFS_TEST_MODULE_PARENT="$PWD/build/modules"
-          build/defragmenter-ext-worker --version | grep -F 'defragmenter-ext-worker'
+          build/defragmenter-ext-test-worker --version | grep -F 'defragmenter-ext-worker'
           build/defragmenter-ext-metadata-worker --version | grep -F 'defragmenter-ext-worker' || true
           build/defragmenter-test-media-raw-test create ext2 build/ext2-test.img
           build/defragmenter-test-media-raw-test verify ext2 build/ext2-test.img
-          build/defragmenter-ext-worker identify "$PWD/build/ext2-test.img" | grep -F '"ext2"'
+          build/defragmenter-ext-test-worker identify "$PWD/build/ext2-test.img" | grep -F '"ext2"'
           build/defragmenter-test-media-raw-test create ext3 build/ext3-test.img
           build/defragmenter-test-media-raw-test verify ext3 build/ext3-test.img
-          build/defragmenter-ext-worker identify "$PWD/build/ext3-test.img" | grep -F '"ext3"'
+          build/defragmenter-ext-test-worker identify "$PWD/build/ext3-test.img" | grep -F '"ext3"'
           build/defragmenter-test-media-raw-test create ext4 build/ext4-test.img
           build/defragmenter-test-media-raw-test verify ext4 build/ext4-test.img
-          build/defragmenter-ext-worker identify "$PWD/build/ext4-test.img" | grep -F '"ext4"'
-          if IFS_TEST_MODULE_PARENT="$PWD/build/missing" build/defragmenter-ext-worker --version; then
+          build/defragmenter-ext-test-worker identify "$PWD/build/ext4-test.img" | grep -F '"ext4"'
+          if IFS_TEST_MODULE_PARENT="$PWD/build/missing" build/defragmenter-ext-test-worker --version; then
             echo "ERROR: EXT worker ran without independent EXT4.so" >&2
             exit 1
           fi
