@@ -54,6 +54,13 @@ jobs:
           path: ci-filesystems
           submodules: true
 
+      - name: Check out the qualifying standalone FAT32 driver
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-FAT32
+          ref: 8b9e98c1ba20976f11ef674408671749c1bdc36d
+          path: ci-fat32
+
       - name: Build the FAT modules for isolated tests
         run: |
           set -euo pipefail
@@ -64,6 +71,11 @@ jobs:
           cmake --build "$RUNNER_TEMP/filesystems-fat-$GITHUB_RUN_ID-$GITHUB_JOB" --target filesystems-fat12-module filesystems-fat16-module filesystems-fat32-module -j2
           install -d -m 0755 "$PWD/build/fat-module-test/Filesystems"
           install -m 0644 "$RUNNER_TEMP/filesystems-fat-$GITHUB_RUN_ID-$GITHUB_JOB"/FAT{12,16,32}.so "$PWD/build/fat-module-test/Filesystems/"
+          # New FAT32 Test Media must consume the independently owned FAT32.so,
+          # not an older FAT32 test module bundled into Filesystems.
+          cmp native/fat_defrag_abi.h "$GITHUB_WORKSPACE/ci-fat32/native/filesystems/fat/defrag/fat_defrag_abi.h"
+          python3 "$GITHUB_WORKSPACE/ci-fat32/standalone/build.py" \
+            --profile portable --output "$PWD/build/fat-module-test/Filesystems/FAT32.so" --check
 
       - name: Read the OFS module test revision
         id: ofs_revision
@@ -219,6 +231,13 @@ jobs:
           path: ci-filesystems
           submodules: true
 
+      - name: Check out the qualifying standalone FAT32 driver
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-FAT32
+          ref: 8b9e98c1ba20976f11ef674408671749c1bdc36d
+          path: ci-fat32
+
       - name: Build the FAT modules for isolated tests
         run: |
           set -euo pipefail
@@ -231,6 +250,20 @@ jobs:
           cmake --build "$RUNNER_TEMP/filesystems-fat-$GITHUB_RUN_ID-$GITHUB_JOB" --target filesystems-fat12-module filesystems-fat16-module filesystems-fat32-module -j2
           install -d -m 0755 "$PWD/build-sanitize/fat-module-test/Filesystems"
           install -m 0644 "$RUNNER_TEMP/filesystems-fat-$GITHUB_RUN_ID-$GITHUB_JOB"/FAT{12,16,32}.so "$PWD/build-sanitize/fat-module-test/Filesystems/"
+          # Instrument the exact standalone FAT32 implementation under test.
+          cmp native/fat_defrag_abi.h "$GITHUB_WORKSPACE/ci-fat32/native/filesystems/fat/defrag/fat_defrag_abi.h"
+          IFS_FAT32_SOURCE="$GITHUB_WORKSPACE/ci-fat32" python3 - <<'PY'
+          import os, sys
+          from pathlib import Path
+          sys.path.insert(0, os.environ['IFS_FAT32_SOURCE'] + '/standalone')
+          import build
+          build.compile_module(Path('build-sanitize/fat-module-test/Filesystems/FAT32.so').resolve(),
+              ['-std=c11', '-O1', '-g', '-fPIC', '-mno-red-zone',
+               '-fno-builtin', '-fno-tree-loop-distribute-patterns', '-ffreestanding',
+               '-D_GNU_SOURCE', '-D_FILE_OFFSET_BITS=64', '-DIFS_FATFS_ONLY=32',
+               '-DIFS_FAT32_INDEPENDENT=1', '-DIFS_FAT_DEFRAG_BITS=32',
+               '-fsanitize=address,undefined', '-fno-omit-frame-pointer'], training=True)
+          PY
 
       - name: Read the OFS module test revision
         id: ofs_revision
