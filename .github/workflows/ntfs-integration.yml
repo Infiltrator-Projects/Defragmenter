@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Infiltrator-Projects/Filesystem-NTFS
-          ref: ad3aa8344162a48369858cfe7d3082669ffec310
+          ref: 6fb4cb4444add9459605b74432c089f9ed8aa3ed
           path: ci-ntfs
       - name: Build NTFS.so and verify export and contract
         run: |
