@@ -643,9 +643,9 @@ int main(void) {
     CHECK(strcmp(ldtm_creator_display_name(fat12), "Filesystem driver") == 0);
     CHECK(strcmp(ldtm_creator_display_name(ofs), "Filesystem driver") == 0);
     CHECK(strcmp(ldtm_creator_display_name(ffs), "Filesystem driver") == 0);
-    CHECK(strcmp(ldtm_creator_display_name(sfs), "Built-in native") == 0);
-    CHECK(strcmp(ldtm_creator_display_name(pfs3), "Built-in native") == 0);
-    CHECK(strcmp(ldtm_creator_display_name(apfs), "Built-in native") == 0);
+    CHECK(strcmp(ldtm_creator_display_name(sfs), "Filesystem driver") == 0);
+    CHECK(strcmp(ldtm_creator_display_name(pfs3), "Filesystem driver") == 0);
+    CHECK(strcmp(ldtm_creator_display_name(apfs), "Filesystem driver") == 0);
     CHECK(strcmp(ldtm_creator_display_name(NULL), "Unavailable") == 0);
     CHECK(strstr(sfs->note, "SFS0") != NULL &&
           strstr(sfs->note, "200 MiB heterogeneous") != NULL);
