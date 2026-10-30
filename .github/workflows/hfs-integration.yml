@@ -1,0 +1,83 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Verify independent classic HFS integration
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  hfs-integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config \
+            libgtk-3-dev libssl-dev libsqlite3-dev libext2fs-dev
+      - uses: actions/checkout@v4
+        with:
+          repository: Infiltrator-Projects/Filesystem-HFS
+          ref: 2f6fb99f60b57227da5c21fc3d7dc1b44468f6a6
+          path: ci-hfs
+      - name: Build HFS.so and test ABI
+        run: |
+          cmake -S ci-hfs -B /tmp/hfs-so -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          cmake --build /tmp/hfs-so --parallel 2
+          ctest --test-dir /tmp/hfs-so --output-on-failure
+      - name: Build original Defragmenter host and Test Media
+        run: |
+          set -euo pipefail
+          cd defragger
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build/modules" \
+            -DLD_ENABLE_WERROR=ON
+          cmake --build build --parallel 2 --target \
+            defragmenter-hfs-worker defragmenter-hfs-test-worker \
+            defragmenter-test-media-raw-test defragmenter-mapper-cpp
+      - name: Exercise classic HFS Defrag, Growth, Recover and Test Media
+        run: |
+          set -euo pipefail
+          cd defragger
+          mkdir -p build/modules/Filesystems
+          install -m 0644 /tmp/hfs-so/HFS.so build/modules/Filesystems/HFS.so
+          cmp native/ifs_hfs_module_v1.h ../ci-hfs/include/ifs_hfs_module_v1.h
+          cmp test_media/ifs_hfs_fixture_v1.h ../ci-hfs/include/ifs_hfs_fixture_v1.h
+          cmp native/ifs_defrag_services_v1.h ../ci-hfs/include/ifs_defrag_services_v1.h
+          export IFS_TEST_MODULE_PARENT="$PWD/build/modules"
+          export DEFRAGMENTER_HFS_WORKER="$PWD/build/defragmenter-hfs-test-worker"
+          export DEFRAGMENTER_BUILD_DIR="$PWD/build"
+          "$DEFRAGMENTER_HFS_WORKER" --version
+          python3 tests/test_hfs_native.py
+          build/defragmenter-test-media-raw-test create hfs build/hfs-test-media.img
+          build/defragmenter-test-media-raw-test verify hfs build/hfs-test-media.img
+          build/defragmenter-mapper build/hfs-test-media.img --fstype hfs --cells 8 > build/hfs-map.json
+          python3 - <<'PY'
+          import json
+          with open('build/hfs-map.json',encoding='utf-8') as f:
+              m=json.load(f)
+          assert m['filesystem']=='hfs',m
+          assert m['map_accuracy']=='exact',m
+          assert m.get('unknown_bytes',1)==0,m
+          PY
+      - name: Fail closed when trusted HFS.so is absent
+        run: |
+          set -euo pipefail
+          cd defragger
+          mkdir -p build/missing/Filesystems
+          if IFS_TEST_MODULE_PARENT="$PWD/build/missing" \
+            build/defragmenter-hfs-test-worker --version; then
+            echo "HFS worker fell back without HFS.so" >&2
+            exit 1
+          fi
+          before="$(stat -c '%Y:%s' build/hfs-test-media.img)"
+          if IFS_TEST_MODULE_PARENT="$PWD/build/missing" \
+            build/defragmenter-test-media-raw-test recreate hfs build/hfs-test-media.img; then
+            echo "HFS Test Media fell back without HFS.so" >&2
+            exit 1
+          fi
+          test "$before" = "$(stat -c '%Y:%s' build/hfs-test-media.img)"
