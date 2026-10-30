@@ -296,31 +296,28 @@ if(BUILD_TESTING AND FAT_DEFRAG_TEST_MODULE_PARENT)
     set(FAT_WORKER_FOR_TESTS "$<TARGET_FILE:defragmenter-fat-test-worker>")
 endif()
 
-# APFS exact bounded analysis and the fail-closed offline staged writer share
-# one native checkpoint/spaceman/catalog implementation.
-add_library(defragmenter-apfs-native STATIC
-    gui/filesystems/apfs/native/apfs_native.c)
-target_include_directories(defragmenter-apfs-native PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/apfs/native"
-    "${LD_GENERATED_DIR}")
-target_compile_options(defragmenter-apfs-native PRIVATE ${LD_WARNING_FLAGS})
-target_compile_definitions(defragmenter-apfs-native PRIVATE
-    _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-target_link_libraries(defragmenter-apfs-native PUBLIC defragmenter-core)
-
-add_executable(defragmenter-apfs-worker
-    gui/filesystems/apfs/native/apfs_worker.c)
+# Only APFS.so owns APFS filesystem analysis, staged writes and recovery.
+add_executable(defragmenter-apfs-worker native/apfs_module_loader.c)
 target_include_directories(defragmenter-apfs-worker PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/apfs/native"
-    "${LD_GENERATED_DIR}")
+ "${CMAKE_CURRENT_SOURCE_DIR}/native" "${CMAKE_CURRENT_SOURCE_DIR}/src/core" "${LD_GENERATED_DIR}")
 target_compile_options(defragmenter-apfs-worker PRIVATE ${LD_WARNING_FLAGS})
-target_compile_definitions(defragmenter-apfs-worker PRIVATE
-    _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-target_link_libraries(defragmenter-apfs-worker PRIVATE
-    defragmenter-apfs-native defragmenter-core OpenSSL::Crypto)
-
+target_compile_definitions(defragmenter-apfs-worker PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+target_link_libraries(defragmenter-apfs-worker PRIVATE defragmenter-fs-host-services defragmenter-filesystem-module-host)
+if(BUILD_TESTING AND OFS_DEFRAG_TEST_MODULE_PARENT)
+ add_executable(defragmenter-apfs-test-worker native/apfs_module_loader.c)
+ target_include_directories(defragmenter-apfs-test-worker PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/native" "${CMAKE_CURRENT_SOURCE_DIR}/src/core" "${LD_GENERATED_DIR}")
+ target_compile_options(defragmenter-apfs-test-worker PRIVATE ${LD_WARNING_FLAGS})
+ target_compile_definitions(defragmenter-apfs-test-worker PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+ target_link_libraries(defragmenter-apfs-test-worker PRIVATE defragmenter-fs-host-services defragmenter-filesystem-module-test-host)
+endif()
+set(APFS_NATIVE_TEST_SOURCE_DIR "" CACHE PATH "Independent APFS source checkout for test oracles")
+if(BUILD_TESTING AND APFS_NATIVE_TEST_SOURCE_DIR)
+ add_library(defragmenter-apfs-fixture-native STATIC "${APFS_NATIVE_TEST_SOURCE_DIR}/native/apfs_native.c")
+ target_include_directories(defragmenter-apfs-fixture-native PUBLIC "${APFS_NATIVE_TEST_SOURCE_DIR}/native" "${CMAKE_CURRENT_SOURCE_DIR}/src/core")
+ target_compile_options(defragmenter-apfs-fixture-native PRIVATE ${LD_WARNING_FLAGS})
+ target_compile_definitions(defragmenter-apfs-fixture-native PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+ target_link_libraries(defragmenter-apfs-fixture-native PUBLIC defragmenter-core)
+endif()
 
 # Minix exact analysis, offline staging, mutation and recovery are native C.
 add_library(defragmenter-minix-native STATIC
@@ -711,16 +708,17 @@ if(BUILD_TESTING)
         ENVIRONMENT "DEFRAGMENTER_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}"
         TIMEOUT 180)
 
+    if(APFS_NATIVE_TEST_SOURCE_DIR)
     add_executable(defragmenter-apfs-native-test
         tests/test_apfs_native.c)
     target_include_directories(defragmenter-apfs-native-test PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/apfs/native"
+        "${APFS_NATIVE_TEST_SOURCE_DIR}/native"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/core" "${LD_GENERATED_DIR}")
     target_compile_options(defragmenter-apfs-native-test PRIVATE ${LD_WARNING_FLAGS})
     target_compile_definitions(defragmenter-apfs-native-test PRIVATE
         _FILE_OFFSET_BITS=64 _GNU_SOURCE)
     target_link_libraries(defragmenter-apfs-native-test PRIVATE
-        defragmenter-apfs-native defragmenter-core)
+        defragmenter-apfs-fixture-native defragmenter-core)
     add_test(NAME defragmenter-apfs-native COMMAND defragmenter-apfs-native-test)
     add_test(NAME defragmenter-apfs-native-integration
         COMMAND "${LD_HELPER_TEST_PYTHON}"
@@ -729,6 +727,7 @@ if(BUILD_TESTING)
         ENVIRONMENT "DEFRAGMENTER_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}"
         TIMEOUT 120)
 
+    endif()
     add_executable(defragmenter-minix-native-test
         tests/test_minix_native.c)
     target_include_directories(defragmenter-minix-native-test PRIVATE
