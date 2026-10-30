@@ -360,13 +360,13 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: Infiltrator-Projects/Filesystem-UFS2
-          ref: 405dee822b354c898790751f1e91fac98b5cd9f3
+          ref: 8f3514883827d2a72e65c2f45580e937571e0372
           path: ci-ufs
       - name: Check out independent UFS1.so
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: Infiltrator-Projects/Filesystem-UFS1
-          ref: cdbe844e7ecea66925a0d161eeea1b12bf58a6dc
+          ref: 6aff3c06c6bf2d1b94fb12bc690da841e37e76a2
           path: ci-ufs1
 
       - name: Build and qualify UFS2.so and the first-party formatter
@@ -885,13 +885,13 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: Infiltrator-Projects/Filesystem-UFS2
-          ref: 405dee822b354c898790751f1e91fac98b5cd9f3
+          ref: 8f3514883827d2a72e65c2f45580e937571e0372
           path: ci-ufs
       - name: Check out independent UFS1.so
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: Infiltrator-Projects/Filesystem-UFS1
-          ref: cdbe844e7ecea66925a0d161eeea1b12bf58a6dc
+          ref: 6aff3c06c6bf2d1b94fb12bc690da841e37e76a2
           path: ci-ufs1
 
       - name: Instrument first-party UFS2.so and formatting engine
