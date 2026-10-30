@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Verify independent XFS integration
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  xfs-integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install compiler and native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config \
+            libgtk-3-dev libssl-dev libsqlite3-dev libext2fs-dev
+      - uses: actions/checkout@v4
+        with:
+          repository: Infiltrator-Projects/Filesystem-XFS
+          ref: fb3ef50c0d79bffd0341cade94cf6ce217b3a74f
+          path: ci-xfs
+      - name: Build XFS.so and verify its interface
+        run: |
+          cmake -S ci-xfs -B /tmp/xfs-so -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          cmake --build /tmp/xfs-so --parallel 2
+          ctest --test-dir /tmp/xfs-so --output-on-failure
+      - name: Compile actual Defragmenter XFS loader
+        run: |
+          cd defragger
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build/modules" -DLD_ENABLE_WERROR=ON
+          cmake --build build --parallel 2 --target defragmenter-xfs-worker defragmenter-xfs-test-worker
+      - name: Verify module dispatch and reject missing driver
+        run: |
+          set -euo pipefail
+          cd defragger
+          mkdir -p build/modules/Filesystems
+          install -m 0644 /tmp/xfs-so/XFS.so build/modules/Filesystems/XFS.so
+          cmp native/ifs_xfs_module_v1.h ../ci-xfs/include/ifs_xfs_module_v1.h
+          cmp native/ifs_defrag_services_v1.h ../ci-xfs/include/ifs_defrag_services_v1.h
+          IFS_TEST_MODULE_PARENT="$PWD/build/modules" build/defragmenter-xfs-test-worker --version | grep -F '1.0.0'
+          mkdir -p build/missing/Filesystems
+          if IFS_TEST_MODULE_PARENT="$PWD/build/missing" build/defragmenter-xfs-test-worker --version; then
+             echo "ERROR: XFS used an internal engine" >&2; exit 1
+          fi

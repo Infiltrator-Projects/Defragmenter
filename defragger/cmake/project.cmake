@@ -532,17 +532,26 @@ if(BUILD_TESTING AND OFS_DEFRAG_TEST_MODULE_PARENT)
         defragmenter-fs-host-services defragmenter-filesystem-module-test-host)
 endif()
 
-add_executable(defragmenter-xfs-worker
-    gui/filesystems/xfs/native/xfs_worker.c)
+# The native XFS engine runs inside XFS.so; Defragmenter owns only
+# trusted module discovery and filesystem-neutral host safety services.
+add_executable(defragmenter-xfs-worker native/xfs_module_loader.c)
 target_include_directories(defragmenter-xfs-worker PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/xfs/native"
+    "${CMAKE_CURRENT_SOURCE_DIR}/native" "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
     "${LD_GENERATED_DIR}")
 target_compile_options(defragmenter-xfs-worker PRIVATE ${LD_WARNING_FLAGS})
-target_compile_definitions(defragmenter-xfs-worker PRIVATE
-    _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+target_compile_definitions(defragmenter-xfs-worker PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(defragmenter-xfs-worker PRIVATE
-    defragmenter-xfs-native defragmenter-core SQLite::SQLite3 OpenSSL::Crypto)
+    defragmenter-filesystem-module-host defragmenter-fs-host-services)
+if(BUILD_TESTING AND OFS_DEFRAG_TEST_MODULE_PARENT)
+    add_executable(defragmenter-xfs-test-worker native/xfs_module_loader.c)
+    target_include_directories(defragmenter-xfs-test-worker PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/native" "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
+        "${LD_GENERATED_DIR}")
+    target_compile_options(defragmenter-xfs-test-worker PRIVATE ${LD_WARNING_FLAGS})
+    target_compile_definitions(defragmenter-xfs-test-worker PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+    target_link_libraries(defragmenter-xfs-test-worker PRIVATE
+        defragmenter-filesystem-module-test-host defragmenter-fs-host-services)
+endif()
 
 # Classic HFS belongs to the independent trusted HFS.so.
 # The executable retains its original hfs_analyser name for compatibility.
