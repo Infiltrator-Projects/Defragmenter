@@ -334,9 +334,12 @@ int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
         return 0;
     }
     if (spec->creator == LDTM_CREATOR_APFS) {
-        (void)snprintf(detail, detail_capacity,
-                       "Built-in raw C creator + payload verifier: bounded APFS checkpoint/spaceman/flat-tree fixture");
-        return 1;
+        extern int ldtm_apfs_module_available(void);
+        const int ready=ldtm_apfs_module_available();
+        (void)snprintf(detail,detail_capacity,"%s",ready ?
+            "APFS.so ready to format and verify disposable media." :
+            "Install or update the APFS filesystem driver before creating test media.");
+        return ready;
     }
     if (spec->creator == LDTM_CREATOR_MANUAL) {
         (void)snprintf(detail, detail_capacity, "Reserved: %s", spec->note);
@@ -353,6 +356,7 @@ int ldtm_required_modules_available(char *detail, size_t detail_capacity) {
         if ((spec->creator == LDTM_CREATOR_FAT12 || spec->creator == LDTM_CREATOR_FAT16 ||
              strcmp(spec->key, "ofs") == 0 || strcmp(spec->key, "sfs") == 0 ||
              spec->creator == LDTM_CREATOR_PFS3 ||
+             spec->creator == LDTM_CREATOR_APFS ||
              spec->creator == LDTM_CREATOR_SWAP ||
              spec->creator == LDTM_CREATOR_ZFS) &&
             !ldtm_spec_creator_available(spec, detail, detail_capacity)) return 0;

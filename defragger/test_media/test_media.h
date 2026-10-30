@@ -96,6 +96,7 @@ int ldtm_format_pfs3_volume(const char *path);
 int ldtm_populate_pfs3_volume(const char *path,const LdtmFragmentProfile *profile);
 int ldtm_verify_pfs3_payload(const char *path,const LdtmFragmentProfile *profile,char *detail,size_t capacity);
 int ldtm_verify_pfs3_payload_after_defrag(const char *path,const LdtmFragmentProfile *profile,char *detail,size_t capacity);
+int ldtm_apfs_module_available(void);
 int ldtm_format_apfs_volume(const char *path);
 int ldtm_verify_apfs_payload(const char *path,
                              char *detail, size_t detail_capacity);
