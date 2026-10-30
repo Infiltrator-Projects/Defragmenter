@@ -109,6 +109,24 @@ jobs:
           cmp native/ifs_swap_module_v1.h "$GITHUB_WORKSPACE/ci-swap/include/ifs_swap_module_v1.h"
           install -m 0644 "$RUNNER_TEMP/ifs-swap-$GITHUB_RUN_ID-$GITHUB_JOB/SWAP.so" "$PWD/build/fat-module-test/Filesystems/SWAP.so"
 
+      - name: Check out independently qualified ZFS.so source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-ZFS
+          ref: 38c520ad85fb061619ce7869f045e94fd5680359
+          path: ci-zfs
+
+      - name: Build ZFS.so and qualify its interface before Defragmenter
+        run: |
+          set -euo pipefail
+          zfs="$GITHUB_WORKSPACE/ci-zfs"
+          cmake -S "$zfs" -B "$RUNNER_TEMP/zfs-native-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=ON
+          cmake --build "$RUNNER_TEMP/zfs-native-$GITHUB_RUN_ID-$GITHUB_JOB" --target zfs-driver zfs-native-test zfs-module-test -j2
+          ctest --test-dir "$RUNNER_TEMP/zfs-native-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
+          cmp native/ifs_zfs_module_v1.h "$zfs/include/ifs_zfs_module_v1.h"
+          cmp test_media/ifs_zfs_fixture_v1.h "$zfs/include/ifs_zfs_fixture_v1.h"
+          install -m 0644 "$RUNNER_TEMP/zfs-native-$GITHUB_RUN_ID-$GITHUB_JOB/ZFS.so" "$PWD/build/fat-module-test/Filesystems/ZFS.so"
+
       - name: Detect explicit release intent
         id: release_intent
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -168,6 +186,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/defragger/tests
           DEFRAGMENTER_BUILD_DIR: ${{ github.workspace }}/defragger/build
           DEFRAGMENTER_SWAP_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-swap-test-worker
+          DEFRAGMENTER_ZFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-zfs-test-worker
           IFS_TEST_MODULE_PARENT: ${{ github.workspace }}/defragger/build/fat-module-test
           DEFRAGMENTER_AFFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-affs-test-worker
         run: |
@@ -324,6 +343,25 @@ jobs:
           cmp native/ifs_swap_module_v1.h "$GITHUB_WORKSPACE/ci-swap/include/ifs_swap_module_v1.h"
           install -m 0644 "$RUNNER_TEMP/ifs-swap-san-$GITHUB_RUN_ID-$GITHUB_JOB/SWAP.so" "$PWD/build-sanitize/fat-module-test/Filesystems/SWAP.so"
 
+      - name: Check out exact ZFS.so driver for sanitizers
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-ZFS
+          ref: 38c520ad85fb061619ce7869f045e94fd5680359
+          path: ci-zfs
+
+      - name: Build instrumented native ZFS.so without external mkfs
+        run: |
+          set -euo pipefail
+          zfs="$GITHUB_WORKSPACE/ci-zfs"
+          cmake -S "$zfs" -B "$RUNNER_TEMP/zfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=OFF \
+            -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
+            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
+          cmake --build "$RUNNER_TEMP/zfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target zfs-driver -j2
+          cmp native/ifs_zfs_module_v1.h "$zfs/include/ifs_zfs_module_v1.h"
+          cmp test_media/ifs_zfs_fixture_v1.h "$zfs/include/ifs_zfs_fixture_v1.h"
+          install -m 0644 "$RUNNER_TEMP/zfs-san-$GITHUB_RUN_ID-$GITHUB_JOB/ZFS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/ZFS.so"
+
       - name: Build with AddressSanitizer and UndefinedBehaviorSanitizer
         run: |
           cmake -S . -B build-sanitize \
@@ -344,6 +382,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/defragger/tests
           DEFRAGMENTER_BUILD_DIR: ${{ github.workspace }}/defragger/build-sanitize
           DEFRAGMENTER_SWAP_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-swap-test-worker
+          DEFRAGMENTER_ZFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-zfs-test-worker
           IFS_TEST_MODULE_PARENT: ${{ github.workspace }}/defragger/build-sanitize/fat-module-test
           DEFRAGMENTER_AFFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-affs-test-worker
         run: |
