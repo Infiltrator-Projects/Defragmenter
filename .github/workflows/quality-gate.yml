@@ -98,7 +98,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: Infiltrator-Projects/Filesystem-Swap
-          ref: 744362f778f626c871cb52889ece4ea3b8a1bc92
+          ref: 72e7a4ccbb20df1fa05c1b3b5b52595882072ff1
           path: ci-swap
 
       - name: Build SWAP.so for isolated application and Test Media tests
@@ -311,7 +311,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: Infiltrator-Projects/Filesystem-Swap
-          ref: 744362f778f626c871cb52889ece4ea3b8a1bc92
+          ref: 72e7a4ccbb20df1fa05c1b3b5b52595882072ff1
           path: ci-swap
 
       - name: Instrument SWAP.so for isolated sanitizer tests
