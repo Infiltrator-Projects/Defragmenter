@@ -188,17 +188,17 @@ def main() -> None:
         "release.yml",
     }
 
-    # Qualification runs on main, not PR-only branches, and has two permanent
-    # self-hosted lanes. A VERSION change is the release signal; English commit
-    # wording is not part of the control plane. An unpublished VERSION persists
-    # across corrective commits. Main candidates retain serialized qualification
-    # and the exact-commit retry contract.
+    # Qualify PR changes before merge, but only main may create release intent.
+    # Main qualifications never cancel each other; only superseded PR checks
+    # may be cancelled. Two permanent self-hosted lanes remain mandatory.
+    # VERSION is the sole publication signal, independent of commit wording.
     assert "workflow_call:" in gate
     assert "push:" in gate and "- main" in gate
-    assert "pull_request:" not in gate
+    assert "pull_request:" in gate and "branches:" in gate
     assert "merge_group:" not in gate
-    assert "cancel-in-progress: false" in gate
+    assert "cancel-in-progress: ${{ github.event_name == 'pull_request' }}" in gate
     assert "cancel-in-progress: true" not in gate
+    assert "if: github.event_name == 'push' && github.ref == 'refs/heads/main'" in gate
     runner = "runs-on: [self-hosted, Linux, X64, linux-native, bigbedroom]"
     assert gate.count(runner) == 2
     assert "release_intent:" in gate
