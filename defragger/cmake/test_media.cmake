@@ -52,7 +52,6 @@ target_include_directories(defragmenter-test-media-core PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
     "${CMAKE_CURRENT_SOURCE_DIR}/native"
     "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/affs/native"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/pfs3/native"
     "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/apfs/native"
     "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/ufs/native"
     "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/zfs/native")
@@ -63,7 +62,7 @@ target_link_libraries(defragmenter-test-media-core PUBLIC
     OpenSSL::Crypto InfiltratrCommon::Common defragmenter-core defragmenter-filesystem-module-host defragmenter-fs-host-services)
 target_link_libraries(defragmenter-test-media-core PRIVATE
     defragmenter-affs-native
-    defragmenter-pfs3-native defragmenter-apfs-native
+    defragmenter-apfs-native
     defragmenter-ufs-native)
 target_link_libraries(defragmenter-test-media-core PRIVATE
     defragmenter-ext-native defragmenter-hfsplus-native
@@ -185,20 +184,20 @@ if(BUILD_TESTING)
     set_tests_properties(defragmenter-desktop-analysis PROPERTIES TIMEOUT 20)
     # This independent test directly calls SFS native routines; its engine
     # source comes ONLY from the pinned filesystem repository during CI.
-    if(SFS_NATIVE_TEST_SOURCE_DIR)
+    if(SFS_NATIVE_TEST_SOURCE_DIR AND PFS3_NATIVE_TEST_SOURCE_DIR)
     add_executable(defragmenter-test-media-test tests/test_test_media.c)
     target_include_directories(defragmenter-test-media-test PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/test_media"
         "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/affs/native"
         "${SFS_NATIVE_TEST_SOURCE_DIR}/native"
-        "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/pfs3/native"
+        "${PFS3_NATIVE_TEST_SOURCE_DIR}/native"
         "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/apfs/native")
     target_compile_options(defragmenter-test-media-test PRIVATE ${LD_WARNING_FLAGS})
     target_compile_definitions(defragmenter-test-media-test PRIVATE
         _FILE_OFFSET_BITS=64 _GNU_SOURCE)
     target_link_libraries(defragmenter-test-media-test PRIVATE
         defragmenter-test-media-core defragmenter-affs-native
-        defragmenter-sfs-fixture-native defragmenter-pfs3-native
+        defragmenter-sfs-fixture-native defragmenter-pfs3-fixture-native
         defragmenter-apfs-native OpenSSL::Crypto)
     add_test(NAME defragmenter-test-media-core COMMAND defragmenter-test-media-test)
     endif()

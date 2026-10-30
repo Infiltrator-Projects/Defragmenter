@@ -6,7 +6,7 @@ import json, os, stat, subprocess, tempfile
 from pathlib import Path
 BUILD=Path(os.environ["DEFRAGMENTER_BUILD_DIR"])
 FIXTURE=BUILD/"defragmenter-pfs3-native-test"
-WORKER=BUILD/"defragmenter-pfs3-worker"
+WORKER=Path(os.environ.get("DEFRAGMENTER_PFS3_WORKER",str(BUILD/"defragmenter-pfs3-worker")))
 def run(*args: object)->subprocess.CompletedProcess[str]:
     return subprocess.run([str(WORKER),*map(str,args)],check=False,text=True,
         stdout=subprocess.PIPE,stderr=subprocess.PIPE,

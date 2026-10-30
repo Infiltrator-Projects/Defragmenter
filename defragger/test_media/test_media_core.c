@@ -316,9 +316,12 @@ int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
         return 1;
     }
     if (spec->creator == LDTM_CREATOR_PFS3) {
-        (void)snprintf(detail, detail_capacity,
-                       "Built-in raw C creator + payload engine: Amiga PFS3, 100-fragment native fixture");
-        return 1;
+        extern int ldtm_pfs3_module_available(void);
+        const int ready=ldtm_pfs3_module_available();
+        (void)snprintf(detail,detail_capacity,"%s",ready ?
+            "PFS3 driver ready to format and verify test media." :
+            "Install or update the PFS3 filesystem driver before creating test media.");
+        return ready;
     }
     if (spec->creator == LDTM_CREATOR_UFS) {
         if (ldtm_program_available("makefs")) {
@@ -349,6 +352,7 @@ int ldtm_required_modules_available(char *detail, size_t detail_capacity) {
         const LdtmFilesystemSpec *spec = &ldtm_specs()[i];
         if ((spec->creator == LDTM_CREATOR_FAT12 || spec->creator == LDTM_CREATOR_FAT16 ||
              strcmp(spec->key, "ofs") == 0 || strcmp(spec->key, "sfs") == 0 ||
+             spec->creator == LDTM_CREATOR_PFS3 ||
              spec->creator == LDTM_CREATOR_SWAP ||
              spec->creator == LDTM_CREATOR_ZFS) &&
             !ldtm_spec_creator_available(spec, detail, detail_capacity)) return 0;
