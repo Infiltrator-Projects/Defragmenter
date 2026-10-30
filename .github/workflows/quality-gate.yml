@@ -75,6 +75,25 @@ jobs:
           python3 "$GITHUB_WORKSPACE/ci-fat32/standalone/build.py" \
             --profile portable --output "$PWD/build/fat-module-test/Filesystems/FAT32.so" --check
 
+      - name: Checkout canonical exFAT.so for Test Media qualification
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-exFAT
+          ref: 7427ab3edb112dcbf48e92d19d22d4eaf3e203e4
+          path: ci-exfat
+
+      - name: Build canonical exFAT.so and validate V5 module ABI
+        run: |
+          set -euo pipefail
+          src="$GITHUB_WORKSPACE/ci-exfat"
+          test "$(cat shared/exfat-module-revision)" = "7427ab3edb112dcbf48e92d19d22d4eaf3e203e4"
+          sed 's|#include "../../fat/portable/fatfs_module.h"|#include "fat_module_abi.h"|' "$src/native/filesystems/exfat/module/exfat_api.h" |
+            cmp native/exfat_module_abi.h -
+          make -C "$src" OUT="$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB" all
+          nm -D "$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB/exFAT.so" | grep -F 'infiltrator_filesystem_module_v5'
+          install -m 0644 "$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB/exFAT.so" \
+            "$PWD/build/fat-module-test/Filesystems/exFAT.so"
+
       - name: Read the OFS module test revision
         id: ofs_revision
         run: echo "sha=$(tr -d '\r\n' < shared/ofs-module-revision)" >> "$GITHUB_OUTPUT"
@@ -540,6 +559,25 @@ jobs:
                '-DIFS_FAT32_INDEPENDENT=1', '-DIFS_FAT_DEFRAG_BITS=32',
                '-fsanitize=address,undefined', '-fno-omit-frame-pointer'], training=True)
           PY
+
+      - name: Checkout canonical exFAT.so for sanitizer host qualification
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-exFAT
+          ref: 7427ab3edb112dcbf48e92d19d22d4eaf3e203e4
+          path: ci-exfat
+
+      - name: Build canonical exFAT.so and validate V5 module ABI (sanitizer host)
+        run: |
+          set -euo pipefail
+          src="$GITHUB_WORKSPACE/ci-exfat"
+          test "$(cat shared/exfat-module-revision)" = "7427ab3edb112dcbf48e92d19d22d4eaf3e203e4"
+          sed 's|#include "../../fat/portable/fatfs_module.h"|#include "fat_module_abi.h"|' "$src/native/filesystems/exfat/module/exfat_api.h" |
+            cmp native/exfat_module_abi.h -
+          make -C "$src" OUT="$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB" all
+          nm -D "$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB/exFAT.so" | grep -F 'infiltrator_filesystem_module_v5'
+          install -m 0644 "$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB/exFAT.so" \
+            "$PWD/build-sanitize/fat-module-test/Filesystems/exFAT.so"
 
       - name: Read the OFS module test revision
         id: ofs_revision
