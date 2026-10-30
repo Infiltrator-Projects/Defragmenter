@@ -80,3 +80,10 @@ and verified through UFS2.so; UFS1 Test Media creation is a separate
 qualification task. A probe on a damaged UFS superblock is rejected: recovery
 without an identifiable on-disk format requires additional journal-based
 selection and must not guess. The user-distributed modules remain independent.
+
+**FFS/OFS Test Media migration:** Test Media now delegates FFS formatting,
+fragmented allocation, payload verification and post-defrag verification to
+FFS.so, and verifies OFS via the OFS.so public directory/file API. The old
+Amiga formatter, on-disk scanner and payload generator are removed from the
+application; the exact native FFS source remains in Filesystem-FFS and is
+compiled solely as an external test oracle when qualifying builds.

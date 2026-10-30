@@ -454,6 +454,7 @@ jobs:
             -DFAT_DEFRAG_TEST_MODULE_PARENT="$PWD/build/fat-module-test" \
             -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build/fat-module-test" \
             -DMINIX_NATIVE_FIXTURE_PATH="$RUNNER_TEMP/minix-$GITHUB_RUN_ID-$GITHUB_JOB/minix-native-test" \
+            -DFFS_NATIVE_TEST_SOURCE_DIR="$GITHUB_WORKSPACE/ci-ffs/native/defrag" \\
             -DSFS_NATIVE_TEST_SOURCE_DIR="$GITHUB_WORKSPACE/ci-sfs" \
             -DPFS3_NATIVE_TEST_SOURCE_DIR="$GITHUB_WORKSPACE/ci-pfs3" \
             -DAPFS_NATIVE_TEST_SOURCE_DIR="$GITHUB_WORKSPACE/ci-apfs" \
@@ -976,6 +977,7 @@ jobs:
             -DFAT_DEFRAG_TEST_MODULE_PARENT="$PWD/build-sanitize/fat-module-test" \
             -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build-sanitize/fat-module-test" \
             -DMINIX_NATIVE_FIXTURE_PATH="$RUNNER_TEMP/minix-san-$GITHUB_RUN_ID-$GITHUB_JOB/minix-native-test" \
+            -DFFS_NATIVE_TEST_SOURCE_DIR="$GITHUB_WORKSPACE/ci-ffs/native/defrag" \\
             -DSFS_NATIVE_TEST_SOURCE_DIR="$GITHUB_WORKSPACE/ci-sfs" \
             -DBUILD_TESTING=ON
           cmake --build build-sanitize -j2

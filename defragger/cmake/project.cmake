@@ -407,19 +407,24 @@ target_link_libraries(defragmenter-exfat-worker PRIVATE
     defragmenter-fs-host-services defragmenter-filesystem-module-host)
 set(EXFAT_WORKER_FOR_TESTS "$<TARGET_FILE:defragmenter-exfat-worker>")
 
-add_library(defragmenter-affs-native STATIC
-    gui/filesystems/affs/native/affs_native.c)
-target_include_directories(defragmenter-affs-native PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/affs/native"
-    "${LD_GENERATED_DIR}")
-target_compile_options(defragmenter-affs-native PRIVATE ${LD_WARNING_FLAGS})
-target_compile_definitions(defragmenter-affs-native PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-target_link_libraries(defragmenter-affs-native PUBLIC defragmenter-core)
+# Test-only parser oracle lives in Filesystem-FFS, not in Defragmenter.
+# No production target compiles or links an internal Amiga filesystem engine.
+set(FFS_NATIVE_TEST_SOURCE_DIR "" CACHE PATH "Canonical external FFS native test oracle")
+if(BUILD_TESTING AND FFS_NATIVE_TEST_SOURCE_DIR)
+    add_library(defragmenter-affs-test-native STATIC
+        "${FFS_NATIVE_TEST_SOURCE_DIR}/affs_native.c")
+    target_include_directories(defragmenter-affs-test-native PUBLIC
+        "${FFS_NATIVE_TEST_SOURCE_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/core")
+    target_compile_options(defragmenter-affs-test-native PRIVATE ${LD_WARNING_FLAGS})
+    target_compile_definitions(defragmenter-affs-test-native PRIVATE
+        _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+    target_link_libraries(defragmenter-affs-test-native PUBLIC defragmenter-core)
+endif()
 
 # Filesystem-neutral process host: the loaded SO owns the on-disk semantics,
 # placement algorithm and journal schema. The existing AFFS registry entry
-# dispatches OFS here and retains the FFS worker until its separate migration.
+# delegates to OFS.so or FFS.so without a local filesystem engine.
 add_library(defragmenter-filesystem-module-host STATIC native/filesystem_module_host.c)
 target_include_directories(defragmenter-filesystem-module-host PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/native"

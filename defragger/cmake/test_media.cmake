@@ -17,11 +17,6 @@ target_link_libraries(defragmenter-desktop PRIVATE
 set_target_properties(defragmenter-desktop PROPERTIES OUTPUT_NAME defragmenter)
 install(TARGETS defragmenter-desktop RUNTIME DESTINATION /Programs)
 
-set_source_files_properties(test_media/test_media_amiga.c PROPERTIES
-    COMPILE_DEFINITIONS "ldtm_format_amiga_volume=ldtm_format_amiga_volume_affs")
-set_source_files_properties(test_media/test_media_amiga_payload.c PROPERTIES
-    COMPILE_DEFINITIONS "ldtm_populate_amiga_volume=ldtm_populate_amiga_volume_affs;ldtm_verify_amiga_payload=ldtm_verify_amiga_payload_affs")
-
 add_library(defragmenter-test-media-core STATIC
     test_media/test_media_core.c
     test_media/test_media_raw.c
@@ -37,8 +32,6 @@ add_library(defragmenter-test-media-core STATIC
     test_media/test_media_raw_zfs.c
     test_media/test_media_worker.c
     test_media/test_media_reserved.c
-    test_media/test_media_amiga.c
-    test_media/test_media_amiga_payload.c
     test_media/test_media_ffs_module.c
     test_media/test_media_amiga_dispatch.c
     test_media/test_media_ofs_module.c
@@ -52,7 +45,6 @@ target_include_directories(defragmenter-test-media-core PUBLIC
 target_include_directories(defragmenter-test-media-core PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
     "${CMAKE_CURRENT_SOURCE_DIR}/native"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/affs/native"
     "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/ufs/native"
     "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/zfs/native")
 target_compile_options(defragmenter-test-media-core PRIVATE ${LD_WARNING_FLAGS})
@@ -60,8 +52,6 @@ target_compile_definitions(defragmenter-test-media-core PRIVATE
     _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(defragmenter-test-media-core PUBLIC
     OpenSSL::Crypto InfiltratrCommon::Common defragmenter-core defragmenter-filesystem-module-host defragmenter-fs-host-services)
-target_link_libraries(defragmenter-test-media-core PRIVATE
-    defragmenter-affs-native)
 
 add_executable(defragmenter-test-media
     test_media/test_media_main.c
@@ -230,11 +220,11 @@ if(BUILD_TESTING)
     set_tests_properties(defragmenter-desktop-analysis PROPERTIES TIMEOUT 20)
     # This independent test directly calls SFS native routines; its engine
     # source comes ONLY from the pinned filesystem repository during CI.
-    if(SFS_NATIVE_TEST_SOURCE_DIR AND PFS3_NATIVE_TEST_SOURCE_DIR AND APFS_NATIVE_TEST_SOURCE_DIR)
+    if(SFS_NATIVE_TEST_SOURCE_DIR AND PFS3_NATIVE_TEST_SOURCE_DIR AND APFS_NATIVE_TEST_SOURCE_DIR AND FFS_NATIVE_TEST_SOURCE_DIR)
     add_executable(defragmenter-test-media-test tests/test_test_media.c)
     target_include_directories(defragmenter-test-media-test PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/test_media"
-        "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/affs/native"
+        "${FFS_NATIVE_TEST_SOURCE_DIR}"
         "${SFS_NATIVE_TEST_SOURCE_DIR}/native"
         "${PFS3_NATIVE_TEST_SOURCE_DIR}/native"
         "${APFS_NATIVE_TEST_SOURCE_DIR}/native")
@@ -242,7 +232,7 @@ if(BUILD_TESTING)
     target_compile_definitions(defragmenter-test-media-test PRIVATE
         _FILE_OFFSET_BITS=64 _GNU_SOURCE)
     target_link_libraries(defragmenter-test-media-test PRIVATE
-        defragmenter-test-media-core defragmenter-affs-native
+        defragmenter-test-media-core defragmenter-affs-test-native
         defragmenter-sfs-fixture-native defragmenter-pfs3-fixture-native
         defragmenter-apfs-fixture-native OpenSSL::Crypto)
     add_test(NAME defragmenter-test-media-core COMMAND defragmenter-test-media-test)

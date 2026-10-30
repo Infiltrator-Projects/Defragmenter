@@ -14,18 +14,11 @@ int ldtm_validate_ffs_module(const char *);
 int ldtm_populate_ffs_module(const char *, const LdtmFragmentProfile *);
 int ldtm_verify_ffs_module(const char *, const LdtmFragmentProfile *,
                            int after, char *, size_t);
-int ldtm_format_amiga_volume_affs(const char *path, uint8_t dostype, const char *label);
 int ldtm_format_ofs_module(const char *path, const char *label);
+int ldtm_validate_ofs_module(const char *);
+int ldtm_verify_ofs_module(const char *, const LdtmFragmentProfile *,
+                           int after, char *, size_t);
 int ldtm_populate_ofs_module(const char *path, const LdtmFragmentProfile *profile);
-int ldtm_populate_amiga_volume_affs(const char *path, uint8_t dostype,
-                                    const LdtmFragmentProfile *profile);
-int ldtm_verify_amiga_payload_affs(const char *path, uint8_t dostype,
-                                   const LdtmFragmentProfile *profile,
-                                   char *detail, size_t detail_capacity);
-int ldtm_verify_amiga_payload_affs_after_defrag(
-    const char *path, uint8_t dostype,
-    const LdtmFragmentProfile *profile,
-    char *detail, size_t detail_capacity);
 int ldtm_format_sfs_volume(const char *path);
 int ldtm_populate_sfs_volume(const char *path, const LdtmFragmentProfile *profile);
 int ldtm_verify_sfs_payload(const char *path, const LdtmFragmentProfile *profile,
@@ -89,7 +82,7 @@ int ldtm_verify_amiga_payload(const char *path, uint8_t dostype,
         return ldtm_verify_pfs3_payload(path, profile, detail, detail_capacity);
     return dostype == 1U
         ? ldtm_verify_ffs_module(path, profile, 0, detail, detail_capacity)
-        : ldtm_verify_amiga_payload_affs(path, dostype, profile, detail, detail_capacity);
+        : ldtm_verify_ofs_module(path, profile, 0, detail, detail_capacity);
 }
 
 
@@ -105,6 +98,11 @@ int ldtm_verify_amiga_payload_after_defrag(
             path, profile, detail, detail_capacity);
     return dostype == 1U
         ? ldtm_verify_ffs_module(path, profile, 1, detail, detail_capacity)
-        : ldtm_verify_amiga_payload_affs_after_defrag(
-            path, dostype, profile, detail, detail_capacity);
+        : ldtm_verify_ofs_module(path, profile, 1, detail, detail_capacity);
+}
+
+/* No fallback AmigaDOS parser/formatter is linked in Test Media. */
+int ldtm_validate_amiga_volume(const char *path,uint8_t dostype) {
+    return dostype==0U ? ldtm_validate_ofs_module(path) :
+           dostype==1U ? ldtm_validate_ffs_module(path) : -1;
 }
