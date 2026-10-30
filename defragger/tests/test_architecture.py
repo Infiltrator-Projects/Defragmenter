@@ -76,30 +76,6 @@ def _operation_workers(backend: dict[str, object]) -> set[str]:
     return workers
 
 
-def _native_package(backend_id: str, backend: dict[str, object]) -> str:
-    candidates = [backend_id]
-    workers = _operation_workers(backend)
-    if workers:
-        assert len(workers) == 1, (
-            f"{backend_id} operations span multiple native workers: {workers!r}"
-        )
-        worker = next(iter(workers))
-        assert worker.endswith("-native"), (
-            f"{backend_id} operation worker is not a native package: {worker!r}"
-        )
-        if backend_id in {"fat12", "fat16", "fat32"} and worker == "fat-native":
-            return "fat"
-        candidates.append(worker.removesuffix("-native"))
-
-    for candidate in dict.fromkeys(candidates):
-        if (GUI / "filesystems" / candidate / "native").is_dir():
-            return candidate
-    raise AssertionError(
-        f"{backend_id} has no native package matching its registry contract: "
-        f"{candidates!r}"
-    )
-
-
 def test_native_languages_are_declared_at_the_project_boundary() -> None:
     cmake = _read(ROOT / "CMakeLists.txt")
     declaration = re.search(r"project\s*\((?P<body>[^)]*)\)", cmake, re.S)
@@ -165,26 +141,39 @@ def test_registry_exposes_mapper_policy_without_hidden_source_lists() -> None:
 
 
 def test_filesystem_policy_remains_owned_by_native_packages() -> None:
-    for backend_id, backend in _backends_by_id().items():
-        package = _native_package(backend_id, backend)
-        native = GUI / "filesystems" / package / "native"
-        if package == "fat":
-            assert not native.exists(), "FAT engine must live in Filesystems"
-            loader = _read(ROOT / "native" / "fat_module_loader.c")
-            assert "infiltrator_filesystem_defrag_v1" in loader
-            assert "trusted_module" in loader and "O_NOFOLLOW" in loader
-            continue
-        native_sources = [
-            path for path in native.iterdir()
-            if path.is_file() and path.suffix in {".c", ".h", ".cpp", ".hpp"}
-        ]
-        assert native_sources, f"{backend_id} has no native implementation"
-        assert not list((GUI / "filesystems" / package).glob("plugin.py")), (
-            f"{backend_id} reintroduced a second Python capability declaration"
+    # Applications only provide trusted SO loaders and format-neutral services.
+    # No source tree of filesystem-specific algorithms may remain in gui/.
+    formats_to_loader = {
+        "affs": "affs", "apfs": "apfs", "btrfs": "btrfs",
+        "exfat": "exfat", "ext4": "ext",
+        "fat12": "fat", "fat16": "fat", "fat32": "fat",
+        "hfs": "hfs", "hfsplus": "hfsplus", "minix": "minix",
+        "ntfs": "ntfs", "pfs3": "pfs3", "sfs": "sfs",
+        "swap": "swap", "ufs": "ufs", "xfs": "xfs", "zfs": "zfs",
+    }
+    backends = _backends_by_id()
+    assert set(backends) == set(formats_to_loader), (
+        f"module mapping must cover every registered filesystem: {set(backends) ^ set(formats_to_loader)}"
+    )
+    for backend_id, module in formats_to_loader.items():
+        loader = ROOT / "native" / f"{module}_module_loader.c"
+        assert loader.is_file(), (backend_id, loader)
+        contents = _read(loader)
+        assert "module" in contents and "ifs_" in contents, (
+            f"{backend_id} must use a trusted module ABI, not local filesystem code"
         )
-
+    filesystem_dir = GUI / "filesystems"
+    if filesystem_dir.exists():
+        leftover = [
+            p for p in filesystem_dir.rglob("*")
+            if p.is_file() and p.suffix.lower() in {".c", ".h", ".cpp", ".hpp"}
+        ]
+        assert not leftover, f"filesystem engines still embedded in Defragmenter: {leftover!r}"
+    assert not list(GUI.rglob("plugin.py")), (
+        "Retired Python filesystem-control graph must remain absent"
+    )
     for obsolete in ("fat12", "fat16", "fat32"):
-        assert not (GUI / "filesystems" / obsolete).exists()
+        assert not (filesystem_dir / obsolete).exists()
 
 
 def test_desktop_tests_use_public_boundaries_not_private_implementation() -> None:
