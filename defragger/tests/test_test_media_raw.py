@@ -142,17 +142,25 @@ def qualify(fs: str, parent: Path) -> None:
             print("zfs: native creation, exact analysis, every payload byte and corruption rejection passed", flush=True)
             return  # ZFS is analysis-only by design.
         assert before["defrag_qualified"] and before["growth_qualified"], before
-        worker = ("hfs_analyser" if fs == "hfs" else
-                  os.environ.get("DEFRAGMENTER_FAT_WORKER", "defragmenter-fat-worker") if fs.startswith("fat") else
-                  "defragmenter-ext-worker" if fs.startswith("ext") else
-                  os.environ.get("DEFRAGMENTER_UFS_WORKER", "defragmenter-ufs-worker") if fs == "ufs" else
-                  f"defragmenter-{fs}-worker")
+        # The CI workspace contains both production-only and test-only
+        # loaders. Select the exact same trusted SO code with the explicitly
+        # isolated module root, never fall back to a production loader.
+        if fs.startswith("fat"):
+            variable, default = "DEFRAGMENTER_FAT_WORKER", "defragmenter-fat-worker"
+        elif fs.startswith("ext"):
+            variable, default = "DEFRAGMENTER_EXT_WORKER", "defragmenter-ext-worker"
+        elif fs == "hfs":
+            variable, default = "DEFRAGMENTER_HFS_WORKER", "hfs_analyser"
+        else:
+            variable, default = f"DEFRAGMENTER_{fs.upper()}_WORKER", f"defragmenter-{fs}-worker"
+        worker = Path(os.environ.get(variable, BUILD / default))
+        assert worker.is_file() and os.access(worker, os.X_OK), worker
         for operation in ("defrag", "growth-defrag"):
             journal = work / f"{operation}.journal"
             # These full-corpus writes retain the production durability barriers.
             # Allow slower runner storage fifteen minutes per operation while
             # keeping creation, analysis and verification on the shorter budget.
-            run(BUILD / worker, operation, image, "--write", "--confirm", image,
+            run(worker, operation, image, "--write", "--confirm", image,
                 "--journal", journal, timeout=900)
             assert not journal.exists(), (fs, operation)
             run(FIXTURE, "verify", fs, image)
