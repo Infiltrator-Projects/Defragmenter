@@ -27,14 +27,14 @@ Its deterministic dataset remains application-owned, and its retained AFFS
 read-only payload verifier is an independent oracle. The privileged prepare
 worker rechecks the required SO before any repartitioning.
 
-UFS Test Media formatting, population, UFS2 little-endian geometry
+UFS2 Test Media formatting, population, UFS2 little-endian geometry
 validation and raw UFS2 block/inode/payload verification now call the
-independently built UFS.so. Defragmenter owns only the deterministic corpus
+independently built UFS2.so. Defragmenter owns only the deterministic corpus
 and independently calculated expected sizes and SHA-256 hashes; UFS format
 interpretation has moved into the versioned module. The old local
 `ufs_native.c`/`ufs_native.h` source and native library were removed; its
 regression fixture is retained under Filesystem-UFS. Both format validation
-and byte-level payload inspection reject missing/incompatible UFS.so,
+and byte-level payload inspection reject missing/incompatible UFS2.so,
 rather than falling back to a private parser. Qualification must check the
 resulting media with independent external evidence as well as its own
 module's verifier.
@@ -56,3 +56,17 @@ only the independent read-only payload verifier.
 Existing internal filesystem engines and test-media writers can remain **temporary reference/compatibility implementations** until the matching `.so` covers their verified functions. Removing them before equivalence tests risks data loss. A user-visible successful defrag is **not** proof that the `.so` was called: instrument and test actual `dlopen`/ABI dispatch, reject wrong format, compare independent before/after allocation maps and filesystem integrity, check Stop/rollback and exercise files across multiple clusters, names and failure modes.
 
 Defragmenter Test Media uses the authoritative module's format/create/populate APIs when qualified but keeps independently implemented disposable-image verification oracles. The final release must not ship a second competing filesystem-specific engine or claim a fallback is equivalent without independent tests. Historical releases are described as they were actually built.
+
+
+## Separate UFS on-disk identities
+
+UFS1 and UFS2 are now distinct distribution identities. The independent
+repositories Filesystem-UFS1 and Filesystem-UFS2 produce UFS1.so and UFS2.so
+respectively. The format-neutral host first invokes their read-only probe ABI
+and then calls the chosen format's module. The Defragmenter contains no
+UFS1/UFS2 parser, in-memory fallback, formatter or placement engine.
+Test Media's presently qualified UFS2 images are always created, checked
+and verified through UFS2.so; UFS1 Test Media creation is a separate
+qualification task. A probe on a damaged UFS superblock is rejected: recovery
+without an identifiable on-disk format requires additional journal-based
+selection and must not guess. The user-distributed modules remain independent.

@@ -356,25 +356,38 @@ jobs:
           ctest --test-dir "$RUNNER_TEMP/ext-so-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
           install -m 0644 "$RUNNER_TEMP/ext-so-$GITHUB_RUN_ID-$GITHUB_JOB"/EXT{2,3,4}.so "$PWD/build/fat-module-test/Filesystems/"
 
-      - name: Check out independently qualified UFS.so
+      - name: Check out independently qualified UFS2.so
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          repository: Infiltrator-Projects/Filesystem-UFS
-          ref: a64350b9f7bd13456689415f7c52171439d72758
+          repository: Infiltrator-Projects/Filesystem-UFS2
+          ref: e3d1eceec9cb84f8ff221faa8ea8c518d6624a28
           path: ci-ufs
+      - name: Check out independent UFS1.so
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-UFS1
+          ref: d8cb0aa30c5e8b6849fa79b0d332b1d31ae1332e
+          path: ci-ufs1
 
-      - name: Build and qualify UFS.so and the first-party formatter
+      - name: Build and qualify UFS2.so and the first-party formatter
         run: |
           set -euo pipefail
           src="$GITHUB_WORKSPACE/ci-ufs"
           bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
           cmp native/ifs_ufs_module_v1.h "$src/include/ifs_ufs_module_v1.h"
+          cmp native/ifs_ufs_probe_v1.h "$src/include/ifs_ufs_probe_v1.h"
+          cmp native/ifs_ufs_module_v1.h "$GITHUB_WORKSPACE/ci-ufs1/include/ifs_ufs_module_v1.h"
+          cmp native/ifs_ufs_probe_v1.h "$GITHUB_WORKSPACE/ci-ufs1/include/ifs_ufs_probe_v1.h"
           cmp native/ifs_ufs_volume_check_v1.h "$src/include/ifs_ufs_volume_check_v1.h"
           cmp native/ifs_ufs_payload_verifier_v1.h "$src/include/ifs_ufs_payload_verifier_v1.h"
           cmake -S "$src" -B "$RUNNER_TEMP/ufs-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Release
           cmake --build "$RUNNER_TEMP/ufs-$GITHUB_RUN_ID-$GITHUB_JOB" -j2
           ctest --test-dir "$RUNNER_TEMP/ufs-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          install -m 0644 "$RUNNER_TEMP/ufs-$GITHUB_RUN_ID-$GITHUB_JOB/UFS.so" "$PWD/build/fat-module-test/Filesystems/UFS.so"
+          install -m 0644 "$RUNNER_TEMP/ufs-$GITHUB_RUN_ID-$GITHUB_JOB/UFS2.so" "$PWD/build/fat-module-test/Filesystems/UFS2.so"
+          cmake -S "$GITHUB_WORKSPACE/ci-ufs1" -B "$RUNNER_TEMP/ufs1-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$RUNNER_TEMP/ufs1-$GITHUB_RUN_ID-$GITHUB_JOB" -j2
+          ctest --test-dir "$RUNNER_TEMP/ufs1-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
+          install -m 0644 "$RUNNER_TEMP/ufs1-$GITHUB_RUN_ID-$GITHUB_JOB/UFS1.so" "$PWD/build/fat-module-test/Filesystems/UFS1.so"
 
       - name: Detect explicit release intent
         id: release_intent
@@ -868,26 +881,40 @@ jobs:
           cmake --build "$RUNNER_TEMP/ext-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target ext-ext2-driver ext-ext3-driver ext-ext4-driver --parallel 2
           install -m 0644 "$RUNNER_TEMP/ext-san-$GITHUB_RUN_ID-$GITHUB_JOB"/EXT{2,3,4}.so "$PWD/build-sanitize/fat-module-test/Filesystems/"
 
-      - name: Check out independent UFS.so for sanitizer tests
+      - name: Check out independent UFS2.so for sanitizer tests
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          repository: Infiltrator-Projects/Filesystem-UFS
-          ref: a64350b9f7bd13456689415f7c52171439d72758
+          repository: Infiltrator-Projects/Filesystem-UFS2
+          ref: e3d1eceec9cb84f8ff221faa8ea8c518d6624a28
           path: ci-ufs
+      - name: Check out independent UFS1.so
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-UFS1
+          ref: d8cb0aa30c5e8b6849fa79b0d332b1d31ae1332e
+          path: ci-ufs1
 
-      - name: Instrument first-party UFS.so and formatting engine
+      - name: Instrument first-party UFS2.so and formatting engine
         run: |
           set -euo pipefail
           src="$GITHUB_WORKSPACE/ci-ufs"
           bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
           cmp native/ifs_ufs_module_v1.h "$src/include/ifs_ufs_module_v1.h"
+          cmp native/ifs_ufs_probe_v1.h "$src/include/ifs_ufs_probe_v1.h"
+          cmp native/ifs_ufs_module_v1.h "$GITHUB_WORKSPACE/ci-ufs1/include/ifs_ufs_module_v1.h"
+          cmp native/ifs_ufs_probe_v1.h "$GITHUB_WORKSPACE/ci-ufs1/include/ifs_ufs_probe_v1.h"
           cmp native/ifs_ufs_volume_check_v1.h "$src/include/ifs_ufs_volume_check_v1.h"
           cmp native/ifs_ufs_payload_verifier_v1.h "$src/include/ifs_ufs_payload_verifier_v1.h"
           cmake -S "$src" -B "$RUNNER_TEMP/ufs-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
             -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
           cmake --build "$RUNNER_TEMP/ufs-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target ufs-driver -j2
-          install -m 0644 "$RUNNER_TEMP/ufs-san-$GITHUB_RUN_ID-$GITHUB_JOB/UFS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/UFS.so"
+          install -m 0644 "$RUNNER_TEMP/ufs-san-$GITHUB_RUN_ID-$GITHUB_JOB/UFS2.so" "$PWD/build-sanitize/fat-module-test/Filesystems/UFS2.so"
+          cmake -S "$GITHUB_WORKSPACE/ci-ufs1" -B "$RUNNER_TEMP/ufs1-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
+            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
+          cmake --build "$RUNNER_TEMP/ufs1-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target ufs1-driver -j2
+          install -m 0644 "$RUNNER_TEMP/ufs1-san-$GITHUB_RUN_ID-$GITHUB_JOB/UFS1.so" "$PWD/build-sanitize/fat-module-test/Filesystems/UFS1.so"
 
       - name: Build with AddressSanitizer and UndefinedBehaviorSanitizer
         run: |

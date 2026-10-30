@@ -21,14 +21,22 @@ jobs:
             libssl-dev libsqlite3-dev libext2fs-dev
       - uses: actions/checkout@v4
         with:
-          repository: Infiltrator-Projects/Filesystem-UFS
-          ref: a64350b9f7bd13456689415f7c52171439d72758
+          repository: Infiltrator-Projects/Filesystem-UFS2
+          ref: e3d1eceec9cb84f8ff221faa8ea8c518d6624a28
           path: ci-ufs
-      - name: Build and test authoritative UFS.so
+      - uses: actions/checkout@v4
+        with:
+          repository: Infiltrator-Projects/Filesystem-UFS1
+          ref: d8cb0aa30c5e8b6849fa79b0d332b1d31ae1332e
+          path: ci-ufs1
+      - name: Build and test authoritative UFS2.so
         run: |
           cmake -S ci-ufs -B /tmp/ufs-so -DCMAKE_BUILD_TYPE=Release
           cmake --build /tmp/ufs-so --parallel 2
           ctest --test-dir /tmp/ufs-so --output-on-failure
+          cmake -S ci-ufs1 -B /tmp/ufs1-so -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/ufs1-so --parallel 2
+          ctest --test-dir /tmp/ufs1-so --output-on-failure
       - name: Build Defragmenter UFS module host
         run: |
           set -euo pipefail
@@ -43,11 +51,15 @@ jobs:
           set -euo pipefail
           cd defragger
           cmp native/ifs_ufs_module_v1.h ../ci-ufs/include/ifs_ufs_module_v1.h
+          cmp native/ifs_ufs_module_v1.h ../ci-ufs1/include/ifs_ufs_module_v1.h
+          cmp native/ifs_ufs_probe_v1.h ../ci-ufs/include/ifs_ufs_probe_v1.h
+          cmp native/ifs_ufs_probe_v1.h ../ci-ufs1/include/ifs_ufs_probe_v1.h
           cmp native/ifs_ufs_volume_check_v1.h ../ci-ufs/include/ifs_ufs_volume_check_v1.h
           cmp native/ifs_ufs_payload_verifier_v1.h ../ci-ufs/include/ifs_ufs_payload_verifier_v1.h
           bash tests/verify_legacy_fs_services_abi.sh ../ci-ufs/include/ifs_defrag_services_v1.h
           mkdir -p build/module-test/Filesystems build/missing/Filesystems
-          install -m 0644 /tmp/ufs-so/UFS.so build/module-test/Filesystems/UFS.so
+          install -m 0644 /tmp/ufs-so/UFS2.so build/module-test/Filesystems/UFS2.so
+          install -m 0644 /tmp/ufs1-so/UFS1.so build/module-test/Filesystems/UFS1.so
           IFS_TEST_MODULE_PARENT="$PWD/build/module-test" \
             build/defragmenter-ufs-test-worker --version | grep -F 'defragmenter-ufs-worker'
           # UFS formatting and UFS worker both dispatch through the module.
@@ -59,11 +71,11 @@ jobs:
             "$PWD/build/defragmenter-ufs-test-worker"
           if IFS_TEST_MODULE_PARENT="$PWD/build/missing" \
             build/defragmenter-test-media-mkfs-ufs-test --help; then
-            echo 'ERROR: UFS formatter ran without UFS.so' >&2
+            echo 'ERROR: UFS formatter ran without UFS2.so' >&2
             exit 1
           fi
           if IFS_TEST_MODULE_PARENT="$PWD/build/missing" \
             build/defragmenter-ufs-test-worker --version; then
-            echo 'ERROR: UFS worker ran without UFS.so' >&2
+            echo 'ERROR: UFS worker ran without UFS2.so' >&2
             exit 1
           fi

@@ -1253,7 +1253,7 @@ cleanup:
 }
 
 static int ufs2_summary_ok(const char *path) {
-    /* The package-owned host resolves and checks UFS.so; there is no
+    /* The package-owned host resolves and checks UFS2.so; there is no
      * Defragmenter-local UFS parser, formatter or fallback. */
     const char *const argv[] = {"makefs", "--check-ufs2-le", path, NULL};
     return path != NULL && run_process(argv, NULL, 1) == 0;
@@ -1310,7 +1310,7 @@ static int ufs_expected_targets(LdtmTargetRecord targets[LDTM_MAX_TARGET_FILES])
     return result;
 }
 
-/* Versioned dispatch into the independent UFS.so. The application only
+/* Versioned dispatch into the independent UFS2.so. The application only
  * computes expected corpus hashes; on-disk UFS interpretation is not local. */
 typedef struct {
     const char *path;
@@ -1331,7 +1331,7 @@ static int ufs_payload_verify_call(const IfsDefragHostV2 *host,
     const LdtmUfsVerifyRequest *request = opaque;
     if (!api || api->abi_version != IFS_UFS_PAYLOAD_VERIFIER_ABI_V1 ||
         api->structure_bytes < sizeof(*api) || !api->format_id ||
-        strcmp(api->format_id, "ufs") != 0 || !api->verify_payload ||
+        strcmp(api->format_id, "ufs2") != 0 || !api->verify_payload ||
         !request || !request->path)
         return 1;
     return api->verify_payload(request->path, request->targets,
@@ -1359,11 +1359,11 @@ static int verify_ufs2_raw_payload(const char *path,
         path, targets, LDTM_RAW_FILES, detail, detail_capacity
     };
     const int result = ifs_filesystem_module_call(
-        "ufs", "UFS.so", "infiltrator_filesystem_ufs_payload_verifier_v1",
+        "ufs2", "UFS2.so", "infiltrator_filesystem_ufs_payload_verifier_v1",
         ufs_payload_verify_call, (void *)&request);
     if (result != 0 && detail && detail_capacity && !detail[0])
         (void)snprintf(detail, detail_capacity,
-                       "UFS.so UFS2 raw payload verification failed");
+                       "UFS2.so UFS2 raw payload verification failed");
     return result == 0 ? 0 : -1;
 }
 
@@ -1426,10 +1426,10 @@ static int create_ufs_and_populate(const LdtmFilesystemSpec *spec, const char *p
     }
     if (!ufs2_summary_ok(image)) {
         emit_status(spec->key, "qualification-failed",
-                    "makefs completed but UFS.so rejected its UFS2 image");
+                    "makefs completed but UFS2.so rejected its UFS2 image");
         (void)state_write_status(
             state, spec, "qualification-failed",
-            "makefs output failed UFS.so UFS2 geometry validation");
+            "makefs output failed UFS2.so UFS2 geometry validation");
         return 1;
     }
     printf("+ copy verified UFS2 image %s -> %s\n", image, partition);
@@ -1445,7 +1445,7 @@ static int create_ufs_and_populate(const LdtmFilesystemSpec *spec, const char *p
     }
     if (!ufs2_summary_ok(partition)) {
         emit_status(spec->key, "qualification-failed",
-                    "copied UFS2 image failed UFS.so geometry validation");
+                    "copied UFS2 image failed UFS2.so geometry validation");
         (void)state_write_status(state, spec, "qualification-failed",
                                  "UFS2 partition validation failed");
         return 1;
