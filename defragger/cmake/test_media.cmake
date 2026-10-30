@@ -124,6 +124,15 @@ install(FILES packaging/io.github.defragmenter.TestMedia.desktop
         DESTINATION share/applications)
 
 if(BUILD_TESTING)
+    add_executable(defragmenter-sfs-so-fixture-test tests/test_sfs_so_fixture.c)
+    target_include_directories(defragmenter-sfs-so-fixture-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/test_media"
+        "${CMAKE_CURRENT_SOURCE_DIR}/native"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/core")
+    target_compile_options(defragmenter-sfs-so-fixture-test PRIVATE ${LD_WARNING_FLAGS})
+    target_compile_definitions(defragmenter-sfs-so-fixture-test PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+    target_link_libraries(defragmenter-sfs-so-fixture-test PRIVATE defragmenter-test-media-core)
+    # The standalone hosted integration runs this on its own disposable image.
     add_executable(defragmenter-test-media-raw-test tests/test_test_media_raw.c)
     target_include_directories(defragmenter-test-media-raw-test PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src/core")

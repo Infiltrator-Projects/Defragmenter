@@ -85,6 +85,12 @@ int ldtm_verify_amiga_payload_after_defrag(
     const char *path, uint8_t dostype,
     const LdtmFragmentProfile *profile,
     char *detail, size_t detail_capacity);
+/* Versioned SFS.so-backed create, populate and integrity entrypoints. */
+int ldtm_sfs_module_available(void);
+int ldtm_format_sfs_volume(const char *path);
+int ldtm_populate_sfs_volume(const char *path,const LdtmFragmentProfile *profile);
+int ldtm_verify_sfs_payload(const char *path,const LdtmFragmentProfile *profile,char *detail,size_t capacity);
+int ldtm_verify_sfs_payload_after_defrag(const char *path,const LdtmFragmentProfile *profile,char *detail,size_t capacity);
 int ldtm_format_apfs_volume(const char *path);
 int ldtm_verify_apfs_payload(const char *path,
                              char *detail, size_t detail_capacity);
