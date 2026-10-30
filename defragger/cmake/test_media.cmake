@@ -132,6 +132,10 @@ if(BUILD_TESTING)
     target_compile_options(defragmenter-sfs-so-fixture-test PRIVATE ${LD_WARNING_FLAGS})
     target_compile_definitions(defragmenter-sfs-so-fixture-test PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
     target_link_libraries(defragmenter-sfs-so-fixture-test PRIVATE defragmenter-test-media-core)
+    if(TARGET defragmenter-filesystem-module-test-host)
+        target_link_libraries(defragmenter-sfs-so-fixture-test PRIVATE
+            defragmenter-filesystem-module-test-host)
+    endif()
     # The standalone hosted integration runs this on its own disposable image.
     add_executable(defragmenter-test-media-raw-test tests/test_test_media_raw.c)
     target_include_directories(defragmenter-test-media-raw-test PRIVATE
@@ -179,11 +183,14 @@ if(BUILD_TESTING)
     add_test(NAME defragmenter-desktop-analysis
         COMMAND "$<TARGET_FILE:defragmenter-desktop-analysis-test>")
     set_tests_properties(defragmenter-desktop-analysis PROPERTIES TIMEOUT 20)
+    # This independent test directly calls SFS native routines; its engine
+    # source comes ONLY from the pinned filesystem repository during CI.
+    if(SFS_NATIVE_TEST_SOURCE_DIR)
     add_executable(defragmenter-test-media-test tests/test_test_media.c)
     target_include_directories(defragmenter-test-media-test PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/test_media"
         "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/affs/native"
-        "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/sfs/native"
+        "${SFS_NATIVE_TEST_SOURCE_DIR}/native"
         "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/pfs3/native"
         "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/apfs/native")
     target_compile_options(defragmenter-test-media-test PRIVATE ${LD_WARNING_FLAGS})
@@ -191,9 +198,10 @@ if(BUILD_TESTING)
         _FILE_OFFSET_BITS=64 _GNU_SOURCE)
     target_link_libraries(defragmenter-test-media-test PRIVATE
         defragmenter-test-media-core defragmenter-affs-native
-        defragmenter-pfs3-native
+        defragmenter-sfs-fixture-native defragmenter-pfs3-native
         defragmenter-apfs-native OpenSSL::Crypto)
     add_test(NAME defragmenter-test-media-core COMMAND defragmenter-test-media-test)
+    endif()
     add_test(NAME defragmenter-test-media-install
         COMMAND "${CMAKE_COMMAND}"
             -DLD_BINARY_DIR=${CMAKE_BINARY_DIR}
