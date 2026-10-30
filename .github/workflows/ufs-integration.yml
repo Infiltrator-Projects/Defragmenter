@@ -37,7 +37,7 @@ jobs:
             -DBUILD_TESTING=ON -DLD_ENABLE_WERROR=ON \
             -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build/module-test"
           cmake --build build --target defragmenter-ufs-worker \
-            defragmenter-ufs-test-worker defragmenter-test-media-mkfs-ufs --parallel 2
+            defragmenter-ufs-test-worker defragmenter-test-media-mkfs-ufs-test --parallel 2
       - name: Prove actual module dispatch and absence of internal fallback
         run: |
           set -euo pipefail
@@ -48,9 +48,18 @@ jobs:
           install -m 0644 /tmp/ufs-so/UFS.so build/module-test/Filesystems/UFS.so
           IFS_TEST_MODULE_PARENT="$PWD/build/module-test" \
             build/defragmenter-ufs-test-worker --version | grep -F 'defragmenter-ufs-worker'
-          # The UFS formatter is also a module-only loader. Refuse absent SOs.
+          # UFS formatting and UFS worker both dispatch through the module.
           IFS_TEST_MODULE_PARENT="$PWD/build/module-test" \
-            build/defragmenter-test-media-mkfs-ufs --help >/dev/null 2>&1 || true
+            build/defragmenter-test-media-mkfs-ufs-test --help >/dev/null 2>&1 || true
+          export IFS_TEST_MODULE_PARENT="$PWD/build/module-test"
+          /bin/sh tests/test_ufs_makefs.sh \
+            "$PWD/build/defragmenter-test-media-mkfs-ufs-test" \
+            "$PWD/build/defragmenter-ufs-test-worker"
+          if IFS_TEST_MODULE_PARENT="$PWD/build/missing" \
+            build/defragmenter-test-media-mkfs-ufs-test --help; then
+            echo 'ERROR: UFS formatter ran without UFS.so' >&2
+            exit 1
+          fi
           if IFS_TEST_MODULE_PARENT="$PWD/build/missing" \
             build/defragmenter-ufs-test-worker --version; then
             echo 'ERROR: UFS worker ran without UFS.so' >&2

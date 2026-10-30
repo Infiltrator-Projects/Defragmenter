@@ -117,6 +117,26 @@ target_link_libraries(defragmenter-test-media-mkfs-ufs PRIVATE
 set_target_properties(defragmenter-test-media-mkfs-ufs PROPERTIES
     OUTPUT_NAME test-media-mkfs-ufs)
 
+# The test-only module host permits a disposable SWAP/OFS/UFS .so root.
+# It must never be installed or used in the production wrapper.
+set(UFS_MKFS_WORKER_FOR_TESTS "$<TARGET_FILE:defragmenter-test-media-mkfs-ufs>")
+set(UFS_WORKER_FOR_TESTS "$<TARGET_FILE:defragmenter-ufs-worker>")
+if(BUILD_TESTING AND OFS_DEFRAG_TEST_MODULE_PARENT)
+    add_executable(defragmenter-test-media-mkfs-ufs-test
+        native/ufs_test_media_module_loader.c)
+    target_include_directories(defragmenter-test-media-mkfs-ufs-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/native"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/core" "${LD_GENERATED_DIR}")
+    target_compile_options(defragmenter-test-media-mkfs-ufs-test PRIVATE ${LD_WARNING_FLAGS})
+    target_compile_definitions(defragmenter-test-media-mkfs-ufs-test PRIVATE
+        _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+    target_link_libraries(defragmenter-test-media-mkfs-ufs-test PRIVATE
+        defragmenter-filesystem-module-test-host)
+    set(UFS_MKFS_WORKER_FOR_TESTS "$<TARGET_FILE:defragmenter-test-media-mkfs-ufs-test>")
+    set(UFS_WORKER_FOR_TESTS "$<TARGET_FILE:defragmenter-ufs-test-worker>")
+endif()
+
+
 install(TARGETS defragmenter-test-media RUNTIME DESTINATION /Programs)
 install(TARGETS
     defragmenter-test-media-mkfs-ofs
@@ -237,8 +257,8 @@ if(BUILD_TESTING)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_test_media_install.cmake")
     add_test(NAME defragmenter-test-media-ufs-makefs
         COMMAND /bin/sh "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_ufs_makefs.sh"
-            "$<TARGET_FILE:defragmenter-test-media-mkfs-ufs>"
-            "$<TARGET_FILE:defragmenter-ufs-worker>")
+            "${UFS_MKFS_WORKER_FOR_TESTS}"
+            "${UFS_WORKER_FOR_TESTS}")
 endif()
 
 # Test processes resolve modules only from the explicitly provisioned disposable

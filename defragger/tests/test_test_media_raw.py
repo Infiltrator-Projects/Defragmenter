@@ -122,7 +122,7 @@ def qualify(fs: str, parent: Path) -> None:
             source = work / "source"
             source.mkdir()
             run(FIXTURE, "ufs-source", source)
-            run(BUILD / "test-media-mkfs-ufs", "-t", "ffs", "-B", "little",
+            run(os.environ.get("DEFRAGMENTER_UFS_MKFS", str(BUILD / "test-media-mkfs-ufs")), "-t", "ffs", "-B", "little",
                 "-s", "2047m", "-o", "version=2,bsize=8192,fsize=1024,minfree=5",
                 image, source)
         else:
@@ -145,6 +145,7 @@ def qualify(fs: str, parent: Path) -> None:
         worker = ("hfs_analyser" if fs == "hfs" else
                   os.environ.get("DEFRAGMENTER_FAT_WORKER", "defragmenter-fat-worker") if fs.startswith("fat") else
                   "defragmenter-ext-worker" if fs.startswith("ext") else
+                  os.environ.get("DEFRAGMENTER_UFS_WORKER", "defragmenter-ufs-worker") if fs == "ufs" else
                   f"defragmenter-{fs}-worker")
         for operation in ("defrag", "growth-defrag"):
             journal = work / f"{operation}.journal"
