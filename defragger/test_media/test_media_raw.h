@@ -6,7 +6,7 @@
 #include <stdbool.h>
 
 /* Bounded qualification fixtures, not general-purpose filesystem formatters.
- * FAT12/16 creation delegates to installed modules; their codecs only verify.
+ * FAT12/16/32 creation and verification delegate to installed filesystem modules.
  * Other transitional codecs own their records; this layer owns the corpus, I/O
  * and complete byte-verification contract. No expected-file list is supplied
  * by mutable saved state. File identities and lengths come from this corpus. */

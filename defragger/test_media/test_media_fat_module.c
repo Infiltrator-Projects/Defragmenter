@@ -129,3 +129,74 @@ int ldtm_fat_module_create(const LdtmFilesystemSpec *spec, const char *path) {
     FatFixture f = {.spec = spec, .path = path};
     return spec && path ? call_module(&f, create_fixture) : -1;
 }
+
+/* Verification must follow the external module's read, stat, and directory
+ * APIs. No FAT boot sector, chain, or directory-entry parsing is permitted here.
+ * A read-only host lease ensures verification can never mutate its fixture.
+ */
+static int verify_fixture(const IfsDefragHostV2 *host, void *symbol, void *opaque) {
+    FatFixture *f = opaque;
+    const IfsFatfsModuleV4 *api = interface(symbol, f->spec);
+    if (!api || !api->v3) return -1;
+    const IfsFatfsModuleV3 *v3 = api->v3;
+    if ((v3->capabilities & (IFS_FATFS_CAP_READ | IFS_FATFS_CAP_DIRECTORY)) !=
+        (IFS_FATFS_CAP_READ | IFS_FATFS_CAP_DIRECTORY) ||
+        !v3->read || !v3->stat || !v3->directory_entry) return -1;
+    f->host = host;
+    if (host->open_target(host->context, f->path, 0, NULL, 0, &f->target))
+        return -1;
+    const IfsFatfsIo io = { f, f->target.bytes, 512U,
+                            read_io, write_io, flush_io, timestamp_io };
+    int result = -1;
+    int mounted = 0;
+    if (f->target.bytes != (uint64_t)f->spec->size_mib * LDTM_MIB ||
+        v3->mount(&io) != 0) goto done;
+    mounted = 1;
+    uint8_t actual[65536], expected[65536];
+    bool seen[LDTM_RAW_FILES] = {false};
+    for (uint32_t index = 0; index <= LDTM_RAW_FILES; ++index) {
+        IfsFatfsEntry entry = {0};
+        const int status = v3->directory_entry("/", index, &entry);
+        if (index == LDTM_RAW_FILES) {
+            if (status != 1) goto done; /* No unexpected files. */
+            break;
+        }
+        if (status != 0) goto done;
+        int file = ldtm_raw_name_index(entry.name);
+        if (file < 0 || (unsigned)file >= LDTM_RAW_FILES ||
+            seen[file] || (entry.attributes & 0x10U) != 0U ||
+            (uint64_t)entry.bytes != ldtm_raw_file_bytes(f->spec, (unsigned)file))
+            goto done;
+        seen[file] = true;
+    }
+    for (unsigned file = 0; file < LDTM_RAW_FILES; ++file) {
+        if (!seen[file]) goto done;
+        char name[16]; ldtm_raw_name(file, name);
+        IfsFatfsEntry stat = {0};
+        const uint64_t length = ldtm_raw_file_bytes(f->spec, file);
+        if (length > UINT32_MAX || v3->stat(name, &stat) != 0 ||
+            stat.bytes != length || (stat.attributes & 0x10U) != 0U)
+            goto done;
+        for (uint64_t offset = 0; offset < length; ) {
+            const uint32_t count = length - offset < sizeof(actual)
+                                 ? (uint32_t)(length - offset) : sizeof(actual);
+            if (host->stop_requested(host->context) ||
+                v3->read(name, (uint32_t)offset, actual, count) != 0)
+                goto done;
+            ldtm_raw_payload(expected, count, file, offset);
+            if (memcmp(actual, expected, count) != 0) goto done;
+            offset += count;
+        }
+    }
+    result = 0;
+done:
+    if (mounted && v3->unmount() != 0) result = -1;
+    host->close_target(host->context, &f->target);
+    return result;
+}
+int ldtm_raw_fat(const LdtmFilesystemSpec *spec, const char *path, bool create) {
+    if (!spec || !path) return -1;
+    if (create) return ldtm_fat_module_create(spec, path);
+    FatFixture f = { .spec = spec, .path = path };
+    return call_module(&f, verify_fixture);
+}
