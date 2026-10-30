@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Infiltrator-Projects/Filesystem-NTFS
-          ref: 57ce5a8dca8b6bc2cbb57dbccd993fd21ff2893d
+          ref: ad3aa8344162a48369858cfe7d3082669ffec310
           path: ci-ntfs
       - name: Build NTFS.so and verify export and contract
         run: |
@@ -35,7 +35,7 @@ jobs:
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
             -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build/modules" \
             -DBUILD_TESTING=ON -DLD_ENABLE_WERROR=ON
-          cmake --build build --parallel 2 --target defragmenter-ntfs-worker defragmenter-ntfs-test-worker
+          cmake --build build --parallel 2 --target defragmenter-ntfs-worker defragmenter-ntfs-test-worker defragmenter-test-media-raw-test
       - name: Exercise real NTFS.so dispatch
         run: |
           set -euo pipefail
@@ -44,8 +44,11 @@ jobs:
           install -m 0644 /tmp/ntfs-so/NTFS.so build/modules/Filesystems/NTFS.so
           cmp native/ifs_ntfs_module_v1.h ../ci-ntfs/include/ifs_ntfs_module_v1.h
           cmp native/ifs_defrag_services_v1.h ../ci-ntfs/include/ifs_defrag_services_v1.h
+          cmp test_media/ifs_ntfs_fixture_v1.h ../ci-ntfs/include/ifs_ntfs_fixture_v1.h
           export IFS_TEST_MODULE_PARENT="$PWD/build/modules"
           build/defragmenter-ntfs-test-worker --version | grep -F '1.0.0'
+          build/defragmenter-test-media-raw-test create ntfs build/ntfs.img
+          build/defragmenter-test-media-raw-test verify ntfs build/ntfs.img
       - name: Require module rather than fallback
         run: |
           set -euo pipefail

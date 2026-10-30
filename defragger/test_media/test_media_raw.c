@@ -205,6 +205,12 @@ int ldtm_raw_fixture(const LdtmFilesystemSpec *spec, const char *path, bool crea
             (void)snprintf(detail, capacity, "Install or update the %s filesystem driver.", spec->key);
         return -1;
     }
+    if (create && spec->creator == LDTM_CREATOR_NTFS &&
+        !ldtm_ntfs_module_available(spec)) {
+        if (detail && capacity)
+            (void)snprintf(detail, capacity, "Install or update the NTFS filesystem driver.");
+        return -1;
+    }
     /* SWAP has no local formatter: refuse missing, untrusted or ABI-invalid
      * SWAP.so before opening any writable target or erasing signatures. */
     if (create && spec->creator == LDTM_CREATOR_SWAP &&
