@@ -1,5 +1,43 @@
 # Safety audit status
 
+## Canonical SO defragmentation engine migration — 2026-10-31
+
+Status: **complete**
+
+Audited source commit: 07d6847f0477a01f85fe053eab5e8ba83cfffb67
+Audited release-governance commit: 07d6847f0477a01f85fe053eab5e8ba83cfffb67
+
+Scope: Defragmenter 1.8.0-281 migration candidate. This is the frozen
+source/test/installer and CI governance baseline; it does **not** claim that
+future GitHub Actions or physical-device qualification has passed. Both the
+complete self-hosted normal quality gate and independent ASan/UBSan gate remain
+mandatory before main/release publication.
+
+- Remove all bundled exFAT native parsing, allocation, relocation and journal
+  source and all bundled Amiga OFS/FFS defragmentation engines.
+- Dispatch exFAT through exFAT.so and Amiga OFS/FFS through OFS.so/FFS.so using
+  versioned, checked native interfaces. Keep only filesystem-neutral, trust-
+  checked SO hosting, operation orchestration, cancellation and bounded I/O.
+- Use FFS.so's fixture and OFS.so's read APIs in Test Media, not an embedded
+  Amiga formatter or data engine. The original FFS code is built only from
+  Filesystem-FFS in the isolated, independent oracle tests.
+- Bind both EXT analysis and the second EXT metadata-classifier process to
+  isolated SO test hosts. Do not accept a test that accidentally selects a
+  production /System/Filesystems module; production module lookup remains
+  root-owned and cannot be redirected through environment overrides.
+- Qualify the pinned standalone filesystem implementations and independent
+  disposable-media corruption, relocation and recovery checks without adding
+  filesystem algorithms back to Defragmenter.
+- Permit pre-merge PR test qualification and cancellation of superseded PR
+  runs while keeping every main-branch qualification noncancellable. Publishing
+  remains restricted to a fully qualified main push with an unpublished VERSION.
+
+The two original audit baselines documented below are retained as historical
+evidence, not as the governing release baseline for this migration. Source and
+governance changes after the above audited commit must be rejected until a new
+audit baseline is explicitly established.
+
+
 ## Release-gate and FAT32 SO candidate audit — 2026-10-30
 
 The incremental source baseline advances from
@@ -54,8 +92,8 @@ Status: **complete**
 Completed: 2026-10-29
 
 Applies to: audited source and release-governance baselines below
-Audited source commit: 30af892d8897d3aeaeefeac1bfcdb9620a0a5c72
-Audited release-governance commit: 412b550451c91dd443a7855c3112976d3275404a
+Historical audited source commit: 30af892d8897d3aeaeefeac1bfcdb9620a0a5c72
+Historical audited release-governance commit: 412b550451c91dd443a7855c3112976d3275404a
 
 Audited writer IDs: fat12, fat16, fat32, exfat, ntfs, ext4, xfs, affs, apfs, btrfs, pfs3, sfs, hfs, hfsplus, minix, ufs
 
