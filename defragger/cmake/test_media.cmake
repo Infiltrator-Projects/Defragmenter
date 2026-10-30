@@ -193,7 +193,7 @@ if(BUILD_TESTING)
                 "${CMAKE_BINARY_DIR}" "${ldtm_fs}")
         set_tests_properties("defragmenter-test-media-native-${ldtm_fs}"
             PROPERTIES TIMEOUT 1800
-                ENVIRONMENT "DEFRAGMENTER_FAT_WORKER=${FAT_WORKER_FOR_TESTS}")
+                ENVIRONMENT "DEFRAGMENTER_FAT_WORKER=${FAT_WORKER_FOR_TESTS};DEFRAGMENTER_EXT_WORKER=${EXT_WORKER_FOR_TESTS};DEFRAGMENTER_EXT_METADATA_WORKER=${EXT_METADATA_WORKER_FOR_TESTS}")
     endforeach()
     add_executable(defragmenter-test-media-gui-test
         tests/test_test_media_gui.c test_media/test_media_theme.c)

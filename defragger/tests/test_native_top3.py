@@ -23,11 +23,16 @@ from ntfs_test_fixture import make_image as make_ntfs_image  # noqa: E402
 def map_json(filesystem: str, image: Path, cells: int = 128) -> dict:
     completed = subprocess.run(
         [str(MAPPER), str(image), "--fstype", filesystem, "--cells", str(cells)],
-        check=True,
+        check=False,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
+    if completed.returncode != 0:
+        raise AssertionError(
+            f"mapper failed for {filesystem} with rc={completed.returncode}\n"
+            f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+        )
     return json.loads(completed.stdout)
 
 

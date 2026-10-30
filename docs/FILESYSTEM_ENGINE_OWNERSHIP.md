@@ -18,7 +18,7 @@ OFS analysis, Defrag, Growth Defrag and new-journal Recover use OFS.so's
 process-hosted Defrag V2 interface. The filesystem-neutral host supplies bounded
 I/O, stable target identity, mounted-overlap refusal, locks, private durable
 files, SHA-256 and Stop; it owns no OFS parser or placement policy. Missing or
-incompatible OFS.so is an error. FFS keeps its separate transitional engine.
+incompatible OFS.so is an error. FFS now uses Filesystem-FFS/FFS.so for defragmentation; its earlier in-application engine is not compiled in production.
 Previously issued AFFS journals retain their exact recovery reader; this is
 never a fallback for a new OFS operation.
 
@@ -48,11 +48,10 @@ V5 Test Media file/format contract and its separate defrag V1 contract.
 FFS defragmentation now dispatches into the independent Filesystem-FFS/FFS.so;
 its native code is no longer compiled into the production AFFS worker.
 
-Known remaining locally compiled Amiga format engine: FFS Test Media formatting
-and population. The new FFS.so candidate additionally exports defrag and
-fixture interfaces, with independent disposable-image format/populate tests;
-the locally compiled implementation must not be removed until an equivalent
-write/defrag/recovery/format ABI and independent tests exist.
+FFS Test Media now formats, populates and verifies images through FFS.so fixture
+interfaces. Any original FFS native source compiled by the regression harness
+comes from the standalone Filesystem-FFS repository and is a test-only oracle;
+it is not linked into production Defragmenter workers or Test Media.
 
 FAT12/16/32 Test Media calls the matching SO's V4 formatter and V3 file
 APIs. Interleaved appends manufacture the existing 200 MiB fragmented corpus
@@ -63,7 +62,7 @@ Readiness and privileged preparation reject missing/incompatible modules before
 erasing signatures or partitioning. FAT32's local FAT and directory writer has been retired; Test Media keeps
 only the independent read-only payload verifier.
 
-Existing internal filesystem engines and test-media writers can remain **temporary reference/compatibility implementations** until the matching `.so` covers their verified functions. Removing them before equivalence tests risks data loss. A user-visible successful defrag is **not** proof that the `.so` was called: instrument and test actual `dlopen`/ABI dispatch, reject wrong format, compare independent before/after allocation maps and filesystem integrity, check Stop/rollback and exercise files across multiple clusters, names and failure modes.
+Legacy filesystem engines remain in Git history or their independent filesystem repositories as test oracles, not as production fallbacks. Every production operation must fail closed if its trusted filesystem `.so` is unavailable, even if historical code exists. A user-visible successful defrag is **not** proof that the `.so` was called: instrument and test actual `dlopen`/ABI dispatch, reject wrong format, compare independent before/after allocation maps and filesystem integrity, check Stop/rollback and exercise files across multiple clusters, names and failure modes.
 
 Defragmenter Test Media uses the authoritative module's format/create/populate APIs when qualified but keeps independently implemented disposable-image verification oracles. The final release must not ship a second competing filesystem-specific engine or claim a fallback is equivalent without independent tests. Historical releases are described as they were actually built.
 
