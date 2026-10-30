@@ -31,6 +31,13 @@ echo "+ first-party UFS2 creator -t ffs -B little -s 64m"
     -o version=2,bsize=8192,fsize=1024,minfree=5 \
     "$IMAGE" "$WORK/source"
 
+# Production Test Media must validate UFS2 geometry through UFS2.so without
+# relying on Defragmenter's active defrag host-service binding.
+"$UFS_CREATOR" --check-ufs2-le "$IMAGE" || {
+    echo "UFS2.so rejected its own first-party fixture geometry" >&2
+    exit 1
+}
+
 IDENTIFY=$($UFS_WORKER identify "$IMAGE")
 EXPECTED='{"filesystem":"ufs","variant":"ufs2-le","version":2,"byte_order":"little"}'
 [ "$IDENTIFY" = "$EXPECTED" ] || {
