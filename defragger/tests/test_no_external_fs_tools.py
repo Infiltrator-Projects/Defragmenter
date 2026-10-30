@@ -78,7 +78,10 @@ def main() -> None:
     for path in iter_production_files():
         text = path.read_text(encoding="utf-8", errors="replace").lower()
         for token in FORBIDDEN_TOKENS:
-            if token in text:
+            # Token boundaries matter: "ntfsfix" must not match the native
+            # IfsNtfsFixtureHostV1 ABI type, for example.
+            if re.search(r"(?<![a-z0-9_])" + re.escape(token) +
+                         r"(?![a-z0-9_])", text):
                 offenders.append(f"{path.relative_to(ROOT)}: {token}")
         for pattern in FORBIDDEN_PATTERNS:
             if pattern.search(text):
