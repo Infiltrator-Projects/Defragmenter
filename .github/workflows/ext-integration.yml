@@ -1,0 +1,68 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Verify independent EXT2 EXT3 EXT4 integration
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ext-integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install compiler and native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config \
+            libgtk-3-dev libssl-dev libsqlite3-dev libext2fs-dev
+      - uses: actions/checkout@v4
+        with:
+          repository: Infiltrator-Projects/Filesystem-EXT4
+          ref: 292c4462f3b16530b3d552563ebe9d3584a329ec
+          path: ci-ext4
+      - name: Build all three canonical shared objects
+        run: |
+          cmake -S ci-ext4 -B /tmp/ext-so -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          cmake --build /tmp/ext-so --parallel 2
+          ctest --test-dir /tmp/ext-so --output-on-failure
+      - name: Compile native Defragmenter loaders and Test Media
+        run: |
+          cd defragger
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build/modules" -DLD_ENABLE_WERROR=ON
+          cmake --build build --parallel 2 --target \
+            defragmenter-ext-worker defragmenter-ext-metadata-worker defragmenter-test-media-raw-test
+      - name: Reject internal filesystem fallback and verify module dispatch
+        run: |
+          set -euo pipefail
+          cd defragger
+          cmp native/ifs_ext_module_v1.h ../ci-ext4/include/ifs_ext_module_v1.h
+          cmp test_media/ifs_ext_fixture_v1.h ../ci-ext4/include/ifs_ext_fixture_v1.h
+          bash tests/verify_legacy_fs_services_abi.sh ../ci-ext4/include/ifs_defrag_services_v1.h
+          mkdir -p build/modules/Filesystems build/missing/Filesystems
+          install -m 0644 /tmp/ext-so/EXT{2,3,4}.so build/modules/Filesystems/
+          export IFS_TEST_MODULE_PARENT="$PWD/build/modules"
+          build/defragmenter-ext-worker --version | grep -F 'defragmenter-ext-worker'
+          build/defragmenter-ext-metadata-worker --version | grep -F 'defragmenter-ext-worker' || true
+          build/defragmenter-test-media-raw-test create ext2 build/ext2-test.img
+          build/defragmenter-test-media-raw-test verify ext2 build/ext2-test.img
+          build/defragmenter-ext-worker identify "$PWD/build/ext2-test.img" | grep -F '"ext2"'
+          build/defragmenter-test-media-raw-test create ext3 build/ext3-test.img
+          build/defragmenter-test-media-raw-test verify ext3 build/ext3-test.img
+          build/defragmenter-ext-worker identify "$PWD/build/ext3-test.img" | grep -F '"ext3"'
+          build/defragmenter-test-media-raw-test create ext4 build/ext4-test.img
+          build/defragmenter-test-media-raw-test verify ext4 build/ext4-test.img
+          build/defragmenter-ext-worker identify "$PWD/build/ext4-test.img" | grep -F '"ext4"'
+          if IFS_TEST_MODULE_PARENT="$PWD/build/missing" build/defragmenter-ext-worker --version; then
+            echo "ERROR: EXT worker ran without independent EXT4.so" >&2
+            exit 1
+          fi
+          if IFS_TEST_MODULE_PARENT="$PWD/build/missing" \
+            build/defragmenter-test-media-raw-test create ext2 build/missing-test.img; then
+            echo "ERROR: EXT test media ran without independent EXT2.so" >&2
+            exit 1
+          fi
