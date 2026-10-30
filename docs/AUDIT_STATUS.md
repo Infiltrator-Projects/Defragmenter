@@ -4,8 +4,8 @@
 
 Status: **complete**
 
-Audited source commit: 0880de932d2fd61573c9e2e5ea8f8fac88f5f95a
-Audited release-governance commit: 07d6847f0477a01f85fe053eab5e8ba83cfffb67
+Audited source commit: 520b3820c26d9000fb6c27bd69f75ba8df9ca37f
+Audited release-governance commit: 520b3820c26d9000fb6c27bd69f75ba8df9ca37f
 
 Scope: Defragmenter 1.8.0-281 migration candidate, including corrected user-visible backend descriptions. This is the frozen
 source/test/installer and CI governance baseline; it does **not** claim that
@@ -31,6 +31,16 @@ mandatory before main/release publication.
 - Permit pre-merge PR test qualification and cancellation of superseded PR
   runs while keeping every main-branch qualification noncancellable. Publishing
   remains restricted to a fully qualified main push with an unpublished VERSION.
+
+The release-invariant gate also audits all fourteen existing, read-only
+per-filesystem integration workflows by their exact filenames, read-only token
+permissions and restricted triggers. Their independent missing-module and
+cross-repository regression checks are retained, not silently deleted to
+satisfy an obsolete two-workflow assertion. Only the central quality and
+release workflows possess publication authority. The 42 general tests, all
+16 Test Media cases and sanitizer lane passed on the preceding candidate;
+this revised governance baseline requires those qualifications to run again
+on the exact new head before publication.
 
 The two original audit baselines documented below are retained as historical
 evidence, not as the governing release baseline for this migration. Source and
