@@ -317,6 +317,24 @@ jobs:
           ctest --test-dir "$RUNNER_TEMP/xfs-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
           install -m 0644 "$RUNNER_TEMP/xfs-$GITHUB_RUN_ID-$GITHUB_JOB/XFS.so" "$PWD/build/fat-module-test/Filesystems/XFS.so"
 
+      - name: Check out independently qualified UFS.so
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-UFS
+          ref: 7366c9c63b7e7cfbdb543b956a5753c18ff4dc85
+          path: ci-ufs
+
+      - name: Build and qualify UFS.so and the first-party formatter
+        run: |
+          set -euo pipefail
+          src="$GITHUB_WORKSPACE/ci-ufs"
+          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
+          cmp native/ifs_ufs_module_v1.h "$src/include/ifs_ufs_module_v1.h"
+          cmake -S "$src" -B "$RUNNER_TEMP/ufs-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$RUNNER_TEMP/ufs-$GITHUB_RUN_ID-$GITHUB_JOB" -j2
+          ctest --test-dir "$RUNNER_TEMP/ufs-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
+          install -m 0644 "$RUNNER_TEMP/ufs-$GITHUB_RUN_ID-$GITHUB_JOB/UFS.so" "$PWD/build/fat-module-test/Filesystems/UFS.so"
+
       - name: Detect explicit release intent
         id: release_intent
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -390,6 +408,8 @@ jobs:
           DEFRAGMENTER_BTRFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-btrfs-test-worker
           DEFRAGMENTER_MINIX_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-minix-test-worker
           DEFRAGMENTER_MINIX_FIXTURE: ${{ runner.temp }}/minix-${{ github.run_id }}-${{ github.job }}/minix-native-test
+          DEFRAGMENTER_UFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-ufs-test-worker
+          DEFRAGMENTER_UFS_MKFS: ${{ github.workspace }}/defragger/build/defragmenter-test-media-mkfs-ufs-test
           IFS_TEST_MODULE_PARENT: ${{ github.workspace }}/defragger/build/fat-module-test
           DEFRAGMENTER_AFFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-affs-test-worker
         run: |
@@ -767,6 +787,25 @@ jobs:
           cmake --build "$RUNNER_TEMP/xfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target xfs-driver -j2
           install -m 0644 "$RUNNER_TEMP/xfs-san-$GITHUB_RUN_ID-$GITHUB_JOB/XFS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/XFS.so"
 
+      - name: Check out independent UFS.so for sanitizer tests
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-UFS
+          ref: 7366c9c63b7e7cfbdb543b956a5753c18ff4dc85
+          path: ci-ufs
+
+      - name: Instrument first-party UFS.so and formatting engine
+        run: |
+          set -euo pipefail
+          src="$GITHUB_WORKSPACE/ci-ufs"
+          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
+          cmp native/ifs_ufs_module_v1.h "$src/include/ifs_ufs_module_v1.h"
+          cmake -S "$src" -B "$RUNNER_TEMP/ufs-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
+            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
+          cmake --build "$RUNNER_TEMP/ufs-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target ufs-driver -j2
+          install -m 0644 "$RUNNER_TEMP/ufs-san-$GITHUB_RUN_ID-$GITHUB_JOB/UFS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/UFS.so"
+
       - name: Build with AddressSanitizer and UndefinedBehaviorSanitizer
         run: |
           cmake -S . -B build-sanitize \
@@ -788,6 +827,8 @@ jobs:
           PYTHONDONTWRITEBYTECODE: "1"
           PYTHONPATH: ${{ github.workspace }}/defragger/tests
           DEFRAGMENTER_BUILD_DIR: ${{ github.workspace }}/defragger/build-sanitize
+          DEFRAGMENTER_UFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-ufs-test-worker
+          DEFRAGMENTER_UFS_MKFS: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-test-media-mkfs-ufs-test
           DEFRAGMENTER_SWAP_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-swap-test-worker
           DEFRAGMENTER_ZFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-zfs-test-worker
           DEFRAGMENTER_SFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-sfs-test-worker
