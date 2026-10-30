@@ -241,6 +241,25 @@ jobs:
           cmp test_media/ifs_hfsplus_fixture_v1.h "$src/include/ifs_hfsplus_fixture_v1.h"
           install -m 0644 "$RUNNER_TEMP/hfsplus-$GITHUB_RUN_ID-$GITHUB_JOB/HFSPLUS.so" "$PWD/build/fat-module-test/Filesystems/HFSPLUS.so"
 
+      - name: Check out independent BTRFS.so for qualification
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-Btrfs
+          ref: ba80a1c7d8a21476b550889091d93c28ebaa99ce
+          path: ci-btrfs
+
+      - name: Build qualified BTRFS.so
+        run: |
+          set -euo pipefail
+          src="$GITHUB_WORKSPACE/ci-btrfs"
+          cmake -S "$src" -B "$RUNNER_TEMP/btrfs-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=ON
+          cmake --build "$RUNNER_TEMP/btrfs-$GITHUB_RUN_ID-$GITHUB_JOB" --target btrfs-driver -j2
+          ctest --test-dir "$RUNNER_TEMP/btrfs-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
+          cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
+          cmp native/ifs_btrfs_module_v1.h "$src/include/ifs_btrfs_module_v1.h"
+          cmp test_media/ifs_btrfs_fixture_v1.h "$src/include/ifs_btrfs_fixture_v1.h"
+          install -m 0644 "$RUNNER_TEMP/btrfs-$GITHUB_RUN_ID-$GITHUB_JOB/BTRFS.so" "$PWD/build/fat-module-test/Filesystems/BTRFS.so"
+
       - name: Detect explicit release intent
         id: release_intent
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -310,6 +329,7 @@ jobs:
           DEFRAGMENTER_HFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-hfs-test-worker
           DEFRAGMENTER_HFS_ANALYSER: ${{ github.workspace }}/defragger/build/defragmenter-hfs-test-worker
           DEFRAGMENTER_HFSPLUS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-hfsplus-test-worker
+          DEFRAGMENTER_BTRFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-btrfs-test-worker
           IFS_TEST_MODULE_PARENT: ${{ github.workspace }}/defragger/build/fat-module-test
           DEFRAGMENTER_AFFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-affs-test-worker
         run: |
@@ -605,6 +625,26 @@ jobs:
           cmp test_media/ifs_hfsplus_fixture_v1.h "$src/include/ifs_hfsplus_fixture_v1.h"
           install -m 0644 "$RUNNER_TEMP/hfsplus-san-$GITHUB_RUN_ID-$GITHUB_JOB/HFSPLUS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/HFSPLUS.so"
 
+      - name: Check out independent BTRFS.so for sanitizer qualification
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-Btrfs
+          ref: ba80a1c7d8a21476b550889091d93c28ebaa99ce
+          path: ci-btrfs
+
+      - name: Build qualified BTRFS.so under ASan/UBSan
+        run: |
+          set -euo pipefail
+          src="$GITHUB_WORKSPACE/ci-btrfs"
+          cmake -S "$src" -B "$RUNNER_TEMP/btrfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=OFF \
+            -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
+            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
+          cmake --build "$RUNNER_TEMP/btrfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target btrfs-driver -j2
+          cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
+          cmp native/ifs_btrfs_module_v1.h "$src/include/ifs_btrfs_module_v1.h"
+          cmp test_media/ifs_btrfs_fixture_v1.h "$src/include/ifs_btrfs_fixture_v1.h"
+          install -m 0644 "$RUNNER_TEMP/btrfs-san-$GITHUB_RUN_ID-$GITHUB_JOB/BTRFS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/BTRFS.so"
+
       - name: Build with AddressSanitizer and UndefinedBehaviorSanitizer
         run: |
           cmake -S . -B build-sanitize \
@@ -633,6 +673,7 @@ jobs:
           DEFRAGMENTER_HFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-hfs-test-worker
           DEFRAGMENTER_HFS_ANALYSER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-hfs-test-worker
           DEFRAGMENTER_HFSPLUS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-hfsplus-test-worker
+          DEFRAGMENTER_BTRFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-btrfs-test-worker
           IFS_TEST_MODULE_PARENT: ${{ github.workspace }}/defragger/build-sanitize/fat-module-test
           DEFRAGMENTER_AFFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-affs-test-worker
         run: |
