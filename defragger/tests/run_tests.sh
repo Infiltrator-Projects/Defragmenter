@@ -6,7 +6,7 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 FAT_WORKER=${1:-"$ROOT/build/defragmenter-fat-worker"}
 BUILD_DIR=$(CDPATH= cd -- "$(dirname -- "$FAT_WORKER")" && pwd)
 HFS_ANALYSER=${DEFRAGMENTER_HFS_WORKER:-"$BUILD_DIR/hfs_analyser"}
-XFS_WORKER="$BUILD_DIR/defragmenter-xfs-worker"
+XFS_WORKER=${DEFRAGMENTER_XFS_WORKER:-"$BUILD_DIR/defragmenter-xfs-worker"}
 XFS_NATIVE_TEST="$BUILD_DIR/defragmenter-xfs-native-test"
 XFS_METADATA_TEST="$BUILD_DIR/defragmenter-xfs-metadata-test"
 FAT12_SMALL_WORKSPACE_FIXTURE="$BUILD_DIR/defragmenter-fat12-small-workspace-fixture"

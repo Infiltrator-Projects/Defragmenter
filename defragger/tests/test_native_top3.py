@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""End-to-end image tests for the current C-first EXT, NTFS and exFAT C engines."""
+"""Exercise independently loaded EXT, NTFS and exFAT SO engines on disposable media."""
 
 from __future__ import annotations
 
@@ -75,7 +75,7 @@ def assert_clean(payload: dict, *, growth: bool) -> None:
 
 
 def test_exfat(work: Path) -> None:
-    worker = BUILD / "defragmenter-exfat-worker"
+    worker = Path(os.environ.get("DEFRAGMENTER_EXFAT_WORKER", BUILD / "defragmenter-exfat-worker"))
     image = work / "exfat.img"
     subprocess.run([sys.executable, str(ROOT / "tests" / "make_exfat_image.py"), str(image)], check=True)
     before = run_json(worker, image)
@@ -101,7 +101,7 @@ def test_exfat(work: Path) -> None:
 
 
 def test_ntfs_combined_analysis(work: Path) -> None:
-    worker = BUILD / "defragmenter-ntfs-worker"
+    worker = Path(os.environ.get("DEFRAGMENTER_NTFS_WORKER", BUILD / "defragmenter-ntfs-worker"))
     for dirty in (False, True):
         image = work / f"ntfs-combined-{dirty}.img"
         make_ntfs_image(image, volume_flags=1 if dirty else 0,
@@ -132,7 +132,7 @@ def test_ntfs_combined_analysis(work: Path) -> None:
 
 
 def test_ntfs(work: Path) -> None:
-    worker = BUILD / "defragmenter-ntfs-worker"
+    worker = Path(os.environ.get("DEFRAGMENTER_NTFS_WORKER", BUILD / "defragmenter-ntfs-worker"))
     image = work / "ntfs.img"
     make_ntfs_image(image, fragmented_data=True, directory_data=True)
     before = run_json(worker, image)
@@ -159,7 +159,7 @@ def test_ntfs(work: Path) -> None:
 
 
 def test_ntfs_relocates_named_data_stream(work: Path) -> None:
-    worker = BUILD / "defragmenter-ntfs-worker"
+    worker = Path(os.environ.get("DEFRAGMENTER_NTFS_WORKER", BUILD / "defragmenter-ntfs-worker"))
     image = work / "ntfs-ads.img"
     make_ntfs_image(
         image,
@@ -189,7 +189,7 @@ def test_ntfs_relocates_named_data_stream(work: Path) -> None:
 
 
 def test_ntfs_preserves_safe_unsupported_user_stream(work: Path) -> None:
-    worker = BUILD / "defragmenter-ntfs-worker"
+    worker = Path(os.environ.get("DEFRAGMENTER_NTFS_WORKER", BUILD / "defragmenter-ntfs-worker"))
     image = work / "ntfs-fixed-user-stream.img"
     make_ntfs_image(
         image,
@@ -235,7 +235,7 @@ def test_ntfs_preserves_safe_unsupported_user_stream(work: Path) -> None:
     assert_clean(run_json(worker, image), growth=True)
 
 def test_ext(work: Path) -> None:
-    worker = BUILD / "defragmenter-ext-worker"
+    worker = Path(os.environ.get("DEFRAGMENTER_EXT_WORKER", BUILD / "defragmenter-ext-worker"))
     fixture = BUILD / "defragmenter-ext-fixture"
     image = work / "ext4.img"
     subprocess.run([str(fixture), str(image)], check=True)

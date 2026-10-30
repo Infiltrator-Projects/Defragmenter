@@ -14,7 +14,15 @@ BUILD = Path(os.environ.get("DEFRAGMENTER_BUILD_DIR", ROOT / "build"))
 
 def _run_version(name: str) -> None:
     completed = subprocess.run(
-        [str(BUILD / name), "--version"],
+        [str(Path(os.environ.get({
+            "defragmenter-ext-worker": "DEFRAGMENTER_EXT_WORKER",
+            "defragmenter-ntfs-worker": "DEFRAGMENTER_NTFS_WORKER",
+            "defragmenter-exfat-worker": "DEFRAGMENTER_EXFAT_WORKER",
+            "defragmenter-xfs-worker": "DEFRAGMENTER_XFS_WORKER",
+            "defragmenter-fat-worker": "DEFRAGMENTER_FAT_WORKER",
+            "defragmenter-affs-worker": "DEFRAGMENTER_AFFS_WORKER",
+            "defragmenter-hfsplus-worker": "DEFRAGMENTER_HFSPLUS_WORKER",
+        }[name], BUILD / name)), "--version"],
         cwd="/",
         text=True,
         stdout=subprocess.PIPE,

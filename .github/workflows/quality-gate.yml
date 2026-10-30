@@ -480,6 +480,11 @@ jobs:
           PYTHONDONTWRITEBYTECODE: "1"
           PYTHONPATH: ${{ github.workspace }}/defragger/tests
           DEFRAGMENTER_BUILD_DIR: ${{ github.workspace }}/defragger/build
+          DEFRAGMENTER_EXT_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-ext-test-worker
+          DEFRAGMENTER_NTFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-ntfs-test-worker
+          DEFRAGMENTER_EXFAT_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-exfat-test-worker
+          DEFRAGMENTER_XFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-xfs-test-worker
+          DEFRAGMENTER_FAT_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-fat-test-worker
           DEFRAGMENTER_SWAP_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-swap-test-worker
           DEFRAGMENTER_ZFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-zfs-test-worker
           DEFRAGMENTER_SFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-sfs-test-worker
@@ -989,6 +994,11 @@ jobs:
           PYTHONDONTWRITEBYTECODE: "1"
           PYTHONPATH: ${{ github.workspace }}/defragger/tests
           DEFRAGMENTER_BUILD_DIR: ${{ github.workspace }}/defragger/build-sanitize
+          DEFRAGMENTER_EXT_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-ext-test-worker
+          DEFRAGMENTER_NTFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-ntfs-test-worker
+          DEFRAGMENTER_EXFAT_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-exfat-test-worker
+          DEFRAGMENTER_XFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-xfs-test-worker
+          DEFRAGMENTER_FAT_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-fat-test-worker
           DEFRAGMENTER_UFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-ufs-test-worker
           DEFRAGMENTER_UFS_MKFS: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-test-media-mkfs-ufs-test
           DEFRAGMENTER_SWAP_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-swap-test-worker
