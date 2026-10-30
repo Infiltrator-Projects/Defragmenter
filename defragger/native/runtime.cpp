@@ -279,8 +279,8 @@ const std::vector<BackendInfo>& backend_registry() {
             "affs-native", MapAdapter::Affs,
             standard_write_ops(
                 "affs-native",
-                "Amiga OFS/FFS writing uses Defragmenter's offline first-party native C raw engine.",
-                "Amiga Growth Defrag uses the native C raw engine and leaves an exact 10% free-block reserve after each regular file.")});
+                "Amiga OFS/FFS writing runs in the independently installed OFS.so or FFS.so; Defragmenter hosts the verified module only.",
+                "Amiga Growth Defrag runs in OFS.so or FFS.so and reserves 10% free blocks after each supported regular file.")});
         result.push_back({
             "apfs", "Apple APFS", {"apfs"}, write, "exact-bounded-spaceman",
             "apfs-native", MapAdapter::NativeMap,
@@ -321,7 +321,7 @@ const std::vector<BackendInfo>& backend_registry() {
             "hfs-native", MapAdapter::NativeMap,
             standard_write_ops(
                 "hfs-native",
-                "Classic HFS writing uses Defragmenter's offline first-party native C engine and relocates complete regular-file forks across both inline and Extents Overflow records while preserving validated B-tree topology.",
+                "Classic HFS writing runs in HFS.so and relocates supported regular-file forks while preserving validated B-tree topology.",
                 "Classic HFS Growth Defrag leaves a 10% free allocation-block reserve after each supported non-empty file fork."),
             QualificationMode::WorkerPreflight});
         result.push_back({
@@ -329,37 +329,37 @@ const std::vector<BackendInfo>& backend_registry() {
             write, "exact", "hfsplus-native", MapAdapter::HfsPlus,
             standard_write_ops(
                 "hfsplus-native",
-                "HFS+/HFSX writing uses Defragmenter's offline first-party native C raw engine.",
-                "HFS+/HFSX Growth Defrag uses the native C raw engine and leaves an exact 10% free allocation-block reserve after each movable fork."),
+                "HFS+/HFSX writing runs in the independently installed HFSPLUS.so module.",
+                "HFS+/HFSX Growth Defrag runs in HFSPLUS.so and reserves 10% free allocation blocks after each supported fork."),
             QualificationMode::WorkerPreflight});
         result.push_back({
             "minix", "Minix Filesystem", {"minix", "minix2", "minix3"},
             write, "exact", "minix-native", MapAdapter::NativeMap,
             standard_write_ops(
                 "minix-native",
-                "Minix writing uses Defragmenter's offline first-party native C raw engine.",
+                "Minix filesystem writing runs in the independently installed MINIX.so module.",
                 "Minix Growth Defrag leaves an exact 10% free-zone reserve after every regular file.")});
         result.push_back({
             "ntfs", "NTFS", {"ntfs", "ntfs3"}, write, "exact",
             "ntfs-native", MapAdapter::Ntfs,
             standard_write_ops(
                 "ntfs-native",
-                "NTFS writing uses Defragmenter's offline native C raw engine. No NTFS filesystem driver, mount, filesystem ioctl or external filesystem utility is used.",
-                "NTFS Growth Defrag uses the same native C raw engine and leaves an exact 10% free-cluster reserve after every supported regular-file stream."),
+                "NTFS writing runs in NTFS.so using offline raw I/O. No kernel filesystem mount, filesystem ioctl or external repair utility is used.",
+                "NTFS Growth Defrag runs in NTFS.so and reserves 10% free clusters after each supported regular-file stream."),
             QualificationMode::MapOrWorkerPreflight});
         result.push_back({
             "pfs3", "Amiga PFS3", {"pfs3", "pfs", "professionalfilesystem"},
             write, "exact-allocation", "pfs3-native", MapAdapter::NativeMap,
             standard_write_ops(
                 "pfs3-native",
-                "Amiga PFS3 writing uses Defragmenter's offline first-party native C raw engine, recursively validates nested user directories, preserves validated hard links, relocates soft-link payloads and rollover files, and fails closed on unsupported SUPERINDEX/LARGEFILE or remaining special-entry modes.",
+                "Amiga PFS3 writing runs in PFS3.so, validates supported directories and links, and fails closed on unsupported entries or layouts.",
                 "PFS3 Growth Defrag leaves an exact 10% free-block reserve after every supported regular file.")});
         result.push_back({
             "sfs", "Amiga SFS", {"sfs", "sfs0", "sfs2", "smartfilesystem"},
             write, "exact-allocation", "sfs-native", MapAdapter::NativeMap,
             standard_write_ops(
                 "sfs-native",
-                "Amiga SFS0/SFS2 writing uses Defragmenter's offline first-party native C raw engine.",
+                "Amiga SFS0/SFS2 writing runs in the independently installed SFS.so module.",
                 "SFS0/SFS2 Growth Defrag leaves an exact 10% free-block reserve after every regular file.")});
         result.push_back({
             "swap", "Linux Swap", {"swap", "swapspace", "linux-swap"},
@@ -370,8 +370,8 @@ const std::vector<BackendInfo>& backend_registry() {
             write, "exact", "ufs-native", MapAdapter::NativeMap,
             standard_write_ops(
                 "ufs-native",
-                "UFS1/UFS2 writing uses Defragmenter's offline first-party native C engine and is fail-closed to clean, non-journalled, snapshot-free filesystems whose regular-file allocation is fully understood.",
-                "UFS Growth Defrag uses the same staged native engine and leaves an exact 10% free-fragment reserve after every supported regular file."),
+                "UFS1/UFS2 writing runs in its matching UFS1.so or UFS2.so and fails closed on unsupported filesystem states or allocation layouts.",
+                "UFS Growth Defrag runs in the selected UFS.so engine and reserves 10% free fragments after each supported regular file."),
             QualificationMode::WorkerPreflight, {},
             {"summary", "exact-allocation", "exact"}});
         result.push_back({
@@ -379,8 +379,8 @@ const std::vector<BackendInfo>& backend_registry() {
             "xfs-native", MapAdapter::Xfs,
             standard_write_ops(
                 "xfs-native",
-                "XFS writing uses Defragmenter's offline native C raw engine. No XFS kernel driver, mount, filesystem ioctl or external repair tool is used.",
-                "XFS Growth Defrag uses the native C raw engine, requires staging space, and preserves an exact 10% free run after every supported regular file."),
+                "XFS writing runs in XFS.so using offline raw I/O. No kernel filesystem mount, filesystem ioctl or external repair utility is used.",
+                "XFS Growth Defrag runs in XFS.so, requires staging space, and reserves 10% free extents after each supported regular file."),
             QualificationMode::WorkerPreflight});
         result.push_back({
             "zfs", "ZFS/OpenZFS Member", {"zfs", "zfs_member"},
