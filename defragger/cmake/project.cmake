@@ -404,7 +404,7 @@ target_include_directories(defragmenter-ntfs-worker PRIVATE
 target_compile_options(defragmenter-ntfs-worker PRIVATE ${LD_WARNING_FLAGS})
 target_compile_definitions(defragmenter-ntfs-worker PRIVATE _GNU_SOURCE _FILE_OFFSET_BITS=64)
 target_link_libraries(defragmenter-ntfs-worker PRIVATE
-    defragmenter-filesystem-module-host defragmenter-defrag-services)
+    defragmenter-filesystem-module-host defragmenter-fs-host-services)
 
 add_library(defragmenter-exfat-native STATIC
     gui/filesystems/exfat/native/exfat_common.c
