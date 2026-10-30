@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = Path(os.environ.get("DEFRAGMENTER_BUILD_DIR", ROOT / "build"))
-ANALYSER = BUILD / "hfs_analyser"
+ANALYSER = Path(os.environ.get("DEFRAGMENTER_HFS_WORKER", BUILD / "hfs_analyser"))
 EXPECTED_EXTENTS = [[10, 1], [20, 1], [30, 1]]
 
 

@@ -569,20 +569,25 @@ target_compile_definitions(defragmenter-xfs-worker PRIVATE
 target_link_libraries(defragmenter-xfs-worker PRIVATE
     defragmenter-xfs-native defragmenter-core SQLite::SQLite3 OpenSSL::Crypto)
 
-# Classic HFS analysis and bounded offline mutation share the same first-party
-# parser.  The installed binary retains the historical hfs_analyser name for
-# compatibility while adding Defragment/Growth Defrag/Recover.
-add_executable(defragmenter-hfs-worker gui/filesystems/hfs/native/writer.c)
+# Classic HFS belongs to the independent trusted HFS.so.
+# The executable retains its original hfs_analyser name for compatibility.
+add_executable(defragmenter-hfs-worker native/hfs_module_loader.c)
 target_include_directories(defragmenter-hfs-worker PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/hfs/native"
-    "${LD_GENERATED_DIR}")
+ "${CMAKE_CURRENT_SOURCE_DIR}/native" "${CMAKE_CURRENT_SOURCE_DIR}/src/core" "${LD_GENERATED_DIR}")
 target_compile_options(defragmenter-hfs-worker PRIVATE ${LD_WARNING_FLAGS})
-target_compile_definitions(defragmenter-hfs-worker PRIVATE
-    _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+target_compile_definitions(defragmenter-hfs-worker PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(defragmenter-hfs-worker PRIVATE
-    defragmenter-core OpenSSL::Crypto)
+ defragmenter-fs-host-services defragmenter-filesystem-module-host)
 set_target_properties(defragmenter-hfs-worker PROPERTIES OUTPUT_NAME hfs_analyser)
+if(BUILD_TESTING AND OFS_DEFRAG_TEST_MODULE_PARENT)
+ add_executable(defragmenter-hfs-test-worker native/hfs_module_loader.c)
+ target_include_directories(defragmenter-hfs-test-worker PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/native" "${CMAKE_CURRENT_SOURCE_DIR}/src/core" "${LD_GENERATED_DIR}")
+ target_compile_options(defragmenter-hfs-test-worker PRIVATE ${LD_WARNING_FLAGS})
+ target_compile_definitions(defragmenter-hfs-test-worker PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+ target_link_libraries(defragmenter-hfs-test-worker PRIVATE
+  defragmenter-fs-host-services defragmenter-filesystem-module-test-host)
+endif()
 
 install(TARGETS defragmenter-affs-worker
         RUNTIME DESTINATION /System/Commands/Defragmenter/affs)

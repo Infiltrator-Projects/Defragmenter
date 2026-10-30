@@ -30,7 +30,7 @@ add_library(defragmenter-test-media-core STATIC
     test_media/test_media_raw_exfat.c
     test_media/test_media_raw_unix.c
     test_media/test_media_swap_module.c
-    test_media/test_media_raw_mac.c
+    test_media/test_media_hfs_module.c
     test_media/test_media_hfsplus_module.c
     test_media/test_media_raw_ntfs.c
     test_media/test_media_raw_xfs.c

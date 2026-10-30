@@ -279,6 +279,14 @@ int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
             "Install or update the %s filesystem driver before creating test media.", spec->key);
         return ready;
     }
+    if (spec->creator == LDTM_CREATOR_HFS) {
+        extern int ldtm_hfs_module_available(const LdtmFilesystemSpec *);
+        const int ready=ldtm_hfs_module_available(spec);
+        (void)snprintf(detail,detail_capacity,"%s",ready ?
+            "HFS.so is ready to format and verify test media." :
+            "Install or update the HFS.so filesystem driver.");
+        return ready;
+    }
     if (spec->creator == LDTM_CREATOR_HFSPLUS) {
         extern int ldtm_hfsplus_module_available(const LdtmFilesystemSpec *);
         const int ready = ldtm_hfsplus_module_available(spec);
@@ -367,7 +375,8 @@ int ldtm_required_modules_available(char *detail, size_t detail_capacity) {
              spec->creator == LDTM_CREATOR_APFS ||
              spec->creator == LDTM_CREATOR_SWAP ||
              spec->creator == LDTM_CREATOR_ZFS ||
-             spec->creator == LDTM_CREATOR_HFSPLUS) &&
+             spec->creator == LDTM_CREATOR_HFSPLUS ||
+             spec->creator == LDTM_CREATOR_HFS) &&
             !ldtm_spec_creator_available(spec, detail, detail_capacity)) return 0;
     }
     return 1;
