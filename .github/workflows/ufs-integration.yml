@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Infiltrator-Projects/Filesystem-UFS
-          ref: 8fce20db81f0c10e2de2de75a28b4dd27a32cbfd
+          ref: 7366c9c63b7e7cfbdb543b956a5753c18ff4dc85
           path: ci-ufs
       - name: Build and test authoritative UFS.so
         run: |
@@ -37,7 +37,7 @@ jobs:
             -DBUILD_TESTING=ON -DLD_ENABLE_WERROR=ON \
             -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build/module-test"
           cmake --build build --target defragmenter-ufs-worker \
-            defragmenter-ufs-test-worker --parallel 2
+            defragmenter-ufs-test-worker defragmenter-test-media-mkfs-ufs --parallel 2
       - name: Prove actual module dispatch and absence of internal fallback
         run: |
           set -euo pipefail
@@ -48,6 +48,9 @@ jobs:
           install -m 0644 /tmp/ufs-so/UFS.so build/module-test/Filesystems/UFS.so
           IFS_TEST_MODULE_PARENT="$PWD/build/module-test" \
             build/defragmenter-ufs-test-worker --version | grep -F 'defragmenter-ufs-worker'
+          # The UFS formatter is also a module-only loader. Refuse absent SOs.
+          IFS_TEST_MODULE_PARENT="$PWD/build/module-test" \
+            build/defragmenter-test-media-mkfs-ufs --help >/dev/null 2>&1 || true
           if IFS_TEST_MODULE_PARENT="$PWD/build/missing" \
             build/defragmenter-ufs-test-worker --version; then
             echo 'ERROR: UFS worker ran without UFS.so' >&2

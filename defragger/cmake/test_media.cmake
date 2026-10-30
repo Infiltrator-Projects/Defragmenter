@@ -105,10 +105,15 @@ set_target_properties(defragmenter-test-media-mkfs-ffs PROPERTIES
     OUTPUT_NAME test-media-mkfs-ffs)
 
 add_executable(defragmenter-test-media-mkfs-ufs
-    test_media/test_media_ufs_mkfs.c)
+    native/ufs_test_media_module_loader.c)
+target_include_directories(defragmenter-test-media-mkfs-ufs PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/native"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core" "${LD_GENERATED_DIR}")
 target_compile_options(defragmenter-test-media-mkfs-ufs PRIVATE ${LD_WARNING_FLAGS})
 target_compile_definitions(defragmenter-test-media-mkfs-ufs PRIVATE
     _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+target_link_libraries(defragmenter-test-media-mkfs-ufs PRIVATE
+    defragmenter-filesystem-module-host)
 set_target_properties(defragmenter-test-media-mkfs-ufs PROPERTIES
     OUTPUT_NAME test-media-mkfs-ufs)
 
