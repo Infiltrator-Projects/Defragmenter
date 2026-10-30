@@ -50,7 +50,7 @@ jobs:
           export IFS_TEST_MODULE_PARENT="$PWD/build/modules"
           export DEFRAGMENTER_HFSPLUS_WORKER="$PWD/build/defragmenter-hfsplus-test-worker"
           export DEFRAGMENTER_BUILD_DIR="$PWD/build"
-          "$DEFRAGMENTER_HFSPLUS_WORKER" --version | grep -F 'defragmenter-hfsplus-worker'
+          "$DEFRAGMENTER_HFSPLUS_WORKER" --version | grep -Fx '1.0.0'
           python3 tests/test_hfsplus_native.py
       - name: Missing module must fail closed
         run: |
