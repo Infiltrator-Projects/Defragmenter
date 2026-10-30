@@ -68,7 +68,7 @@ jobs:
           # UFS1 smoke test: magic-only disposable probe image. This verifies
           # version-specific module dispatch, not complete UFS1 disk fidelity.
           truncate -s 65536 build/ufs1-probe.img
-          printf '\\x54\\x19\\x01\\x00' | dd of=build/ufs1-probe.img \
+          printf '\x54\x19\x01\x00' | dd of=build/ufs1-probe.img \
             bs=1 seek=9564 conv=notrunc status=none
           IFS_TEST_MODULE_PARENT="$PWD/build/module-test" \
             build/defragmenter-ufs-test-worker identify "$PWD/build/ufs1-probe.img" \
