@@ -65,6 +65,21 @@ jobs:
           # UFS formatting and UFS worker both dispatch through the module.
           IFS_TEST_MODULE_PARENT="$PWD/build/module-test" \
             build/defragmenter-test-media-mkfs-ufs-test --help >/dev/null 2>&1 || true
+          # UFS1 smoke test: magic-only disposable probe image. This verifies
+          # version-specific module dispatch, not complete UFS1 disk fidelity.
+          truncate -s 65536 build/ufs1-probe.img
+          printf '\\x54\\x19\\x01\\x00' | dd of=build/ufs1-probe.img \
+            bs=1 seek=9564 conv=notrunc status=none
+          IFS_TEST_MODULE_PARENT="$PWD/build/module-test" \
+            build/defragmenter-ufs-test-worker identify "$PWD/build/ufs1-probe.img" \
+            | grep -F '"variant":"ufs1-le"'
+          mv build/module-test/Filesystems/UFS1.so build/ufs1-missing.so
+          if IFS_TEST_MODULE_PARENT="$PWD/build/module-test" \
+            build/defragmenter-ufs-test-worker identify "$PWD/build/ufs1-probe.img"; then
+            echo 'ERROR: UFS1 identified without its independent UFS1.so' >&2
+            exit 1
+          fi
+          mv build/ufs1-missing.so build/module-test/Filesystems/UFS1.so
           export IFS_TEST_MODULE_PARENT="$PWD/build/module-test"
           /bin/sh tests/test_ufs_makefs.sh \
             "$PWD/build/defragmenter-test-media-mkfs-ufs-test" \
