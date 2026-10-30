@@ -664,7 +664,9 @@ int main(void) {
     CHECK(zfs->size_mib == 2048U && apfs->size_mib == 2048U);
     CHECK(apfs->creator == LDTM_CREATOR_APFS && ldtm_creator_program(apfs) == NULL);
     CHECK(ldtm_spec_creator_available(apfs, script, sizeof(script)) == 1);
-    CHECK(strstr(script, "Built-in raw C creator") != NULL);
+    CHECK(strstr(script, "label: gpt") == script);
+    CHECK(strstr(script, "name=\\\"LD_FAT16\\\"") != NULL);
+    CHECK(strstr(script, "name=\\\"LD_FFS\\\"") != NULL);
     CHECK(ldtm_is_reserved_partition_label("LD_SFS") == 0);
     CHECK(ldtm_is_reserved_partition_label("LD_PFS3") == 0);
     CHECK(ldtm_is_reserved_partition_label("LD_APFS") == 0);
