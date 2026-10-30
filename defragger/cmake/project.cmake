@@ -525,16 +525,6 @@ if(BUILD_TESTING AND OFS_DEFRAG_TEST_MODULE_PARENT)
     target_link_libraries(defragmenter-swap-test-worker PRIVATE defragmenter-filesystem-module-test-host)
 
 endif()
-add_library(defragmenter-hfsplus-native STATIC
-    gui/filesystems/hfsplus/native/hfsplus_native.c)
-target_include_directories(defragmenter-hfsplus-native PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/hfsplus/native"
-    "${LD_GENERATED_DIR}")
-target_compile_options(defragmenter-hfsplus-native PRIVATE ${LD_WARNING_FLAGS})
-target_compile_definitions(defragmenter-hfsplus-native PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-target_link_libraries(defragmenter-hfsplus-native PUBLIC defragmenter-core OpenSSL::Crypto)
-
 # HFS+/HFSX parse, Defrag, Growth Defrag and recovery are in HFSPLUS.so.
 # Only this format-neutral, fail-closed loader remains in Defragmenter.
 add_executable(defragmenter-hfsplus-worker native/hfsplus_module_loader.c)
