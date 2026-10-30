@@ -427,29 +427,3 @@ done:
     return result;
 }
 
-int ldtm_raw_swap(const LdtmFilesystemSpec *spec, const char *path, bool create)
-{
-    uint64_t capacity = 0U;
-    const int fd = ldtm_raw_open(path, create, &capacity);
-    if (fd < 0)
-        return -1;
-    uint8_t page[4096] = {0};
-    int result = -1;
-    if (create) {
-        infiltratr_store_le32(page + 1024U, 1U);
-        infiltratr_store_le32(page + 1028U, (uint32_t)(capacity / 4096U - 1U));
-        memcpy(page + 1036U, "LDTM-SWAP-UUID-1", 16U);
-        memcpy(page + 1052U, spec->label, strlen(spec->label));
-        memcpy(page + 4086U, "SWAPSPACE2", 10U);
-        if (ldtm_raw_write(fd, 0U, page, sizeof(page)) == 0)
-            result = fsync(fd);
-    } else if (ldtm_raw_read(fd, 0U, page, sizeof(page)) == 0 &&
-               memcmp(page + 4086U, "SWAPSPACE2", 10U) == 0 &&
-               infiltratr_load_le32(page + 1024U) == 1U &&
-               infiltratr_load_le32(page + 1028U) == capacity / 4096U - 1U &&
-               infiltratr_load_le32(page + 1032U) == 0U)
-        result = 0;
-    if (close(fd) != 0)
-        result = -1;
-    return result;
-}

@@ -94,6 +94,21 @@ jobs:
           cmp native/ofs_module_abi.h "$ofs/native/filesystems/ofs/module/ofs_v3.h"
           python3 "$ofs/standalone/build.py" --output "$PWD/build/fat-module-test/Filesystems/OFS.so"
 
+      - name: Check out qualified independent SWAP module
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-Swap
+          ref: c79f708876a837e988b1ecf88cc3943856ed0256
+          path: ci-swap
+
+      - name: Build SWAP.so for isolated application and Test Media tests
+        run: |
+          set -euo pipefail
+          cmake -S "$GITHUB_WORKSPACE/ci-swap" -B "$RUNNER_TEMP/ifs-swap-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=OFF
+          cmake --build "$RUNNER_TEMP/ifs-swap-$GITHUB_RUN_ID-$GITHUB_JOB" --target swap-driver -j2
+          cmp native/ifs_swap_module_v1.h "$GITHUB_WORKSPACE/ci-swap/include/ifs_swap_module_v1.h"
+          install -m 0644 "$RUNNER_TEMP/ifs-swap-$GITHUB_RUN_ID-$GITHUB_JOB/SWAP.so" "$PWD/build/fat-module-test/Filesystems/SWAP.so"
+
       - name: Detect explicit release intent
         id: release_intent
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -152,6 +167,7 @@ jobs:
           PYTHONDONTWRITEBYTECODE: "1"
           PYTHONPATH: ${{ github.workspace }}/defragger/tests
           DEFRAGMENTER_BUILD_DIR: ${{ github.workspace }}/defragger/build
+          DEFRAGMENTER_SWAP_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-swap-test-worker
           IFS_TEST_MODULE_PARENT: ${{ github.workspace }}/defragger/build/fat-module-test
           DEFRAGMENTER_AFFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-affs-test-worker
         run: |
@@ -291,6 +307,23 @@ jobs:
                '-fsanitize=address,undefined', '-fno-omit-frame-pointer'], training=True)
           PY
 
+      - name: Check out qualified independent SWAP module for sanitizers
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-Swap
+          ref: c79f708876a837e988b1ecf88cc3943856ed0256
+          path: ci-swap
+
+      - name: Instrument SWAP.so for isolated sanitizer tests
+        run: |
+          set -euo pipefail
+          cmake -S "$GITHUB_WORKSPACE/ci-swap" -B "$RUNNER_TEMP/ifs-swap-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=OFF \
+            -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
+            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
+          cmake --build "$RUNNER_TEMP/ifs-swap-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target swap-driver -j2
+          cmp native/ifs_swap_module_v1.h "$GITHUB_WORKSPACE/ci-swap/include/ifs_swap_module_v1.h"
+          install -m 0644 "$RUNNER_TEMP/ifs-swap-san-$GITHUB_RUN_ID-$GITHUB_JOB/SWAP.so" "$PWD/build-sanitize/fat-module-test/Filesystems/SWAP.so"
+
       - name: Build with AddressSanitizer and UndefinedBehaviorSanitizer
         run: |
           cmake -S . -B build-sanitize \
@@ -310,6 +343,7 @@ jobs:
           PYTHONDONTWRITEBYTECODE: "1"
           PYTHONPATH: ${{ github.workspace }}/defragger/tests
           DEFRAGMENTER_BUILD_DIR: ${{ github.workspace }}/defragger/build-sanitize
+          DEFRAGMENTER_SWAP_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-swap-test-worker
           IFS_TEST_MODULE_PARENT: ${{ github.workspace }}/defragger/build-sanitize/fat-module-test
           DEFRAGMENTER_AFFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-affs-test-worker
         run: |

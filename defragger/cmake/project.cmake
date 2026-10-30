@@ -336,30 +336,6 @@ target_compile_definitions(defragmenter-minix-worker PRIVATE
 target_link_libraries(defragmenter-minix-worker PRIVATE
     defragmenter-minix-native defragmenter-core OpenSSL::Crypto)
 
-# Linux swap identification, metadata and allocation mapping are native C.
-add_library(defragmenter-swap-native STATIC
-    gui/filesystems/swap/native/swap_native.c)
-target_include_directories(defragmenter-swap-native PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/swap/native"
-    "${LD_GENERATED_DIR}")
-target_compile_options(defragmenter-swap-native PRIVATE ${LD_WARNING_FLAGS})
-target_compile_definitions(defragmenter-swap-native PRIVATE
-    _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-target_link_libraries(defragmenter-swap-native PUBLIC defragmenter-core)
-
-add_executable(defragmenter-swap-worker
-    gui/filesystems/swap/native/swap_worker.c)
-target_include_directories(defragmenter-swap-worker PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/swap/native"
-    "${LD_GENERATED_DIR}")
-target_compile_options(defragmenter-swap-worker PRIVATE ${LD_WARNING_FLAGS})
-target_compile_definitions(defragmenter-swap-worker PRIVATE
-    _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-target_link_libraries(defragmenter-swap-worker PRIVATE
-    defragmenter-swap-native defragmenter-core)
-
 find_package(SQLite3 REQUIRED)
 
 add_library(defragmenter-xfs-native STATIC
@@ -487,6 +463,16 @@ target_compile_definitions(defragmenter-filesystem-module-host PRIVATE _FILE_OFF
 target_link_libraries(defragmenter-filesystem-module-host PUBLIC
     defragmenter-core OpenSSL::Crypto ${CMAKE_DL_LIBS})
 
+# SWAP owns its native analyser, map and Test Media formatter.
+# The installed application has only a trusted process-hosted SO loader.
+add_executable(defragmenter-swap-worker native/swap_module_loader.c)
+target_include_directories(defragmenter-swap-worker PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/native" "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
+    "${LD_GENERATED_DIR}")
+target_compile_options(defragmenter-swap-worker PRIVATE ${LD_WARNING_FLAGS})
+target_compile_definitions(defragmenter-swap-worker PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+target_link_libraries(defragmenter-swap-worker PRIVATE defragmenter-filesystem-module-host)
+
 add_executable(defragmenter-affs-worker
     gui/filesystems/affs/native/affs_worker.c)
 target_include_directories(defragmenter-affs-worker PRIVATE
@@ -521,6 +507,16 @@ if(BUILD_TESTING AND OFS_DEFRAG_TEST_MODULE_PARENT)
     target_link_libraries(defragmenter-affs-test-worker PRIVATE
         defragmenter-affs-native defragmenter-core defragmenter-filesystem-module-test-host)
     set(AFFS_WORKER_FOR_TESTS "$<TARGET_FILE:defragmenter-affs-test-worker>")
+    # Test worker shares the exact production loader but trusts only a
+    # disposable, user-owned SO root. Never install the test worker.
+    add_executable(defragmenter-swap-test-worker native/swap_module_loader.c)
+    target_include_directories(defragmenter-swap-test-worker PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/native" "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
+        "${LD_GENERATED_DIR}")
+    target_compile_options(defragmenter-swap-test-worker PRIVATE ${LD_WARNING_FLAGS})
+    target_compile_definitions(defragmenter-swap-test-worker PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+    target_link_libraries(defragmenter-swap-test-worker PRIVATE defragmenter-filesystem-module-test-host)
+
 endif()
 add_library(defragmenter-hfsplus-native STATIC
     gui/filesystems/hfsplus/native/hfsplus_native.c)
@@ -742,17 +738,7 @@ if(BUILD_TESTING)
         ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1;DEFRAGMENTER_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}"
         TIMEOUT 120)
 
-    add_executable(defragmenter-swap-native-test
-        tests/test_swap_native.c)
-    target_include_directories(defragmenter-swap-native-test PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/swap/native"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/core" "${LD_GENERATED_DIR}")
-    target_compile_options(defragmenter-swap-native-test PRIVATE ${LD_WARNING_FLAGS})
-    target_compile_definitions(defragmenter-swap-native-test PRIVATE
-        _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-    target_link_libraries(defragmenter-swap-native-test PRIVATE
-        defragmenter-swap-native defragmenter-core)
-    add_test(NAME defragmenter-swap-native COMMAND defragmenter-swap-native-test)
+    # Native SWAP engine regression moved to Filesystem-Swap's independent CI.
 
     add_executable(defragmenter-xfs-metadata-test
         tests/test_xfs_metadata_whitebox.c

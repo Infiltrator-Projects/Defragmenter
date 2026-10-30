@@ -29,6 +29,7 @@ add_library(defragmenter-test-media-core STATIC
     test_media/test_media_fat_module.c
     test_media/test_media_raw_exfat.c
     test_media/test_media_raw_unix.c
+    test_media/test_media_swap_module.c
     test_media/test_media_raw_mac.c
     test_media/test_media_raw_ntfs.c
     test_media/test_media_raw_xfs.c
@@ -45,6 +46,7 @@ add_library(defragmenter-test-media-core STATIC
     test_media/test_media_apfs.c)
 target_include_directories(defragmenter-test-media-core PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/test_media"
+    "${CMAKE_CURRENT_SOURCE_DIR}/native"
     "${LD_GENERATED_DIR}")
 target_include_directories(defragmenter-test-media-core PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
