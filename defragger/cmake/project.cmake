@@ -645,11 +645,7 @@ if(BUILD_TESTING)
     add_test(NAME defragmenter-cpp-runtime
         COMMAND defragmenter-cpp-runtime-test)
 
-    add_executable(defragmenter-ext-bitmap-cache-test tests/test_ext_bitmap_cache.c)
-    target_link_libraries(defragmenter-ext-bitmap-cache-test PRIVATE defragmenter-core)
-    target_compile_options(defragmenter-ext-bitmap-cache-test PRIVATE ${LD_WARNING_FLAGS})
-    target_compile_definitions(defragmenter-ext-bitmap-cache-test PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-    add_test(NAME defragmenter-ext-bitmap-cache COMMAND defragmenter-ext-bitmap-cache-test)
+    # EXT bitmap-cache and descriptor-race regression now runs in Filesystem-EXT4 CI.
 
     # NTFS native stream-index tests run from Filesystem-NTFS CI.
 

@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Infiltrator-Projects/Filesystem-EXT4
-          ref: 292c4462f3b16530b3d552563ebe9d3584a329ec
+          ref: dd8bcc6d899165da9082dbeaecc1dae168d462bf
           path: ci-ext4
       - name: Build all three canonical shared objects
         run: |
@@ -42,7 +42,7 @@ jobs:
           cd defragger
           cmp native/ifs_ext_module_v1.h ../ci-ext4/include/ifs_ext_module_v1.h
           cmp test_media/ifs_ext_fixture_v1.h ../ci-ext4/include/ifs_ext_fixture_v1.h
-          bash tests/verify_legacy_fs_services_abi.sh ../ci-ext4/include/ifs_defrag_services_v1.h
+          cmp native/ifs_defrag_services_v1.h ../ci-ext4/include/ifs_defrag_services_v1.h
           mkdir -p build/modules/Filesystems build/missing/Filesystems
           install -m 0644 /tmp/ext-so/EXT{2,3,4}.so build/modules/Filesystems/
           export IFS_TEST_MODULE_PARENT="$PWD/build/modules"
