@@ -27,15 +27,17 @@ Its deterministic dataset remains application-owned, and its retained AFFS
 read-only payload verifier is an independent oracle. The privileged prepare
 worker rechecks the required SO before any repartitioning.
 
-UFS Test Media formatting, population and UFS2 little-endian geometry
-validation now call the independently built UFS.so. The matching old
-`ufs_native.c`/`ufs_native.h` production copy and native library were
-removed from Defragmenter; the native regression fixture moved to
-Filesystem-UFS. The application's separately implemented raw byte-level
-payload oracle remains for independent checking. The UFS module validation
-interface is versioned and identity checked, and a missing/incompatible
-UFS.so refuses the operation. The final goal is to relocate the raw
-filesystem-specific oracle too, without losing independent qualification.
+UFS Test Media formatting, population, UFS2 little-endian geometry
+validation and raw UFS2 block/inode/payload verification now call the
+independently built UFS.so. Defragmenter owns only the deterministic corpus
+and independently calculated expected sizes and SHA-256 hashes; UFS format
+interpretation has moved into the versioned module. The old local
+`ufs_native.c`/`ufs_native.h` source and native library were removed; its
+regression fixture is retained under Filesystem-UFS. Both format validation
+and byte-level payload inspection reject missing/incompatible UFS.so,
+rather than falling back to a private parser. Qualification must check the
+resulting media with independent external evidence as well as its own
+module's verifier.
 
 Known remaining locally compiled format engines: exFAT defragmentation and
 FFS defragmentation/Test Media creation and population. Their SOs do not yet
