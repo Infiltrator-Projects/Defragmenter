@@ -26,6 +26,8 @@ add_library(defragmenter-test-media-core STATIC
     test_media/test_media_core.c
     test_media/test_media_raw.c
     test_media/test_media_raw_fat.c
+    test_media/test_media_raw_fat32.c
+    test_media/test_media_fat_module.c
     test_media/test_media_raw_exfat.c
     test_media/test_media_raw_unix.c
     test_media/test_media_raw_mac.c

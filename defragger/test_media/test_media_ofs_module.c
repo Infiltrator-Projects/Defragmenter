@@ -98,7 +98,9 @@ static int create_fixture(const IfsDefragHostV2 *host, void *symbol, void *opaqu
     _Static_assert(sizeof(entry) == sizeof(symbol), "module symbol width");
     memcpy(&entry, &symbol, sizeof(entry)); const IfsOfsModuleV3 *api = entry();
     if (!api || api->abi_version != IFS_OFS_ABI_V3 || api->structure_bytes < sizeof(*api) ||
-        strcmp(api->format_id, "ofs")) return -1;
+        !api->format_id || strcmp(api->format_id, "ofs") || !api->format ||
+        !api->mount || !api->unmount || !api->mkdir || !api->create ||
+        !api->unlink || !api->write || !api->verify) return -1;
     if (host->open_target(host->context, f->path, 1, NULL, 0, &f->target)) return -1;
     IfsOfsIoV3 io = {sizeof(io), 0, f, f->target.bytes, read_io, write_io, flush_io,
                      allocate_io, release_io, clock_io};

@@ -81,9 +81,13 @@ static int contracts(void)
     for (size_t n = 0U; n < LDTM_SPEC_COUNT; ++n) {
         const LdtmFilesystemSpec *s = &ldtm_specs()[n];
         char detail[256];
-        CHECK(strcmp(ldtm_creator_display_name(s), "Built-in native") == 0);
-        if (s->creator != LDTM_CREATOR_UFS)
-            CHECK(ldtm_spec_creator_available(s, detail, sizeof(detail)) == 1);
+        CHECK(strcmp(ldtm_creator_display_name(s), "Built-in native") == 0 ||
+              strcmp(ldtm_creator_display_name(s), "Filesystem driver") == 0);
+        if (s->creator != LDTM_CREATOR_UFS) {
+            const int ready = ldtm_spec_creator_available(s, detail, sizeof(detail));
+            if (!ready) fprintf(stderr, "%s: %s\n", s->key, detail);
+            CHECK(ready == 1);
+        }
     }
     puts("strict state and complete native corpus contracts passed");
     return 0;
@@ -104,10 +108,11 @@ int main(int argc, char **argv)
     if (strcmp(argv[1], "verify") == 0 && spec->creator == LDTM_CREATOR_UFS)
         result = verify_ufs2_raw_payload(argv[3], detail, sizeof(detail));
     else {
-        const bool create = strcmp(argv[1], "create") == 0;
+        const bool fresh = strcmp(argv[1], "create") == 0;
+        const bool create = fresh || strcmp(argv[1], "recreate") == 0;
         if (!create && strcmp(argv[1], "verify") != 0)
             return 2;
-        if (create) {
+        if (fresh) {
             const int fd = open(argv[3], O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0600);
             CHECK(fd >= 0);
             CHECK(ftruncate(fd, (off_t)((uint64_t)spec->size_mib * LDTM_MIB)) == 0);

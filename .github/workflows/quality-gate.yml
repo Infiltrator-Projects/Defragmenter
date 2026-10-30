@@ -57,6 +57,7 @@ jobs:
           set -euo pipefail
           fs="$GITHUB_WORKSPACE/ci-filesystems"
           cmp native/fat_defrag_abi.h "$fs/native/filesystems/fat/defrag/fat_defrag_abi.h"
+          cmp native/fat_module_abi.h "$fs/native/filesystems/fat/portable/fatfs_module.h"
           cmake -S "$fs" -B "$RUNNER_TEMP/filesystems-fat-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=OFF
           cmake --build "$RUNNER_TEMP/filesystems-fat-$GITHUB_RUN_ID-$GITHUB_JOB" --target filesystems-fat12-module filesystems-fat16-module filesystems-fat32-module -j2
           install -d -m 0755 "$PWD/build/fat-module-test/Filesystems"
@@ -221,6 +222,7 @@ jobs:
           set -euo pipefail
           fs="$GITHUB_WORKSPACE/ci-filesystems"
           cmp native/fat_defrag_abi.h "$fs/native/filesystems/fat/defrag/fat_defrag_abi.h"
+          cmp native/fat_module_abi.h "$fs/native/filesystems/fat/portable/fatfs_module.h"
           cmake -S "$fs" -B "$RUNNER_TEMP/filesystems-fat-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=OFF \
             -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
             -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'

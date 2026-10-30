@@ -25,6 +25,14 @@ The project quality gate combines:
 
 Automated checks cover ordinary behaviour, important boundaries, malformed/error cases and release/package contracts appropriate to the affected subsystem.
 
+FAT12/16 Test Media uses the installed SO for formatting and file creation.
+Its existing full-corpus tests require at least eight fragmented files, run
+both relocation modes, independently verify every byte and reject payload
+corruption. Missing modules, wrong format identity, missing interfaces and
+untrusted module permissions must leave an existing target unwritten, including
+the signature-clearing regions. The public FAT V3/V4 header is compared with
+the immutable implementation used by both CI lanes.
+
 The native supervisor fixtures exercise the production supervision code through a test-only child resolver; they do not themselves write a filesystem. Real disposable-image worker tests separately verify payload, layout and recovery. Mapper regressions include generic FAT identification for FAT12/FAT16 and an 800,000-cell FAT32 map exceeding 64 MiB, plus rejection beyond the GUI's 1,048,576-cell maximum. Native desktop-policy and privileged-helper/session tests verify mutation eligibility, journal namespace binding, child lifetime and Stop/recovery control paths without recreating those policies in a second Python application model.
 
 ## Destructive-path evidence

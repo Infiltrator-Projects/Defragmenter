@@ -81,7 +81,7 @@ int ldtm_raw_plan(const LdtmFilesystemSpec *spec, uint64_t capacity, uint32_t un
     return 0;
 }
 
-static void pattern(uint8_t *data, size_t bytes, unsigned file, uint64_t logical)
+void ldtm_raw_payload(uint8_t *data, size_t bytes, unsigned file, uint64_t logical)
 {
     /* Each 4 KiB logical page has its own seed. Verification can therefore
      * read arbitrary filesystem extents without retaining the original image
@@ -121,7 +121,7 @@ int ldtm_raw_write_payload(int fd, const LdtmRawPlan *plan)
                 memset(buffer, 0, take);
                 const uint64_t available =
                     logical < plan->files[file].bytes ? plan->files[file].bytes - logical : 0U;
-                pattern(buffer, available < take ? (size_t)available : take, file, logical);
+                ldtm_raw_payload(buffer, available < take ? (size_t)available : take, file, logical);
                 if (ldtm_raw_write(fd, physical, buffer, take) != 0)
                     return -1;
                 logical += take;
@@ -157,7 +157,7 @@ int ldtm_raw_check_data(LdtmRawCheck *check, int fd, unsigned file, uint64_t phy
         const size_t take = bytes < sizeof(actual) ? (size_t)bytes : sizeof(actual);
         if (ldtm_raw_read(fd, physical, actual, take) != 0)
             return -1;
-        pattern(expected, take, file, logical);
+        ldtm_raw_payload(expected, take, file, logical);
         if (memcmp(actual, expected, take) != 0)
             return -1;
         physical += take;
@@ -195,6 +195,15 @@ int ldtm_raw_fixture(const LdtmFilesystemSpec *spec, const char *path, bool crea
         detail[0] = '\0';
     if (spec == NULL || path == NULL)
         return -1;
+    /* A missing/wrong module must be rejected before stale signatures are
+     * erased. The privileged whole-disk worker also checks before partitioning. */
+    if (create && (spec->creator == LDTM_CREATOR_FAT12 ||
+                   spec->creator == LDTM_CREATOR_FAT16) &&
+        !ldtm_fat_module_available(spec)) {
+        if (detail != NULL && capacity != 0U)
+            (void)snprintf(detail, capacity, "Install or update the %s filesystem driver.", spec->key);
+        return -1;
+    }
     int (*codec)(const LdtmFilesystemSpec *, const char *, bool) = NULL;
     switch (spec->creator) {
     case LDTM_CREATOR_FAT12:
@@ -241,7 +250,8 @@ int ldtm_raw_fixture(const LdtmFilesystemSpec *spec, const char *path, bool crea
         const int fd = ldtm_raw_open(path, create, &bytes);
         if (fd >= 0) {
             bool valid = bytes == (uint64_t)spec->size_mib * LDTM_MIB;
-            if (create) {
+            if (create && spec->creator != LDTM_CREATOR_FAT12 &&
+                spec->creator != LDTM_CREATOR_FAT16) {
                 uint8_t zero[65536] = {0};
                 /* Erase stale primary signatures and all four ZFS label rings
                  * before reusing a sacrificial slot. No format driver runs. */

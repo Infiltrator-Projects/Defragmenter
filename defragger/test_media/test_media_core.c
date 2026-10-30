@@ -26,7 +26,7 @@ static const LdtmFilesystemSpec LDTM_SPECS[LDTM_SPEC_COUNT] = {
     {"xfs", "LD_XFS", 2048U, 200U, LDTM_CREATOR_XFS, ""},
     {"btrfs", "LD_BTRFS", 2048U, 200U, LDTM_CREATOR_BTRFS, ""},
     {"ofs", "LD_OFS", 2048U, 200U, LDTM_CREATOR_AFFS,
-     "Amiga Old File System DOS\\0; first-party raw C creator uses the full 2 GiB qualification "
+     "Amiga Original File System DOS\\0; installed OFS driver uses the full 2 GiB qualification "
      "cap."},
     {"ffs", "LD_FFS", 2048U, 200U, LDTM_CREATOR_AFFS,
      "Amiga Fast File System DOS\\1; first-party raw C creator uses the full 2 GiB qualification "
@@ -203,6 +203,9 @@ const char *ldtm_creator_program(const LdtmFilesystemSpec *spec) {
 
 const char *ldtm_creator_display_name(const LdtmFilesystemSpec *spec) {
     if (spec == NULL) return "Unavailable";
+    if (spec->creator == LDTM_CREATOR_FAT12 || spec->creator == LDTM_CREATOR_FAT16 ||
+        strcmp(spec->key, "ofs") == 0)
+        return "Filesystem driver";
     return spec->creator == LDTM_CREATOR_MANUAL ? "Manual" : "Built-in native";
 }
 
@@ -267,6 +270,14 @@ int ldtm_program_available(const char *program) {
 int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
                                 char *detail, size_t detail_capacity) {
     if (detail == NULL || detail_capacity == 0U || spec == NULL) return 0;
+    if (spec->creator == LDTM_CREATOR_FAT12 || spec->creator == LDTM_CREATOR_FAT16) {
+        extern int ldtm_fat_module_available(const LdtmFilesystemSpec *);
+        const int ready = ldtm_fat_module_available(spec);
+        (void)snprintf(detail, detail_capacity, ready ?
+            "%s driver is ready to create and populate test media." :
+            "Install or update the %s filesystem driver before creating test media.", spec->key);
+        return ready;
+    }
     if (spec->creator == LDTM_CREATOR_AFFS && strcmp(spec->key, "ofs") == 0) {
         extern int ldtm_ofs_module_available(void);
         const int ready = ldtm_ofs_module_available();
@@ -309,5 +320,15 @@ int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
     }
     (void)snprintf(detail, detail_capacity, "Built-in raw C creator + complete corpus verifier: %s",
                    spec->key);
+    return 1;
+}
+
+int ldtm_required_modules_available(char *detail, size_t detail_capacity) {
+    for (size_t i = 0U; i < ldtm_spec_count(); ++i) {
+        const LdtmFilesystemSpec *spec = &ldtm_specs()[i];
+        if ((spec->creator == LDTM_CREATOR_FAT12 || spec->creator == LDTM_CREATOR_FAT16 ||
+             strcmp(spec->key, "ofs") == 0) &&
+            !ldtm_spec_creator_available(spec, detail, detail_capacity)) return 0;
+    }
     return 1;
 }

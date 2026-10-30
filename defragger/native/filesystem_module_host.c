@@ -212,16 +212,21 @@ int ifs_filesystem_module_call(const char *format, const char *filename, const c
     char path[64]; (void)snprintf(path, sizeof(path), "/proc/self/fd/%d", fd);
     void *image = dlopen(path, RTLD_NOW | RTLD_LOCAL);
     if (!image) { fprintf(stderr, "Cannot load %s: %s\n", filename, dlerror()); close(fd); return 1; }
-    void *symbol = dlsym(image, "infiltrator_filesystem_defrag_v2");
-    const IfsDefragModuleV2 *(*entry)(void) = NULL;
-    _Static_assert(sizeof(entry) == sizeof(symbol), "dlsym pointer width");
-    memcpy(&entry, &symbol, sizeof(entry));
-    const IfsDefragModuleV2 *api = entry ? entry() : NULL;
-    if (!api || api->abi_version != IFS_DEFRAG_ABI_V2 || api->structure_bytes < sizeof(*api) ||
-        !api->format_id || strcmp(api->format_id, format) || !api->run ||
-        (api->capabilities & 15u) != 15u) {
-        fprintf(stderr, "%s lacks the required %s Defragmenter interface\n", filename, format);
-        dlclose(image); close(fd); return 1;
+    /* Trust and bounded I/O are shared by all interfaces. A format/create
+     * caller validates its own ABI; requiring Defrag V2 here would reject
+     * genuine FAT modules whose independent defrag contract is still V1. */
+    if (!strcmp(interface, "infiltrator_filesystem_defrag_v2")) {
+        void *symbol = dlsym(image, interface);
+        const IfsDefragModuleV2 *(*entry)(void) = NULL;
+        _Static_assert(sizeof(entry) == sizeof(symbol), "dlsym pointer width");
+        memcpy(&entry, &symbol, sizeof(entry));
+        const IfsDefragModuleV2 *api = entry ? entry() : NULL;
+        if (!api || api->abi_version != IFS_DEFRAG_ABI_V2 || api->structure_bytes < sizeof(*api) ||
+            !api->format_id || strcmp(api->format_id, format) || !api->run ||
+            (api->capabilities & 15u) != 15u) {
+            fprintf(stderr, "%s lacks the required %s Defragmenter interface\n", filename, format);
+            dlclose(image); close(fd); return 1;
+        }
     }
     Context context = {0};
     IfsDefragHostV2 host = {IFS_DEFRAG_ABI_V2, sizeof(host), &context, LD_VERSION,

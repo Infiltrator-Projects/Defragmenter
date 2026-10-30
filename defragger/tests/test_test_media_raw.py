@@ -11,6 +11,7 @@ import json
 import mmap
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -21,10 +22,10 @@ FIXTURE = BUILD / "defragmenter-test-media-raw-test"
 
 
 def run(*args: object, fails: bool = False,
-        timeout: int = 240) -> subprocess.CompletedProcess[str]:
+        timeout: int = 240, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     try:
         result = subprocess.run([str(a) for a in args], capture_output=True,
-                                text=True, timeout=timeout)
+                                text=True, timeout=timeout, env=env)
     except subprocess.TimeoutExpired as exc:
         # Preserve bounded native phase/progress evidence when a slow runner
         # times out. Without this, GitHub prints only the command arguments.
@@ -78,7 +79,42 @@ def reject_corruption(image: Path, fs: str, marker: bytes) -> None:
         data.flush()
 
 
+def reject_unavailable_fat(fs: str, parent: Path) -> None:
+    modules = Path(os.environ["IFS_TEST_MODULE_PARENT"]) / "Filesystems"
+    with tempfile.TemporaryDirectory(prefix="missing-module-", dir=parent) as temporary:
+        work = Path(temporary)
+        directory = work / "Filesystems"
+        directory.mkdir(mode=0o755)
+        module = directory / (fs.upper() + ".so")
+        image = work / "unchanged.img"
+        # Same geometry as the shipped corpus; sparse data makes refusal cheap.
+        size = (255 if fs == "fat12" else 2048) * 1024 * 1024
+        marker = b"must survive failed module validation" * 128
+        with image.open("wb") as stream:
+            stream.truncate(size)
+            stream.write(marker)
+            stream.seek(size - len(marker))
+            stream.write(marker)
+        initial = image.stat().st_mtime_ns
+        environment = dict(os.environ, IFS_TEST_MODULE_PARENT=str(work))
+        wrong = modules / ("FAT16.so" if fs == "fat12" else "FAT12.so")
+        for kind in ("missing", "wrong-width", "missing-interface", "untrusted"):
+            if module.exists():
+                module.unlink()
+            if kind != "missing":
+                shutil.copyfile(modules / "OFS.so" if kind == "missing-interface" else wrong, module)
+                module.chmod(0o666 if kind == "untrusted" else 0o644)
+            run(FIXTURE, "recreate", fs, image, fails=True, env=environment)
+            assert image.stat().st_mtime_ns == initial, (fs, kind, "target was written")
+            with image.open("rb") as stream:
+                assert stream.read(len(marker)) == marker
+                stream.seek(size - len(marker))
+                assert stream.read() == marker
+
+
 def qualify(fs: str, parent: Path) -> None:
+    if fs in ("fat12", "fat16"):
+        reject_unavailable_fat(fs, parent)
     with tempfile.TemporaryDirectory(prefix=f"{fs}-", dir=parent) as temporary:
         work = Path(temporary)
         image = work / "fixture.img"

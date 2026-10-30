@@ -6,7 +6,8 @@
 #include <stdbool.h>
 
 /* Bounded qualification fixtures, not general-purpose filesystem formatters.
- * Every codec owns its on-disk records; this layer owns the corpus, exact I/O
+ * FAT12/16 creation delegates to installed modules; their codecs only verify.
+ * Other transitional codecs own their records; this layer owns the corpus, I/O
  * and complete byte-verification contract. No expected-file list is supplied
  * by mutable saved state. File identities and lengths come from this corpus. */
 #define LDTM_RAW_FILES 16U
@@ -36,6 +37,7 @@ int ldtm_raw_write(int fd, uint64_t offset, const void *data, size_t bytes);
 int ldtm_raw_plan(const LdtmFilesystemSpec *spec, uint64_t capacity, uint32_t unit, uint64_t first,
                   LdtmRawPlan *plan);
 int ldtm_raw_write_payload(int fd, const LdtmRawPlan *plan);
+void ldtm_raw_payload(uint8_t *, size_t, unsigned, uint64_t);
 void ldtm_raw_check_init(LdtmRawCheck *check, const LdtmFilesystemSpec *spec);
 int ldtm_raw_check_file(LdtmRawCheck *check, unsigned file, uint64_t bytes);
 int ldtm_raw_check_data(LdtmRawCheck *check, int fd, unsigned file, uint64_t physical,
@@ -44,6 +46,9 @@ int ldtm_raw_check_finish(const LdtmRawCheck *check);
 uint32_t ldtm_raw_crc32c(const void *data, size_t bytes);
 
 int ldtm_raw_fat(const LdtmFilesystemSpec *, const char *, bool);
+int ldtm_raw_fat32_create(const LdtmFilesystemSpec *, const char *);
+int ldtm_fat_module_available(const LdtmFilesystemSpec *);
+int ldtm_fat_module_create(const LdtmFilesystemSpec *, const char *);
 int ldtm_raw_exfat(const LdtmFilesystemSpec *, const char *, bool);
 int ldtm_raw_ext(const LdtmFilesystemSpec *, const char *, bool);
 int ldtm_raw_minix(const LdtmFilesystemSpec *, const char *, bool);
