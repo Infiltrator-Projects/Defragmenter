@@ -1,43 +1,24 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-
-# ZFS/OpenZFS identification and bounded exact read-only MOS/allocation/fragmentation analysis are native C.
-add_library(defragmenter-zfs-native STATIC
-    gui/filesystems/zfs/native/zfs_native.c
-    gui/filesystems/zfs/native/zfs_analysis.c)
-target_include_directories(defragmenter-zfs-native PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/zfs/native"
-    "${LD_GENERATED_DIR}")
-target_compile_options(defragmenter-zfs-native PRIVATE ${LD_WARNING_FLAGS})
-target_compile_definitions(defragmenter-zfs-native PRIVATE
-    _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-target_link_libraries(defragmenter-zfs-native PUBLIC
-    defragmenter-core OpenSSL::Crypto)
-
-add_executable(defragmenter-zfs-worker
-    gui/filesystems/zfs/native/zfs_worker.c)
+# ZFS's complete native parser, allocation engine and Test Media formatter
+# live exclusively in installed ZFS.so. The generic host owns trusted loading.
+add_executable(defragmenter-zfs-worker native/zfs_module_loader.c)
 target_include_directories(defragmenter-zfs-worker PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/zfs/native"
-    "${LD_GENERATED_DIR}")
+    "${CMAKE_CURRENT_SOURCE_DIR}/native"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core" "${LD_GENERATED_DIR}")
 target_compile_options(defragmenter-zfs-worker PRIVATE ${LD_WARNING_FLAGS})
-target_compile_definitions(defragmenter-zfs-worker PRIVATE
-    _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-target_link_libraries(defragmenter-zfs-worker PRIVATE
-    defragmenter-zfs-native defragmenter-core)
-
+target_compile_definitions(defragmenter-zfs-worker PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+target_link_libraries(defragmenter-zfs-worker PRIVATE defragmenter-filesystem-module-host)
 install(TARGETS defragmenter-zfs-worker
-        RUNTIME DESTINATION /System/Commands/Defragmenter/zfs)
+    RUNTIME DESTINATION /System/Commands/Defragmenter/zfs)
 
-if(BUILD_TESTING)
-    add_executable(defragmenter-zfs-native-test tests/test_zfs_native.c)
-    target_include_directories(defragmenter-zfs-native-test PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/zfs/native"
+# The isolated worker uses the existing test-only Common module host.
+if(BUILD_TESTING AND OFS_DEFRAG_TEST_MODULE_PARENT)
+    add_executable(defragmenter-zfs-test-worker native/zfs_module_loader.c)
+    target_include_directories(defragmenter-zfs-test-worker PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/native"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/core" "${LD_GENERATED_DIR}")
-    target_compile_options(defragmenter-zfs-native-test PRIVATE ${LD_WARNING_FLAGS})
-    target_compile_definitions(defragmenter-zfs-native-test PRIVATE
-        _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-    target_link_libraries(defragmenter-zfs-native-test PRIVATE
-        defragmenter-zfs-native defragmenter-core)
-    add_test(NAME defragmenter-zfs-native COMMAND defragmenter-zfs-native-test)
+    target_compile_options(defragmenter-zfs-test-worker PRIVATE ${LD_WARNING_FLAGS})
+    target_compile_definitions(defragmenter-zfs-test-worker PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+    target_link_libraries(defragmenter-zfs-test-worker PRIVATE
+        defragmenter-filesystem-module-test-host)
 endif()

@@ -64,7 +64,7 @@ target_link_libraries(defragmenter-test-media-core PUBLIC
 target_link_libraries(defragmenter-test-media-core PRIVATE
     defragmenter-affs-native defragmenter-sfs-native
     defragmenter-pfs3-native defragmenter-apfs-native
-    defragmenter-ufs-native defragmenter-zfs-native)
+    defragmenter-ufs-native)
 target_link_libraries(defragmenter-test-media-core PRIVATE
     defragmenter-ext-native defragmenter-hfsplus-native
     defragmenter-ntfs-native defragmenter-xfs-native)
