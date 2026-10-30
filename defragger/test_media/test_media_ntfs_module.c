@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
- * HFS+/HFSX format/fixture logic lives exclusively in trusted NTFS.so.
+ * NTFS format and fragmented fixture logic live exclusively in trusted NTFS.so.
  * The application provides only filesystem-neutral media/corpus callbacks.
  */
 #include "test_media_raw.h"
