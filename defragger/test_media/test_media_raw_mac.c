@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "test_media_raw.h"
-#include "hfsplus_native.h"
 #include "infiltratr/endian.h"
 #include <stdlib.h>
 #include <string.h>
@@ -81,6 +80,8 @@ static void plus_fork(uint8_t *out, uint64_t bytes, uint32_t total, const LdtmRa
 }
 int ldtm_raw_mac(const LdtmFilesystemSpec *spec, const char *path, bool create)
 {
+    if (spec && spec->creator == LDTM_CREATOR_HFSPLUS)
+        return ldtm_hfsplus_module_fixture(spec,path,create);
     const bool plus = spec->creator == LDTM_CREATOR_HFSPLUS;
     const uint32_t unit = plus ? 4096U : 32768U;
     uint64_t capacity = 0U;
@@ -235,42 +236,6 @@ int ldtm_raw_mac(const LdtmFilesystemSpec *spec, const char *path, bool create)
                 goto done;
         }
         result = ldtm_raw_write_payload(fd, &plan);
-    } else if (plus) {
-        HfsPlusVolume volume = {0};
-        char *error = NULL;
-        if (hfsplus_scan(path, false, &volume, &error) != 0) {
-            free(error);
-            goto done;
-        }
-        LdtmRawCheck check;
-        ldtm_raw_check_init(&check, spec);
-        bool valid = volume.files.count == LDTM_RAW_FILES;
-        for (size_t n = 0U; valid && n < volume.files.count; ++n) {
-            const HfsPlusFile *item = &volume.files.items[n];
-            if (item->file_id < 16U || item->file_id >= 16U + LDTM_RAW_FILES ||
-                item->resource_fork.logical_size != 0U) {
-                valid = false;
-                break;
-            }
-            const unsigned file = item->file_id - 16U;
-            uint64_t logical = 0U;
-            valid = ldtm_raw_check_file(&check, file, item->data_fork.logical_size) == 0;
-            for (size_t extent = 0U; valid && logical < item->data_fork.logical_size &&
-                                     extent < item->data_fork.extent_count;
-                 ++extent) {
-                uint64_t take = (uint64_t)item->data_fork.extents[extent].count * volume.block_size;
-                if (take > item->data_fork.logical_size - logical)
-                    take = item->data_fork.logical_size - logical;
-                valid = ldtm_raw_check_data(&check, fd, file,
-                                            (uint64_t)item->data_fork.extents[extent].start *
-                                                volume.block_size,
-                                            logical, take) == 0;
-                logical += take;
-            }
-        }
-        result = valid ? ldtm_raw_check_finish(&check) : -1;
-        hfsplus_close(&volume);
-        free(error);
     } else {
         uint8_t mdb[512], raw[512];
         if (ldtm_raw_read(fd, 1024U, mdb, sizeof(mdb)) != 0 || infiltratr_load_be16(mdb) != 0x4244U)

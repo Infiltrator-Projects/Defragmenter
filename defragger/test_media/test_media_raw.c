@@ -221,6 +221,13 @@ int ldtm_raw_fixture(const LdtmFilesystemSpec *spec, const char *path, bool crea
               "Install or update the ZFS filesystem driver.");
         return -1;
     }
+    if (create && spec->creator == LDTM_CREATOR_HFSPLUS &&
+        !ldtm_hfsplus_module_available(spec)) {
+        if (detail && capacity)
+            (void)snprintf(detail,capacity,
+                "Install or update the HFSPLUS.so filesystem driver.");
+        return -1;
+    }
     int (*codec)(const LdtmFilesystemSpec *, const char *, bool) = NULL;
     switch (spec->creator) {
     case LDTM_CREATOR_FAT12:
