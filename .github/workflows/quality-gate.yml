@@ -253,7 +253,7 @@ jobs:
           set -euo pipefail
           src="$GITHUB_WORKSPACE/ci-hfsplus"
           cmake -S "$src" -B "$RUNNER_TEMP/hfsplus-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=ON
-          cmake --build "$RUNNER_TEMP/hfsplus-$GITHUB_RUN_ID-$GITHUB_JOB" --target hfsplus-driver -j2
+          cmake --build "$RUNNER_TEMP/hfsplus-$GITHUB_RUN_ID-$GITHUB_JOB" --target hfsplus-driver hfsplus-module-test -j2
           ctest --test-dir "$RUNNER_TEMP/hfsplus-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
           bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
           cmp native/ifs_hfsplus_module_v1.h "$src/include/ifs_hfsplus_module_v1.h"
@@ -272,9 +272,9 @@ jobs:
           set -euo pipefail
           src="$GITHUB_WORKSPACE/ci-btrfs"
           cmake -S "$src" -B "$RUNNER_TEMP/btrfs-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=ON
-          cmake --build "$RUNNER_TEMP/btrfs-$GITHUB_RUN_ID-$GITHUB_JOB" --target btrfs-driver -j2
+          cmake --build "$RUNNER_TEMP/btrfs-$GITHUB_RUN_ID-$GITHUB_JOB" --target btrfs-driver btrfs-module-test -j2
           ctest --test-dir "$RUNNER_TEMP/btrfs-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
+          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
           cmp native/ifs_btrfs_module_v1.h "$src/include/ifs_btrfs_module_v1.h"
           cmp test_media/ifs_btrfs_fixture_v1.h "$src/include/ifs_btrfs_fixture_v1.h"
           install -m 0644 "$RUNNER_TEMP/btrfs-$GITHUB_RUN_ID-$GITHUB_JOB/BTRFS.so" "$PWD/build/fat-module-test/Filesystems/BTRFS.so"
@@ -295,7 +295,7 @@ jobs:
           cmake --build "$RUNNER_TEMP/minix-$GITHUB_RUN_ID-$GITHUB_JOB" \
             --target minix-driver minix-native-test minix-defrag-test minix-v1-v2-module-test -j2
           ctest --test-dir "$RUNNER_TEMP/minix-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
+          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
           cmp native/ifs_minix_defrag_v1.h "$src/include/ifs_minix_defrag_v1.h"
           cmp test_media/ifs_minix_fixture_v1.h "$src/include/ifs_minix_fixture_v1.h"
           install -m 0644 "$RUNNER_TEMP/minix-$GITHUB_RUN_ID-$GITHUB_JOB/MINIX.so" "$PWD/build/fat-module-test/Filesystems/MINIX.so"
@@ -367,7 +367,7 @@ jobs:
         run: |
           set -euo pipefail
           src="$GITHUB_WORKSPACE/ci-ufs"
-          cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
+          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
           cmp native/ifs_ufs_module_v1.h "$src/include/ifs_ufs_module_v1.h"
           cmake -S "$src" -B "$RUNNER_TEMP/ufs-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Release
           cmake --build "$RUNNER_TEMP/ufs-$GITHUB_RUN_ID-$GITHUB_JOB" -j2
@@ -778,7 +778,7 @@ jobs:
             -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
             -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
           cmake --build "$RUNNER_TEMP/btrfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target btrfs-driver -j2
-          cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
+          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
           cmp native/ifs_btrfs_module_v1.h "$src/include/ifs_btrfs_module_v1.h"
           cmp test_media/ifs_btrfs_fixture_v1.h "$src/include/ifs_btrfs_fixture_v1.h"
           install -m 0644 "$RUNNER_TEMP/btrfs-san-$GITHUB_RUN_ID-$GITHUB_JOB/BTRFS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/BTRFS.so"
@@ -801,7 +801,7 @@ jobs:
             -DCMAKE_EXE_LINKER_FLAGS='-fsanitize=address,undefined'
           cmake --build "$RUNNER_TEMP/minix-san-$GITHUB_RUN_ID-$GITHUB_JOB" \
             --target minix-driver minix-native-test minix-defrag-test minix-v1-v2-module-test -j2
-          cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
+          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
           cmp native/ifs_minix_defrag_v1.h "$src/include/ifs_minix_defrag_v1.h"
           cmp test_media/ifs_minix_fixture_v1.h "$src/include/ifs_minix_fixture_v1.h"
           install -m 0644 "$RUNNER_TEMP/minix-san-$GITHUB_RUN_ID-$GITHUB_JOB/MINIX.so" "$PWD/build-sanitize/fat-module-test/Filesystems/MINIX.so"
@@ -877,7 +877,7 @@ jobs:
         run: |
           set -euo pipefail
           src="$GITHUB_WORKSPACE/ci-ufs"
-          cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
+          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
           cmp native/ifs_ufs_module_v1.h "$src/include/ifs_ufs_module_v1.h"
           cmake -S "$src" -B "$RUNNER_TEMP/ufs-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
