@@ -31,6 +31,12 @@ static uint32_t timestamp_io(void *opaque) {
     (void)opaque;
     return (20U << 25U) | (1U << 21U) | (1U << 16U); /* 2000-01-01 */
 }
+/* Verification holds a read-only host lease. A zero clock suppresses FAT
+ * access-date updates in V3.read; otherwise reads would try writing metadata. */
+static uint32_t timestamp_verify_io(void *opaque) {
+    (void)opaque;
+    return 0U;
+}
 static const IfsFatfsModuleV4 *interface(void *symbol, const LdtmFilesystemSpec *spec) {
     const IfsFatfsModuleV4 *(*entry)(void) = NULL;
     _Static_assert(sizeof(entry) == sizeof(symbol), "module symbol width");
@@ -146,7 +152,7 @@ static int verify_fixture(const IfsDefragHostV2 *host, void *symbol, void *opaqu
     if (host->open_target(host->context, f->path, 0, NULL, 0, &f->target))
         return -1;
     const IfsFatfsIo io = { f, f->target.bytes, 512U,
-                            read_io, write_io, flush_io, timestamp_io };
+                            read_io, write_io, flush_io, timestamp_verify_io };
     int result = -1;
     int mounted = 0;
     if (f->target.bytes != (uint64_t)f->spec->size_mib * LDTM_MIB ||
