@@ -5,10 +5,16 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 
 ROOT = Path(__file__).resolve().parents[1]
-NATIVE = ROOT / "gui" / "filesystems" / "affs" / "native" / "affs_native.c"
-WORKER = ROOT / "gui" / "filesystems" / "affs" / "native" / "affs_worker.c"
+# Verify exactly the canonical source compiled by Filesystem-FFS/FFS.so;
+# never require a local Defragmenter copy of Amiga filesystem algorithms.
+SOURCE = Path(os.environ["FFS_NATIVE_TEST_SOURCE_DIR"])
+NATIVE = SOURCE / "affs_native.c"
+WORKER = SOURCE / "affs_worker.c"
+assert not (ROOT / "gui" / "filesystems" / "affs" / "native").exists()
+
 
 
 def function_body(source: str, name: str, next_name: str) -> str:

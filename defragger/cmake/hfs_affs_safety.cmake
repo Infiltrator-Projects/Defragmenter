@@ -16,13 +16,17 @@ if(BUILD_TESTING)
         ENVIRONMENT
             "PYTHONDONTWRITEBYTECODE=1;PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/gui:${CMAKE_CURRENT_SOURCE_DIR}/tests;DEFRAGMENTER_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR};DEFRAGMENTER_AFFS_WORKER=${AFFS_WORKER_FOR_TESTS};IFS_TEST_MODULE_PARENT=${OFS_DEFRAG_TEST_MODULE_PARENT}")
 
-    add_test(
-        NAME defragmenter-affs-batched-io
-        COMMAND "${Python3_EXECUTABLE}"
-                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_affs_batched_io.py")
-    set_tests_properties(defragmenter-affs-batched-io PROPERTIES
-        ENVIRONMENT
-            "PYTHONDONTWRITEBYTECODE=1")
+    # Structural verification reads source from the independent canonical
+    # FFS repository; the production application must not ship that engine.
+    if(FFS_NATIVE_TEST_SOURCE_DIR)
+        add_test(
+            NAME defragmenter-affs-batched-io
+            COMMAND "${Python3_EXECUTABLE}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_affs_batched_io.py")
+        set_tests_properties(defragmenter-affs-batched-io PROPERTIES
+            ENVIRONMENT
+                "PYTHONDONTWRITEBYTECODE=1;FFS_NATIVE_TEST_SOURCE_DIR=${FFS_NATIVE_TEST_SOURCE_DIR}")
+    endif()
 
     add_test(
         NAME defragmenter-hfsplus-native-integration

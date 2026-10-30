@@ -34,15 +34,13 @@ def main() -> None:
         "EXT filesystem parsing must be owned by external EXT2/3/4.so modules"
     )
 
-    primary = BUILD / "defragmenter-ext-worker"
-    metadata = BUILD / "ext-metadata-worker"
+    primary = Path(os.environ.get("DEFRAGMENTER_EXT_WORKER", BUILD / "defragmenter-ext-worker"))
+    metadata = Path(os.environ.get("DEFRAGMENTER_EXT_METADATA_WORKER", BUILD / "ext-metadata-worker"))
     mapper = BUILD / "defragmenter-mapper"
     fixture = BUILD / "defragmenter-ext-fixture"
     for program in (primary, metadata, mapper, fixture):
         assert program.is_file(), f"missing native EXT test executable: {program}"
 
-    os.environ["DEFRAGMENTER_EXT_WORKER"] = str(primary)
-    os.environ["DEFRAGMENTER_EXT_METADATA_WORKER"] = str(metadata)
 
     with tempfile.TemporaryDirectory(prefix="defragmenter-ext-map-") as directory:
         image = Path(directory) / "ext4.img"
