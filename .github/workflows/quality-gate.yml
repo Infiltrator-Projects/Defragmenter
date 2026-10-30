@@ -317,6 +317,26 @@ jobs:
           ctest --test-dir "$RUNNER_TEMP/xfs-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
           install -m 0644 "$RUNNER_TEMP/xfs-$GITHUB_RUN_ID-$GITHUB_JOB/XFS.so" "$PWD/build/fat-module-test/Filesystems/XFS.so"
 
+      - name: Check out independently qualified EXT2/3/4 shared objects
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-EXT4
+          ref: 292c4462f3b16530b3d552563ebe9d3584a329ec
+          path: ci-ext4
+
+      - name: Build and qualify canonical EXT2.so EXT3.so EXT4.so
+        run: |
+          set -euo pipefail
+          src="$GITHUB_WORKSPACE/ci-ext4"
+          test "$(cat shared/ext-module-revision)" = "292c4462f3b16530b3d552563ebe9d3584a329ec"
+          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
+          cmp native/ifs_ext_module_v1.h "$src/include/ifs_ext_module_v1.h"
+          cmp test_media/ifs_ext_fixture_v1.h "$src/include/ifs_ext_fixture_v1.h"
+          cmake -S "$src" -B "$RUNNER_TEMP/ext-so-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          cmake --build "$RUNNER_TEMP/ext-so-$GITHUB_RUN_ID-$GITHUB_JOB" --parallel 2
+          ctest --test-dir "$RUNNER_TEMP/ext-so-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
+          install -m 0644 "$RUNNER_TEMP/ext-so-$GITHUB_RUN_ID-$GITHUB_JOB"/EXT{2,3,4}.so "$PWD/build/fat-module-test/Filesystems/"
+
       - name: Check out independently qualified UFS.so
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -786,6 +806,27 @@ jobs:
             -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
           cmake --build "$RUNNER_TEMP/xfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target xfs-driver -j2
           install -m 0644 "$RUNNER_TEMP/xfs-san-$GITHUB_RUN_ID-$GITHUB_JOB/XFS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/XFS.so"
+
+      - name: Check out EXT2/3/4 SO source for sanitizers
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-EXT4
+          ref: 292c4462f3b16530b3d552563ebe9d3584a329ec
+          path: ci-ext4
+
+      - name: Instrument all EXT2/3/4 filesystem shared objects
+        run: |
+          set -euo pipefail
+          src="$GITHUB_WORKSPACE/ci-ext4"
+          test "$(cat shared/ext-module-revision)" = "292c4462f3b16530b3d552563ebe9d3584a329ec"
+          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
+          cmp native/ifs_ext_module_v1.h "$src/include/ifs_ext_module_v1.h"
+          cmp test_media/ifs_ext_fixture_v1.h "$src/include/ifs_ext_fixture_v1.h"
+          cmake -S "$src" -B "$RUNNER_TEMP/ext-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
+            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
+          cmake --build "$RUNNER_TEMP/ext-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target ext-ext2-driver ext-ext3-driver ext-ext4-driver --parallel 2
+          install -m 0644 "$RUNNER_TEMP/ext-san-$GITHUB_RUN_ID-$GITHUB_JOB"/EXT{2,3,4}.so "$PWD/build-sanitize/fat-module-test/Filesystems/"
 
       - name: Check out independent UFS.so for sanitizer tests
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
