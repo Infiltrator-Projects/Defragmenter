@@ -55,8 +55,20 @@ jobs:
           export DEFRAGMENTER_SWAP_WORKER="$PWD/build/defragmenter-swap-test-worker"
           export DEFRAGMENTER_BUILD_DIR="$PWD/build"
           build/defragmenter-swap-test-worker --version | grep -F "defragmenter-swap-worker"
-          ctest --test-dir build -R '^defragmenter-test-media-corpus-contract$' --output-on-failure
-          python3 tests/test_test_media_raw.py "$PWD/build" swap
+          # The full corpus contract also requires FAT12/16/32 and OFS drivers.
+          # This independent gate invokes the actual SWAP fixture directly.
+          build/defragmenter-test-media-raw-test create swap "$PWD/build/swap-test.img"
+          build/defragmenter-test-media-raw-test verify swap "$PWD/build/swap-test.img"
+          build/defragmenter-mapper "$PWD/build/swap-test.img" --fstype swap --cells 8 > build/swap-map.json
+          python3 - <<'PY'
+          import json
+          with open("build/swap-map.json", encoding="utf-8") as f:
+              result = json.load(f)
+          assert result["filesystem"] == "swap", result
+          assert result["map_accuracy"] == "exact", result
+          assert result.get("unknown_bytes", 1) == 0, result
+          print("SWAP.so create, verify and Defragmenter map passed")
+          PY
       - name: Verify module is mandatory rather than falling back to internal code
         run: |
           set -euo pipefail
@@ -67,3 +79,11 @@ jobs:
             echo "ERROR: SWAP worker ran without SWAP.so" >&2
             exit 1
           fi
+          # Refusal must occur before mutating an existing media image.
+          before="$(stat -c '%Y:%s' build/swap-test.img)"
+          if IFS_TEST_MODULE_PARENT="$PWD/build/empty-module-root" \
+            build/defragmenter-test-media-raw-test recreate swap build/swap-test.img; then
+            echo "ERROR: Test Media wrote without SWAP.so" >&2
+            exit 1
+          fi
+          test "$before" = "$(stat -c '%Y:%s' build/swap-test.img)"
