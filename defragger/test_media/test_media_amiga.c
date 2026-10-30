@@ -179,6 +179,13 @@ cleanup:
 }
 
 int ldtm_validate_amiga_volume(const char *path, uint8_t expected_dostype) {
+    /* FFS validation is owned by FFS.so. Do not run this historical
+     * raw Amiga formatter's private FFS validation path. */
+    if(expected_dostype==1U) {
+        extern int ldtm_validate_ffs_module(const char *);
+        return ldtm_validate_ffs_module(path);
+    }
+
     int fd = -1;
     off_t bytes;
     uint64_t blocks64;
