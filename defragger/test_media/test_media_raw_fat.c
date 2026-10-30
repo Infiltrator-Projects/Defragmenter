@@ -43,8 +43,7 @@ int ldtm_raw_fat(const LdtmFilesystemSpec *spec, const char *path, bool create)
 {
     /* The writer is exclusively the installed SO. Everything below is a
      * read-only oracle which follows the resulting on-disk allocation. */
-    if (create) return spec->creator == LDTM_CREATOR_FAT32 ?
-        ldtm_raw_fat32_create(spec, path) : ldtm_fat_module_create(spec, path);
+    if (create) return ldtm_fat_module_create(spec, path);
     uint64_t capacity = 0U;
     int fd = ldtm_raw_open(path, false, &capacity);
     if (fd < 0)

@@ -270,7 +270,8 @@ int ldtm_program_available(const char *program) {
 int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
                                 char *detail, size_t detail_capacity) {
     if (detail == NULL || detail_capacity == 0U || spec == NULL) return 0;
-    if (spec->creator == LDTM_CREATOR_FAT12 || spec->creator == LDTM_CREATOR_FAT16) {
+    if (spec->creator == LDTM_CREATOR_FAT12 || spec->creator == LDTM_CREATOR_FAT16 ||
+        spec->creator == LDTM_CREATOR_FAT32) {
         extern int ldtm_fat_module_available(const LdtmFilesystemSpec *);
         const int ready = ldtm_fat_module_available(spec);
         (void)snprintf(detail, detail_capacity, ready ?

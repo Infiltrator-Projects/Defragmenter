@@ -38,9 +38,9 @@ a child-process module host; the filesystem and journal engine lives in the
 selected module. If that module is absent or older than the defrag ABI, the
 operation fails with an install/update message.
 
-FAT12/16 Test Media formatting and population also use those SOs through V4
+FAT12/16/32 Test Media formatting and population use their matching SOs through V4
 and V3. Its raw FAT parser is retained solely for independent payload checking.
-FAT32's temporary fixture creator remains separate. Required FAT12/16 and OFS
+The redundant internal FAT32 fixture writer has been removed. Required FAT12/16/32 and OFS
 modules are checked before destructive Test Media preparation.
 
 OFS likewise requires current `OFS.so`, with Defrag V2 and V3. The Amiga worker

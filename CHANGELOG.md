@@ -1,3 +1,17 @@
+## 1.8.0-280 — Mandatory FAT32.so Test Media integration
+
+- Remove the remaining local FAT32 boot-sector/FAT/directory/payload writer.
+  Formatting, allocation and file population now call the installed FAT32.so
+  V4/V3 interfaces, just as FAT12 and FAT16 do; the independent raw payload
+  verifier remains unchanged.
+- Check the actual FAT32 SO's ABI, format identity, ownership and readiness
+  before destructive preparation. Never fall back to a private writer.
+- Use a real 2-GiB/16-KiB-cluster FAT32 format to preserve FAT32 width while
+  limiting per-write flush overhead in the full 200-MiB deterministic corpus.
+- Add standalone FAT32.so to the pinned real full-regression and sanitizer
+  consumers in both self-hosted qualification lanes. Preserve all original
+  FAT12/FAT16/FFS/OFS paths and already-issued journals.
+
 ## 1.8.0-278 — Mandatory OFS.so integration
 
 - Run OFS analysis, Defrag, Growth Defrag and new-journal Recover inside the
