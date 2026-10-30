@@ -16,6 +16,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = Path(os.environ.get("DEFRAGMENTER_BUILD_DIR", ROOT / "build"))
 MAPPER = BUILD / "defragmenter-mapper"
+
+
+def mapper_environment() -> dict[str, str]:
+    """Require the hermetic metadata SO host for independently loaded EXT tests."""
+    environment = dict(os.environ)
+    if environment.get("IFS_TEST_MODULE_PARENT"):
+        metadata_worker = BUILD / "defragmenter-ext-metadata-test-worker"
+        if not metadata_worker.is_file() or not os.access(metadata_worker, os.X_OK):
+            raise AssertionError(f"missing trusted EXT metadata test worker: {metadata_worker}")
+        environment["DEFRAGMENTER_EXT_METADATA_WORKER"] = str(metadata_worker)
+    return environment
 sys.path.insert(0, str(ROOT / "tests"))
 from ntfs_test_fixture import make_image as make_ntfs_image  # noqa: E402
 
@@ -39,11 +50,18 @@ def map_json(filesystem: str, image: Path, cells: int = 128) -> dict:
 def run_json(worker: Path, image: Path) -> dict:
     completed = subprocess.run(
         [str(worker), "analyse-json", str(image)],
-        check=True,
+        check=False,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        env=mapper_environment(),
     )
+    if completed.returncode:
+        raise AssertionError(
+            f"mapper failed for {filesystem} with exit {completed.returncode} "
+            f"(EXT metadata worker: {mapper_environment().get('DEFRAGMENTER_EXT_METADATA_WORKER')})\\n"
+            f"stdout:\\n{completed.stdout}\\nstderr:\\n{completed.stderr}"
+        )
     return json.loads(completed.stdout)
 
 
