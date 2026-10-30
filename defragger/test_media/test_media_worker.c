@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "test_media.h"
 #include "test_media_raw.h"
-#include "ufs_native.h"
 #include "ld_device.h"
 #include "ld_io.h"
 
@@ -1252,10 +1251,10 @@ cleanup:
 }
 
 static int ufs2_summary_ok(const char *path) {
-    LdUfsSummary summary;
-    char error[256];
-    return ufs_read_summary(path, &summary, error, sizeof(error)) == 0 &&
-           summary.variant == LD_UFS_VARIANT_UFS2_LE;
+    /* The package-owned host resolves and checks UFS.so; there is no
+     * Defragmenter-local UFS parser, formatter or fallback. */
+    const char *const argv[] = {"makefs", "--check-ufs2-le", path, NULL};
+    return path != NULL && run_process(argv, NULL, 1) == 0;
 }
 
 #define LDTM_UFS2_INODE_SIZE 256U
@@ -1721,10 +1720,10 @@ static int create_ufs_and_populate(const LdtmFilesystemSpec *spec, const char *p
     }
     if (!ufs2_summary_ok(image)) {
         emit_status(spec->key, "qualification-failed",
-                    "makefs completed but the native UFS2 parser rejected its image");
+                    "makefs completed but UFS.so rejected its UFS2 image");
         (void)state_write_status(
             state, spec, "qualification-failed",
-            "makefs output failed native UFS2 geometry validation");
+            "makefs output failed UFS.so UFS2 geometry validation");
         return 1;
     }
     printf("+ copy verified UFS2 image %s -> %s\n", image, partition);
@@ -1740,7 +1739,7 @@ static int create_ufs_and_populate(const LdtmFilesystemSpec *spec, const char *p
     }
     if (!ufs2_summary_ok(partition)) {
         emit_status(spec->key, "qualification-failed",
-                    "copied UFS2 image failed native geometry validation");
+                    "copied UFS2 image failed UFS.so geometry validation");
         (void)state_write_status(state, spec, "qualification-failed",
                                  "UFS2 partition validation failed");
         return 1;
