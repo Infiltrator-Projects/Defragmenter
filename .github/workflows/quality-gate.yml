@@ -700,7 +700,7 @@ jobs:
             -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
             -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
           cmake --build "$RUNNER_TEMP/hfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target hfs-driver -j2
-          cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
+          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
           cmp native/ifs_hfs_module_v1.h "$src/include/ifs_hfs_module_v1.h"
           cmp test_media/ifs_hfs_fixture_v1.h "$src/include/ifs_hfs_fixture_v1.h"
           install -m 0644 "$RUNNER_TEMP/hfs-san-$GITHUB_RUN_ID-$GITHUB_JOB/HFS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/HFS.so"
