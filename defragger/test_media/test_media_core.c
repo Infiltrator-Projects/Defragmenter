@@ -193,7 +193,7 @@ const char *ldtm_creator_program(const LdtmFilesystemSpec *spec) {
     if (spec->creator == LDTM_CREATOR_UFS)
         return "makefs";
     if (spec->creator == LDTM_CREATOR_AFFS) {
-        if (strcmp(spec->key, "ofs") == 0)
+        if (strcmp(spec->key, "ofs") == 0 || strcmp(spec->key, "ffs") == 0)
             return "/System/Commands/Defragmenter/test-media-mkfs-ofs";
         if (strcmp(spec->key, "ffs") == 0)
             return "/System/Commands/Defragmenter/test-media-mkfs-ffs";
@@ -377,8 +377,12 @@ int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
         return ready;
     }
     if (spec->creator == LDTM_CREATOR_AFFS && strcmp(spec->key, "ffs") == 0) {
-        (void)snprintf(detail, detail_capacity, "Built-in raw C creator + payload engine: Amiga DOS\\1 FFS");
-        return 1;
+        extern int ldtm_ffs_module_available(void);
+        const int ready = ldtm_ffs_module_available();
+        (void)snprintf(detail, detail_capacity, "%s", ready ?
+            "FFS.so independently owns format, allocation, fragmented corpus and verification." :
+            "Install or update FFS.so; local filesystem creation is disabled.");
+        return ready;
     }
     if (spec->creator == LDTM_CREATOR_PFS3) {
         extern int ldtm_pfs3_module_available(void);

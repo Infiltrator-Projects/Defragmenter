@@ -8,6 +8,12 @@
 #include <string.h>
 #include <unistd.h>
 
+int ldtm_ffs_module_available(void);
+int ldtm_format_ffs_module(const char *, const char *);
+int ldtm_validate_ffs_module(const char *);
+int ldtm_populate_ffs_module(const char *, const LdtmFragmentProfile *);
+int ldtm_verify_ffs_module(const char *, const LdtmFragmentProfile *,
+                           int after, char *, size_t);
 int ldtm_format_amiga_volume_affs(const char *path, uint8_t dostype, const char *label);
 int ldtm_format_ofs_module(const char *path, const char *label);
 int ldtm_populate_ofs_module(const char *path, const LdtmFragmentProfile *profile);
@@ -63,7 +69,7 @@ int ldtm_format_amiga_volume(const char *path, uint8_t dostype, const char *labe
     if (label != NULL && strcmp(label, "LD_PFS3") == 0)
         return ldtm_format_pfs3_volume(path);
     return dostype == 0U ? ldtm_format_ofs_module(path, label) :
-                          ldtm_format_amiga_volume_affs(path, dostype, label);
+                          ldtm_format_ffs_module(path, label);
 }
 
 int ldtm_populate_amiga_volume(const char *path, uint8_t dostype,
@@ -71,7 +77,7 @@ int ldtm_populate_amiga_volume(const char *path, uint8_t dostype,
     if (path_is_sfs(path)) return ldtm_populate_sfs_volume(path, profile);
     if (path_is_pfs3(path)) return ldtm_populate_pfs3_volume(path, profile);
     return dostype == 0U ? ldtm_populate_ofs_module(path, profile) :
-                          ldtm_populate_amiga_volume_affs(path, dostype, profile);
+                          ldtm_populate_ffs_module(path, profile);
 }
 
 int ldtm_verify_amiga_payload(const char *path, uint8_t dostype,
@@ -81,7 +87,9 @@ int ldtm_verify_amiga_payload(const char *path, uint8_t dostype,
         return ldtm_verify_sfs_payload(path, profile, detail, detail_capacity);
     if (path_is_pfs3(path))
         return ldtm_verify_pfs3_payload(path, profile, detail, detail_capacity);
-    return ldtm_verify_amiga_payload_affs(path, dostype, profile, detail, detail_capacity);
+    return dostype == 1U
+        ? ldtm_verify_ffs_module(path, profile, 0, detail, detail_capacity)
+        : ldtm_verify_amiga_payload_affs(path, dostype, profile, detail, detail_capacity);
 }
 
 
@@ -95,6 +103,8 @@ int ldtm_verify_amiga_payload_after_defrag(
     if (path_is_pfs3(path))
         return ldtm_verify_pfs3_payload_after_defrag(
             path, profile, detail, detail_capacity);
-    return ldtm_verify_amiga_payload_affs_after_defrag(
-        path, dostype, profile, detail, detail_capacity);
+    return dostype == 1U
+        ? ldtm_verify_ffs_module(path, profile, 1, detail, detail_capacity)
+        : ldtm_verify_amiga_payload_affs_after_defrag(
+            path, dostype, profile, detail, detail_capacity);
 }

@@ -642,7 +642,7 @@ int main(void) {
     CHECK(ldtm_creator_program(sfs) == NULL);
     CHECK(strcmp(ldtm_creator_display_name(fat12), "Filesystem driver") == 0);
     CHECK(strcmp(ldtm_creator_display_name(ofs), "Filesystem driver") == 0);
-    CHECK(strcmp(ldtm_creator_display_name(ffs), "Built-in native") == 0);
+    CHECK(strcmp(ldtm_creator_display_name(ffs), "Filesystem driver") == 0);
     CHECK(strcmp(ldtm_creator_display_name(sfs), "Built-in native") == 0);
     CHECK(strcmp(ldtm_creator_display_name(pfs3), "Built-in native") == 0);
     CHECK(strcmp(ldtm_creator_display_name(apfs), "Built-in native") == 0);

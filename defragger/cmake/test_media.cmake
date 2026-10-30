@@ -39,6 +39,7 @@ add_library(defragmenter-test-media-core STATIC
     test_media/test_media_reserved.c
     test_media/test_media_amiga.c
     test_media/test_media_amiga_payload.c
+    test_media/test_media_ffs_module.c
     test_media/test_media_amiga_dispatch.c
     test_media/test_media_ofs_module.c
     test_media/test_media_sfs.c
