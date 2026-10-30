@@ -369,6 +369,8 @@ jobs:
           src="$GITHUB_WORKSPACE/ci-ufs"
           bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
           cmp native/ifs_ufs_module_v1.h "$src/include/ifs_ufs_module_v1.h"
+          cmp native/ifs_ufs_volume_check_v1.h "$src/include/ifs_ufs_volume_check_v1.h"
+          cmp native/ifs_ufs_payload_verifier_v1.h "$src/include/ifs_ufs_payload_verifier_v1.h"
           cmake -S "$src" -B "$RUNNER_TEMP/ufs-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Release
           cmake --build "$RUNNER_TEMP/ufs-$GITHUB_RUN_ID-$GITHUB_JOB" -j2
           ctest --test-dir "$RUNNER_TEMP/ufs-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
@@ -879,6 +881,8 @@ jobs:
           src="$GITHUB_WORKSPACE/ci-ufs"
           bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
           cmp native/ifs_ufs_module_v1.h "$src/include/ifs_ufs_module_v1.h"
+          cmp native/ifs_ufs_volume_check_v1.h "$src/include/ifs_ufs_volume_check_v1.h"
+          cmp native/ifs_ufs_payload_verifier_v1.h "$src/include/ifs_ufs_payload_verifier_v1.h"
           cmake -S "$src" -B "$RUNNER_TEMP/ufs-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
             -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
