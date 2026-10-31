@@ -1,10 +1,49 @@
 # Safety audit status
 
+## Post-audit isolated EXT test-worker correction — 2026-10-31
+
+Status: **complete**
+
+This focused source/test-input audit advances the audited source baseline from
+`520b3820c26d9000fb6c27bd69f75ba8df9ca37f` to
+`7bccc8fd5e49d1246a5de0b77fda4bc9a073984f`. The exact tracked qualified-source
+delta consists **only** of `defragger/tests/test_native_top3.py` and
+`defragger/tests/test_test_media_raw.py`. These are Python test
+orchestrators, not shipped filesystem engines or new runtime dependencies.
+
+The test-mapper and JSON-analysis callers now select the isolated, built
+`defragmenter-ext-metadata-test-worker` when `IFS_TEST_MODULE_PARENT`
+is present; missing or non-executable test workers fail explicitly instead of
+falling back to production paths. The restored error path checks the actual
+process return code and reports the worker and captured standard output/error.
+The source branch's diagnostic that referenced an undefined `filesystem`
+variable was **not** incorporated. The additional raw Test Media map probe
+also uses the hermetic metadata test-worker environment.
+
+Review compared the two changed test files to the audited source baseline,
+checked the production/test-only environment contract and preserved all
+release/source-governance restrictions. No source other than those two tests
+has changed relative to the original audited source commit. The release
+governance baseline remains
+`c1216fc232225bf082b2ff0fdaaeca50b360c5f7`, unchanged.
+
+Evidence: GitHub Actions run
+`41190013223` on exact commit `7bccc8fd5e49d1246a5de0b77fda4bc9a073984f`
+passed the 42 general CTest cases and 16 native Test Media cases. Its
+independent ASan/UBSan job passed, and all 14 per-filesystem integration
+workflows reported success. The release-invariant step failed **only**
+because the recorded source baseline still predated the two reviewed test
+files: `qualified source/test/install input changed after the audited
+source baseline`. This focused audit accounts for that specific drift.
+This entry does **not** assert that the subsequent exact-head CI and
+publication pass: both full self-hosted qualification lanes and the
+unchanged release-invariant gate remain mandatory on the next main commit.
+
 ## Canonical SO defragmentation engine migration — 2026-10-31
 
 Status: **complete**
 
-Audited source commit: 520b3820c26d9000fb6c27bd69f75ba8df9ca37f
+Audited source commit: 7bccc8fd5e49d1246a5de0b77fda4bc9a073984f
 Audited release-governance commit: c1216fc232225bf082b2ff0fdaaeca50b360c5f7
 
 Scope: Defragmenter 1.8.0-281 migration candidate, including corrected user-visible backend descriptions. This is the frozen
