@@ -5,7 +5,7 @@
 Status: **complete**
 
 Audited source commit: 520b3820c26d9000fb6c27bd69f75ba8df9ca37f
-Audited release-governance commit: 520b3820c26d9000fb6c27bd69f75ba8df9ca37f
+Audited release-governance commit: c1216fc232225bf082b2ff0fdaaeca50b360c5f7
 
 Scope: Defragmenter 1.8.0-281 migration candidate, including corrected user-visible backend descriptions. This is the frozen
 source/test/installer and CI governance baseline; it does **not** claim that
@@ -41,6 +41,28 @@ release workflows possess publication authority. The 42 general tests, all
 16 Test Media cases and sanitizer lane passed on the preceding candidate;
 this revised governance baseline requires those qualifications to run again
 on the exact new head before publication.
+
+## Post-audit release-governance correction — 2026-10-31
+
+The independent normal quality gate and ASan/UBSan lane both passed for
+`c1216fc232225bf082b2ff0fdaaeca50b360c5f7`, including all 14 separate,
+read-only filesystem integration checks. The publication job then stopped at
+`verify-source` because the recorded release-governance baseline predated a
+subsequent five-line, release-qualification-only workflow correction. The
+source baseline remains unchanged at `520b3820c26d9000fb6c27bd69f75ba8df9ca37f`.
+
+The reviewed workflow delta at `c1216fc232225bf082b2ff0fdaaeca50b360c5f7`
+adds `IFS_TEST_MODULE_PARENT` to the release-artifact verification step, pointing
+at the same isolated, independently compiled filesystem module tree used by the
+normal qualification lane. `test_release_artifacts.sh` explicitly refuses a
+missing isolated module directory and builds dedicated UFS test-only creator
+and worker binaries when this variable is set; it does not select the runner's
+production `/System/Filesystems` module by accident. The change does not
+modify the release script, tests, source/installation inputs, artifact
+identities, required checks, permissions or publication policy. This records
+that narrowly scoped governance correction without relaxing either exact-diff
+audit check. The new HEAD must again pass both qualification lanes before its
+release can be published; the preceding run is evidence, not a substitute.
 
 The two original audit baselines documented below are retained as historical
 evidence, not as the governing release baseline for this migration. Source and
