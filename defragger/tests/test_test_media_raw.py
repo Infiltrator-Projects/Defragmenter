@@ -43,8 +43,15 @@ def run(*args: object, fails: bool = False,
 
 
 def mapping(image: Path, fs: str) -> dict:
+    # Force the independently built EXT metadata host for isolated module tests.
+    environment = dict(os.environ)
+    if environment.get("IFS_TEST_MODULE_PARENT"):
+        metadata_worker = BUILD / "defragmenter-ext-metadata-test-worker"
+        if not metadata_worker.is_file() or not os.access(metadata_worker, os.X_OK):
+            raise AssertionError(f"missing trusted EXT metadata test worker: {metadata_worker}")
+        environment["DEFRAGMENTER_EXT_METADATA_WORKER"] = str(metadata_worker)
     return json.loads(run(BUILD / "defragmenter-mapper", image,
-                          "--fstype", fs, "--cells", 8).stdout)
+                          "--fstype", fs, "--cells", 8, env=environment).stdout)
 
 
 def opaque_marker(image: Path) -> bytes:
