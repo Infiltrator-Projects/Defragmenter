@@ -51,14 +51,29 @@ static int populate(const IfsOfsModuleV3 *api, Fixture *f) {
     for (uint32_t i = 0; i < p->directory_initial; ++i) {
         (void)snprintf(path, sizeof(path), "%s/entry-%05u.txt", directory, i);
         if (api->create(path)) return -1;
+        if ((i + 1u) % 512u == 0u || i + 1u == p->directory_initial) {
+            (void)printf("OFS fixture: created %u/%u initial directory entries\n",
+                         i + 1u, p->directory_initial);
+            (void)fflush(stdout);
+        }
     }
     for (uint32_t i = 0; i < p->directory_initial; i += 2) {
         (void)snprintf(path, sizeof(path), "%s/entry-%05u.txt", directory, i);
         if (api->unlink(path)) return -1;
+        if ((i / 2u + 1u) % 512u == 0u || i + 2u >= p->directory_initial) {
+            (void)printf("OFS fixture: deleted %u/%u temporary entries\n",
+                         i / 2u + 1u, (p->directory_initial + 1u) / 2u);
+            (void)fflush(stdout);
+        }
     }
     for (uint32_t i = 0; i < p->directory_second; ++i) {
         (void)snprintf(path, sizeof(path), "%s/entry-%05u.txt", directory, p->directory_initial + i);
         if (api->create(path)) return -1;
+        if ((i + 1u) % 512u == 0u || i + 1u == p->directory_second) {
+            (void)printf("OFS fixture: created %u/%u second-wave directory entries\n",
+                         i + 1u, p->directory_second);
+            (void)fflush(stdout);
+        }
     }
     uint32_t done[8] = {0};
     for (uint32_t i = 0; i < p->files; ++i) {
@@ -69,6 +84,9 @@ static int populate(const IfsOfsModuleV3 *api, Fixture *f) {
     if (!buffer) return -1;
     int result = 0;
     for (uint32_t chunk = 0; !result && chunk < p->chunks; ++chunk) {
+        (void)printf("OFS fixture: fragmented corpus chunk round %u/%u\n",
+                     chunk + 1u, p->chunks);
+        (void)fflush(stdout);
         for (uint32_t i = 0; !result && i < p->files; ++i) {
             uint64_t bytes = ldtm_profile_file_bytes(p, i);
             uint32_t chunks = ldtm_profile_file_chunks(p, i);
@@ -102,7 +120,12 @@ static int create_fixture(const IfsDefragHostV2 *host, void *symbol, void *opaqu
         !api->mount || !api->unmount || !api->mkdir || !api->create ||
         !api->unlink || !api->write || !api->verify) return -1;
     if (host->open_target(host->context, f->path, 1, NULL, 0, &f->target)) return -1;
-    IfsOfsIoV3 io = {sizeof(io), 0, f, f->target.bytes, read_io, write_io, flush_io,
+    /* Only the already-authorised, sacrificial Test Media corpus uses the
+     * V3 ephemeral mount. Formatting and verification still use durable
+     * mounts. This restores the old bulk-creator performance without moving
+     * any OFS allocation/format logic back into Defragmenter. */
+    const uint32_t flags = f->label ? 0U : IFS_OFS_EPHEMERAL_FIXTURE;
+    IfsOfsIoV3 io = {sizeof(io), flags, f, f->target.bytes, read_io, write_io, flush_io,
                      allocate_io, release_io, clock_io};
     int r;
     if (f->label) {
@@ -112,8 +135,13 @@ static int create_fixture(const IfsDefragHostV2 *host, void *symbol, void *opaqu
         r = api->mount(&io, NULL);
         if (!r) {
             r = populate(api, f);
-            IfsOfsCheckV3 check;
-            if (!r) r = api->verify(&check);
+            IfsOfsCheckV3 check = {.structure_bytes = sizeof(check)};
+            if (!r) {
+                r = api->verify(&check);
+                if (!r && (check.errors || check.bitmap_mismatches)) r = -1;
+            }
+            /* V3 unmount unconditionally invokes the real host fdatasync.
+             * Do not report a completed fixture unless it is durable. */
             int unmounted = api->unmount(); if (!r) r = unmounted;
         }
     }
