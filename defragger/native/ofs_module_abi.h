@@ -27,6 +27,13 @@
  * requires a real host flush. A crash during fixture creation may destroy
  * the disposable volume. Never enable this for user data or system storage. */
 #define IFS_OFS_EPHEMERAL_FIXTURE 4u
+/* General-purpose buffered-writeback mode: retain a durable dirty-volume
+ * marker across multiple ordinary mutations, then order and sync all data
+ * before writing a clean bitmap marker at explicit flush/unmount. Unlike
+ * synchronous V3 mode (flags=0), an individual successful write is NOT
+ * promised durable until flush returns successfully. This is standard
+ * buffered filesystem semantics and is not a disposable-fixture bypass. */
+#define IFS_OFS_ORDERED_WRITEBACK 8u
 #define IFS_OFS_FILE (-3)
 #define IFS_OFS_DIRECTORY 2
 #define IFS_OFS_ROOT 1
