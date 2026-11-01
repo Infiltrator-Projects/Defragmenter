@@ -102,7 +102,12 @@ static int create_fixture(const IfsDefragHostV2 *host, void *symbol, void *opaqu
         !api->mount || !api->unmount || !api->mkdir || !api->create ||
         !api->unlink || !api->write || !api->verify) return -1;
     if (host->open_target(host->context, f->path, 1, NULL, 0, &f->target)) return -1;
-    IfsOfsIoV3 io = {sizeof(io), 0, f, f->target.bytes, read_io, write_io, flush_io,
+    /* Only the already-authorised, sacrificial Test Media corpus uses the
+     * V3 ephemeral mount. Formatting and verification still use durable
+     * mounts. This restores the old bulk-creator performance without moving
+     * any OFS allocation/format logic back into Defragmenter. */
+    const uint32_t flags = f->label ? 0U : IFS_OFS_EPHEMERAL_FIXTURE;
+    IfsOfsIoV3 io = {sizeof(io), flags, f, f->target.bytes, read_io, write_io, flush_io,
                      allocate_io, release_io, clock_io};
     int r;
     if (f->label) {
@@ -112,8 +117,13 @@ static int create_fixture(const IfsDefragHostV2 *host, void *symbol, void *opaqu
         r = api->mount(&io, NULL);
         if (!r) {
             r = populate(api, f);
-            IfsOfsCheckV3 check;
-            if (!r) r = api->verify(&check);
+            IfsOfsCheckV3 check = {.structure_bytes = sizeof(check)};
+            if (!r) {
+                r = api->verify(&check);
+                if (!r && (check.errors || check.bitmap_mismatches)) r = -1;
+            }
+            /* V3 unmount unconditionally invokes the real host fdatasync.
+             * Do not report a completed fixture unless it is durable. */
             int unmounted = api->unmount(); if (!r) r = unmounted;
         }
     }
