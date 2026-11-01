@@ -91,16 +91,21 @@ int main() {
     ok = check(rejected_overlap, "native aggregation rejects overlapping states") && ok;
 
     const auto& registry = backend_registry();
-    ok = check(registry.size() == 18U, "registry size") && ok;
+    ok = check(registry.size() == 20U, "registry size") && ok;
 
-    const BackendInfo* ext = backend_by_fstype("EXT2");
-    ok = check(ext != nullptr, "EXT2 alias lookup") && ok;
-    if (ext != nullptr) {
-        ok = check(ext->id == "ext4", "EXT2 maps to ext4") && ok;
-        ok = check((ext->capabilities & CAP_DEFRAG) != 0U,
-                   "ext4 advertises defrag") && ok;
-        ok = check(operation_for(*ext, "growth-defrag") != nullptr,
-                   "ext4 growth-defrag operation") && ok;
+    // Each EXT variant is independently registered; no format impersonation.
+    for (const char* expected : {"ext2", "ext3", "ext4"}) {
+        const BackendInfo* ext = backend_by_fstype(expected);
+        ok = check(ext != nullptr, "independent EXT backend lookup") && ok;
+        if (ext != nullptr) {
+            ok = check(ext->id == expected, "EXT backend keeps its own identity") && ok;
+            ok = check((ext->capabilities & CAP_DEFRAG) != 0U,
+                       "EXT backend advertises qualified defrag") && ok;
+            ok = check(operation_for(*ext, "growth-defrag") != nullptr,
+                       "EXT growth-defrag operation") && ok;
+            ok = check(ext->worker == "ext-native",
+                       "EXT backend retains common ABI dispatch worker") && ok;
+        }
     }
 
     const BackendInfo* vfat = backend_by_fstype("vfat");

@@ -272,7 +272,7 @@ const std::vector<BackendInfo>& backend_registry() {
             CAP_GROWTH_DEFRAG;
 
         std::vector<BackendInfo> result;
-        result.reserve(18);
+        result.reserve(20);
         result.push_back({
             "affs", "Amiga OFS/FFS",
             {"affs", "amiga", "ofs", "ffs", "dostype"}, write, "exact",
@@ -304,8 +304,18 @@ const std::vector<BackendInfo>& backend_registry() {
                 "exfat-native",
                 "exFAT writing is dispatched to the independently installed exFAT.so; the application has no private exFAT parser, allocator or journal.",
                 "exFAT Growth Defrag runs in exFAT.so and reserves 10% free clusters after each regular file.")});
+        // Separate frontend identities mirror the separately loaded native SOs.
+        // The format-neutral worker probes and dispatches to each module's ABI.
         result.push_back({
-            "ext4", "ext2/3/4", {"ext2", "ext3", "ext4"}, write, "exact",
+            "ext2", "EXT2", {"ext2"}, write, "exact",
+            "ext-native", MapAdapter::Ext, standard_write_ops("ext-native"),
+            QualificationMode::WorkerPreflight, "ext-metadata"});
+        result.push_back({
+            "ext3", "EXT3", {"ext3"}, write, "exact",
+            "ext-native", MapAdapter::Ext, standard_write_ops("ext-native"),
+            QualificationMode::WorkerPreflight, "ext-metadata"});
+        result.push_back({
+            "ext4", "EXT4", {"ext4"}, write, "exact",
             "ext-native", MapAdapter::Ext, standard_write_ops("ext-native"),
             QualificationMode::WorkerPreflight, "ext-metadata"});
         for (const int bits : {12, 16, 32}) {
