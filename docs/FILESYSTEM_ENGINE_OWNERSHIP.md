@@ -1,88 +1,39 @@
-# Defragmenter: filesystem implementation authority
+# Filesystem engine ownership
 
-**Target: one filesystem, one complete `.so`, every consumer.** The [authoritative architecture](https://github.com/Infiltrator-Projects/Filesystems/blob/main/docs/UNIFIED_FILESYSTEM_MODULE_ARCHITECTURE.md) requires each filesystem repository to distribute a single trusted file such as `/System/Filesystems/FAT12.so`. BOOT, the kernel and applications, including Defragmenter, must use the same format engine. The `.so` is **the filesystem driver**, not an optional second implementation. Platform translation belongs to generic loaders.
+**Goal:** one authoritative `/System/Filesystems/<FORMAT>.so` per filesystem format, used by consumers rather than copied into Defragmenter. The cross-project [unified module architecture](https://github.com/Infiltrator-Projects/Filesystems/blob/main/docs/UNIFIED_FILESYSTEM_MODULE_ARCHITECTURE.md) sets the intended contract. BOOT uses a generic module bridge; the current Linux kernel still has separate native KOs, and a generic kernel SO bridge must **not** be claimed as implemented.
 
-## What Defragmenter owns
+## Separation of responsibility
 
-The current transition is explicit: Boot loads the same SO through its generic
-ELF/UEFI bridge; Linux still uses the separate native KO. A future generic kernel
-SO bridge is not a prerequisite for Boot or Defragmenter and is not implemented.
+Defragmenter owns its GUI, native application registry, target safety, mounted-overlap refusal, privilege and process lifetime, host raw I/O, bounded module services, Stop/progress and independent post-write verification. **The filesystem module** owns its on-disk parser, allocation geometry, format-specific planner/relocation, metadata changes, journalling and recovery where migrated. Common owns only generic cross-project primitives.
 
-Defragmenter owns its user interface, filesystem-neutral device identity/safety policy, mount/refusal checks, operation scheduling, progress/Stop handling, privilege isolation, bounded host raw I/O, relocation *orchestration* and independent post-operation verification. It **does not own separate FAT12, FAT16, EXT or Amiga filesystem parsing, allocation, placement, journaling, formatting or repair engines** once their corresponding authoritative `.so` is qualified and integrated.
+Required modules load only from trusted paths with checked ABI, filesystem identity, ownership and version. A failed, missing or incompatible module **must fail closed**, never select an old private implementation. A working screen or superficially correct allocation map is not evidence that module dispatch happened.
 
-The worker loads the correct independently installed filesystem module by verified identity and versioned ABI. Format-specific algorithms, relocation steps, cluster allocation and recovery semantics run in that module. The host supplies narrowly scoped capabilities; module privileges are gated by target identity, permissions, operation and cancellation. Do not silently use a private engine when a required module is missing, incompatible or fails to load.
+## Established migrations
 
-## Migration and proof
+- **FAT12/FAT16/FAT32:** the required standalone modules implement production defrag/recovery and the Test Media V4 formatter/V3 file interface. Test Media retains an independent **read-only** FAT payload checker, not a competing formatter. Its readiness and privileged preparation validate modules before destructive disk changes.
+- **OFS:** OFS.so supplies its Defrag V2 and Test Media V3 contracts. The host supplies only bounded I/O, target checks, Stop and durable-file capabilities. Old AFFS journal readers may remain solely to recover already-issued transactions, not for a new-operation fallback.
+- **FFS:** FFS.so owns production defragmentation and Test Media fixture creation/verification. Old native FFS source can be used as an independent test oracle when built from the Filesystem-FFS repository, not linked into production.
+- **exFAT:** the independent exFAT.so owns its defragmentation engine and the separate V5 Test Media file/format interface. The installed Defragmenter worker is a checked module host.
+- **UFS1/UFS2:** separate filesystem distributions and checked read-only probes prevent a guess from a damaged superblock. UFS2 Test Media creation and payload inspection delegate to UFS2.so; UFS1 fixture creation requires its own qualification.
+- **HFS+/HFSX:** native defrag/recovery and Test Media creation/verification have moved into HFSPLUS.so through versioned interfaces.
+- **EXT2/EXT3/EXT4:** distinct module identities and ABI checks are enforced, including isolated EXT metadata-worker tests. Integration coverage must not accidentally select host-installed production modules.
 
-OFS analysis, Defrag, Growth Defrag and new-journal Recover use OFS.so's
-process-hosted Defrag V2 interface. The filesystem-neutral host supplies bounded
-I/O, stable target identity, mounted-overlap refusal, locks, private durable
-files, SHA-256 and Stop; it owns no OFS parser or placement policy. Missing or
-incompatible OFS.so is an error. FFS now uses Filesystem-FFS/FFS.so for defragmentation; its earlier in-application engine is not compiled in production.
-Previously issued AFFS journals retain their exact recovery reader; this is
-never a fallback for a new OFS operation.
+Other format support remains subject to its current native worker/module, its own qualified source and the current tests. The existence of an independent integration workflow is not itself proof that every component or kernel consumer migrated.
 
-Test Media calls OFS.so V3 for OFS formatting and file/directory population.
-Its deterministic dataset remains application-owned, and its retained AFFS
-read-only payload verifier is an independent oracle. The privileged prepare
-worker rechecks the required SO before any repartitioning.
+## Required proof
 
-UFS2 Test Media formatting, population, UFS2 little-endian geometry
-validation and raw UFS2 block/inode/payload verification now call the
-independently built UFS2.so. Defragmenter owns only the deterministic corpus
-and independently calculated expected sizes and SHA-256 hashes; UFS format
-interpretation has moved into the versioned module. The old local
-`ufs_native.c`/`ufs_native.h` source and native library were removed; its
-regression fixture is retained under Filesystem-UFS. Both format validation
-and byte-level payload inspection reject missing/incompatible UFS2.so,
-rather than falling back to a private parser. Qualification must check the
-resulting media with independent external evidence as well as its own
-module's verifier.
+For each migrated format, test the real `dlopen`/ABI path and exercise:
 
-The exFAT defragmentation implementation is now owned and compiled exclusively
-by Filesystem-exFAT/exFAT.so. Defragmenter's exFAT worker is a verified
-ABI-dispatch host with no local parser, allocator, relayout or journal;
-missing or incompatible exFAT.so fails closed. The module exposes both the
-V5 Test Media file/format contract and its separate defrag V1 contract.
+1. Correct-module dispatch, exact format identity, version/ABI rejection and missing-module refusal.
+2. No target write, including the signature-clearing region, on missing/incompatible module or failed preflight.
+3. Independent before/after allocation, file-content, directory and geometry verification on deliberately fragmented media.
+4. Both supported operations, exact Growth reserve, Stop, interrupted recovery and corruption rejection where the format is write-capable.
+5. Format-specific unknown-feature/unsupported-layout refusal and a trusted source/dependency inventory.
 
-FFS defragmentation now dispatches into the independent Filesystem-FFS/FFS.so;
-its native code is no longer compiled into the production AFFS worker.
+The 21-slot Test Media corpus is application-owned as deterministic **test data**, but production format mutation belongs to the authoritative module wherever integrated. Independent verification is retained deliberately as a separate oracle. Tests may compile external original source as a hermetic fixture, never ship it as a parallel production engine.
 
-FFS Test Media now formats, populates and verifies images through FFS.so fixture
-interfaces. Any original FFS native source compiled by the regression harness
-comes from the standalone Filesystem-FFS repository and is a test-only oracle;
-it is not linked into production Defragmenter workers or Test Media.
+## Installation distinction
 
-FAT12/16/32 Test Media calls the matching SO's V4 formatter and V3 file
-APIs. Interleaved appends manufacture the existing 200 MiB fragmented corpus
-and eight boundary files without writing FAT or directory records locally.
-The independent raw reader follows the module's actual data-area offset;
-filesystem structures need not begin on an absolute cluster-size boundary.
-Readiness and privileged preparation reject missing/incompatible modules before
-erasing signatures or partitioning. FAT32's local FAT and directory writer has been retired; Test Media keeps
-only the independent read-only payload verifier.
+`/System/Filesystems/*.so` holds independently installed filesystem engines. `/System/Commands/Defragmenter/` holds Defragmenter's **private process executables** (operation engine, mapper, format hosts and privileged helper). They have different owners and are not interchangeable. Defragmenter packaging and InfiltratorOS verification both use these paths.
 
-Legacy filesystem engines remain in Git history or their independent filesystem repositories as test oracles, not as production fallbacks. Every production operation must fail closed if its trusted filesystem `.so` is unavailable, even if historical code exists. A user-visible successful defrag is **not** proof that the `.so` was called: instrument and test actual `dlopen`/ABI dispatch, reject wrong format, compare independent before/after allocation maps and filesystem integrity, check Stop/rollback and exercise files across multiple clusters, names and failure modes.
-
-Defragmenter Test Media uses the authoritative module's format/create/populate APIs when qualified but keeps independently implemented disposable-image verification oracles. The final release must not ship a second competing filesystem-specific engine or claim a fallback is equivalent without independent tests. Historical releases are described as they were actually built.
-
-
-## Separate UFS on-disk identities
-
-UFS1 and UFS2 are now distinct distribution identities. The independent
-repositories Filesystem-UFS1 and Filesystem-UFS2 produce UFS1.so and UFS2.so
-respectively. The format-neutral host first invokes their read-only probe ABI
-and then calls the chosen format's module. The Defragmenter contains no
-UFS1/UFS2 parser, in-memory fallback, formatter or placement engine.
-Test Media's presently qualified UFS2 images are always created, checked
-and verified through UFS2.so; UFS1 Test Media creation is a separate
-qualification task. A probe on a damaged UFS superblock is rejected: recovery
-without an identifiable on-disk format requires additional journal-based
-selection and must not guess. The user-distributed modules remain independent.
-
-**FFS/OFS Test Media migration:** Test Media now delegates FFS formatting,
-fragmented allocation, payload verification and post-defrag verification to
-FFS.so, and verifies OFS via the OFS.so public directory/file API. The old
-Amiga formatter, on-disk scanner and payload generator are removed from the
-application; the exact native FFS source remains in Filesystem-FFS and is
-compiled solely as an external test oracle when qualifying builds.
+See [Architecture](ARCHITECTURE.md), [Validation](VALIDATION.md) and the [audited release baseline](AUDIT_STATUS.md).

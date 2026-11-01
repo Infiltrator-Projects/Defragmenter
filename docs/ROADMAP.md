@@ -1,48 +1,21 @@
 # Roadmap
 
-**Filesystem module ownership:** [one authoritative `.so` per format, shared by Defragmenter, BOOT and the kernel](FILESYSTEM_ENGINE_OWNERSHIP.md). Defragmenter supplies generic safety/orchestration; filesystem-specific semantics belong to the loaded module. Older internal engines remain transitional pending tested migration; do not mistake a working UI for proof the module was called.
+This document records **remaining work and admission criteria**, not a diary of completed alpha iterations. Implemented operations and their bounded filesystem support are listed in [the source README](../defragger/README.md); exact claims require code and tests, not a checked box.
 
-This document defines the Linux feature-completion target. The released source and tests remain authoritative for what is supported today; unchecked items are not release claims.
+## Active engineering boundaries
 
-## Current foundation
+- **Standalone filesystem ownership:** continue proving real module dispatch and removing duplicated private implementations only after parity and independent mutation/recovery evidence. A required `.so` must never have a hidden fallback. The full ownership contract is [here](FILESYSTEM_ENGINE_OWNERSHIP.md).
+- **Audit-baseline integrity:** a later source or workflow change must be independently reviewed and explicitly re-audited before an exact-head release can qualify. See [Audit Status](AUDIT_STATUS.md). Documentation-only edits do not repair source-audit drift.
+- **Media qualification:** continue representative sacrificial-device, power-loss/flush-boundary and privilege/environment testing separately from synthetic images and hosted CI. Record exact observed evidence; never infer physical-media success from tests.
+- **Unsupported formats/features:** keep fail-closed limits explicit. For example, unsupported APFS sharing/encryption, complex Btrfs layouts, NTFS special streams and other unqualified metadata must not be advertised as general write support.
+- **UFS variants:** retain separate UFS1/UFS2 identities; UFS1 Test Media creation requires its own explicit fixture and compatibility qualification rather than borrowing UFS2 evidence.
 
-- [x] Broad first-party native allocation analysis across the currently registered filesystem families.
-- [x] Qualified Defragment, Growth Defrag and Recover engines for FAT12/16/32, exFAT, NTFS, ext2/3/4, XFS v5, Amiga OFS/FFS, Amiga SFS0/SFS2, bounded Amiga PFS3, bounded Classic HFS, bounded single-device Btrfs, bounded APFS, HFS+/HFSX, Minix v1/v2/v3 and the qualified UFS1/UFS2 subset.
-- [x] Exact target confirmation, descriptor-level identity binding, mounted-overlap refusal, durable recovery state, cooperative Stop and final read-only verification.
-- [x] Full filesystem, native GUI, architecture, safety, packaging and release regression gate.
-- [x] Exact pinned Common dependency with filesystem-neutral mechanisms kept out of filesystem engines.
-- [x] Single native application/control/presentation plane; Python is limited to independent test fixtures and black-box drivers.
+## Deliberate exclusions
 
-## Linux feature-completion backlog
+ZFS/OpenZFS and Linux swap remain **analysis-only by design**. ZFS physical relocation belongs to its copy-on-write transaction-group allocator; an exact persistent 10% adjacent physical reserve is not a stable ZFS postcondition. Swap has no file defragmentation contract.
 
-A filesystem writer is complete only when Defragment, exact 10% Growth Defrag and Recover share a validated placement model, reject unsupported source state before authoritative writes, retain durable recovery material across interruption and independently verify the final image.
+## Completion and regression rule
 
-- [x] **Amiga SFS2** — exact native allocation/fragmentation analysis, SFS2 48-bit file-size and 32-bit extent qualification, offline native relayout, exact 10% Growth Defrag and Recover.
-- [x] **Amiga PFS3** — first-party identification, exact allocation/anode-chain fragmentation analysis for the qualified small-disk subset, recursive nested user-directory validation/relayout, validated hard links, soft-link payload relocation and rollover files, exact 10% Growth Defrag, Recover and a deterministic first-party Test Media creator; PFS2, SUPERINDEX/LARGEFILE and remaining unsupported special-entry modes remain fail-closed.
-- [x] **Classic Macintosh HFS** — exact native analyser plus bounded recoverable Defragment/Growth Defrag/Recover support for clean volumes with complete regular-file fork maps spanning inline and Extents Overflow records.
-- [x] **Btrfs** — exact raw allocation/fragmentation analysis plus a fail-closed recoverable offline Defragment/Growth Defrag/Recover contract for the qualified single-device CRC32C, level-0 mixed-group subset, including checksum-tree-protected regular-file data.
-- [x] **APFS** — exact spaceman-backed allocation/fragmentation analysis, bounded recoverable offline Defragment/Growth Defrag/Recover for the direct-CIB/flat-tree subset with validated older checkpoint history retained, exact 10% reserve qualification and a deterministic first-party raw C Test Media creator/verifier.
-- [x] **Minix v1/v2/v3** — exact native analyser plus recoverable native Defragment/Growth Defrag/Recover support, including exact 10% reserve qualification.
-- [x] **UFS1/UFS2** — exact cylinder-group allocation mapping and inode block-tree fragmentation analysis for both variants, with a bounded clean/non-journalled/snapshot-free native Defragment/Growth Defrag/Recover contract, exact 10% reserve qualification, durable staged recovery and genuine makefs UFS1/UFS2 integration coverage.
-- [x] **ZFS/OpenZFS member** — bounded exact native analysis walks all four leaf-vdev labels/uberblock rings, selects the newest committed TXG, decodes the MOS root and packed XDR topology, traverses MOS/dnodes, replays per-metaslab space maps for exact allocation and scans dataset regular-file block trees for physical fragmentation. Legacy pools and compatible feature-flag pools are admitted only for the qualified single-disk topology; unknown MOS-required features, foreign/gang/encrypted block forms, unsupported checksums/compression, fat feature ZAPs and active log-space-map state fail closed to summary rather than being reported as exact. Raw Defragment/Growth Defrag/Recover are explicitly outside product scope for ZFS: Defragmenter does not replace the CoW/TXG transaction engine, and an exact persistent 10% post-file physical reserve is not a stable ZFS postcondition.
-- [x] **Native GTK migration** — the installed `defragmenter` launcher, presentation, registry, mapper, operation dispatcher and privileged-helper services are native C/C++; the retired Python application/model/presentation compatibility graph has been removed rather than maintained as a second source of truth.
-- [x] **Test Media completeness** — all 21 slots use first-party C creators and raw verifiers, with no host formatters or target filesystem drivers. The canonical 200 MiB heterogeneous payload and boundary files are verified completely; schema 3 state cannot reduce the expected corpus. Native fixture integration qualifies both relocation modes and corruption rejection for the additional write-capable formats. ZFS and swap retain their analysis-only contracts.
+A format capability is admitted only when correct module ownership, trusted ABI/identity checks, malformed-state refusal, independent full-payload validation, exact placement, Stop/recovery evidence and the current release gates agree. Performance changes must preserve durability boundaries and deterministic placement; a faster unverified write is not completion.
 
-Linux swap and ZFS/OpenZFS are complete by design as analysis-only. Swap has no meaningful file-layout mutation, while ZFS owns physical relocation through its CoW/TXG allocator and cannot provide Defragmenter's exact persistent 10% post-file reserve contract without replacing core pool transaction semantics.
-
-## Performance and qualification
-
-Performance work may proceed alongside feature completion, but it must not weaken deterministic placement, resource bounds or recovery semantics. New writers must gain malformed-media tests, successful disposable-image tests, independent post-operation verification and interruption/recovery qualification before release.
-
-The opt-in dm-log-writes/replay-log lane remains environment-dependent evidence for destructive durability boundaries and does not replace filesystem-specific transaction tests.
-
-## Admission rule
-
-A proposed capability enters the supported matrix only when its ownership is clear and there is a credible validation path. Features that require pretending uncertain on-disk behaviour is known do not qualify.
-
-## Completion rule
-
-The Linux target is feature-complete when every item above is either checked with implementation/tests/user-visible behaviour/documentation in agreement, or explicitly removed from product scope by a documented design decision. A checkbox or release number cannot substitute for missing evidence.
-
-- [x] **NTFS named streams** — ordinary single-part nonresident alternate data streams are analysed, relocated, payload-verified and included in owning-file fragmentation state; split/compressed/encrypted/sparse cases remain bounded.
-- [x] **UFS sparse regular files** — relocate only allocated fragments while preserving logical holes and exact Growth reserve semantics.
+For durable design decisions see [Decisions](DECISIONS.md), and for required evidence see [Validation](VALIDATION.md).

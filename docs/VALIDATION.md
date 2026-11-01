@@ -1,148 +1,59 @@
 # Validation
 
-**Filesystem module ownership:** [one authoritative `.so` per format, shared by Defragmenter, BOOT and the kernel](FILESYSTEM_ENGINE_OWNERSHIP.md). Defragmenter supplies generic safety/orchestration; filesystem-specific semantics belong to the loaded module. Older internal engines remain transitional pending tested migration; do not mistake a working UI for proof the module was called.
+Validation distinguishes **built**, **tested**, **audited**, **published** and **physically qualified** states. Those states are not interchangeable. Current source/version truth is in the [implementation README](../defragger/README.md), release/audit truth in [Audit Status](AUDIT_STATUS.md), and design rationale in [Decisions](DECISIONS.md).
 
-## Purpose
+## Permanent automated qualification
 
-Validation distinguishes implemented behaviour from behaviour that has actually been demonstrated. A successful build proves compilation; it does not by itself prove filesystem correctness, crash consistency or safe recovery.
+The self-hosted Project quality gate and ASan/UBSan lane require, as applicable:
 
-Defragmenter therefore uses stronger evidence for destructive operations than for read-only analysis. The current release-specific safety decision and exact audited baselines are recorded in [AUDIT_STATUS.md](AUDIT_STATUS.md).
+- Native C/C++ warnings-as-errors compilation and ABI/architecture tests.
+- Native GUI, registry, mapper and privileged-session tests, including process-group cancellation, broken protocol/EOF and Stop reaping.
+- Filesystem parsing and geometry, malformed/truncated/noise images, unsupported features, target identity/mounted-overlap refusal and bounded allocation-map accounting.
+- Disposable fragmented-media writer tests for every qualified operation, with independent structural and **byte-for-byte** payload verification.
+- Fault-injected journal/staging/transaction tests showing unchanged, valid or explicitly recoverable interruption states.
+- Source-based local installer, generic Debian package, exact version/asset/metadata and third-party-source inventory tests.
+- Read-only independent filesystem integration workflows that demonstrate trusted SO identity/ABI and absence-of-module failure without mutating the runner's `/System/Filesystems`.
+- Release-invariant tests, exact audited source and governance baselines, and once-built SHA-bound artefact handoff. The publication phase must never rebuild.
 
-## Automated evidence
+Test-only independent fixture generators may use Python, libext2fs/e2fsprogs and comparable tools when needed to manufacture independent evidence; the production filesystem write path must not delegate to host filesystem repair or format utilities. Source-shape tests are appropriate for architectural restrictions, but functional regressions must prefer observable native behaviour.
 
-The project quality gate combines:
+The module qualification must prove **real dispatch**, not merely loadability or a convincing GUI result. Incompatible format, missing module, bad owner/permissions, absent ABI or invalid analysis must stop **before destructive preparation**, including partition/signature clearing.
 
-- warnings-as-errors native builds;
-- parser, geometry, checksum and allocation-model tests;
-- a deterministic malformed-image matrix that drives every installed native filesystem identifier with empty, truncated, all-ones and seeded-noise media and rejects hangs, signals or accidental acceptance;
-- disposable filesystem-image mutation tests;
-- target-safety, privilege, Stop and transaction regressions, including mounted-image hard-link identity and native privileged-helper tests that launch controlled children and verify SIGINT, delayed safe completion and reaping on Stop, control EOF and broken output;
-- native GUI/service and typed worker-protocol tests, plus C++ mapper contract checks and real-fixture parity against native filesystem analysis;
-- architecture/Common/release-contract tests;
-- AddressSanitizer and UndefinedBehaviorSanitizer qualification;
-- local-installer construction plus Debian packaging-contract/version checks from the exact tested source; the final `.deb` and release `.run` artefacts are built and validated once by qualification, preserved as SHA-bound workflow artefacts, and handed unchanged to the publication workflow, which must not rebuild them;
-- a local-installer source-inventory regression that plants an untracked sentinel in the checkout and proves the generated payload is derived from committed Defragmenter Git objects plus the exact pinned Common commit rather than ambient runner state.
+## Destructive-path postconditions
 
-Automated checks cover ordinary behaviour, important boundaries, malformed/error cases and release/package contracts appropriate to the affected subsystem.
+Every write-capable format must pass its bounded supported-subset contract:
 
-FAT12/16/32 Test Media uses the matching installed SO for formatting and file creation. No native FAT writer remains in Test Media; a separate raw read-only verifier confirms resulting media.
-Its existing full-corpus tests require at least eight fragmented files, run
-both relocation modes, independently verify every byte and reject payload
-corruption. Missing modules, wrong format identity, missing interfaces and
-untrusted module permissions must leave an existing target unwritten, including
-the signature-clearing regions. The public FAT V3/V4 header is compared with
-the immutable implementation used by both CI lanes.
+1. Generate an independently verified fragmented image; establish physical and filesystem identity.
+2. Analyse and qualify the original metadata, content and allocation state.
+3. Perform Defragment and, separately, Growth Defrag against disposable images.
+4. Verify **all** logical payload bytes, directory/metadata invariants, no forbidden overlap and canonical placement; Growth requires the **exact** documented 10% reserve.
+5. Inject failures near durable-phase transitions; require safe unchanged/valid/recoverable outcomes and test Recover, Stop and journal tampering.
+6. Reject malformed, dirty, mounted, stale, incompatible or unsupported states before authoritative source changes.
 
-The native supervisor fixtures exercise the production supervision code through a test-only child resolver; they do not themselves write a filesystem. Real disposable-image worker tests separately verify payload, layout and recovery. Mapper regressions include generic FAT identification for FAT12/FAT16 and an 800,000-cell FAT32 map exceeding 64 MiB, plus rejection beyond the GUI's 1,048,576-cell maximum. Native desktop-policy and privileged-helper/session tests verify mutation eligibility, journal namespace binding, child lifetime and Stop/recovery control paths without recreating those policies in a second Python application model.
+Coverage includes the qualified bounded NTFS named streams, EXT metadata and checksum handling, XFS allocation-tree/AG reserve pressure, SFS2 48-bit/32-bit fields, PFS3 anode/directory and special-entry limits, APFS older-checkpoint preservation, Btrfs CRC32C/checksum-tree state, classic HFS Extents Overflow, sparse UFS files and FAT/OFS external module dispatch. These are **regression obligations**, not a claim that every physical volume supports mutation.
 
-## Destructive-path evidence
+The native allocation map must account for each physical span exactly in used/free/unknown/outside/bad primary states, with fragmentation and directory overlays bounded by used allocation. The renderer cannot invent map cells or hide gaps.
 
-A write-capable change is expected to demonstrate more than process success. Where the filesystem contract permits it, tests manufacture a known fragmented image, invoke the production worker, reopen the result and verify payload identity plus the required allocation layout.
+## Test Media contract
 
-Recovery tests inject failure around durable transaction boundaries and accept only three classes of result: no authoritative source write occurred, the filesystem is already valid, or durable state remains sufficient for Recover.
+All 21 registered slots require first-party C creation and raw verification, not host formatters, mounting or ZFS pool utilities. File-bearing fixtures use the deterministic eight large files of 4, 6, 10, 16, 26, 34, 44 and 60 MiB (**200 MiB total**) plus files of 0, 1, 511, 512, 513, 4095, 4096 and 4097 bytes. Independent readers re-open on-disk mappings and verify all payload bytes after creation and each supported operation. ZFS and swap remain analysis-only.
 
-Growth Defrag tests verify the exact 10% post-file reserve rather than treating "some free space" as equivalent.
+The protected **schema 3** state file binds disk fingerprint, corpus version and exactly one build result per slot. The expected file list and bytes are compiled policy; missing/duplicate/unknown records, truncated state, mismatched disk identity, an altered payload and obsolete schema 2 are all rejected. Existing schema 2 disks must be rebuilt.
 
-EXT2/3/4 qualification deliberately keeps e2fsprogs/libext2fs on the opposite side of the production boundary. The test-only `make_ext4_image.c` fixture uses libext2fs to manufacture a checksummed fragmented EXT4 image, including an external extent-tree block. Production analysis, metadata classification, Defragment and Growth Defrag then run exclusively through Defragmenter's first-party `ext_disk.c` parser/mutator. The end-to-end regression reopens the result through that production engine, verifies UUID and fragmentation state, and verifies the exact 10% Growth layout. Architecture and release regressions additionally forbid libext2fs headers, types, calls, runtime linkage and package dependencies from the production EXT path while permitting the independent test fixture/oracle.
+The 16 full-corpus native-fixture cases run independently with bounded four-way concurrency and per-case timeouts. Fixture success is no substitute for actual module-host tests and real physical-device qualification.
 
-Minix qualification uses an independently manufactured fragmented v3 image to exercise the production native worker end to end. It verifies canonical Defragment, exact 10% Growth Defrag idempotence, durable Recover after a source-open failure, and fail-closed rejection of a recovery stage whose persisted SHA-256 no longer matches the journal. The native unit suite separately reopens staged images, verifies logical payload identity across relocated zones and rejects a Growth layout as a packed Defragment layout.
+## Recovery and external evidence
 
-SFS2 qualification extends the existing SFS0 evidence with deterministic structure-version-4 fixtures exercised through production Defragment, exact 10% Growth Defrag and Recover. A separate sparse image is larger than 4 GiB and contains an extent longer than 65,535 blocks, forcing the native analyser to decode SFS2's 48-bit file-size and 32-bit extent-count fields; this prevents an SFS0-width implementation from passing the SFS2 gate accidentally.
+The opt-in `defragger/tests/destructive/run_dm_log_writes_replay.sh` replays sacrificial block-layer writes at FLUSH/FUA boundaries using `dm-log-writes` and a caller-supplied independent read-only checker. It requires root and disposable devices. This does **not** model persistence of the separate recovery journal, so transaction/fault-injection suites remain mandatory.
 
-PFS3 qualification uses independently constructed on-disk structures rather than a mounted host filesystem: a PFS root block, reserved bitmap, bitmap-index/allocation-bitmap hierarchy, anode index/blocks and directory blocks describe deliberately fragmented regular files. The native suite covers recursive user-directory traversal with parent/anode validation, cycle/duplicate refusal, root and nested payload ownership, Defragment and exact 10% Growth Defrag. The transaction suite exercises durable Recover and unsupported superindex state remains fail-closed. The separate first-party Test Media creator builds a 2 GiB PFS3 image with deterministic fragmented payloads and byte-for-byte verification. Validated hard links, soft-link payloads and rollover files are covered by the qualified writer contract. PFS2, SUPERINDEX/LARGEFILE and remaining unsupported special-entry or larger reserved-index geometries remain fail-closed.
+Hosted images cannot establish behaviour for arbitrary hardware, controller flush integrity, all kernel/privilege environments or every untested feature combination. Physical-media testing must use sacrificial targets, preserve evidence and report only what was observed.
 
-Classic HFS qualification starts from independently manufactured MDB, allocation bitmap, Extents Overflow B-tree and Catalog B-tree structures. The native regression covers both ordinary inline forks and a five-block fork split between three inline extents and two Extents Overflow records. Defragment and exact 10% Growth Defrag must preserve the complete logical payload byte-for-byte, produce physically contiguous allocation, preserve safe overflow-record topology, leave the post-fork reserve free, and support durable Recover. The writer remains fail-closed for malformed/incomplete extent chains, embedded HFS+/HFSX, inconsistent or write-locked volumes.
+## Release admission
 
-Btrfs qualification uses independently constructed CRC32C-valid single-device images containing a system chunk, one unprofiled mixed data/metadata chunk, level-0 root/extent/filesystem/device/checksum trees and skinny metadata references. Regressions cover both NODATASUM and ordinary checksum-tree-protected regular files split across physical extents. The writer verifies each source CRC32C sector against payload bytes, remaps checksum keys through the exact relocation plan, rebuilds checksum items, advances metadata generations/checksums and independently reopens/verifies the staged result. Defragment, exact 10% Growth Defrag and durable Recover are covered. Multi-device/striped/profiled layouts, snapshots/subvolumes, qgroups, active log/balance/device-replace state, shared/sparse/encoded external extents, deeper mutable roots and unsupported feature bits remain outside the writer contract.
+`defragger/VERSION` is the explicit immutable version decision. The exact intended `main` commit must pass both full mandatory qualification lanes and the release/source-governance invariants. The audited **source** baseline protects all tracked production, build, packaging, dependency and **test** inputs; the separately audited **governance** baseline protects qualification/publication workflows and scripts. Later drift is a release failure until explicitly re-audited, even if all filesystem tests pass.
 
-APFS qualification uses two independently expressed fixture paths: the Python on-disk constructor used by the native worker regression and the first-party all-C Test Media creator/verifier. Both manufacture the bounded Fletcher-valid contract with checkpoint-map resolution of the ephemeral spaceman, one direct chunk-info block/allocation bitmap, container and volume object maps, one unencrypted snapshot-free volume, flat catalog/extent-reference roots and fragmented regular-file data. The writer may retain checksum-valid older descriptor-ring NX/checkpoint-map history whose XID is strictly older than the selected active checkpoint and whose container geometry/UUID remain compatible; the regression proves that history remains byte-for-byte untouched through Defragment and qualifies Growth Defrag with the same history present. Shared extents remain fail-closed. Multiple volumes, encryption/sealing, snapshots, sparse/cloned/shared/encoded state, deeper mutable trees, indirect CIB/CAB layouts, internal-pool allocation and pending spaceman free queues remain outside the writer contract.
+A completed audit recorded for an older commit does not qualify later source changes. The evidence for a failing release-invariant step must be reported as such; never relabel the audit SHA without actually reviewing the delta. Tagged assets and public catalogue/APT observations are separate release stages. Published versions and asset SHA-256 identities are write-once under the project publisher's rules.
 
-The XFS metadata white-box suite includes the field-shaped allocation-tree pressure case in which the final free-space map needs 40 bnobt/cntbt blocks while only 13 tree/AGFL blocks are initially available. The regression verifies safe reserve growth from source-free/final-free blocks, preservation of protected Growth Defrag runs and regeneration of XFS AG-owner reverse mappings. Live Test Media deliberately keeps its 200 MiB heterogeneous regular-file fragmentation workload inside that qualified writer contract; directory-fragmentation stress remains analyser/white-box evidence because directory data blocks are protected XFS metadata rather than relocatable regular-file payload.
+## Maintenance
 
-Destructive Test Media accounts for all 21 registered slots on every Build, Qualify and Verify pass. All creators and payload verifiers are first-party C; creating or verifying a target never invokes host filesystem formatters, mounts, ZFS pool import/export, or filesystem drivers. The package-owned UFS2 helper consumes ordinary source files and is resolved only from the private installation path. A missing bundled helper is a packaging failure, not a request for a host filesystem package.
-
-The additional raw fixtures cover FAT12/16/32, exFAT, NTFS, EXT2/3/4, XFS v5, Btrfs, Classic HFS, HFS+, Minix v3, ZFS and swap. Each file-bearing fixture retains the eight large files of 4, 6, 10, 16, 26, 34, 44 and 60 MiB (200 MiB total), plus boundary-sized files of 0, 1, 511, 512, 513, 4095, 4096 and 4097 bytes. FAT12/16/32 fragmentation is created by the authoritative SO through deliberately interleaved file writes, without a mounted host filesystem. Other raw fixture engines explicitly manufacture native fragmentation metadata; all retain independent payload readback. The Btrfs fixture uses 16 KiB sectors/leaves so the complete corpus and directory records fit its qualified level-zero mixed-group contract. ZFS uses the qualified single-disk legacy-version-28 topology with Fletcher-4 block checksums and remains analysis-only. Swap verifies header and page-map geometry and contains no files. The existing Amiga and APFS fixture contracts remain independently qualified; classic OFS/FFS additionally retain directory-chain stress.
-
-The state file uses schema 3 and corpus version 1. It binds the physical disk fingerprint and records exactly one build result per slot; it cannot supply a mutable expected-file list. Missing, duplicate, unknown, truncated or incompatible state records fail closed. Schema 2 test disks require rebuilding. Every native verifier derives the complete expected corpus from compiled policy, follows the current on-disk mappings and checks every logical payload byte. UFS2 regenerates the canonical hashes of all sixteen files, including every boundary payload. A populated status alone cannot establish payload correctness, and a slot whose build failed is always reported as a verification failure with its build diagnostic.
-
-The native-fixture integration tests create each remaining slot, require exact analysis and real fragmentation, run both native relocation modes for every write-capable format, verify all retained bytes after each operation, and prove that corruption of a live payload is rejected. The test driver finds opaque payload bytes without importing filesystem layout construction. ZFS and swap receive analysis/verification coverage only. The state/corpus regression executes the actual worker parser and rejects the original empty-list false-pass condition, duplicate or missing records, legacy schemas, wrong device identity, invalid fingerprints, oversized lines and truncation. The production external-tool prohibition includes Test Media and rejects host formatters and target mount/pool orchestration.
-
-The sixteen native Test Media fixture formats are separate CTest cases, each with its own disposable volume and journal. Qualification runs other tests first and then runs every full-corpus fixture with four-way bounded concurrency in both the normal and sanitizer lanes. A complete filesystem case still exercises its 200 MiB corpus and boundary files, both write modes where supported, complete post-write verification and deliberate corruption rejection. The 1,800-second per-case watchdog and 45-minute job bounds remain in force; test failures continue to prevent release.
-
-GUI contract tests treat typography as release behaviour rather than decoration. The application and Test Media reference the MB Corpo A/S families; installation establishes the shared SHA-256-verified three-face native cache rather than shipping duplicate application font binaries. Generic/system font fallbacks or a forced host monospace log must not be silently introduced.
-
-Common-integration regressions bind CMake, the local installer and the submodule to the exact released Common 1.19.46 revision. They verify that C++ JSON real conversion uses Common's locale-independent parser, local allocation wrappers use Common checked size arithmetic, native recovery/relayout readers use Common's key=value parser, shared lexical path construction uses Common path contracts, and Test Media obtains typography/metrics and semantic palette roles through the native design API. The native GTK desktop also resolves Common's palette, typography and metrics API directly; there is no retained Python palette generator or compatibility UI to keep in sync. The font bootstrap is a reviewed copy of Libraries 1.19.58 with immutable InfiltratorOS asset provenance; that separate bootstrap revision does not change the compiled Common 1.19.46 pin. The installed application, filesystem I/O, mapping, mutation and GTK desktop are wholly native C/C++; Python remains only where independent fixture construction or black-box orchestration improves the evidence.
-
-Branding validation is limited to the contracts the gate actually checks. Packaging/build tests exercise the canonical icon source through the Debian/local-install paths, the native desktop uses deterministic installed/private icon lookup, and the desktop file preserves the `io.github.defragmenter`/`StartupWMClass` identity. The project does not claim a separate byte-for-byte PNG parser/CRC oracle where none is maintained.
-
-The mutation path is not accepted as its own sole oracle where a separate structural or payload check can be used.
-
-ZFS qualification uses both independently constructed synthetic on-disk fixtures and the first-party raw C Test Media fixture. The native regression covers four-label/uberblock selection, little- and big-endian decoding, MOS root block pointers, packed-XDR topology, Fletcher4 verification, LZJB/LZ4 decoding, MOS/dnode traversal, per-metaslab space-map replay and deliberately fragmented regular-file block trees. Feature-flag-pool tests prove that supported MOS-required features can retain exact analysis, unknown read-critical features fail closed, and active `log_spacemap` state cannot be mislabeled exact while unflushed allocation changes remain outside the per-metaslab maps. The production registry deliberately exposes no ZFS Defragment/Growth Defrag/Recover operations; ADR-008 records why raw ZFS mutation is outside the product contract.
-
-## Block-layer crash replay
-
-`defragger/tests/destructive/run_dm_log_writes_replay.sh` is an opt-in sacrificial-media harness for Linux `dm-log-writes` plus the upstream `replay-log` utility. It copies a prepared filesystem image through the logging target, marks that exact state as the baseline, runs the production Defragmenter worker and then reconstructs/replays the operation while invoking a caller-supplied read-only checker at every FLUSH or FUA boundary.
-
-This evidence is deliberately separate from the normal hosted quality gate: it requires root, two disposable block devices and a kernel exposing the `log-writes` target. It validates block-layer write ordering of the source filesystem. It does not pretend to replay persistence of the external recovery journal; the transaction/fault-injection suites remain the evidence for that cross-filesystem recovery contract.
-
-## Manual and environment-dependent evidence
-
-Synthetic images and hosted runners cannot prove every storage-controller, kernel, privilege-manager or real-media interaction. Live testing on sacrificial media is therefore separate evidence for environment-dependent behaviour.
-
-Manual evidence must be described at the level actually observed. A fixture, simulator or mocked failure is not physical-media proof.
-
-## Release criterion
-
-The exact revision intended for release must pass the required Project quality gate. Release assets must be derived from that revision, the audit must name the exact audited source/governance baselines, and documentation must not advertise known-failing or merely planned write support as complete.
-
-A release gate verifies the exact pinned Common dependency and rejects qualified source or workflow drift beyond the recorded baselines. The audited source set is the complete tracked input surface that can alter what qualification builds, installs or accepts: CMake/build logic, native/C/C++ source, filesystem source, Common gitlink, packaging, Test Media, tests and the source-install entry point. Tests are therefore protected against post-audit weakening rather than treated as disposable scaffolding. Version identity and maintained release prose are intentionally outside that source baseline so a qualified implementation can receive its release number without changing its safety semantics.
-
-## Regression rule
-
-Every reproducible defect should gain the narrowest useful permanent regression. Changes to a writer should update the evidence for the affected safety boundary, including a fail-closed case and interruption/recovery coverage when the transaction boundary changes.
-
-Tests are part of the product contract, not disposable scaffolding. A source-shape test is justified only when source/dependency shape is itself the contract; otherwise tests should prefer observable native behaviour. Parallel implementation models are not acceptable test oracles for the same product policy.
-
-Allocation-map validation is also fail-closed: every returned cell must account exactly for its physical span across free/used/unknown/outside/bad primary states, while fragmentation and directory overlays may not exceed used allocation. Both the native mapper boundary and GTK presentation layer enforce the same invariant.
-
-## Limits
-
-The evidence is not a mathematical proof and does not establish correctness for untested feature combinations, compromised privileged environments, or hardware/firmware that falsely acknowledges persistence. Those limits are why unsupported states fail closed and destructive qualification uses verified backups or sacrificial media.
-
-NTFS qualification additionally covers an ordinary named nonresident alternate data stream split across two physical runs. Defragment and Growth Defrag relocate the ADS through the same journalled record/attribute-offset plan as unnamed data, preserve its payload byte-for-byte and report ADS fragmentation at the owning-file level. Attribute-list/split, compressed, encrypted and sparse streams remain fail-closed or fixed as explicitly qualified.
-
-UFS qualification includes sparse regular-file relocation: holes remain logical holes while allocated fragment/block references are packed, fragment-sized tails remain valid, and both Defragment and exact 10% Growth Defrag independently reopen and verify the result.
-
-Optimized qualification retains executable checks in the desktop/presentation regression paths. These checks report a failing expression and terminate unsuccessfully independently of `NDEBUG`; Release compilation cannot silently turn the suite into a successful no-op.
-
-## Recovery admission and truthful map regressions — 2026-10-23
-
-Desktop policy tests admit Recover for a newly discovered writable, offline
-volume with an existing journal while keeping new layout operations disabled
-until native analysis qualifies them. Missing journals, mounted targets and
-read-only targets remain refused. An APFS transaction regression retains a
-real verified stage and committing journal, copies only a source prefix to
-model interrupted commit, proves normal analysis rejects the inconsistent
-metadata, and verifies native recovery restores the exact payload and layout.
-
-Btrfs analysis verifies CRC32C on the primary superblock and every tree block
-it consumes. Corrupt-checksum fixtures exercise the worker and normal mapper;
-unknown checksum algorithms are explicitly refused rather than labelled exact.
-The writer and analyser use the same checksum implementation. Structural
-malformation fixtures retain valid checksums so geometry validation remains
-independently exercised.
-
-Pure native raster geometry tests cover small volumes, aggregated cells,
-native FAT clusters, short final spans and compression into fewer pixels.
-Painting and captions share this geometry: no storage unit is magnified, no
-aggregated cell is subdivided, and every mapped pixel covers whole units.
-
-The release observer regression executes the actual shell procedure with
-fixed HTTP responses and a real Debian fixture. It accepts the canonical
-package only when both catalogue and Packages index match the qualified
-version and SHA-256, and rejects stale versions or altered digests. Its retry
-clock is shortened in the fixture; the parsers and identity checks are real.
-
-## EXT fragmented-run durability batching — 2026-10-24
-
-After independent native Test Media cases were enabled, both self-hosted suites passed every non-EXT format but timed out the first Defragment operation on EXT2/3/4 at 900 seconds. The EXT high-address workspace copied and placed each fragmented run with a separate `fsync` regardless of run size, turning deliberately fragmented allocation maps into thousands of blocking device flushes. The native worker now accumulates actual transferred blocks across run boundaries and issues durable flushes only at the configured bounded transaction budget (maximum 64 MiB) and at the end of each stage or placement phase. A completed workspace stage is synchronised before its digest and durable phase publication; placed payloads are synchronised before metadata commit; restoration is synchronised before the recovery journal is retired. Incomplete staging never mutates the original allocation. Existing fail-closed recovery, full 200 MiB corpus and verified postconditions are unchanged. Timeouts now print the end of the worker's phase transcript so a recurrence can be distinguished from a writer failure. This explains the source correction but does not substitute for successful new CI qualification.
+Every reproduced defect requires a focused regression at its owning boundary. Preserve production/source test separation, malformed-state refusal, stable target identity, complete recovery evidence and independent payload oracles. Shorter documentation is not grounds to weaken these tests.

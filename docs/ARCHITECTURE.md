@@ -1,156 +1,64 @@
 # Architecture
 
-**Filesystem module ownership:** [one authoritative `.so` per format, shared by Defragmenter, BOOT and the kernel](FILESYSTEM_ENGINE_OWNERSHIP.md). Defragmenter supplies generic safety/orchestration; filesystem-specific semantics belong to the loaded module. Older internal engines remain transitional pending tested migration; do not mistake a working UI for proof the module was called.
+## System boundaries
 
-Defragmenter separates GTK presentation, filesystem-neutral safety/runtime services, per-filesystem engines, recovery state and reusable Common mechanisms. That separation is a correctness boundary: the UI expresses intent and presents completed state, while raw-storage and filesystem code owns the rules that can change on-disk data.
-
-## First-principles design
-
-Defragmenter starts from filesystem structures, durability rules and target-safety requirements rather than treating a mounted filesystem driver or external repair utility as the specification.
-
-First principles does not mean reimplementing every mechanism. Linux supplies raw block I/O and process primitives; GTK supplies presentation; system libraries may provide documented in-process APIs; Libraries supplies reusable first-party primitives. Defragmenter retains the user-visible safety policy and generic target protections; the selected filesystem implementation owns its interpretation, placement, mutation and recovery rules.
-
-A dependency is chosen because its contract is stronger for the job, not because it is convenient. Unsupported or ambiguous layouts remain unsupported instead of being guessed.
-
-## Structure
+Defragmenter is a **native C/C++ application**. GTK presents operations and completed evidence; filesystem-neutral services enforce identity, privilege, I/O and cancellation boundaries; the selected filesystem engine supplies format-specific interpretation and mutation. Neither UI discovery nor an available command proves write eligibility.
 
 ```text
-Native C++17 GTK 3 desktop
-        ↓
-C++17 application services
-registry / mapper / operation dispatcher / privileged session
-        ↓
-filesystem worker protocol
-        ↓
-filesystem-neutral native C safety/runtime core
-        ↓
-per-filesystem native C analysers / planners / writers
-        ↓
-raw image or unmounted block device
-
-Libraries 1.19.46
-        ↓
-checked arithmetic / parsing / endian / path / exact-I/O /
-allocation-growth / JSON / durable-file primitives
+GTK 3 desktop (C++17)
+  → native/runtime.cpp registry + mapper + operation dispatcher
+  → typed worker protocol + bounded process supervision
+  → filesystem-neutral C device/identity/privilege/Stop services
+  → trusted format-specific .so host, or explicitly bounded native engine
+  → raw image or unmounted block device
 ```
 
-The source tree reflects those responsibilities:
+Current source ownership:
 
-```text
-defragger/
-├── gui/ui/art/             native desktop artwork only
-├── gui/filesystems/*/native/ authoritative per-filesystem native engines
-├── native/                 C++17 GTK desktop and registry/control services
-├── src/core/               filesystem-neutral native C safety/runtime services
-├── test_media/             destructive sacrificial-media utility
-├── tests/                  native regressions and independent fixture/test drivers
-├── packaging/              Debian/native installer construction
-└── shared/                 pinned Libraries dependency
-```
+- `native/`: the **single** C++17 application registry, GTK desktop, mapper, operation dispatcher and privileged-helper session. No parallel Python application/policy graph is shipped.
+- `src/core/`: C-based filesystem-neutral safety, one-open identity and capacity binding, mounted-overlap checks, exact I/O, result/Stop plumbing.
+- `gui/filesystems/*/native/`: format workers and module hosts; their source provenance and supported ABI must be established individually. Remaining transitional implementations must not act as fallbacks for required external modules.
+- `test_media/`: independent, destructive qualification fixtures; not a general-purpose disk manager.
+- Pinned Common/Libraries: generic checked arithmetic, parsing, byte order, exact-I/O, durable-file and presentation primitives; not filesystem placement or transaction policy.
 
-## Contracts and ownership
+C is appropriate for on-disk layouts, parsers and bounded writer logic; C++17 provides value and lifetime ownership in the filesystem-neutral service layer. Python is limited to independent test fixture construction and black-box native-process orchestration.
 
-`native/runtime.cpp` is the single application registry used by the production C++ mapper, operation dispatcher and GTK manifest loader. The former Python registry, filesystem plugin declarations, presentation model and dispatcher/helper compatibility graph have been removed rather than retained as a second knowledge base. Most native filesystem directories own their probe, analyser, placement rules, writer and verifier. FAT12, FAT16 and FAT32 use the corresponding installed Filesystems module through a versioned child-process host. The module includes the shared FAT relocation and journal engine; its host supplies the same generic device, I/O and Stop services.
+The [format-module ownership contract](FILESYSTEM_ENGINE_OWNERSHIP.md) is authoritative for which implementations have moved into standalone `.so` modules. The target is one format engine used by every relevant consumer; the current Linux kernel bridge is not implied to exist.
 
-`src/core/` owns mechanics that are genuinely filesystem-neutral: exact raw I/O adaptation, one-open canonical target/identity/capacity binding, descriptor-level identity revalidation, overlap-aware mounted-target rejection, Stop state, resource defaults and machine-readable result emission. Filesystem geometry, volume identity, metadata interpretation, transaction stages and recovery rules stay with the owning filesystem.
+## Device and mutation admission
 
-GTK objects stay in the presentation layer. Runner, policy and storage models exchange plain values and typed events rather than making presentation code responsible for raw-device or filesystem policy.
+A raw write may begin only after all relevant checks succeed:
 
-## Native language boundary
+1. Resolve one exact target; establish device/inode or block identity, capacity and supported filesystem format.
+2. Reject mounted/overlapping targets, inconsistent topology and unexpected device replacement, including aliases/hard links.
+3. Require an independently qualified native analysis, declared operation and supported geometry/features for a new Defragment/Growth operation.
+4. Recheck target and format inside the privileged worker; verify the required filesystem module's trusted path, identity and ABI when the operation uses one.
+5. Build and validate an exact canonical plan, including the per-file 10% Growth Defrag reserve where applicable.
+6. Persist recovery journal and verified staging **before** source mutation can require restoration.
+7. Perform bounded durable writes, honour Stop at safe/recoverable boundaries and then reopen the disk read-only for independent final verification.
 
-C and C++ are first-class implementation languages with different jobs. C remains the strongest fit for filesystem structures, codecs, raw parsers, planners, writers and the storage-safety core because those components map directly to fixed-layout data, kernel interfaces and explicit byte-oriented algorithms.
+Discovery labels, GPT identifiers, filenames or libblkid hints choose candidate readers; they never authorise mutation. Unknown feature bits, broken metadata, missing trusted modules and stale identity fail closed. A native worker must not fall back to a private parser/writer when its mandatory SO is missing.
 
-C++17 is used where scoped ownership and stronger value types materially improve filesystem-neutral application work. The native registry, JSON/protocol model, allocation-map translation, operation dispatcher, bounded child-process capture and privileged helper session live in `defragger/native/`. Those native binaries are the only mapper/operation-dispatch/privileged-helper control plane in the repository and installed application. GTK carries no filesystem capability registry or operation table of its own: it loads the immutable native manifest and treats the advertised operation names as authoritative. The privileged helper uses `posix_spawn` rather than post-`fork` C++ work and owns its child process group explicitly.
+Recover is **not** gated on a new successful analysis: after interruption, source metadata may be unreadable. It is admitted through an existing user-bound journal and the worker's own schema, target identity/capacity, staged-byte hash and transaction-phase checks.
 
-Python is not an application implementation language in this repository. It remains under `tests/` only where an independent fixture constructor, malformed-input generator or black-box process driver gives useful evidence about native binaries. No Python module owns product state, presentation, filesystem capability, device policy, privilege policy or release runtime behaviour.
+## Privilege, process and recovery lifetime
 
-The NTFS plan database also uses narrow, non-inheriting RAII owners for SQLite statements, transaction rollback and OpenSSL digest state behind the existing C-facing filesystem implementation. None of these uses creates a class hierarchy around the raw filesystem engines. Working C is not rewritten merely because C++ is available, and C++ is not avoided where it gives a stronger ownership model.
+The privileged helper launches only constrained commands with `posix_spawn` and process-group ownership; stdin is isolated from the GUI protocol. Cancellation first requests the worker's cooperative path and waits until the actual child exits, preserving recovery state as needed. A closed protocol channel, failed subprocess or incorrect result identity is not success.
 
-## Target safety and privilege boundary
+The mapper preserves physical disk order in output; bounded capture and a bounded number of map cells prevent unbounded GUI memory. Exact FAT width/probe selection and module ABI are checked against the opened volume rather than trusting generic FAT labels. Mounted-image checking uses inode/device identity to catch hard-link aliases.
 
-Write-capable operations target only an unmounted block device or regular filesystem image. Selection is not treated as authority: the project revalidates target identity, capacity and mounted overlap across open/privilege boundaries before authoritative mutation.
+Durable transaction records bind one target and progress monotonically. Journal cleanup occurs only after verified completion. Source, staging and recovery identity are never guessed after process restart. No claim is made that process tests reproduce physical power loss or storage hardware lying about flush durability.
 
-The privileged helper accepts a constrained command contract and a user-specific recovery namespace. It launches fixed commands with `posix_spawn` into a dedicated process group, ignores SIGPIPE in the supervisor, treats a closed GUI protocol pipe as a transport failure, requests the writer's cooperative SIGINT path and waits for the child to exit before the helper can terminate. Filesystem workers still perform their own target and format validation; privilege does not bypass safety policy.
+## Installation and release
 
-Every GUI mutation, including a user-owned image and Recover, uses that privileged journal namespace. Child stdin is isolated from the GUI protocol. Stop waits for writer initialisation but can interrupt silent read-only analysis immediately. Completion is emitted only after the child is reaped and the session can accept the next request.
+Two user-facing executables are installed: `/Programs/defragmenter` and `/Programs/defragmenter-test-media`. Trusted private command workers, including mapper, operation engine, privileged helper and the EXT metadata worker, install under `/System/Commands/Defragmenter`. This matches the actual CMake/package manifest and InfiltratorOS verifier. `/System/Filesystems` is reserved for independently installed filesystem drivers, **not** those private executables.
 
-The mapper probes FAT geometry when discovery supplies only a generic FAT name. The FAT host opens only root-owned, non-writable module paths without following symlinks, validates the module ABI and width, and the engine checks the width again on the opened target. Its map-output allowance scales with the requested cell count and remains bounded by the GUI maximum; ordinary child-command capture retains its separate default limit. Mounted-image checks compare device and inode identity so hard-link aliases do not bypass refusal.
+The generic `.deb` and source-based `.run` are built from the versioned source; `.run` packages source from exact committed Git objects plus the pinned Common commit. Release intent is a `defragger/VERSION` change. The permanent main qualification, sanitizer lane, source/governance audit identities, linear protected history and once-built checksum-bound release artifacts are mandatory. Publication never rebuilds the qualified files and never modifies an existing version identity.
 
-Paths and device-provided metadata are external input. A previously valid path may refer to a different object later, so persistent transactions bind to stable target and filesystem identity where the format exposes it.
+[Audit Status](AUDIT_STATUS.md) records the audited source and governance commit SHAs. **An audited ancestor does not automatically qualify later changes in executable, test or workflow inputs.** See [Validation](VALIDATION.md) for the exact release-gate evidence and [Decisions](DECISIONS.md) for the permanent rationale.
 
-Linux/libblkid metadata and GPT labels may choose a candidate parser, but they never authorise a write. A physical volume starts with new layout operations disabled until the selected first-party native analyser successfully returns an identity consistent with that candidate. Only that native proof promotes the volume to a new-layout GUI state; the filesystem worker still repeats its own target/format preflight before mutation. Recovery is admitted separately when the user-specific persistent journal exists. It must reach the native recovery validator even if an interrupted source cannot be analysed: that validator checks the journal's format, target identity/capacity, staged bytes and transaction phase before any write. A discovery hint cannot substitute for those checks.
+## Test Media
 
-## Filesystem engine contract
+The 21-slot native C creator exercises disposable media through first-party format interfaces, with independent raw verification of exact logical payloads. No host formatter, target mount or ZFS pool import/export is used for fixture creation/verification. State schema 3 binds disk identity, corpus version and build results; the expected corpus is compiled policy, not editable saved state. ZFS and swap are analysis-only. Tests must still prove the actual external SO was used wherever mandated.
 
-A read-only native backend may probe and map a filesystem without implementing mutation. A write-capable backend additionally owns a first-party native mutation path and an explicit Recover contract.
-
-Production writers do not mount the target, ask a mounted filesystem to choose placement, or launch external repair/defragmentation utilities. In-process system libraries are permitted where their documented API is part of the chosen implementation, but Defragmenter remains responsible for placement, transaction, verification and failure policy.
-
-Workers communicate through typed phase/live-range/result records. Human-readable logs are diagnostic text, not an API.
-
-## Transaction and recovery contract
-
-A write operation follows one architecture-wide sequence:
-
-1. identify the filesystem and declared operation;
-2. revalidate target identity and mounted state;
-3. scan the complete source model and reject unsupported states;
-4. construct and validate the canonical target plan;
-5. establish persistent recovery material before source bytes can require recovery;
-6. perform bounded durable mutation at filesystem-safe transaction boundaries;
-7. honour Stop only at a valid or recoverable boundary;
-8. reopen the target read-only and verify the required postcondition before success.
-
-Recovery state is monotonic and tied to one target. The initial transaction binding captures canonical path, stable object identity and capacity from one validated native-core open; later filesystem-specific checks add UUID/serial/generation/geometry identity as appropriate. An unfinished transaction cannot be silently replaced by unrelated state. A successful writer return is not sufficient evidence of success without the final verification pass.
-
-## Failure model
-
-Failure is explicit. Unknown features, contradictory geometry, malformed metadata, target replacement, missing recovery material, unavailable dependencies and failed verification reject the affected operation.
-
-A numeric or apparently valid result is never substituted merely to keep an operation moving. For destructive paths, uncertainty is a reason not to write.
-
-The project assumes the kernel, libc, required libraries and storage hardware honour their documented contracts. It does not claim recovery from a compromised root environment or hardware that falsely acknowledges persistence and later loses data.
-
-## Common
-
-`shared/infiltratr-common` is pinned to Libraries 1.19.46 at exact commit `fc2c72cb038a8e4c1e0bc62145adf533fbfd7923`.
-
-Common is authoritative for reusable mechanisms whose semantics are genuinely generic. If Defragmenter has a stronger implementation of a generic primitive, the preferred direction is to improve Common until its contract preserves that correctness, performance and resilience, then remove the local duplicate.
-
-For this pin, Common also owns deterministic finite-decimal conversion used by the C++ JSON adapter, checked allocation sizing used by local runtime wrappers, allocation-free key=value line parsing for native journals/manifests, POSIX lexical path joining/concatenation, native typography/structural design identity, immutable MB Corpo asset provenance and the complete layered Linux MBLink Day/Night semantic role set. The native GTK desktop resolves Common's theme/typography/metrics API directly and maps those neutral roles into Defragmenter selectors; Test Media consumes the same native design API. Defragmenter's no-font-fallback policy remains product-local because the package installs the verified Common-described faces itself. The GTK desktop, filesystem analysis, mapping, mutation, durability and capability authority are entirely native; Python test drivers consume public native behaviour rather than reproducing those product contracts.
-
-Do not move filesystem policy, target-safety decisions or transaction semantics into Common merely to reduce line count.
-
-## Verification and assurance
-
-Correctness is enforced at several levels: warnings-as-errors native builds, unit and parser tests, disposable filesystem-image tests, recovery/fault-injection tests, native GUI/service regressions, architecture/safety checks, ASan/UBSan qualification, packaging tests and exact-head release gates.
-
-Python test code is evidence machinery, not an alternate product implementation. Tests that need malformed images or orchestration may use it to drive the native executables from outside their implementation language; tests of product policy must not recreate a Python registry, planner, device model or privilege stack and then validate that duplicate instead.
-
-The exact release revision must satisfy the project quality gate. The current write-safety decision is recorded separately in [AUDIT_STATUS.md](AUDIT_STATUS.md), while [VALIDATION.md](VALIDATION.md) defines what each class of evidence proves and does not prove.
-
-## Build and release contract
-
-Release artifacts are built from the exact qualified `main` revision. Published tags and assets are immutable identities. The Debian package/native installer, Common pin, audit source baseline and release-governance baseline are checked as part of publication rather than treated as post-release bookkeeping.
-
-The audited source baseline covers every tracked input that can alter what qualification builds, installs or accepts, including tests and the source-install entry point. Tests are therefore protected against post-audit weakening just as production source is. VERSION and maintained release prose remain outside that baseline so a qualified source state can receive its immutable release identity without pretending that version text changes filesystem semantics.
-
-A change to `defragger/VERSION` on protected `main` is the explicit release decision; human commit-message wording is not part of the control plane. The permanent self-hosted full-suite and ASan/UBSan lanes must both pass before publication can run. Qualification builds the release artefacts once and hands those exact SHA-bound files to the thin reusable publication workflow; publication never rebuilds them.
-
-The hardware-native local `.run` is constructed from committed Git objects for the exact Defragmenter revision and the exact pinned Common commit, not by archiving the ambient runner directory. Tracked edits are refused and untracked workspace state is structurally invisible to the source-payload constructor. Normalised tar ownership/order/time and gzip metadata remove host identity and wall-clock time from that payload.
-
-GitHub Actions only orchestrates checkout, permissions, artefact handoff and ordering. `defragger/ci/release.sh` owns the testable release procedure: audited source/governance verification, protected-main verification, restartable GitHub publication, exact asset-set/digest verification and the downstream APT observation. Public APT propagation is deliberately observational and retryable, so repository or CDN delay can be reported without invalidating an already verified immutable GitHub release.
-
-## Specialist documents
-
-- [Design](DESIGN.md) — first-principles goals, non-goals, trade-offs and failure philosophy.
-- [Decisions](DECISIONS.md) — durable architectural choices and consequences.
-- [Validation](VALIDATION.md) — evidence classes, destructive-path validation and release criteria.
-- [Audit status](AUDIT_STATUS.md) — current write-safety case and exact audited baselines.
-- [References](REFERENCES.md) — filesystem/platform specifications and engineering sources.
-
-## Test Media ownership
-
-The canonical 21-slot specification remains the single creator/readiness registry. Test Media constructs bounded qualification fixtures in first-party C and verifies raw bytes through the current on-disk metadata. The raw fixture layer owns the shared corpus, exact I/O and complete-file verification accounting; each codec owns only its filesystem records and allocation geometry. Existing public native readers are reused where their contracts fit. No fixture adds an alternative mutation engine or changes writer admission. UFS2 retains a package-owned private C helper, with ordinary source files and no mounted UFS dependency. Host formatter, mount and pool-tool paths have been removed.
-
-Protected schema 3 state binds disk identity and one build result per slot. Expected file identities, sizes and bytes are compiled policy, independent of mutable saved state and independent of the relocation engines. All expected files and all logical bytes must be covered exactly once for verification to succeed. Legacy schema 2 disks must be rebuilt. ZFS and swap remain analysis-only.
+See [Design](DESIGN.md), [References](REFERENCES.md) and [UI vision](UI_VISION.md) for specialist requirements.

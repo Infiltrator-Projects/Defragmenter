@@ -1,125 +1,61 @@
-# Defragmenter source tree
+# Defragmenter implementation
 
-This directory contains the application implementation and build root. Product overview, engineering ethos, release policy and current safety status are maintained in the [repository README](../README.md) and [Audit Status](../docs/AUDIT_STATUS.md) rather than duplicated here.
-
-The current software version is defined by [VERSION](VERSION).
-
-## Compatibility naming
-
-The user-facing product is **Defragmenter**. The Debian/APT package identity is `defragmenter`. The Debian package and desktop identity remain `defragmenter`. The actual native GTK application is `/Programs/defragmenter` and the separate Test Media utility is `/Programs/defragmenter-test-media` (only two files, no wrapper), following InfiltratorOS's single native user-launchable application namespace. Private application helpers and filesystem-specific Defragmenter workers reside under `/System/Commands/Defragmenter`, reserving `/System/Filesystems` for OS filesystem implementations, the font-bootstrap helper under `/System/Commands`, approved artwork under `/System/Resources/Icons` and `/System/Resources/Themes/Defragmenter`, and documentation under `/System/Resources/Documentation/Defragmenter`. Host desktop-registration metadata remains under `/usr/share` for GTK/Mint integration; durable journal identities remain unchanged.
+This is the CMake project root. [The product README](../README.md) covers operations, installers and release policy. `VERSION` is the sole source-version file; the current executable/support truth is in code and tests.
 
 ## Filesystem support
 
-| Filesystem | Analyse / Map | Defragment | Growth Defrag | Recover |
-|---|---|---|---|---|
-| FAT12 / FAT16 / FAT32 | Exact | Native C | Native C, exact 10% reserve | Yes |
-| exFAT | Exact | Native C | Native C, exact 10% reserve | Yes |
-| NTFS | Exact | Native C, fail-closed preflight | Native C, exact 10% reserve | Yes |
-| ext2 / ext3 / ext4 | Exact | Native C staged writer | Native C, exact 10% reserve | Yes |
-| XFS v5 | Exact | Native C raw userspace writer | Native C, exact 10% reserve | Yes |
-| Amiga OFS / FFS | Exact | Native C | Native C, exact 10% reserve | Yes |
-| Amiga SFS0 | Exact allocation + file-extent analysis | Native C supported-subset relayout | Exact 10% reserve | Yes |
-| Amiga SFS2 | Exact allocation + 48-bit file/32-bit extent analysis | Native C supported-subset relayout | Native C, exact 10% reserve | Yes |
-| Amiga PFS3 | Exact allocation + anode-chain analysis for qualified subset | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
-| HFS+ / HFSX | Exact | Native C, fail-closed preflight | Native C, exact 10% reserve | Yes |
-| Classic Macintosh HFS | Exact, native C | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
-| Btrfs | Exact raw single-device CRC32C analysis | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
-| APFS | Exact native C analysis for bounded checkpoint/spaceman subset | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
-| Minix v1 / v2 / v3 | Exact, native C | Native C, fail-closed staged relayout | Native C, exact 10% reserve | Yes |
-| UFS1 | Exact allocation + inode-tree fragmentation analysis | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
-| UFS2 | Exact allocation + inode-tree fragmentation analysis | Native C bounded supported-subset relayout | Native C, exact 10% reserve | Yes |
-| ZFS / OpenZFS member | Bounded exact allocation + file-fragmentation analysis, native C | Not applicable by design | Not applicable by design | No |
-| Linux swap | Exact inactive / aggregate active analysis | Not applicable | Not applicable | No |
+All write capability is limited to the parser's **explicitly qualified, clean and recoverable subset**. “Yes” is not blanket support for arbitrary filesystem features.
 
-Unsupported or structurally ambiguous layouts fail closed.
-FAT operations require the matching current `FAT12.so`, `FAT16.so` or
-`FAT32.so` installed by Filesystems in `/System/Filesystems`. The FAT worker is
-a child-process module host; the filesystem and journal engine lives in the
-selected module. If that module is absent or older than the defrag ABI, the
-operation fails with an install/update message.
+| Family | Analyse | Defragment / exact 10% Growth / Recover |
+| --- | --- | --- |
+| FAT12 / FAT16 / FAT32 | Exact supported volumes | Yes, matching authoritative `.so` required |
+| exFAT | Exact supported volumes | Yes, verified exFAT.so |
+| NTFS | Exact supported volumes | Yes, fail-closed preflight; unsupported streams refused |
+| EXT2 / EXT3 / EXT4 | Exact supported volumes | Yes, qualified subset and independently checked modules |
+| XFS v5 | Exact supported volumes | Yes, qualified raw-layout subset |
+| Amiga OFS / FFS | Exact supported volumes | Yes, verified OFS.so / FFS.so |
+| Amiga SFS0 / SFS2 | Exact supported volumes | Yes, qualified layout subsets |
+| Amiga PFS3 | Exact supported volumes | Yes, bounded supported subset |
+| Classic HFS / HFS+ / HFSX | Exact supported volumes | Yes, clean supported subsets |
+| Btrfs | Exact bounded single-device subset | Yes, bounded unshared supported subset |
+| APFS | Exact bounded checkpoint/spaceman subset | Yes, supported unencrypted/unshared subset |
+| Minix v1 / v2 / v3 | Exact supported volumes | Yes, bounded staged writer |
+| UFS1 / UFS2 | Exact bounded cylinder-group subset | Yes, clean, non-journalled, snapshot-free subset |
+| ZFS / OpenZFS | Bounded exact analysis or safe summary | **No — analysis only** |
+| Linux swap | Exact inactive / aggregate active analysis | **No — analysis only** |
 
-FAT12/16/32 Test Media formatting and population use their matching SOs through V4
-and V3. Its raw FAT parser is retained solely for independent payload checking.
-The redundant internal FAT32 fixture writer has been removed. Required FAT12/16/32 and OFS
-modules are checked before destructive Test Media preparation.
+A missing, untrusted or incompatible required `.so` rejects the operation. Module identity, format, ABI, mounted state and target identity are rechecked at the corresponding trust boundaries. Legacy format code is not a silent production fallback. See [module ownership](../docs/FILESYSTEM_ENGINE_OWNERSHIP.md).
 
-OFS likewise requires current `OFS.so`, with Defrag V2 and V3. The Amiga worker
-selects that module for DOS0/2/4/6; it handles all seven block sizes, analysis,
-metadata/data relocation, exact Growth reserve and staged recovery. OFS Test
-Media formatting and population also use that SO. FFS and already-issued legacy
-AFFS journals retain their separate compatibility implementation. Boot uses its
-generic SO interface; Linux still uses native KOs until the later kernel bridge.
+## Source map
 
-## Source layout
+| Path | Responsibility |
+| --- | --- |
+| `native/` | C++17 GTK desktop, one registry, mapper, dispatcher and privileged session |
+| `src/core/` | Filesystem-neutral device, identity, mounted-overlap and bounded I/O safety |
+| `gui/filesystems/*/native/` | Format-specific native workers or trusted `.so` hosts |
+| `test_media/` | 21-slot destructive fixture creator and independent raw verifier |
+| `tests/` | Native regressions, fault injection, independent Python fixture/black-box tools |
+| `cmake/` | Native build graph and integration |
+| `packaging/` | Generic Debian and CPU-native source installers |
+| `shared/infiltratr-common/` | Exact pinned first-party Common dependency |
+| `ci/` | Qualification prerequisites and auditable release procedure |
 
-- `gui/ui/art/` — native desktop artwork only; there is no Python application/presentation implementation.
-- `gui/filesystems/<format>/native/` — native implementations retained by Defragmenter; FAT is supplied by Filesystems.
-- `native/` — authoritative C++17 GTK desktop, registry, mapper, operation dispatcher and privileged session.
-- `src/core/` — filesystem-neutral native safety/runtime services.
-- `test_media/` — separate destructive sacrificial-media utility.
-- `tests/` — native regressions plus independent Python fixture/test drivers that exercise native binaries; Python is not a product control plane.
-- `packaging/` — Debian and native local installer construction.
-- `shared/infiltratr-common/` — exact pinned Common dependency.
+The installed GUI and operation policies are native C/C++; the old Python application graph is not shipped. Stop is cooperative at safe transaction boundaries, and an interrupted operation retains durable recovery state where required.
 
-Detailed ownership and transaction rules are in [Architecture](../docs/ARCHITECTURE.md).
-
-## Production operations
-
-**Defragment** places supported movable allocations into the earliest legal canonical layout. **Growth Defrag** applies the same placement model while reserving exactly 10% of each regular file's allocated length immediately after that file. **Recover** resumes or completes an interrupted supported transaction when its recovery contract permits it.
-
-Stop is cooperative and takes effect only at a filesystem-safe boundary.
-
-## Test Media
-
-The package includes **Defragmenter Test Media**, a separate all-C GTK utility for manufacturing sacrificial test filesystems. It repeats destructive-target checks after privilege elevation and must never be pointed at a system disk or irreplaceable media.
-
-All 21 Test Media slots use first-party C creators and raw payload verification. Target construction and verification require no host filesystem formatters, mounted target filesystems or external filesystem drivers. The native-fixture regression runs both relocation modes and byte verification for the additional write-capable fixtures. Protected schema 3 state records disk identity and build results; expected payloads come from compiled corpus policy. Rebuild schema 2 test disks before qualification or verification. These bounded fixtures exercise the qualified native subsets and are not general-purpose filesystem formatters.
-
-## Build and test
+## Build and qualification
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DLD_ENABLE_WERROR=ON
-jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || printf '2')
-[ "$jobs" -gt 1 ] && jobs=$((jobs - 1))
-cmake --build build -j"$jobs"
+cmake --build build -j2
 ctest --test-dir build --output-on-failure
 ```
 
-The aggregate suite covers native/filesystem behaviour, native GUI/service contracts, safety/transaction invariants, packaging and release gates. Python is used only where an independent fixture generator or black-box test driver gives stronger evidence than testing native implementation details through itself. Hosted CI also runs ASan/UBSan qualification.
+FAT source-unit tests can use `FAT_DEFRAG_SOURCE_DIR` pointing to the matching pinned Filesystems `native/filesystems/fat/defrag` source. Module integration uses isolated, independently built `.so` files and test-only loader paths; tests must never alter live `/System/Filesystems` to simulate success. The permanent workflow also executes ASan/UBSan and independent filesystem cases; [Validation](../docs/VALIDATION.md) distinguishes those results from physical-media evidence.
 
-For FAT-specific source unit tests, set `FAT_DEFRAG_SOURCE_DIR` to the
-matching Filesystems `native/filesystems/fat/defrag` directory at configure
-time. Normal runtime and integration tests also require the installed FAT
-modules. CI builds the pinned Filesystems revision and uses a separate test-only
-loader and disposable module directory instead of changing `/System`.
+## Test Media and package layout
 
-## Packaging
+`defragmenter-test-media` manufactures deliberately fragmented sacrificial disks without external formatters or mounted target filesystems. The deterministic file-bearing corpus has 200 MiB of large files and eight boundary-sized files. Protected schema 3 state binds disk identity and per-slot results; expected bytes come from the compiled corpus. Schema 2 test disks must be rebuilt.
 
-A numbered release publishes the generic amd64 Debian artifact, the hardware-native local compile/install `.run` artifact and `RELEASE_SHA256SUMS.txt`. GitHub supplies its standard tag source archives automatically.
+Only `/Programs/defragmenter` and `/Programs/defragmenter-test-media` are user-launchable. Internal native workers belong to `/System/Commands/Defragmenter`; independent filesystem `.so` drivers belong to `/System/Filesystems`. Product documentation/icons/themes belong to `/System/Resources`, desktop integration to `/usr/share`. The package builder rejects the old `/System/Filesystems/Defragmenter` private-worker layout.
 
-The local `.run` source payload is materialised from committed Git objects for the exact superproject revision plus the exact pinned Common commit. Ambient untracked runner files are not payload inputs, and qualification verifies that property before publication.
-
-The package/install contract is described in the repository [README](../README.md); exact release qualification is recorded in [Audit Status](../docs/AUDIT_STATUS.md).
-
-## Documentation map
-
-- [Documentation index](../docs/README.md)
-- [Architecture](../docs/ARCHITECTURE.md)
-- [Design](../docs/DESIGN.md)
-- [Decisions](../docs/DECISIONS.md)
-- [Validation](../docs/VALIDATION.md)
-- [Audit status](../docs/AUDIT_STATUS.md)
-- [References](../docs/REFERENCES.md)
-
-## Installed program and icon layout
-
-Exactly two user-facing executables are installed: `/Programs/defragmenter`
-(the native GTK binary itself) and `/Programs/defragmenter-test-media`.
-There is no `/Programs/defragmenter-desktop` launcher copy or shell wrapper.
-Private Defragmenter command executables and filesystem-specific worker programs
-reside in `/System/Commands/Defragmenter`, **not** in the operating system's
-`/System/Filesystems` driver namespace. The two Cinnamon menu desktop
-entries use the approved native `/System/Resources/Icons/defragmenter.png`.
-Nemo's icon for the raw executable file is controlled by per-user file metadata,
-and is not changed merely by a `.desktop` Icon line. No second icon artwork
-has been invented for Test Media.
+For safety requirements and release-baseline status, read [Architecture](../docs/ARCHITECTURE.md), [Validation](../docs/VALIDATION.md) and [Audit Status](../docs/AUDIT_STATUS.md).

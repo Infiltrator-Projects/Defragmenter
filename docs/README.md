@@ -1,35 +1,22 @@
-# Documentation
+# Defragmenter documentation
 
-This directory is the canonical documentation entry point for Defragmenter. The Infiltrator project family uses the same baseline document roles across repositories so readers can move between projects without relearning the structure.
+Current contracts are organised by **responsibility**, not by alpha release number. Start with the [product overview](../README.md) or [implementation/support matrix](../defragger/README.md).
 
-## Canonical baseline
+- [Philosophy](PHILOSOPHY.md) — Infiltrator engineering standard.
+- [Architecture](ARCHITECTURE.md) — native source ownership, trust, process and installation boundaries.
+- [Filesystem engine ownership](FILESYSTEM_ENGINE_OWNERSHIP.md) — authoritative format modules, migration and proof.
+- [Design](DESIGN.md) — goals, non-goals and engineering trade-offs.
+- [Architectural decisions](DECISIONS.md) — retained long-lived design rationale.
+- [Roadmap](ROADMAP.md) — active qualification and engineering boundaries, not finished-update diaries.
+- [Validation](VALIDATION.md) — automated, destructive-path, recovery and physical evidence.
+- [Audit Status](AUDIT_STATUS.md) — **exact release-gate baseline IDs**, current qualification limitations and safety case.
+- [Technical references](REFERENCES.md) — external format/platform evidence.
+- [UI vision](UI_VISION.md) — desktop design and physical-map rules.
+- [Changelog](../CHANGELOG.md) — concise milestones and immutable-history links.
+- [Contributing](../CONTRIBUTING.md) and [Security](../SECURITY.md) — contribution and vulnerability rules.
 
-- [Engineering philosophy](PHILOSOPHY.md) — governing engineering and documentation standard.
-- [Architecture](ARCHITECTURE.md) — ownership, layers, dependencies, safety boundaries and system contracts.
-- [Design](DESIGN.md) — first-principles goals, non-goals, trade-offs and failure philosophy.
-- [Decisions](DECISIONS.md) — durable architectural decisions, alternatives and consequences.
-- [Roadmap](ROADMAP.md) — current foundation, near-term priorities and longer-term direction.
-- [Validation](VALIDATION.md) — automated, destructive-path, manual and release evidence boundaries.
-- [Project README](../README.md) — product overview, capabilities, build/use entry point and engineering ethos.
-- [Changelog](../CHANGELOG.md) — retained consolidated history through the entries it contains. Later release-specific engineering notes live under `releases/` where retained; exact published identities and source remain the Git tags/releases rather than an inferred gap-free prose ledger.
-- [Contributing](../CONTRIBUTING.md) — development, ownership and verification rules.
-- [Security](../SECURITY.md) — vulnerability scope, reporting and response policy.
+**Authority:** code/tests define implemented behaviour; current maintained architecture and decisions define obligations; `AUDIT_STATUS.md` names auditable source/governance boundaries; the permanent quality gate decides release eligibility. None of those is interchangeable.
 
-## Documentation authority
+The old per-release engineering notes and detailed audit chronology were retired from the active documentation tree as duplicate history. They are preserved in the immutable [v1.8.0-281 repository snapshot](https://github.com/Infiltrator-Projects/Defragmenter/tree/v1.8.0-281/docs/releases) and Git history. Do not reconstruct a claim of successful qualification merely from historical prose.
 
-The baseline files have distinct responsibilities and should not compete as alternate sources of truth. Architecture describes where behaviour belongs; Design explains why; Decisions preserve durable choices; Roadmap describes direction; Validation states what evidence is required.
-
-Code and tests remain authoritative for executable behaviour. Historical version tags and releases identify exact published source and assets under the project's write-once release policy. Release-specific safety qualification belongs in Audit Status rather than being copied into design documents.
-
-## Specialist documentation
-
-- [Audit status](AUDIT_STATUS.md) — current write-safety case and exact audited source/governance baselines.
-- [References](REFERENCES.md) — filesystem/platform specifications and engineering sources.
-- [Implementation README](../defragger/README.md) — source-tree layout, support matrix and local build notes.
-- `releases/` — release-specific engineering notes where a detailed note was retained; these do not replace the exact tag/release identity.
-
-## Maintenance rule
-
-When a change moves an ownership boundary, support boundary, validation claim or major design decision, update the corresponding canonical document in the same change. Avoid copying the same status paragraph into several files; link to the authoritative document instead.
-
-Filesystem-specific implementation detail belongs with the owning source/package unless it establishes a maintained cross-format contract.
+When a contract changes, update its single owning document and link to it rather than copying the same announcement across multiple Markdown files.
