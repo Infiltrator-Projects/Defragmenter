@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "test_media_raw.h"
+#include "filesystem_module_host.h"
+#include "ifs_ufs_module_v1.h"
+#include "ifs_ufs_probe_v1.h"
+#include "ifs_ufs_volume_check_v1.h"
+#include "ifs_ufs_payload_verifier_v1.h"
 
 #include "infiltratr/core.h"
 #include "infiltratr/posix.h"
@@ -265,6 +270,75 @@ int ldtm_program_available(const char *program) {
     return ldtm_resolve_program(program, resolved, sizeof(resolved)) == 0;
 }
 
+/*
+ * UFS2's formatter is a separate package-owned executable, but the actual
+ * format, volume checks, payload verification and defragmentation all require
+ * the independent UFS2.so. Query the versioned interfaces read-only before
+ * Test Media even considers modifying a partition table.
+ */
+static int ldtm_ufs2_preflight_interface(const IfsDefragHostV2 *host,
+                                         void *symbol, void *opaque) {
+    (void)host;
+    if (!symbol || !opaque) return 1;
+    const char *interface = (const char *)opaque;
+    if (strcmp(interface, "infiltrator_filesystem_ufs_v1") == 0) {
+        const IfsUfsModuleV1 *(*entry)(void) = NULL;
+        _Static_assert(sizeof(entry) == sizeof(symbol), "UFS module pointer size");
+        memcpy(&entry, &symbol, sizeof(entry));
+        const IfsUfsModuleV1 *api = entry ? entry() : NULL;
+        return api && api->abi_version == IFS_UFS_MODULE_V1 &&
+               api->structure_bytes >= sizeof(*api) && api->format_id &&
+               strcmp(api->format_id, "ufs2") == 0 &&
+               (api->capabilities & (IFS_UFS_CAP_RUN | IFS_UFS_CAP_TEST_MEDIA)) ==
+                   (IFS_UFS_CAP_RUN | IFS_UFS_CAP_TEST_MEDIA) &&
+               api->run && api->format_test_media ? 0 : 1;
+    }
+    if (strcmp(interface, "infiltrator_filesystem_ufs_probe_v1") == 0) {
+        const IfsUfsProbeV1 *(*entry)(void) = NULL;
+        _Static_assert(sizeof(entry) == sizeof(symbol), "UFS probe pointer size");
+        memcpy(&entry, &symbol, sizeof(entry));
+        const IfsUfsProbeV1 *api = entry ? entry() : NULL;
+        return api && api->abi_version == IFS_UFS_PROBE_ABI_V1 &&
+               api->structure_bytes >= sizeof(*api) && api->format_id &&
+               strcmp(api->format_id, "ufs2") == 0 && api->accepts_volume ? 0 : 1;
+    }
+    if (strcmp(interface, "infiltrator_filesystem_ufs_volume_check_v1") == 0) {
+        const IfsUfsVolumeCheckV1 *(*entry)(void) = NULL;
+        _Static_assert(sizeof(entry) == sizeof(symbol), "UFS check pointer size");
+        memcpy(&entry, &symbol, sizeof(entry));
+        const IfsUfsVolumeCheckV1 *api = entry ? entry() : NULL;
+        return api && api->abi_version == IFS_UFS_VOLUME_CHECK_ABI_V1 &&
+               api->structure_bytes >= sizeof(*api) && api->format_id &&
+               strcmp(api->format_id, "ufs2") == 0 &&
+               api->is_ufs2_little_endian ? 0 : 1;
+    }
+    if (strcmp(interface, "infiltrator_filesystem_ufs_payload_verifier_v1") == 0) {
+        const IfsUfsPayloadVerifierV1 *(*entry)(void) = NULL;
+        _Static_assert(sizeof(entry) == sizeof(symbol), "UFS verifier pointer size");
+        memcpy(&entry, &symbol, sizeof(entry));
+        const IfsUfsPayloadVerifierV1 *api = entry ? entry() : NULL;
+        return api && api->abi_version == IFS_UFS_PAYLOAD_VERIFIER_ABI_V1 &&
+               api->structure_bytes >= sizeof(*api) && api->format_id &&
+               strcmp(api->format_id, "ufs2") == 0 && api->verify_payload ? 0 : 1;
+    }
+    return 1;
+}
+
+static int ldtm_ufs2_module_available(void) {
+    static const char *const interfaces[] = {
+        "infiltrator_filesystem_ufs_v1",
+        "infiltrator_filesystem_ufs_probe_v1",
+        "infiltrator_filesystem_ufs_volume_check_v1",
+        "infiltrator_filesystem_ufs_payload_verifier_v1"
+    };
+    for (size_t i = 0U; i < sizeof(interfaces) / sizeof(interfaces[0]); ++i) {
+        if (ifs_filesystem_module_call("ufs2", "UFS2.so", interfaces[i],
+                ldtm_ufs2_preflight_interface, (void *)interfaces[i]) != 0)
+            return 0;
+    }
+    return 1;
+}
+
 int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
                                 char *detail, size_t detail_capacity) {
     if (detail == NULL || detail_capacity == 0U || spec == NULL) return 0;
@@ -391,14 +465,12 @@ int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
         return ready;
     }
     if (spec->creator == LDTM_CREATOR_UFS) {
-        if (ldtm_program_available("makefs")) {
-            (void)snprintf(detail, detail_capacity,
-                           "Built-in first-party UFS2 creator: bounded raw FFS fixture engine");
-            return 1;
-        }
-        (void)snprintf(detail, detail_capacity,
-                       "Missing bundled UFS2 creator: /System/Commands/Defragmenter/test-media-mkfs-ufs");
-        return 0;
+        const int ready = ldtm_program_available("makefs") &&
+                          ldtm_ufs2_module_available();
+        (void)snprintf(detail, detail_capacity, "%s", ready ?
+            "Package-owned UFS2 creator and all UFS2.so Test Media and defrag interfaces are available." :
+            "Install or update the package-owned UFS2 creator and matching UFS2.so driver.");
+        return ready;
     }
     if (spec->creator == LDTM_CREATOR_APFS) {
         extern int ldtm_apfs_module_available(void);
@@ -419,22 +491,17 @@ int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
 }
 
 int ldtm_required_modules_available(char *detail, size_t detail_capacity) {
+    if (!detail || detail_capacity == 0U) return 0;
+    /*
+     * Never curate a secondary subset of filesystem types here: omitted
+     * entries used to let Test Media erase/repartition a disk before finding
+     * out FAT32, NTFS, XFS or UFS2 was unavailable. Every configured creator
+     * must pass its own read-only module/ABI preflight.
+     */
     for (size_t i = 0U; i < ldtm_spec_count(); ++i) {
         const LdtmFilesystemSpec *spec = &ldtm_specs()[i];
-        if ((spec->creator == LDTM_CREATOR_EXFAT ||
-              spec->creator == LDTM_CREATOR_FAT12 || spec->creator == LDTM_CREATOR_FAT16 ||
-              spec->creator == LDTM_CREATOR_EXT2 || spec->creator == LDTM_CREATOR_EXT3 ||
-              spec->creator == LDTM_CREATOR_EXT4 ||
-             strcmp(spec->key, "ofs") == 0 || strcmp(spec->key, "ffs") == 0 || strcmp(spec->key, "sfs") == 0 ||
-             spec->creator == LDTM_CREATOR_PFS3 ||
-             spec->creator == LDTM_CREATOR_APFS ||
-             spec->creator == LDTM_CREATOR_SWAP ||
-             spec->creator == LDTM_CREATOR_ZFS ||
-             spec->creator == LDTM_CREATOR_HFSPLUS ||
-             spec->creator == LDTM_CREATOR_HFS ||
-             spec->creator == LDTM_CREATOR_BTRFS ||
-             spec->creator == LDTM_CREATOR_MINIX) &&
-            !ldtm_spec_creator_available(spec, detail, detail_capacity)) return 0;
+        if (!ldtm_spec_creator_available(spec, detail, detail_capacity))
+            return 0;
     }
     return 1;
 }
