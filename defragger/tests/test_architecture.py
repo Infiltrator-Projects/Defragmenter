@@ -89,7 +89,7 @@ def test_native_languages_are_declared_at_the_project_boundary() -> None:
 
 def test_registry_manifest_is_the_capability_authority() -> None:
     backends = _backends_by_id()
-    assert len(backends) == 18
+    assert len(backends) == 20
 
     writable = 0
     read_only = 0
@@ -145,7 +145,7 @@ def test_filesystem_policy_remains_owned_by_native_packages() -> None:
     # No source tree of filesystem-specific algorithms may remain in gui/.
     formats_to_loader = {
         "affs": "affs", "apfs": "apfs", "btrfs": "btrfs",
-        "exfat": "exfat", "ext4": "ext",
+        "exfat": "exfat", "ext2": "ext", "ext3": "ext", "ext4": "ext",
         "fat12": "fat", "fat16": "fat", "fat32": "fat",
         "hfs": "hfs", "hfsplus": "hfsplus", "minix": "minix",
         "ntfs": "ntfs", "pfs3": "pfs3", "sfs": "sfs",
