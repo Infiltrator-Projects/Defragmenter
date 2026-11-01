@@ -76,3 +76,51 @@ jobs:
             echo "ERROR: EXT test media ran without independent EXT2.so" >&2
             exit 1
           fi
+
+      - uses: actions/checkout@v4
+        with:
+          repository: Infiltrator-Projects/Filesystem-EXT2
+          ref: c8f63d94e8c920c59c1c32ab4d873100c5e12966
+          path: ci-independent-ext2
+      - uses: actions/checkout@v4
+        with:
+          repository: Infiltrator-Projects/Filesystem-EXT3
+          ref: bd6637a78531c2019e60188c9dda57538b0fbe09
+          path: ci-independent-ext3
+      - name: Build EXT2 and EXT3 from their own repositories, EXT4 from EXT4
+        run: |
+          set -euo pipefail
+          for kind in ext2 ext3 ext4; do
+            case "$kind" in
+              ext2) src=ci-independent-ext2 ;;
+              ext3) src=ci-independent-ext3 ;;
+              ext4) src=ci-ext4 ;;
+            esac
+            cmake -S "$src" -B "/tmp/independent-$kind" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+            cmake --build "/tmp/independent-$kind" --parallel 2
+            ctest --test-dir "/tmp/independent-$kind" --output-on-failure
+            upper="${kind^^}"
+            test -f "/tmp/independent-$kind/$upper.so"
+            nm -D "/tmp/independent-$kind/$upper.so" | grep -F infiltrator_filesystem_ext_v1
+          done
+      - name: Verify Defragmenter actually uses three independently owned engines
+        run: |
+          set -euo pipefail
+          cd defragger
+          for src in ../ci-independent-ext2 ../ci-independent-ext3 ../ci-ext4; do
+            cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
+            cmp native/ifs_ext_module_v1.h "$src/include/ifs_ext_module_v1.h"
+            cmp test_media/ifs_ext_fixture_v1.h "$src/include/ifs_ext_fixture_v1.h"
+          done
+          mkdir -p build/independent/Filesystems
+          for kind in ext2 ext3 ext4; do
+            upper="${kind^^}"
+            install -m 0644 "/tmp/independent-$kind/$upper.so" "build/independent/Filesystems/$upper.so"
+          done
+          export IFS_TEST_MODULE_PARENT="$PWD/build/independent"
+          for kind in ext2 ext3 ext4; do
+            build/defragmenter-test-media-raw-test create "$kind" "build/$kind-own-repository.img"
+            build/defragmenter-test-media-raw-test verify "$kind" "build/$kind-own-repository.img"
+            build/defragmenter-ext-test-worker identify "$PWD/build/$kind-own-repository.img" | grep -F "\"$kind\""
+          done
+          # None of these operations mounts or modifies physical block devices.
