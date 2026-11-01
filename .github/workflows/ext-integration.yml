@@ -57,6 +57,16 @@ jobs:
           build/defragmenter-test-media-raw-test create ext4 build/ext4-test.img
           build/defragmenter-test-media-raw-test verify ext4 build/ext4-test.img
           build/defragmenter-ext-test-worker identify "$PWD/build/ext4-test.img" | grep -F '"ext4"'
+          # Deliberately misname a valid EXT3 binary as EXT2. The loader
+          # must reject the wrong module identity even when its probe
+          # correctly recognises the EXT3 image. No real media is written.
+          mkdir -p build/mismatch/Filesystems
+          install -m 0644 /tmp/ext-so/EXT3.so build/mismatch/Filesystems/EXT2.so
+          if IFS_TEST_MODULE_PARENT="$PWD/build/mismatch" \
+            build/defragmenter-ext-test-worker identify "$PWD/build/ext3-test.img"; then
+            echo "ERROR: EXT worker accepted EXT3.so under EXT2.so identity" >&2
+            exit 1
+          fi
           if IFS_TEST_MODULE_PARENT="$PWD/build/missing" build/defragmenter-ext-test-worker --version; then
             echo "ERROR: EXT worker ran without independent EXT4.so" >&2
             exit 1
