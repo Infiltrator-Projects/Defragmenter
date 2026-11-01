@@ -20,10 +20,12 @@
 #define IFS_OFS_ABI_V3 3u
 #define IFS_OFS_READ_ONLY 1u
 #define IFS_OFS_ALLOW_DIRTY 2u /* Explicit inspection/recovery; normal writes stay blocked. */
-/* Disposable Test Media only: mirrors canonical Filesystem-OFS ABI v3
- * flag. Skips intermediate durability barriers and full-file rescans;
- * final unmount MUST sync, and independent checks MUST pass. Never use
- * this option for user data or system storage. */
+/* Sacrificial test-media creation ONLY. The volume is disposable and must
+ * be fully verified and unmounted before anyone may consume its contents.
+ * Skip per-mutation durability barriers and redundant existing-file scans;
+ * the normal I/O path remains crash-consistent. The final unmount still
+ * requires a real host flush. A crash during fixture creation may destroy
+ * the disposable volume. Never enable this for user data or system storage. */
 #define IFS_OFS_EPHEMERAL_FIXTURE 4u
 #define IFS_OFS_FILE (-3)
 #define IFS_OFS_DIRECTORY 2
