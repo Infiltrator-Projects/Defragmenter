@@ -370,18 +370,18 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: Infiltrator-Projects/Filesystem-EXT4
-          ref: dd8bcc6d899165da9082dbeaecc1dae168d462bf
+          ref: 4ccb2d3b00a96a9b77bfe53dc8d58ab63dce3793
           path: ci-ext4
 
       - name: Build and qualify canonical EXT2.so EXT3.so EXT4.so
         run: |
           set -euo pipefail
           src="$GITHUB_WORKSPACE/ci-ext4"
-          test "$(cat shared/ext-module-revision)" = "dd8bcc6d899165da9082dbeaecc1dae168d462bf"
+          test "$(cat shared/ext-module-revision)" = "4ccb2d3b00a96a9b77bfe53dc8d58ab63dce3793"
           cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
           cmp native/ifs_ext_module_v1.h "$src/include/ifs_ext_module_v1.h"
           cmp test_media/ifs_ext_fixture_v1.h "$src/include/ifs_ext_fixture_v1.h"
-          cmake -S "$src" -B "$RUNNER_TEMP/ext-so-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          cmake -S "$src" -B "$RUNNER_TEMP/ext-so-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DIFS_EXT_BUILD_LEGACY_MULTIFORMAT_TEST_MODULES=ON
           cmake --build "$RUNNER_TEMP/ext-so-$GITHUB_RUN_ID-$GITHUB_JOB" --parallel 2
           ctest --test-dir "$RUNNER_TEMP/ext-so-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
           install -m 0644 "$RUNNER_TEMP/ext-so-$GITHUB_RUN_ID-$GITHUB_JOB"/EXT{2,3,4}.so "$PWD/build/fat-module-test/Filesystems/"
@@ -928,18 +928,18 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: Infiltrator-Projects/Filesystem-EXT4
-          ref: dd8bcc6d899165da9082dbeaecc1dae168d462bf
+          ref: 4ccb2d3b00a96a9b77bfe53dc8d58ab63dce3793
           path: ci-ext4
 
       - name: Instrument all EXT2/3/4 filesystem shared objects
         run: |
           set -euo pipefail
           src="$GITHUB_WORKSPACE/ci-ext4"
-          test "$(cat shared/ext-module-revision)" = "dd8bcc6d899165da9082dbeaecc1dae168d462bf"
+          test "$(cat shared/ext-module-revision)" = "4ccb2d3b00a96a9b77bfe53dc8d58ab63dce3793"
           cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
           cmp native/ifs_ext_module_v1.h "$src/include/ifs_ext_module_v1.h"
           cmp test_media/ifs_ext_fixture_v1.h "$src/include/ifs_ext_fixture_v1.h"
-          cmake -S "$src" -B "$RUNNER_TEMP/ext-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Debug \
+          cmake -S "$src" -B "$RUNNER_TEMP/ext-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Debug -DIFS_EXT_BUILD_LEGACY_MULTIFORMAT_TEST_MODULES=ON \
             -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
             -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
           cmake --build "$RUNNER_TEMP/ext-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target ext-ext2-driver ext-ext3-driver ext-ext4-driver --parallel 2

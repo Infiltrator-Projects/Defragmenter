@@ -22,11 +22,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Infiltrator-Projects/Filesystem-EXT4
-          ref: dd8bcc6d899165da9082dbeaecc1dae168d462bf
+          ref: 4ccb2d3b00a96a9b77bfe53dc8d58ab63dce3793
           path: ci-ext4
       - name: Build all three canonical shared objects
         run: |
-          cmake -S ci-ext4 -B /tmp/ext-so -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          cmake -S ci-ext4 -B /tmp/ext-so -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DIFS_EXT_BUILD_LEGACY_MULTIFORMAT_TEST_MODULES=ON
           cmake --build /tmp/ext-so --parallel 2
           ctest --test-dir /tmp/ext-so --output-on-failure
       - name: Compile native Defragmenter loaders and Test Media
