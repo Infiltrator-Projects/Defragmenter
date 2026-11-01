@@ -26,10 +26,12 @@ listed_result = subprocess.run(
 payload = json.loads(listed_result.stdout)
 assert payload["schema"] == 2
 manifest = payload["backends"]
-assert len(manifest) == 18
+assert len(manifest) == 20
 assert all(int(item["capabilities"]) & 1 for item in manifest)
 assert all(int(item["capabilities"]) & 2 for item in manifest)
-assert len({item["id"] for item in manifest}) == 18
+backend_ids = {item["id"] for item in manifest}
+assert len(backend_ids) == 20
+assert {"ext2", "ext3", "ext4"} <= backend_ids
 
 equals_form = subprocess.run(
     [str(MAPPER), "--list-backends", "--fstype=ntfs", "--cells=128"],
