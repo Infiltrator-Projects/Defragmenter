@@ -52,7 +52,7 @@ static int populate(const IfsOfsModuleV3 *api, Fixture *f) {
         (void)snprintf(path, sizeof(path), "%s/entry-%05u.txt", directory, i);
         if (api->create(path)) return -1;
         if ((i + 1u) % 512u == 0u || i + 1u == p->directory_initial) {
-            (void)printf("OFS fixture: created %u/%u initial directory entries\\n",
+            (void)printf("OFS fixture: created %u/%u initial directory entries\n",
                          i + 1u, p->directory_initial);
             (void)fflush(stdout);
         }
@@ -61,7 +61,7 @@ static int populate(const IfsOfsModuleV3 *api, Fixture *f) {
         (void)snprintf(path, sizeof(path), "%s/entry-%05u.txt", directory, i);
         if (api->unlink(path)) return -1;
         if ((i / 2u + 1u) % 512u == 0u || i + 2u >= p->directory_initial) {
-            (void)printf("OFS fixture: deleted %u/%u temporary entries\\n",
+            (void)printf("OFS fixture: deleted %u/%u temporary entries\n",
                          i / 2u + 1u, (p->directory_initial + 1u) / 2u);
             (void)fflush(stdout);
         }
@@ -70,7 +70,7 @@ static int populate(const IfsOfsModuleV3 *api, Fixture *f) {
         (void)snprintf(path, sizeof(path), "%s/entry-%05u.txt", directory, p->directory_initial + i);
         if (api->create(path)) return -1;
         if ((i + 1u) % 512u == 0u || i + 1u == p->directory_second) {
-            (void)printf("OFS fixture: created %u/%u second-wave directory entries\\n",
+            (void)printf("OFS fixture: created %u/%u second-wave directory entries\n",
                          i + 1u, p->directory_second);
             (void)fflush(stdout);
         }
@@ -84,7 +84,7 @@ static int populate(const IfsOfsModuleV3 *api, Fixture *f) {
     if (!buffer) return -1;
     int result = 0;
     for (uint32_t chunk = 0; !result && chunk < p->chunks; ++chunk) {
-        (void)printf("OFS fixture: fragmented corpus chunk round %u/%u\\n",
+        (void)printf("OFS fixture: fragmented corpus chunk round %u/%u\n",
                      chunk + 1u, p->chunks);
         (void)fflush(stdout);
         for (uint32_t i = 0; !result && i < p->files; ++i) {
