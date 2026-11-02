@@ -7,6 +7,7 @@
 #include "ofs_module_abi.h"
 #include <stdio.h>
 #include <string.h>
+#include <errno.h>
 
 typedef struct {
     const char *path, *label;
@@ -101,7 +102,14 @@ static int create_fixture(const IfsDefragHostV2 *host, void *symbol, void *opaqu
         !api->format_id || strcmp(api->format_id, "ofs") || !api->format ||
         !api->mount || !api->unmount || !api->mkdir || !api->create ||
         !api->unlink || !api->write || !api->verify) return -1;
-    if (host->open_target(host->context, f->path, 1, NULL, 0, &f->target)) return -1;
+    if (host->open_target(host->context, f->path, 1, NULL, 0, &f->target)) {
+        const int saved_errno = errno;
+        fprintf(stderr, "OFS Test Media %s: exclusive target open failed for %s (errno=%d: %s). "
+                        "Check for desktop automounts and open users.\n",
+                f->label ? "format" : "populate", f->path, saved_errno,
+                saved_errno ? strerror(saved_errno) : "target identity or safety refusal");
+        return -1;
+    }
     IfsOfsIoV3 io = {sizeof(io), 0, f, f->target.bytes, read_io, write_io, flush_io,
                      allocate_io, release_io, clock_io};
     int r;
@@ -116,6 +124,12 @@ static int create_fixture(const IfsDefragHostV2 *host, void *symbol, void *opaqu
             if (!r) r = api->verify(&check);
             int unmounted = api->unmount(); if (!r) r = unmounted;
         }
+    }
+    if (r) {
+        fprintf(stderr, "OFS Test Media %s: OFS.so V3 %s returned status %d on %s.\n",
+                f->label ? "format" : "populate",
+                f->label ? "formatter" : "mount/population/verification",
+                r, f->path);
     }
     host->close_target(host->context, &f->target);
     return r;

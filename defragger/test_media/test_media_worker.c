@@ -1664,6 +1664,26 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device,
                 failures++;
                 continue;
             }
+            /* The desktop automounter can remount a previous filesystem as
+             * soon as sfdisk/udev has settled, even after the initial safety
+             * unmount. Never run wipefs or a module formatter over a mounted
+             * partition. Release only mounts on this already-confirmed,
+             * sacrificial test disk; refuse if an open consumer prevents it.
+             * The module's O_EXCL open remains the final race-safe guard. */
+            if (ld_path_is_mounted(partition)) {
+                printf("Desktop automount detected on %s; unmounting selected test disk descendants before formatting.\n",
+                       partition);
+                fflush(stdout);
+                if (unmount_descendants(canonical) != 0 ||
+                    ld_path_is_mounted(partition)) {
+                    emit_status(spec->key, "format-failed",
+                                "partition was mounted or busy after partition-table settlement");
+                    (void)state_write_status(state, spec, "format-failed",
+                                             "partition mounted or busy; no formatting attempted");
+                    ++failures;
+                    continue;
+                }
+            }
             if (spec->creator == LDTM_CREATOR_MANUAL) {
                 emit_status(spec->key, "qualification-failed", spec->note);
                 (void)state_write_status(
