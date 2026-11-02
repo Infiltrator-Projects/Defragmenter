@@ -15,7 +15,7 @@ GTK 3 desktop (C++17)
 
 Current source ownership:
 
-- `native/`: the **single** C++17 application registry, GTK desktop, mapper, operation dispatcher and privileged-helper session. No parallel Python application/policy graph is shipped.
+- `native/`: the single application registry (C++17), GTK desktop, mapper, operation dispatcher and privileged-helper session. No parallel Python application/policy graph is shipped.
 - `src/core/`: C-based filesystem-neutral safety, one-open identity and capacity binding, mounted-overlap checks, exact I/O, result/Stop plumbing.
 - `gui/filesystems/*/native/`: format workers and module hosts; their source provenance and supported ABI must be established individually. Remaining transitional implementations must not act as fallbacks for required external modules.
 - `test_media/`: independent, destructive qualification fixtures; not a general-purpose disk manager.
