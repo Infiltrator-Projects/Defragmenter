@@ -4,10 +4,18 @@
 
 Status: **complete**
 
-Audited source commit: ea41a641f7d015b8ea9e38fc2351983529e2ef1c
+Audited source commit: 3490b63528b2e95f4d8bcc600136c6bfe8f68b9f
 Audited release-governance commit: 3934c470b7ff3c8411515b37651dc9346c4d99ca
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Reviewed OFS Test Media reconciliation delta — 2026-11-02
+
+Reviewed source: `3490b63528b2e95f4d8bcc600136c6bfe8f68b9f`. Its only production and test differences from the previously reviewed 1.8.0-284 main code are: `defragger/native/ofs_module_abi.h` (exact canonical V3 ABI), `defragger/test_media/test_media_ofs_module.c` (sacrificial bulk mount flag, finite per-phase progress, full ownership verification and final unmount flush), `defragger/shared/ofs-module-revision` (exact 0.1.7-based provider SHA), and `defragger/tests/test_architecture.py` (explicit flag and verification enforcement). This is a selective integration from the diverged experimental OFS Test Media branch, **not** a wholesale merge of its obsolete source tree. The 1.8.0-284 MMC/CID identity and physical safety checks remain unchanged.
+
+**Safety:** Formatting and normal filesystem writes retain ordinary durability; only previously confirmed disposable Test Media corpus population uses `IFS_OFS_EPHEMERAL_FIXTURE`. An interrupted fixture may be discarded. A successful corpus must pass full native `OFS.so` ownership verification, final unmount/flush and a separate read-only corpus validation. The V3 module remains the sole owner of OFS allocation, geometry, headers and native writes. Write failure cannot be reported as a successful fixture. Device identity, mounted-overlap refusal, exclusive locking, target bounds, native child-process trust and callback semantics are not weakened.
+
+**Source/release governance:** The source baseline above advances only to the reviewed code commit. The independent audited governance baseline remains `3934c470b7ff3c8411515b37651dc9346c4d99ca`. No release workflow or gate, package format, installation script or runtime external dependency has changed. A source commit does not establish that the new exact provider and consumer have passed tests; the two integration PRs require separate successful GitHub qualification. Neither the old experiments nor their history are safe to delete until the release and integration are independently demonstrated. Physical SD-card recovery and speed have not yet been measured.
 
 ## Reviewed MMC identity-refresh performance and safety delta — 2026-11-02
 
