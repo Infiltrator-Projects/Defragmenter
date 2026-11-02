@@ -4,10 +4,24 @@
 
 Status: **complete**
 
-Audited source commit: 3447d1cdd9ccef283b880ff5d55b4d20d41230d2
+Audited source commit: ea41a641f7d015b8ea9e38fc2351983529e2ef1c
 Audited release-governance commit: 3934c470b7ff3c8411515b37651dc9346c4d99ca
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Reviewed MMC identity-refresh performance and safety delta — 2026-11-02
+
+Reviewed source candidate: `ea41a641f7d015b8ea9e38fc2351983529e2ef1c`, a direct descendant of the fully released Defragmenter 1.8.0-283 source `4f584cb8b1e8a1c9c8a6e5bc2cae3b3b9eb1242d`.
+
+**Exact reviewed tracked source/test diff:** `defragger/src/core/ld_device.c`, `defragger/tests/test_mounted_image_identity.c`, `defragger/tests/test_architecture.py`. No modifications to `native/filesystem_module_host.c`, target selection, destructive confirmation, external module boundaries, staging, source dependencies, package/install scripts, governance workflow or filesystem engines. The previously audited release-governance baseline `3934c470b7ff3c8411515b37651dc9346c4d99ca` is unchanged.
+
+**Problem:** For an MMC/SD target with no separate serial or WWN in sysfs/udev, the previous stable identity implementation enumerated `/dev/disk/by-partuuid`, `/dev/disk/by-uuid`, `/dev/disk/by-id` and `/dev/mapper` to choose an alias. Every mandatory pre-flush identity refresh repeated this expensive discovery, and OFS issues multiple durable flushes for every metadata mutation.
+
+**Change:** Resolve the kernel-authoritative parent `mmcblkN` sysfs node for a partition `mmcblkNpN` and use its 128-bit physical card CID only when sysfs/udev do not already provide a serial/WWN. Initial open captures `block-hw:mmc-cid:<CID>||<partition-start-sectors>|<partition-bytes>`. Subsequent mandatory pre-`fsync` checks query the card's CID, partition geometry, current open block descriptor's `fstat` rdev, and current `BLKGETSIZE64` ioctl capacity directly. Missing, changed or malformed CID/geometry fails closed without falling back to an alias. Other block devices retain the full prior hardware/alias discovery. Existing `TARGET_IDENTITY_REFRESH_WRITES = 128` unchanged; every sync still calls `ld_device_matches_identity` and `ld_sync_fd`.
+
+**Safety and compatibility:** The original writable `O_EXCL|O_NOFOLLOW` mounted-overlap preflight, exclusive flock, bound descriptor checks, write bounds and existing filesystem-level validation are unchanged. CID binds the physical MMC card, and partition start/size bind the precise partition even after changes in filesystem UUIDs or GPT aliases. Older recorded `block-id` identities may fail closed when a stronger CID is available; do not silently rewrite a journal binding. This does not promise hot-swap protection within the existing bounded 128-write interval, and it does not remove or batch any filesystem durability barrier.
+
+**Regression and evidence boundary:** The native `test_mounted_image_identity.c` fixture now synthesises a partition whose CID exists only on its parent card, verifies full identity formatting, and rejects changed CID, partition start, partition size, malformed and missing CID. `test_architecture.py` preserves the mandatory full sync check and new bounded direct-CID path. These fixtures are nondestructive; CI compilation, native and sanitizer qualification and any speed improvement on the user's actual MMC/SD card must be established separately. The source audit establishes the code-review boundary, not a claim that the physical-medium issue is solved.
 
 ## Reviewed incremental performance correction — 2026-11-02
 
