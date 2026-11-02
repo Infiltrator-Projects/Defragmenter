@@ -4,10 +4,24 @@
 
 Status: **complete**
 
-Audited source commit: 3934c470b7ff3c8411515b37651dc9346c4d99ca
+Audited source commit: 3447d1cdd9ccef283b880ff5d55b4d20d41230d2
 Audited release-governance commit: 3934c470b7ff3c8411515b37651dc9346c4d99ca
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Reviewed incremental performance correction — 2026-11-02
+
+Reviewed source candidate: `3447d1cdd9ccef283b880ff5d55b4d20d41230d2`, directly after approved Defragmenter 1.8.0-282 commit `e7d11e15efc983a08d2b0baf0f726555975eb76d`.
+
+**Review scope:** GitHub's exact source diff changes only `defragger/native/filesystem_module_host.c` and `defragger/tests/test_architecture.py`. No release workflow, package format, filesystem driver source, test-media layout, device opener or module-loading policy changed. No governance-code delta exists beyond the preceding audited governance commit `3934c470b7ff3c8411515b37651dc9346c4d99ca`, which remains the recorded governance baseline.
+
+**Performance bottleneck:** The previous module-host `target_write` called `ld_device_matches_identity` before *every* raw block write. For removable block devices the function can traverse sysfs/udev and `/dev/disk` links to rediscover hardware identity. On Amiga OFS 512-byte writer callbacks, this can dominate all data-transfer time. The new module host binds `bound_identity` and the descriptor's dev/inode/major:minor to the original, mounted-overlap-checked, O_EXCL-opened target. Each write checks the descriptor's current `fstat` identity, original capacity and original immutable identity string. Full hardware identity discovery occurs no less often than every 128 successful writes and before every durability `sync_target` barrier, failing closed on a mismatch. This is a deliberate bounded safety/performance tradeoff: it preserves continuous *open object* checks and periodic *external hardware identity* checks, but is **not identical** to the former full external-discovery-before-every-block policy.
+
+**Safety checks preserved:** `ld_device_try_open` still rejects mounted or conflicting devices and opens writable block devices O_EXCL with O_NOFOLLOW; `target_open` still verifies expected binding/size and obtains the mandatory non-blocking advisory lock. The write host checks `writable`, exact target capacity, kernel opened-object type, st_dev, inode and rdev, and byte bounds before `pwrite`. Sync revalidates full hardware identity before `fsync`. Filesystem-specific format signatures and exact geometry validation are unchanged, and a stale/invalid binding refuses further writes. A true hot-swap within a 128-write window is a residual risk that was previously checked more frequently; hardware qualification remains necessary.
+
+**Regression:** `tests/test_architecture.py` now specifically enforces the bounded refresh threshold, fstat/inode/device checks, immutable identity equality, successful-write accounting, full identity check before sync, and retention of the exclusive-open lock. The pre-existing mounted-image, hard-link, locked 2 GiB OFS fixture, complete filesystem, native-media and ASan/UBSan tests remain intact. Candidate [source quality run 41400237099](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/41400237099) qualifies this exact source; publication of the subsequent VERSION-only release requires its own successfully completed full gate, without exception.
+
+**Assurance limits:** No real SD-card latency benchmark or physical media write/erase test has been performed by this source review. The original physical OFS formatter failure and observed slowness must be checked on the user-confirmed sacrificial media after the qualified release is installed. A source change and a green synthetic test are not proof of that physical outcome.
 
 ## Reviewed source and governance delta — 2026-11-02
 
