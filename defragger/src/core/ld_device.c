@@ -979,6 +979,66 @@ int ld_fd_size_bytes(int fd, uint64_t *size_bytes) {
     return ioctl(fd, BLKGETSIZE64, size_bytes);
 }
 
+/* MMC partitions have no device/cid of their own: the CID belongs to the
+ * parent mmcblkN disk. Resolve the card sysfs node from the already-verified
+ * partition number, never from a pathname supplied by a filesystem module. */
+static bool ld_mmc_cid_from_sysfs(const char *sysfs, char *cid, size_t capacity)
+{
+    if (!sysfs || !cid || capacity < 33u) return false;
+    cid[0] = '\0';
+    char card[PATH_MAX];
+    const int length = snprintf(card, sizeof(card), "%s", sysfs);
+    if (length < 0 || (size_t)length >= sizeof(card)) return false;
+    bool partition = false;
+    if (!ld_sysfs_is_partition(card, &partition)) return false;
+    if (partition) {
+        char *slash = strrchr(card, '/');
+        if (!slash || slash == card) return false;
+        *slash = '\0';
+    }
+    const char *leaf = strrchr(card, '/');
+    if (!leaf || !infiltratr_string_starts_with(leaf + 1, "mmcblk"))
+        return false;
+    /* A CID is the 128-bit physical card identifier, not a label/UUID that
+     * formatting the filesystem or GPT can change. Reject missing or
+     * malformed attributes rather than downgrading an active CID binding. */
+    if (!ld_sysfs_text(card, "device/cid", cid, capacity)) return false;
+    /* sysfs attributes end in a linefeed; preserve only the 32 CID digits. */
+    size_t cid_length = strcspn(cid, "\r\n");
+    cid[cid_length] = '\0';
+    if (cid_length != 32u) return false;
+    for (size_t i = 0; i < 32u; ++i) {
+        const unsigned char c = (unsigned char)cid[i];
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
+              (c >= 'A' && c <= 'F')))
+            return false;
+    }
+    return true;
+}
+
+/* Fast fail-closed revalidation for captured MMC CID identities: only
+ * bounded sysfs reads of the card CID, partition start and partition size.
+ * No /run/udev scan, no full /dev/disk directory enumeration. */
+static bool ld_mmc_identity_from_sysfs(const char *sysfs,
+                                      char *buffer, size_t capacity)
+{
+    char cid[96], start_path[PATH_MAX];
+    uint64_t start = 0u, size_bytes = 0u;
+    if (!ld_mmc_cid_from_sysfs(sysfs, cid, sizeof(cid)) ||
+        !ld_sysfs_size_bytes(sysfs, &size_bytes))
+        return false;
+    const int n = snprintf(start_path, sizeof(start_path), "%s/start", sysfs);
+    if (n < 0 || (size_t)n >= sizeof(start_path))
+        return false;
+    /* Keep the original identity grammar: start defaults to zero for disks
+     * which have no partition-start attribute. */
+    (void)infiltratr_read_u64_file(start_path, &start);
+    const int written = snprintf(buffer, capacity,
+        "block-hw:mmc-cid:%s||%" PRIu64 "|%" PRIu64,
+        cid, start, size_bytes);
+    return written >= 0 && (size_t)written < capacity;
+}
+
 static bool ld_stable_block_hardware_identity(
     dev_t device_number, char *buffer, size_t buffer_size)
 {
@@ -999,7 +1059,7 @@ static bool ld_stable_block_hardware_identity(
                             info.wwn, sizeof(info.wwn));
     ld_read_udev_properties(device_number, &info);
     if (info.serial[0] == '\0' && info.wwn[0] == '\0')
-        return false;
+        return ld_mmc_identity_from_sysfs(sysfs, buffer, buffer_size);
 
     uint64_t start_sectors = 0U;
     char numeric_path[PATH_MAX];
@@ -1166,6 +1226,28 @@ bool ld_device_matches_identity(const LdDevice *device,
         ld_legacy_block_identity_matches(device->device_number,
                                          expected_identity))
         return true;
+    /* An already captured MMC-CID binding is cheap to revalidate even at
+     * each filesystem durability barrier. Require the same open block fd,
+     * its current ioctl capacity, current card CID and partition geometry.
+     * If CID/sysfs disappears or changes, fail closed; never fall back to
+     * matching a weaker block alias or recycled major:minor identifier. */
+    if (device->is_block &&
+        infiltratr_string_starts_with(expected_identity,
+                                      "block-hw:mmc-cid:")) {
+        struct stat opened;
+        uint64_t actual_bytes = 0;
+        char sysfs[PATH_MAX], current[256];
+        if (fstat(device->fd, &opened) != 0 ||
+            !S_ISBLK(opened.st_mode) ||
+            opened.st_rdev != device->device_number ||
+            ld_fd_size_bytes(device->fd, &actual_bytes) != 0 ||
+            actual_bytes != device->size_bytes ||
+            !ld_resolve_sysfs_device(device->device_number, sysfs,
+                                     sizeof(sysfs)) ||
+            !ld_mmc_identity_from_sysfs(sysfs, current, sizeof(current)))
+            return false;
+        return strcmp(current, expected_identity) == 0;
+    }
     char identity[PATH_MAX + 32U];
     return ld_device_format_identity(device, identity, sizeof(identity)) == 0 &&
            strcmp(identity, expected_identity) == 0;

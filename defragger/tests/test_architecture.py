@@ -212,6 +212,14 @@ def test_module_host_uses_bounded_hardware_identity_refresh() -> None:
     # Do not substitute a naked pathname comparison or remove O_EXCL.
     assert "ld_device_try_open(" in host
     assert "LOCK_EX" in host and "LOCK_NB" in host
+    # MMC identity refresh must remain hardware-bound without scanning
+    # device aliases at each durability barrier.
+    device = _read(ROOT / "src" / "core" / "ld_device.c")
+    assert "ld_mmc_cid_from_sysfs" in device
+    assert "ld_mmc_identity_from_sysfs" in device
+    assert "opened.st_rdev != device->device_number" in device
+    assert "ld_fd_size_bytes(device->fd, &actual_bytes)" in device
+    assert 'infiltratr_string_starts_with(expected_identity,' in device
 
 
 def test_common_is_a_versioned_dependency_not_copied_source() -> None:

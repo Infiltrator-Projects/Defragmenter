@@ -65,6 +65,61 @@ int main(void) {
     REQUIRE(errno == EBUSY);
     REQUIRE(writable.fd < 0);
 
+    /* Synthetic MMC layout: a partition has no CID, but its parent card
+     * exposes device/cid. This tests exact identity, geometry and rejection
+     * of card replacement without accessing real physical media. */
+    char card[PATH_MAX], part[PATH_MAX], device_dir[PATH_MAX];
+    char cid_path[PATH_MAX], part_marker[PATH_MAX], part_size[PATH_MAX];
+    char part_start[PATH_MAX], identity[256], fresh_identity[256];
+    REQUIRE(snprintf(card, sizeof(card), "%s/mmcblk0", directory) > 0);
+    REQUIRE(snprintf(part, sizeof(part), "%s/mmcblk0/mmcblk0p11", directory) > 0);
+    REQUIRE(snprintf(device_dir, sizeof(device_dir), "%s/device", card) > 0);
+    REQUIRE(snprintf(cid_path, sizeof(cid_path), "%s/cid", device_dir) > 0);
+    REQUIRE(snprintf(part_marker, sizeof(part_marker), "%s/partition", part) > 0);
+    REQUIRE(snprintf(part_size, sizeof(part_size), "%s/size", part) > 0);
+    REQUIRE(snprintf(part_start, sizeof(part_start), "%s/start", part) > 0);
+    REQUIRE(mkdir(card, 0700) == 0);
+    REQUIRE(mkdir(part, 0700) == 0);
+    REQUIRE(mkdir(device_dir, 0700) == 0);
+    file = fopen(cid_path, "w");
+    REQUIRE(file && fprintf(file, "00112233445566778899aabbccddeeff\n") > 0 &&
+            fclose(file) == 0);
+    file = fopen(part_marker, "w");
+    REQUIRE(file && fprintf(file, "11\n") > 0 && fclose(file) == 0);
+    file = fopen(part_size, "w");
+    REQUIRE(file && fprintf(file, "4096\n") > 0 && fclose(file) == 0);
+    file = fopen(part_start, "w");
+    REQUIRE(file && fprintf(file, "2048\n") > 0 && fclose(file) == 0);
+    REQUIRE(ld_mmc_identity_from_sysfs(part, identity, sizeof(identity)));
+    REQUIRE(strcmp(identity,
+        "block-hw:mmc-cid:00112233445566778899aabbccddeeff||2048|2097152") == 0);
+    file = fopen(cid_path, "w");
+    REQUIRE(file && fprintf(file, "ffee2233445566778899aabbccddeeff\n") > 0 &&
+            fclose(file) == 0);
+    REQUIRE(ld_mmc_identity_from_sysfs(part, fresh_identity, sizeof(fresh_identity)));
+    REQUIRE(strcmp(identity, fresh_identity) != 0);
+    file = fopen(part_start, "w");
+    REQUIRE(file && fprintf(file, "4096\n") > 0 && fclose(file) == 0);
+    REQUIRE(ld_mmc_identity_from_sysfs(part, fresh_identity, sizeof(fresh_identity)));
+    REQUIRE(strcmp(identity, fresh_identity) != 0);
+    file = fopen(part_start, "w");
+    REQUIRE(file && fprintf(file, "2048\n") > 0 && fclose(file) == 0);
+    file = fopen(part_size, "w");
+    REQUIRE(file && fprintf(file, "8192\n") > 0 && fclose(file) == 0);
+    REQUIRE(ld_mmc_identity_from_sysfs(part, fresh_identity, sizeof(fresh_identity)));
+    REQUIRE(strcmp(identity, fresh_identity) != 0);
+    file = fopen(part_size, "w");
+    REQUIRE(file && fprintf(file, "4096\n") > 0 && fclose(file) == 0);
+    file = fopen(cid_path, "w");
+    REQUIRE(file && fprintf(file, "not-a-valid-128-bit-cid\n") > 0 &&
+            fclose(file) == 0);
+    REQUIRE(!ld_mmc_identity_from_sysfs(part, fresh_identity, sizeof(fresh_identity)));
+    REQUIRE(unlink(cid_path) == 0);
+    REQUIRE(!ld_mmc_identity_from_sysfs(part, fresh_identity, sizeof(fresh_identity)));
+    REQUIRE(unlink(part_marker) == 0 && unlink(part_size) == 0 &&
+            unlink(part_start) == 0);
+    REQUIRE(rmdir(device_dir) == 0 && rmdir(part) == 0 && rmdir(card) == 0);
+
     REQUIRE(unlink(original) == 0 && unlink(alias) == 0 && unlink(other) == 0);
     REQUIRE(unlink(backing) == 0 && unlink(mountinfo) == 0);
     REQUIRE(rmdir(loop) == 0 && rmdir(directory) == 0);
