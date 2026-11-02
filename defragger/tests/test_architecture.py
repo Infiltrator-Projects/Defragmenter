@@ -222,6 +222,18 @@ def test_module_host_uses_bounded_hardware_identity_refresh() -> None:
     assert 'infiltratr_string_starts_with(expected_identity,' in device
 
 
+def test_ofs_disposable_media_requires_final_integrity_and_sync() -> None:
+    media = _read(ROOT / "test_media" / "test_media_ofs_module.c")
+    abi = _read(ROOT / "native" / "ofs_module_abi.h")
+    assert "#define IFS_OFS_EPHEMERAL_FIXTURE 4u" in abi
+    assert "#define IFS_OFS_ORDERED_WRITEBACK 8u" in abi
+    assert "f->label ? 0u : IFS_OFS_EPHEMERAL_FIXTURE" in media
+    assert "api->verify(&check)" in media
+    assert "check.errors || check.bitmap_mismatches" in media
+    assert "api->unmount()" in media
+    assert "OFS fixture: fragmented corpus round" in media
+
+
 def test_common_is_a_versioned_dependency_not_copied_source() -> None:
     common = ROOT / "shared" / "infiltratr-common"
     assert common.is_dir()

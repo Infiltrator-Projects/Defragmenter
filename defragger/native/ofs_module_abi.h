@@ -20,6 +20,12 @@
 #define IFS_OFS_ABI_V3 3u
 #define IFS_OFS_READ_ONLY 1u
 #define IFS_OFS_ALLOW_DIRTY 2u /* Explicit inspection/recovery; normal writes stay blocked. */
+/* Disposable Test Media ONLY. Intermediate crash recovery is deliberately
+ * not guaranteed, but the final unmount must still flush to stable storage. */
+#define IFS_OFS_EPHEMERAL_FIXTURE 4u
+/* Normal Linux buffered writeback with durable dirty marker and ordered
+ * explicit fsync. Existing V3 flags=0 remains synchronous. */
+#define IFS_OFS_ORDERED_WRITEBACK 8u
 #define IFS_OFS_FILE (-3)
 #define IFS_OFS_DIRECTORY 2
 #define IFS_OFS_ROOT 1
