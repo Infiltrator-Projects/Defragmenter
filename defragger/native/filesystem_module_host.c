@@ -63,9 +63,15 @@ static int target_open(void *context, const char *path, int write,
     t->device.fd = -1;
     if (ld_device_try_open(path, write != 0, &t->device) != 0) { free(t); return -1; }
     if ((identity && !ld_device_matches_identity(&t->device, identity, bytes)) ||
-        (bytes && bytes != t->device.size_bytes) ||
-        flock(t->device.fd, (write ? LOCK_EX : LOCK_SH) | LOCK_NB) != 0 || wrap_target(t, out)) {
-        ld_device_close(&t->device); free(t); return -1;
+        (bytes && bytes != t->device.size_bytes)) {
+        ld_device_close(&t->device); free(t); errno = ESTALE; return -1;
+    }
+    if (flock(t->device.fd, (write ? LOCK_EX : LOCK_SH) | LOCK_NB) != 0) {
+        const int failure = errno;
+        ld_device_close(&t->device); free(t); errno = failure; return -1;
+    }
+    if (wrap_target(t, out)) {
+        ld_device_close(&t->device); free(t); errno = EINVAL; return -1;
     }
     return 0;
 }

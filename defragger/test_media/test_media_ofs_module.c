@@ -108,7 +108,10 @@ static int create_fixture(const IfsDefragHostV2 *host, void *symbol, void *opaqu
                         "Check for desktop automounts and open users.\n",
                 f->label ? "format" : "populate", f->path, saved_errno,
                 saved_errno ? strerror(saved_errno) : "target identity or safety refusal");
-        return -1;
+        /* Distinct from OFS V3 format errors: only a busy target can be
+         * retried after confirming/unmounting the explicitly selected
+         * sacrificial partition. Never retry a failed data write or flush. */
+        return saved_errno == EBUSY || saved_errno == EWOULDBLOCK ? -EBUSY : -1;
     }
     IfsOfsIoV3 io = {sizeof(io), 0, f, f->target.bytes, read_io, write_io, flush_io,
                      allocate_io, release_io, clock_io};

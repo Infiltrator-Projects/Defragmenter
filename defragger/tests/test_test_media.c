@@ -5,7 +5,9 @@
 #include "pfs3_native.h"
 #include "apfs_native.h"
 
+#include <errno.h>
 #include <fcntl.h>
+#include <sys/file.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -508,6 +510,24 @@ static int test_two_gib_first_party_media_geometry(void)
      * wipefs-and-reformat contract rather than carrying bytes from the
      * previous filesystem into the next one.
      */
+    /* A second independent opener holds a real advisory lock. The shared
+     * target host must preserve EWOULDBLOCK as EBUSY for Test Media's safe,
+     * bounded retry; no formatter write may occur while the lock is held. */
+    int locked_fd = open(path, O_RDWR | O_CLOEXEC);
+    if (locked_fd < 0 || flock(locked_fd, LOCK_EX | LOCK_NB) != 0) {
+        if (locked_fd >= 0) (void)close(locked_fd);
+        (void)unlink(path);
+        return 1;
+    }
+    int busy_result = ldtm_format_amiga_volume(path, 0U, "LD_OFS");
+    int unlock_result = flock(locked_fd, LOCK_UN);
+    int close_result = close(locked_fd);
+    if (busy_result != -EBUSY || unlock_result != 0 || close_result != 0) {
+        (void)fprintf(stderr, "OFS locked-target refusal mismatch: %d (want %d)\n",
+                      busy_result, -EBUSY);
+        (void)unlink(path);
+        return 1;
+    }
     if (ldtm_format_amiga_volume(path, 0U, "LD_OFS") != 0 ||
         ldtm_validate_amiga_volume(path, 0U) != 0) {
         (void)fprintf(stderr, "2 GiB OFS qualification fixture failed\n");

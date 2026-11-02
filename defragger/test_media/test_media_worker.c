@@ -1158,9 +1158,44 @@ static int create_amiga_and_populate(const LdtmFilesystemSpec *spec, const char 
     }
     printf("+ built-in raw C Amiga DOS\\%u formatter/populator %s\n", dostype, partition);
     fflush(stdout);
-    if (ldtm_format_amiga_volume(partition, dostype, spec->label) != 0) {
-        emit_status(spec->key, "format-failed", "built-in C Amiga formatter failed");
-        (void)state_write_status(state, spec, "format-failed", "built-in C formatter failed");
+    int format_result = -1;
+    /* On a freshly created GPT the desktop may automount the old OFS
+     * signature between the preflight and the module's exclusive open.
+     * The only retryable error is EBUSY from opening the *unmodified*
+     * partition: never repeat a format after any write/flush failure.
+     * Unmount only this selected, already-confirmed test partition.
+     * Keep the module's O_EXCL, inode and mounted-device guards intact. */
+    for (unsigned attempt = 0U; attempt < 6U; ++attempt) {
+        if (ld_path_is_mounted(partition)) {
+            printf("Test Media: unmounting automounted %s before formatter exclusive open.\n",
+                   partition);
+            fflush(stdout);
+            if (unmount_descendants(partition) != 0 ||
+                ld_path_is_mounted(partition)) {
+                format_result = -EBUSY;
+                break;
+            }
+        }
+        format_result = ldtm_format_amiga_volume(partition, dostype, spec->label);
+        if (format_result != -EBUSY)
+            break;
+        printf("Test Media: %s was busy at exclusive open (%u/6); checking "
+               "the selected test partition before retry.\n",
+               partition, attempt + 1U);
+        fflush(stdout);
+        if (unmount_descendants(partition) != 0)
+            break;
+        if (attempt + 1U < 6U)
+            usleep(200000U);
+    }
+    if (format_result != 0) {
+        char failure[192];
+        (void)snprintf(failure, sizeof(failure),
+                       "OFS/Amiga formatter refused partition (status %d%s)",
+                       format_result,
+                       format_result == -EBUSY ? ": mounted, locked or busy" : "");
+        emit_status(spec->key, "format-failed", failure);
+        (void)state_write_status(state, spec, "format-failed", failure);
         return 1;
     }
     if (ldtm_populate_amiga_volume(partition, dostype, &profile) != 0) {
