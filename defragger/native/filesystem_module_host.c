@@ -24,7 +24,18 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-typedef struct { LdDevice device; bool stage; } Target;
+/* The exclusive, preflight-qualified open pins the actual kernel object.
+ * Per-block write callbacks check the open descriptor and this immutable
+ * binding; costly /sys + udev identity discovery is bounded rather than
+ * repeated for each 512-byte OFS block. Hardware identity is still refreshed
+ * at least every 128 successful writes and before every durability barrier. */
+enum { TARGET_IDENTITY_REFRESH_WRITES = 128 };
+typedef struct {
+    LdDevice device;
+    bool stage;
+    unsigned writes_since_identity_refresh;
+    char bound_identity[IFS_DEFRAG_ID_BYTES];
+} Target;
 typedef struct {
 #ifdef IFS_MODULE_TESTING
     unsigned long journals, writes;
@@ -54,7 +65,23 @@ static int wrap_target(Target *t, IfsDefragTarget *out) {
     memset(out, 0, sizeof(*out));
     if (snprintf(out->path, sizeof(out->path), "%s", t->device.path) >= (int)sizeof(out->path) ||
         ld_device_format_identity(&t->device, out->identity, sizeof(out->identity)) != 0) return -1;
+    (void)memcpy(t->bound_identity, out->identity, sizeof(t->bound_identity));
     out->bytes = t->device.size_bytes; out->handle = t; return 0;
+}
+/* fstat() tests the already-exclusive open kernel object, not a pathname
+ * that an automounter or udev could rename or replace between writes. */
+static bool target_fd_matches_binding(const Target *t, const IfsDefragTarget *out) {
+    if (!t || !out || t->device.fd < 0 ||
+        out->bytes != t->device.size_bytes ||
+        memcmp(out->identity, t->bound_identity, sizeof(t->bound_identity)) != 0)
+        return false;
+    struct stat opened;
+    if (fstat(t->device.fd, &opened) != 0) return false;
+    return ((opened.st_mode & S_IFMT) ==
+            (t->device.is_block ? S_IFBLK : S_IFREG)) &&
+           opened.st_dev == t->device.host_device &&
+           opened.st_ino == t->device.inode &&
+           (!t->device.is_block || opened.st_rdev == t->device.device_number);
 }
 static int target_open(void *context, const char *path, int write,
                         const char *identity, uint64_t bytes, IfsDefragTarget *out) {
@@ -113,9 +140,17 @@ static int test_count(const char *name, unsigned long count) {
 static int target_write(void *context, const IfsDefragTarget *target,
                         uint64_t at, const void *data, uint32_t bytes) {
     Target *t = target->handle;
-    if (!t || !t->device.writable || at > target->bytes || bytes > target->bytes - at ||
-        !ld_device_matches_identity(&t->device, target->identity, target->bytes)) return -1;
+    if (!t || !t->device.writable ||
+        !target_fd_matches_binding(t, target) ||
+        at > target->bytes || bytes > target->bytes - at) return -1;
+    if (t->writes_since_identity_refresh >= TARGET_IDENTITY_REFRESH_WRITES) {
+        if (!ld_device_matches_identity(&t->device, t->bound_identity,
+                                        t->device.size_bytes))
+            return -1;
+        t->writes_since_identity_refresh = 0;
+    }
     int r = ld_pwrite_full(t->device.fd, data, bytes, at) == (ssize_t)bytes ? 0 : -1;
+    if (!r) ++t->writes_since_identity_refresh;
 #ifdef IFS_MODULE_TESTING
     Context *c = context;
     if (!r && !t->stage) {
@@ -129,8 +164,14 @@ static int target_write(void *context, const IfsDefragTarget *target,
     return r;
 }
 static int target_sync(void *context, const IfsDefragTarget *target) {
-    (void)context; Target *t = target->handle;
-    return t && ld_sync_fd(t->device.fd) == 0 ? 0 : -1;
+    (void)context; Target *t = target ? target->handle : NULL;
+    if (!t || !target_fd_matches_binding(t, target) ||
+        !ld_device_matches_identity(&t->device, t->bound_identity,
+                                    t->device.size_bytes))
+        return -1;
+    if (ld_sync_fd(t->device.fd) != 0) return -1;
+    t->writes_since_identity_refresh = 0;
+    return 0;
 }
 static int file_exists(void *context, const char *path) {
     (void)context; struct stat st;

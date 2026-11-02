@@ -193,6 +193,27 @@ def test_desktop_tests_use_public_boundaries_not_private_implementation() -> Non
     assert "desktop_policy.hpp" in source
 
 
+def test_module_host_uses_bounded_hardware_identity_refresh() -> None:
+    host = _read(ROOT / "native" / "filesystem_module_host.c")
+    assert "TARGET_IDENTITY_REFRESH_WRITES = 128" in host
+    assert "target_fd_matches_binding(t, target)" in host
+    assert "fstat(t->device.fd, &opened)" in host
+    assert "opened.st_rdev == t->device.device_number" in host
+    assert "out->bytes != t->device.size_bytes" in host
+    assert "memcmp(out->identity, t->bound_identity" in host
+    assert "t->writes_since_identity_refresh >= TARGET_IDENTITY_REFRESH_WRITES" in host
+    assert "if (!r) ++t->writes_since_identity_refresh;" in host
+    # Hardware-identity refresh also precedes every write durability barrier.
+    sync = host.split("static int target_sync(", 1)[1].split(
+        "static int file_exists(", 1
+    )[0]
+    assert "ld_device_matches_identity(" in sync
+    assert "ld_sync_fd(" in sync
+    # Do not substitute a naked pathname comparison or remove O_EXCL.
+    assert "ld_device_try_open(" in host
+    assert "LOCK_EX" in host and "LOCK_NB" in host
+
+
 def test_common_is_a_versioned_dependency_not_copied_source() -> None:
     common = ROOT / "shared" / "infiltratr-common"
     assert common.is_dir()
