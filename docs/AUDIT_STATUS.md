@@ -4,18 +4,36 @@
 
 Status: **complete**
 
-Audited source commit: 7bccc8fd5e49d1246a5de0b77fda4bc9a073984f
-Audited release-governance commit: c1216fc232225bf082b2ff0fdaaeca50b360c5f7
+Audited source commit: 3934c470b7ff3c8411515b37651dc9346c4d99ca
+Audited release-governance commit: 3934c470b7ff3c8411515b37651dc9346c4d99ca
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
 
-## Qualification distinction (reviewed 2026-11-02)
+## Reviewed source and governance delta — 2026-11-02
 
-The reviewed main source at `681287cb3875e58cb31d1f63da11b30809aacc2f` was **seven commits ahead** of the source-audit baseline. Those changes include EXT worker/identity/registry integration, pinned EXT module revisions, test changes and qualification workflow changes. This documentation pass **does not audit or approve** those executable/governance deltas.
+Review target (both code and governance): `3934c470b7ff3c8411515b37651dc9346c4d99ca`.
+Previous source baseline: `7bccc8fd5e49d1246a5de0b77fda4bc9a073984f`.
+Previous governance baseline: `c1216fc232225bf082b2ff0fdaaeca50b360c5f7`.
+The exact changes from those baselines to this target were reviewed, including all executable, test, install, pinned dependency and workflow changes—not just a VERSION edit. The current source contains twelve intervening commits from the previous source baseline. The review covers static source-path and control-flow examination plus the evidence below; it does **not** claim independent destructive hardware qualification.
 
-The quality gate for that exact head ([run 41302016151](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/41302016151)) completed its ASan/UBSan lane successfully, but failed **Enforce release invariants** with `qualified source/test/install input changed after the audited source baseline`. Fourteen independent filesystem integration workflows passed for that head. This is a real release-admission blocker pending a separate audit, not a filesystem-install path discrepancy and not a Markdown syntax defect.
+### Reviewed change classes and safety arguments
 
-Earlier audit evidence includes [run 41190013223](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/41190013223), whose 42 general tests, 16 full-corpus cases and independent sanitizer checks passed before its previous source-baseline mismatch was re-audited. A passing ancestor does not replace qualification of a new head.
+1. **21-provider destructive preflight:** `test_media_core.c` now checks every registered creator, including the independently owned UFS2 ABI interfaces, before Test Media erases/repartitions the selected disk. Absence, wrong ABI or a missing provider is a pre-write refusal. The partition-identity and affirmative destructive-confirmation safeguards remain in `test_media_worker.c`.
+2. **EXT identity and dispatch:** `ext_module_loader.c` validates the exported EXT2/3/4 format ID against the selected module before running a provider. `native/runtime.cpp` exposes separate EXT2/3/4 entries but retains the same qualified native worker. The independent EXT repository workflow adds both wrong-module negative testing and real-file verification from three separate repositories. The EXT4 module test pin changed to a known commit with its required explicit legacy multiformat *test-only* build option; production module ownership and consumer API are unchanged.
+3. **OFS Test Media physical-partition admission:** `test_media_worker.c` checks for desktop remounts after GPT settlement, refuses a still-busy mounted partition, and retries **only** when opening the *unmodified* selected test partition exclusively failed with EBUSY; all other module, format, write and flush failures fail closed. Retry is bounded to six attempts; no automatic retry after a partial format. `filesystem_module_host.c` preserves errno on failed exclusive lock and keeps stable-device, mount-conflict, inode and capacity checks. `test_media_ofs_module.c` exposes whether the target open or the OFS V3 formatter failed. `test_test_media.c` includes an independently locked 2 GiB OFS image proving exclusive-open refusal and a fresh successful format after unlock.
+4. **Release governance:** Only the pin and tests in `.github/workflows/ext-integration.yml` and the corresponding pinned EXT build steps in `.github/workflows/quality-gate.yml` changed since the previous governance baseline. The immutable-tag handling, source diff gate, release packaging, checksums, SHA-bound publisher and branch/linearity checks remain unchanged; `ci/release.sh` and `tests/test_release_gate.py` have no governance diff.
+5. **OFS dependency identity:** `shared/ofs-module-revision` is now pinned to `01f5bdadadda9f847be2d69d9e17480cd370df0b`, the published 0.1.4 OFS engine used for the physical Test Media reproduction. This eliminates the previous qualification mismatch where Defragmenter used a pre-performance-fix OFS version. The upstream `Filesystem-OFS` 0.1.4 release's own module, EFI, Boot and kernel qualification succeeded ([OFS run 41364210473](https://github.com/Infiltrator-Projects/Filesystem-OFS/actions/runs/41364210473)); no filesystem data-format or journal ABI change was introduced by this Defragmenter pin.
+6. **Tests and packaging:** The change adds negative cases and independent-identity tests without deleting the canonical fixtures, weakening assertions, changing package ownership or changing external-program prohibitions. The reviewed source delta does not relax filesystem write eligibility or bypass the .so trust boundary.
+
+### Test evidence and limits
+
+- Exact pre-pin Defragmenter source `959c838193388dcee73ef4bf2a8161ba0d3c407f`: [quality run 41368579311](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/41368579311) passed **42/42 core** tests, **16/16 native Test Media** tests and self-hosted **AddressSanitizer/UndefinedBehaviorSanitizer**; 14 independent filesystem-integration workflows passed. Its release-invariant stage correctly refused publication because these reviewed baseline markers had not yet been advanced.
+- Exact pinned release-source `3934c470b7ff3c8411515b37651dc9346c4d99ca` changes only `shared/ofs-module-revision` beyond that pre-pin commit. Its fresh consumer qualification and the next versioned release are separately required to pass the unchanged self-hosted gate. Recording this review does **not** bypass or pre-approve a failed future build.
+- Upstream OFS's reproducible sparse 2 GiB DOS0 formatter case passed its own quality workflow [run 41367611155](https://github.com/Infiltrator-Projects/Filesystem-OFS/actions/runs/41367611155); that does not prove the original SD-card automount race is the sole cause.
+- Physical `/dev/mmcblk0p11` after these *Defragmenter* changes remains **untested**. Device-automount contention is the targeted, plausible cause of the prior OFS format failure, not a proven diagnosis. Only a controlled run of the corrected application using the installed OFS 0.1.4 can establish the final hardware result.
+- Source review was performed using repository diffs, relevant implementation paths and recorded independent CI/sanitizer evidence. It is **not** a claim of an external human audit, live device or power-loss testing.
+
+The independently enforced release gate still requires an exact clean source/governance diff from these reviewed commits, protected linear history, a separately qualified candidate, artifact identity and release publication checks. Any subsequent tracked executable, test, dependency, installer or governance modification requires another reviewed baseline update.
 
 ## Safety invariants
 
