@@ -4,10 +4,14 @@
 
 Status: **complete**
 
-Audited source commit: 3490b63528b2e95f4d8bcc600136c6bfe8f68b9f
+Audited source commit: b77112e30bcc7000001965801a63531a7c4d612e
 Audited release-governance commit: 3934c470b7ff3c8411515b37651dc9346c4d99ca
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## OFS provider revision alignment — 2026-11-03
+
+The sole first-party source input change from the 2026-11-02 reviewed source `3490b63528b2e95f4d8bcc600136c6bfe8f68b9f` to `b77112e30bcc7000001965801a63531a7c4d612e` is `defragger/shared/ofs-module-revision`, updated from `c8b1e75448b4ad0cf06ba7a289233b3b86fe8a00` to `743444f1cc1f227bf63a8ecdb6e4ec194ac67c38`. The new provider commit includes the complete qualified OFS writeback, directory validation optimisation and 0.1.8 release-version intent. No Defragmenter native logic, destructive-path safety check, build system, installation script, release governance or tests change in this follow-up. Publication still requires the new pinned pair to pass its exact GitHub Actions quality and release gates; this recorded review does not substitute for that qualification or physical-media testing.
 
 ## Reviewed OFS Test Media reconciliation delta — 2026-11-02
 
