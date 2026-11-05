@@ -620,9 +620,9 @@ install(DIRECTORY gui/ui/art
 # source tree. Canonical repository documentation lives at ../docs and is not
 # duplicated into the native installer payload.
 install(FILES README.md
-        DESTINATION /System/Resources/Documentation/Defragmenter)
+        DESTINATION /System/Resources/Documentation RENAME Defragmenter-README.md)
 install(FILES LICENSE
-        DESTINATION /System/Resources/Documentation/Defragmenter RENAME COPYING.GPL-3.0)
+        DESTINATION /System/Resources/Documentation RENAME Defragmenter-COPYING.GPL-3.0)
 include(CTest)
 if(BUILD_TESTING)
     add_executable(defragmenter-desktop-live-map-test

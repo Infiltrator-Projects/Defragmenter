@@ -42,7 +42,7 @@ if [ "${LD_INSTALLER_TEST_COMMAND:-0}" = 1 ]; then
                     "$DESTDIR/System/Commands/Defragmenter/fat" \
             "$DESTDIR/System/Commands/Defragmenter/ext4" \
             "$DESTDIR/System/Resources/Icons" \
-            "$DESTDIR/System/Resources/Documentation/Defragmenter" \
+            "$DESTDIR/System/Resources/Documentation" \
             "$DESTDIR/System/Resources/Themes/Defragmenter/art" \
                     "$DESTDIR/Programs" \
                     "$DESTDIR/usr/share/icons/hicolor/96x96/apps" \
@@ -59,8 +59,8 @@ if [ "${LD_INSTALLER_TEST_COMMAND:-0}" = 1 ]; then
         done
         printf '#!/bin/sh\nexit 0\n' >"$DESTDIR/System/Commands/Defragmenter/ext4/ext-metadata-worker"
         chmod 0755 "$DESTDIR/System/Commands/Defragmenter/ext4/ext-metadata-worker"
-        cp "$LD_INSTALLER_TEST_SOURCE_ROOT/README.md" "$DESTDIR/System/Resources/Documentation/Defragmenter/README.md"
-        cp "$LD_INSTALLER_TEST_SOURCE_ROOT/LICENSE" "$DESTDIR/System/Resources/Documentation/Defragmenter/COPYING.GPL-3.0"
+        cp "$LD_INSTALLER_TEST_SOURCE_ROOT/README.md" "$DESTDIR/System/Resources/Documentation/Defragmenter-README.md"
+        cp "$LD_INSTALLER_TEST_SOURCE_ROOT/LICENSE" "$DESTDIR/System/Resources/Documentation/Defragmenter-COPYING.GPL-3.0"
         cp "$LD_INSTALLER_TEST_SOURCE_ROOT/gui/ui/art/hero-landscape.jpg" "$DESTDIR/System/Resources/Themes/Defragmenter/art/hero-landscape.jpg"
         cp "$LD_INSTALLER_TEST_SOURCE_ROOT/packaging/io.github.defragmenter.png" \
                     "$DESTDIR/System/Resources/Icons/defragmenter.png"
