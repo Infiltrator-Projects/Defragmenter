@@ -22,7 +22,7 @@ foreach(_path IN ITEMS
     "Programs/defragmenter"
     "System/Commands/Defragmenter/ext4/ext-metadata-worker"
     "System/Resources/Icons/defragmenter.png"
-    "System/Resources/Documentation/Defragmenter-README.md"
+    "System/Resources/Documentation/Defragmenter/README.md"
     "System/Resources/Themes/Defragmenter/art/hero-landscape.jpg"
     "System/Commands/Defragmenter/test-media-mkfs-ofs"
     "System/Commands/Defragmenter/test-media-mkfs-ffs"

@@ -75,8 +75,8 @@ for resource in \
     System/Commands/Defragmenter/fat/defragmenter-fat-worker \
     System/Commands/Defragmenter/ext4/ext-metadata-worker \
     System/Commands/Defragmenter/defragmenter-privileged-helper \
-    System/Resources/Documentation/Defragmenter-README.md \
-    System/Resources/Documentation/Defragmenter-COPYING.GPL-3.0 \
+    System/Resources/Documentation/Defragmenter/README.md \
+    System/Resources/Documentation/Defragmenter/COPYING.GPL-3.0 \
     System/Resources/Themes/Defragmenter/art/hero-landscape.jpg
 do
     [ -f "$STAGE/root/$resource" ] || {
