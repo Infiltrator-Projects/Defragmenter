@@ -73,10 +73,19 @@ if grep -Fq 'local-installer-untracked-sentinel.secret' "$WORK/files.txt" || \
     printf '%s\n' 'Local installer captured untracked runner state.' >&2
     exit 1
 fi
-# Retain exactly one audited PDF generator, no other Python in native RUN.
-if grep -vxF "defragmenter-${VERSION}/packaging/generate-manual.py" "$WORK/files.txt" | \
-    grep -Eq '/(build[^/]*)/|__pycache__|[.]py$|[.]pyc$|[.]deb$|[.]run$|[.]zip$' "$WORK/files.txt"; then
-    printf '%s\n' 'Generated local installer contains a forbidden generated file.' >&2
+# Allow only the one committed, audited, build-time PDF generator.
+# Print the exact offending archive entries so a failing qualification can
+# distinguish genuine payload contamination from an overbroad matcher.
+allowed="defragmenter-${VERSION}/packaging/generate-manual.py"
+[ "$(grep -xcF "$allowed" "$WORK/files.txt")" -eq 1 ] || {
+    printf '%s\n' 'Native installer must contain exactly one PDF generator.' >&2
+    exit 1
+}
+forbidden=$(grep -vxF "$allowed" "$WORK/files.txt" | \
+    grep -E '/(build[^/]*)/|__pycache__|[.]py$|[.]pyc$|[.]deb$|[.]run$|[.]zip$' || true)
+if [ -n "$forbidden" ]; then
+    printf '%s\n' 'Generated local installer contains forbidden entries:' >&2
+    printf '%s\n' "$forbidden" >&2
     exit 1
 fi
 
