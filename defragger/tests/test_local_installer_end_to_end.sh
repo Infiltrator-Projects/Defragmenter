@@ -99,6 +99,19 @@ for command_name in dpkg-query dpkg cmake sudo gcc make makefs apt-get; do
 done
 
 REAL_CMAKE=$(command -v cmake)
+# Build-only creates a qualified native DEB without touching installed state.
+LD_INSTALLER_TEST_COMMAND=1 \
+LD_INSTALLER_TEST_STATE="$WORK/installed-version" \
+LD_INSTALLER_TEST_REAL_CMAKE="$REAL_CMAKE" \
+LD_INSTALLER_TEST_SOURCE_ROOT="$ROOT" \
+PATH="$WORK:$PATH" \
+    "$RUN" --build-only --output "$WORK/native-output" >"$WORK/build-only.log"
+[ ! -e "$WORK/installed-version" ]
+NATIVE="$WORK/native-output/defragmenter_${EXPECTED_VERSION}_amd64.deb"
+[ -f "$NATIVE" ]
+[ "$(dpkg-deb -f "$NATIVE" Package)" = defragmenter ]
+[ "$(dpkg-deb -f "$NATIVE" Version)" = "$EXPECTED_VERSION" ]
+
 LD_INSTALLER_TEST_COMMAND=1 \
 LD_INSTALLER_TEST_STATE="$WORK/installed-version" \
 LD_INSTALLER_TEST_REAL_CMAKE="$REAL_CMAKE" \

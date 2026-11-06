@@ -8,6 +8,38 @@ APP_VERSION='@APP_VERSION@'
 NATIVE_PACKAGE_VERSION='@NATIVE_PACKAGE_VERSION@'
 PAYLOAD_SHA256='@PAYLOAD_SHA256@'
 
+# Standard native RUN interface: packaging is independent from installation.
+BUILD_ONLY=0
+SYSTEM_PACKAGE_MODE=0
+OUTPUT_DIRECTORY=''
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --build-only) BUILD_ONLY=1 ;;
+        --system-package-mode) SYSTEM_PACKAGE_MODE=1 ;;
+        --output)
+            [ "$#" -ge 2 ] || { echo '--output requires DIRECTORY' >&2; exit 2; }
+            OUTPUT_DIRECTORY=$2
+            shift ;;
+        -h|--help)
+            printf '%s\n' 'Usage: Defragmenter.run [--system-package-mode] [--build-only --output DIRECTORY]'
+            exit 0 ;;
+        *) printf 'Unknown installer option: %s\n' "$1" >&2; exit 2 ;;
+    esac
+    shift
+done
+if [ "$BUILD_ONLY" -eq 1 ] && [ -z "$OUTPUT_DIRECTORY" ]; then
+    echo '--build-only requires --output DIRECTORY' >&2
+    exit 2
+fi
+if [ "$BUILD_ONLY" -eq 0 ] && [ -n "$OUTPUT_DIRECTORY" ]; then
+    echo '--output requires --build-only' >&2
+    exit 2
+fi
+if [ "$SYSTEM_PACKAGE_MODE" -eq 1 ] && [ "$(id -u)" -ne 0 ]; then
+    echo '--system-package-mode requires root' >&2
+    exit 2
+fi
+
 fail() {
     printf '%s: %s\n' "$PROGRAM" "$*" >&2
     exit 1
@@ -52,6 +84,9 @@ for package in build-essential cmake dpkg-dev \
     fi
 done
 
+if [ -n "$MISSING" ] && [ "$BUILD_ONLY" -eq 1 ]; then
+    fail 'build-only requires build prerequisites already installed'
+fi
 if [ -n "$MISSING" ]; then
     printf '%s\n' 'Installing required build and runtime packages through APT...'
     as_root apt-get update
@@ -115,6 +150,14 @@ env LD_BUILD_FLAVOR=native \
     fail 'Compiled package architecture is invalid.'
 [ "$(dpkg-deb -f "$PACKAGE" X-Defragmenter-Build)" = native ] || \
     fail 'Compiled package is not marked as a native build.'
+
+if [ "$BUILD_ONLY" -eq 1 ]; then
+    mkdir -p -- "$OUTPUT_DIRECTORY"
+    install -m 0644 -- "$PACKAGE" "$OUTPUT_DIRECTORY/$(basename "$PACKAGE")"
+    printf 'Built native Defragmenter Debian package: %s\n' \
+        "$OUTPUT_DIRECTORY/$(basename "$PACKAGE")"
+    exit 0
+fi
 
 printf '%s\n' 'Installing the locally compiled package through dpkg...'
 as_root dpkg --install "$PACKAGE"
