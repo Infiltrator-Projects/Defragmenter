@@ -4,10 +4,18 @@
 
 Status: **complete**
 
-Audited source commit: b77112e30bcc7000001965801a63531a7c4d612e
+Audited source commit: 729549bbe8f9283daa4b833aec78da223968c36d
 Audited release-governance commit: 3934c470b7ff3c8411515b37651dc9346c4d99ca
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Native build-only installer review — 2026-11-06
+
+**Exact reviewed source:** `729549bbe8f9283daa4b833aec78da223968c36d`. The tracked diff from the prior audited source `b77112e30bcc7000001965801a63531a7c4d612e` has exactly two changes inside the release gate's qualified source/test/install paths: `defragger/packaging/local-run-header.sh.in` (43 lines changed) and `defragger/tests/test_local_installer_end_to_end.sh` (13 lines changed). Outside that gate, `defragger/VERSION` advances through 1.8.0-285 to 1.8.0-286, and this audit document records the successive reviews. No native filesystem engine, filesystem module pin, target/device safety check, journal, recovery, GUI, CMake definition, build-DEB script, privileged installer entry point, quality workflow, release script or release-governance test changed. The separately audited governance source remains `3934c470b7ff3c8411515b37651dc9346c4d99ca`.
+
+**Installer control-flow review:** The self-extracting native `.run` accepts `--build-only --output DIRECTORY` with explicit argument validation. In that mode it still checks platform, installed-version downgrade policy, prerequisites, embedded source SHA-256, source version and native DEB package name/version/architecture/build-flavour before copying the built package to the requested directory and exiting. Missing prerequisites cause a refusal in build-only mode instead of an APT install; the only `dpkg --install` path is after the build-only exit. Without `--build-only`, the former compile-and-install route remains present. No source modification or destructive filesystem operation was introduced by this packaging change. This is a source-path assessment, not an assertion that a privileged system can never be affected by arbitrary external build scripts.
+
+**Regression and evidence:** The new end-to-end installer test invokes the actual generated native `.run` in build-only mode under isolated package-manager/build-tool stubs, verifies that no installed-version state file was written, and checks the output DEB's identity and native version. It then exercises the normal installation path separately. The exact source [Project quality gate run 42135742380](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/42135742380) passed compilation, native/GUI test execution and all 16 native Test Media cases; the independent filesystem workflows and sanitizer job also passed. Its sole failed step was `Enforce release invariants`, because the old audit baseline predated these two reviewed installer/test files. Updating the recorded source boundary does **not** waive a new exact-commit quality run, release-governance audit, artifact integrity, publication check, or physical-media proof.
 
 ## OFS provider revision alignment — 2026-11-03
 
