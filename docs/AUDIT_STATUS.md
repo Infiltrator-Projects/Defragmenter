@@ -4,10 +4,16 @@
 
 Status: **complete**
 
-Audited source commit: 12290dee1b2863dd3f5a1dc2e9dce4d712f58433
+Audited source commit: 60d67909ced05bf62b6cad8d2a0ccf15597ae4c6
 Audited release-governance commit: 3934c470b7ff3c8411515b37651dc9346c4d99ca
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Corrected Test Media staging qualification — 2026-11-06
+
+**Exact source review boundary:** `60d67909ced05bf62b6cad8d2a0ccf15597ae4c6`. The only qualified-input change after the preceding PDF implementation commit `12290dee1b2863dd3f5a1dc2e9dce4d712f58433` is `defragger/tests/test_test_media_install.cmake`. This CMake-only Test Media staged-install fixture still demanded the previously shipped `Documentation/Defragmenter/README.md` after its installation rule had been deliberately retired. The correction removes that obsolete assertion and replaces it with a failure if the deprecated documentation subfolder is reintroduced. CMake installs application and Test Media binaries while the independently tested Debian `build-deb.sh` packaging step generates and verifies the single flat `Defragmenter.pdf`.
+
+**Failure evidence and retention of protections:** The previous exact candidate's [quality run 42160421944](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/42160421944) failed the ordinary and ASan/UBSan Test Media installation CTest on the obsolete README. The preceding pre-audit candidate run 42160263359 had the same failure. The revised CMake test continues checking executable ownership, private workers, icon paths, desktop file and creators. The separate Debian version and native self-extracting installer tests still demand exactly one flat PDF and prohibit the old folder; the release-asset test still checks the included PDF generator. No filesystem operation, target-safety rule, workflow, release script or governance test was changed. This source review is not a claim that the newly triggered CI or release has passed.
 
 ## Flat illustrated Defragmenter documentation — 2026-11-06
 
