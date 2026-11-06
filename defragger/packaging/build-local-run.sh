@@ -50,7 +50,12 @@ COMMON_STAGE="$STAGE/$PAYLOAD_BASENAME/shared/infiltratr-common"
 rm -rf "$COMMON_STAGE"
 mkdir -p "$COMMON_STAGE"
 git -C "$COMMON_DIR" archive --format=tar "$COMMON_COMMIT" | tar -xf - -C "$COMMON_STAGE"
-find "$STAGE/$PAYLOAD_BASENAME" -type f \( -name '*.py' -o -name '*.pyc' \) -delete
+# Only the audited build-time generator survives source pruning.
+# Production code remains C/C++; test Python sources and caches are excluded.
+find "$STAGE/$PAYLOAD_BASENAME" -type f \( -name '*.py' -o -name '*.pyc' \) \
+    ! -path "$STAGE/$PAYLOAD_BASENAME/packaging/generate-manual.py" -delete
+[ -f "$STAGE/$PAYLOAD_BASENAME/packaging/generate-manual.py" ] || \
+    fail 'required build-time PDF generator missing from native RUN'
 find "$STAGE/$PAYLOAD_BASENAME" -type d -name '__pycache__' -prune -exec rm -rf '{}' +
 
 # The native installer no longer carries a private MB font archive. Its Debian
