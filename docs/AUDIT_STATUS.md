@@ -4,10 +4,16 @@
 
 Status: **complete**
 
-Audited source commit: a191ef5d87b6019242f1d7622841f694c29e8c79
+Audited source commit: 08dfe2699dcf05ab0ffc20dd1fab1298a5e7d334
 Audited release-governance commit: 3934c470b7ff3c8411515b37651dc9346c4d99ca
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Native RUN fixture cleanup after PDF migration — 2026-11-06
+
+**Exact reviewed source:** `08dfe2699dcf05ab0ffc20dd1fab1298a5e7d334`, relative to the last audited source `a191ef5d87b6019242f1d7622841f694c29e8c79`. The only source/test change is the isolated `defragger/tests/test_local_installer_end_to_end.sh` mock installer: its two legacy `cp` commands targeting `Documentation/Defragmenter/README.md` and `Documentation/Defragmenter/COPYING.GPL-3.0` have been removed. The real `build-deb.sh` still constructs one flat `Defragmenter.pdf` after CMake staging; the native test continues asserting that PDF exists in the extracted source-built DEB and the old folder does not.
+
+**Evidence:** [Quality run 42166250115](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/42166250115) progressed past the strengthened native archive check and the generic DEB version test, then failed when the native installer mock attempted copying those two files into an intentionally nonexistent folder. The error was `cp: cannot create regular file ... Documentation/Defragmenter/README.md: No such file or directory`. This change fixes the outdated fixture path; it does not relax generic/native package verification, source integrity, bytecode pruning, runtime safety checks, the independent filesystem tests, or release governance. Newly triggered qualification and publication remain to be established.
 
 ## Diagnosable native installer payload verification — 2026-11-06
 
