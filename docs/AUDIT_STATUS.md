@@ -4,10 +4,14 @@
 
 Status: **complete**
 
-Audited source commit: 8c96e0740d8507779abc6c75ba9817e5ed0db966
+Audited source commit: a191ef5d87b6019242f1d7622841f694c29e8c79
 Audited release-governance commit: 3934c470b7ff3c8411515b37651dc9346c4d99ca
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Diagnosable native installer payload verification — 2026-11-06
+
+**Exact reviewed source:** `a191ef5d87b6019242f1d7622841f694c29e8c79`. The only qualified-input delta from previously reviewed source `8c96e0740d8507779abc6c75ba9817e5ed0db966` is `defragger/tests/test_release_artifacts.sh`. The first complete 1.8.0-287 quality run [42161776822](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/42161776822) passed Test Media staged installation and the complete sanitizer lane, but the ordinary lane failed at the native release archive check, reporting a forbidden file without identifying it. The revised test requires exactly one committed `packaging/generate-manual.py`, continues rejecting every other Python source, bytecode, build directory or forbidden release asset, and prints exact offending paths on failure. No app/runtime code, filesystem engine, native packaging implementation, write safety control, or governance code is changed. This is a diagnostic strengthening; it does not certify an unexecuted new quality run.
 
 ## Native source archive PDF generator retention — 2026-11-06
 
