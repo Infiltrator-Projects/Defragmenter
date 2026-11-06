@@ -43,6 +43,22 @@ cmake "$@"
 cmake --build "$BUILD" -j"$BUILD_JOBS_EFFECTIVE"
 DESTDIR="$STAGE/root" cmake --install "$BUILD"
 
+# Build an illustrated, searchable user manual using only Python's standard
+# library. No generated PDF or Python dependency ships with installed binaries.
+command -v python3 >/dev/null 2>&1 || { echo 'python3 is needed to build the Defragmenter manual' >&2; exit 1; }
+DOC_ROOT="$STAGE/root/System/Resources/Documentation"
+mkdir -p "$DOC_ROOT"
+python3 "$ROOT/packaging/generate-manual.py" "$ROOT/LICENSE" "$DOC_ROOT/Defragmenter.pdf" "$VERSION"
+[ "$(head -c 5 "$DOC_ROOT/Defragmenter.pdf")" = '%PDF-' ] || {
+    echo 'Defragmenter user manual is not a PDF' >&2; exit 1;
+}
+[ ! -e "$DOC_ROOT/Defragmenter" ] || {
+    echo 'Old Defragmenter documentation folder is still staged' >&2; exit 1;
+}
+[ "$(find "$DOC_ROOT" -maxdepth 1 -type f | wc -l)" -eq 1 ] || {
+    echo 'Exactly one Defragmenter manual must be staged' >&2; exit 1;
+}
+
 # The native OS keeps all launchable programs directly in /Programs.
 # Defragmenter's private executables live in /System/Commands/Defragmenter,
 # not in the OS-owned filesystem implementation namespace.
@@ -75,8 +91,7 @@ for resource in \
     System/Commands/Defragmenter/fat/defragmenter-fat-worker \
     System/Commands/Defragmenter/ext4/ext-metadata-worker \
     System/Commands/Defragmenter/defragmenter-privileged-helper \
-    System/Resources/Documentation/Defragmenter/README.md \
-    System/Resources/Documentation/Defragmenter/COPYING.GPL-3.0 \
+    System/Resources/Documentation/Defragmenter.pdf \
     System/Resources/Themes/Defragmenter/art/hero-landscape.jpg
 do
     [ -f "$STAGE/root/$resource" ] || {
@@ -135,6 +150,9 @@ cat >"$STAGE/root/DEBIAN/postinst" <<'EOF'
 #!/bin/sh
 set -e
 /System/Commands/defragmenter-ensure-fonts
+# Debian retires the two package-owned legacy files on upgrade. Remove only
+# the now-empty folder; preserve any unrelated user files in it.
+rmdir -- /System/Resources/Documentation/Defragmenter 2>/dev/null || true
 command -v update-desktop-database >/dev/null 2>&1 && \
     update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
 command -v gtk-update-icon-cache >/dev/null 2>&1 && \

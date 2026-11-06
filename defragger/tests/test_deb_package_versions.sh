@@ -18,7 +18,7 @@ if [ "${LD_TEST_FAKE_CMAKE:-0}" = 1 ]; then
             "$DESTDIR/System/Commands/Defragmenter/fat" \
             "$DESTDIR/System/Commands/Defragmenter/ext4" \
             "$DESTDIR/System/Resources/Icons" \
-            "$DESTDIR/System/Resources/Documentation/Defragmenter" \
+            "$DESTDIR/System/Resources/Documentation" \
             "$DESTDIR/System/Resources/Themes/Defragmenter/art" \
             "$DESTDIR/Programs" \
             "$DESTDIR/usr/share/icons/hicolor/96x96/apps" \
@@ -35,8 +35,6 @@ if [ "${LD_TEST_FAKE_CMAKE:-0}" = 1 ]; then
         done
         printf '#!/bin/sh\nexit 0\n' >"$DESTDIR/System/Commands/Defragmenter/ext4/ext-metadata-worker"
         chmod 0755 "$DESTDIR/System/Commands/Defragmenter/ext4/ext-metadata-worker"
-        cp "$LD_TEST_SOURCE_ROOT/README.md" "$DESTDIR/System/Resources/Documentation/Defragmenter/README.md"
-        cp "$LD_TEST_SOURCE_ROOT/LICENSE" "$DESTDIR/System/Resources/Documentation/Defragmenter/COPYING.GPL-3.0"
         cp "$LD_TEST_SOURCE_ROOT/gui/ui/art/hero-landscape.jpg" "$DESTDIR/System/Resources/Themes/Defragmenter/art/hero-landscape.jpg"
         cp "$LD_TEST_SOURCE_ROOT/packaging/io.github.defragmenter.png" \
             "$DESTDIR/System/Resources/Icons/defragmenter.png"
@@ -86,10 +84,14 @@ for resource in \
     System/Commands/Defragmenter/fat/defragmenter-fat-worker \
     System/Commands/Defragmenter/ext4/ext-metadata-worker \
     System/Resources/Icons/defragmenter.png \
-    System/Resources/Documentation/Defragmenter/README.md
+    System/Resources/Documentation/Defragmenter.pdf
 do
     [ -f "$WORK/extracted/$resource" ]
 done
+[ ! -e "$WORK/extracted/System/Resources/Documentation/Defragmenter" ]
+[ "$(find "$WORK/extracted/System/Resources/Documentation" -type f | wc -l)" -eq 1 ]
+[ "$(head -c 5 "$WORK/extracted/System/Resources/Documentation/Defragmenter.pdf")" = '%PDF-' ]
+grep -aFq 'GNU GENERAL PUBLIC LICENSE' "$WORK/extracted/System/Resources/Documentation/Defragmenter.pdf"
 [ ! -e "$WORK/extracted/usr/lib/defragmenter" ]
 [ ! -e "$WORK/extracted/usr/share/doc/defragmenter" ]
 dpkg-deb -e "$PACKAGE" "$WORK/metadata"

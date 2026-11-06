@@ -616,13 +616,9 @@ install(DIRECTORY gui/ui/art
         DESTINATION /System/Resources/Themes/Defragmenter
         FILES_MATCHING PATTERN "*.jpg")
 
-# Install only documentation that is part of the self-contained application
-# source tree. Canonical repository documentation lives at ../docs and is not
-# duplicated into the native installer payload.
-install(FILES README.md
-        DESTINATION /System/Resources/Documentation/Defragmenter)
-install(FILES LICENSE
-        DESTINATION /System/Resources/Documentation/Defragmenter RENAME COPYING.GPL-3.0)
+# The package builder creates one illustrated PDF, embedding the complete GPL
+# licence, in the shared flat Documentation directory. Source docs remain in Git.
+
 include(CTest)
 if(BUILD_TESTING)
     add_executable(defragmenter-desktop-live-map-test

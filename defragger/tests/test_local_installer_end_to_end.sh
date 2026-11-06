@@ -42,7 +42,7 @@ if [ "${LD_INSTALLER_TEST_COMMAND:-0}" = 1 ]; then
                     "$DESTDIR/System/Commands/Defragmenter/fat" \
             "$DESTDIR/System/Commands/Defragmenter/ext4" \
             "$DESTDIR/System/Resources/Icons" \
-            "$DESTDIR/System/Resources/Documentation/Defragmenter" \
+            "$DESTDIR/System/Resources/Documentation" \
             "$DESTDIR/System/Resources/Themes/Defragmenter/art" \
                     "$DESTDIR/Programs" \
                     "$DESTDIR/usr/share/icons/hicolor/96x96/apps" \
@@ -111,6 +111,10 @@ NATIVE="$WORK/native-output/defragmenter_${EXPECTED_VERSION}_amd64.deb"
 [ -f "$NATIVE" ]
 [ "$(dpkg-deb -f "$NATIVE" Package)" = defragmenter ]
 [ "$(dpkg-deb -f "$NATIVE" Version)" = "$EXPECTED_VERSION" ]
+dpkg-deb -x "$NATIVE" "$WORK/native-extracted"
+[ -f "$WORK/native-extracted/System/Resources/Documentation/Defragmenter.pdf" ]
+[ ! -e "$WORK/native-extracted/System/Resources/Documentation/Defragmenter" ]
+[ "$(find "$WORK/native-extracted/System/Resources/Documentation" -type f | wc -l)" -eq 1 ]
 
 LD_INSTALLER_TEST_COMMAND=1 \
 LD_INSTALLER_TEST_STATE="$WORK/installed-version" \
