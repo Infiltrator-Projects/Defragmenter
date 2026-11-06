@@ -4,10 +4,16 @@
 
 Status: **complete**
 
-Audited source commit: 60d67909ced05bf62b6cad8d2a0ccf15597ae4c6
+Audited source commit: 8c96e0740d8507779abc6c75ba9817e5ed0db966
 Audited release-governance commit: 3934c470b7ff3c8411515b37651dc9346c4d99ca
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Native source archive PDF generator retention — 2026-11-06
+
+**Reviewed source baseline:** `8c96e0740d8507779abc6c75ba9817e5ed0db966`. From the prior reviewed test correction `60d67909ced05bf62b6cad8d2a0ccf15597ae4c6`, the only qualified source/test changes are in `defragger/packaging/build-local-run.sh` and `defragger/tests/test_release_artifacts.sh`. The original native source archive deliberately removes generated and test Python files, but that blanket `*.py` deletion inadvertently removed the newly introduced `packaging/generate-manual.py`. The corrected source pruning preserves **only** this explicit, committed, build-time PDF generator while continuing to remove other Python files and all bytecode caches; the artifact test explicitly requires the PDF generator and rejects every other packaged `.py` or `.pyc` file. A second test-only correction repairs the anchored artifact allowlist regular expression. Neither edit changes production native filesystem engines, privileged I/O, device identity or recovery, target confirmation, independently owned drivers, runtime dependencies, or release governance.
+
+**Verification boundary:** Prior quality failures demonstrated the old Test Media staging assertion. The newly retained generator must still pass actual native `.run` extraction and build-only smoke tests, generic Debian packaging, PDF identity checks, both self-hosted quality and sanitizer lanes, all required independent modules, release SHA-bound artifact validation, and public APT digest observation before publication. This source review does not claim any of those pending results or physical-media validation. The release-governance source baseline remains `3934c470b7ff3c8411515b37651dc9346c4d99ca`.
 
 ## Corrected Test Media staging qualification — 2026-11-06
 
