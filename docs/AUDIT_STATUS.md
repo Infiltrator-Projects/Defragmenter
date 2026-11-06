@@ -4,10 +4,16 @@
 
 Status: **complete**
 
-Audited source commit: 08dfe2699dcf05ab0ffc20dd1fab1298a5e7d334
+Audited source commit: d9af8fd2425aaf464af17ac6a1d967a783fc7b4c
 Audited release-governance commit: 3934c470b7ff3c8411515b37651dc9346c4d99ca
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Release artifact shell syntax correction — 2026-11-06
+
+**Exact reviewed source:** `d9af8fd2425aaf464af17ac6a1d967a783fc7b4c`. Compared with the preceding audited source `08dfe2699dcf05ab0ffc20dd1fab1298a5e7d334`, only `defragger/tests/test_release_artifacts.sh` and `defragger/tests/run_tests.sh` changed within release-qualified source and tests. In the former, a duplicate of the release packaging test's trailing 68 lines accidentally followed the first successful completion statement, beginning with a syntactically invalid standalone `; then`. This patch removes that duplicate tail, preserving the single complete sequence of source archive allowlisting, native RUN checksum and source contents, package-version comparison, build flags, generic DEB test, independent UFS creator and native installer end-to-end verification. The latter now runs `sh -n` over the entire release artifact script before any expensive filesystem fixtures.
+
+**Observed failure:** [Exact previous run 42166890215](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/42166890215) passed native installer end-to-end package-version tests, generic DEB package metadata and both sanitizer lanes, then failed only `defragmenter-tests` because line 155 of `test_release_artifacts.sh` raised `Syntax error: ";" unexpected`. The change neither waives checks nor changes application source, independent filesystem drivers, privileged helpers, device identity, or release governance. Final qualification, publication and public APT availability must still be independently observed.
 
 ## Native RUN fixture cleanup after PDF migration — 2026-11-06
 
