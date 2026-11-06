@@ -16,6 +16,9 @@ trap 'rm -rf "$WORK"' EXIT
 
 export PYTHONDONTWRITEBYTECODE=1
 export DEFRAGMENTER_BUILD_DIR="$BUILD_DIR"
+# Validate the complete release packaging shell before running expensive fixtures.
+# This catches stray duplicated tails and other syntax errors at the start.
+sh -n "$ROOT/tests/test_release_artifacts.sh"
 bash -n "$ROOT/tests/destructive/run_dm_log_writes_replay.sh"
 
 fail() {
