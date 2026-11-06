@@ -4,10 +4,18 @@
 
 Status: **complete**
 
-Audited source commit: 729549bbe8f9283daa4b833aec78da223968c36d
+Audited source commit: 12290dee1b2863dd3f5a1dc2e9dce4d712f58433
 Audited release-governance commit: 3934c470b7ff3c8411515b37651dc9346c4d99ca
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Flat illustrated Defragmenter documentation — 2026-11-06
+
+**Exact reviewed source:** `12290dee1b2863dd3f5a1dc2e9dce4d712f58433`, compared with the last audited source `729549bbe8f9283daa4b833aec78da223968c36d`. The tracked diff within the release gate's qualified source paths is limited to `defragger/cmake/project.cmake`, `defragger/packaging/build-deb.sh`, `defragger/packaging/local-run-header.sh.in`, the new standard-library `defragger/packaging/generate-manual.py`, and the packaging/installer regression fixtures `test_deb_package_versions.sh`, `test_local_installer_end_to_end.sh`, and `test_release_artifacts.sh`. Product and implementation README edits change only explanatory prose. No filesystem parsing or writing engines, target selection, privileged-executable implementation, source pin, GUI, Test Media engine, release workflow, release-gate test, or release-governance script changed. The independently audited governance baseline remains `3934c470b7ff3c8411515b37651dc9346c4d99ca`.
+
+**Document generation and layout:** Both native and portable packages invoke the same pure-Python, build-time PDF 1.4 generator after CMake staging. The installed product contains one flat `/System/Resources/Documentation/Defragmenter.pdf`, never a separate README or licence folder. The three authored, illustrated guide pages explain safe operation, destructive Test Media, module ownership and installation. The complete GPL-3.0 text from the source `LICENSE` file is preserved in a searchable PDF appendix; no application runtime depends on Python or external PDF libraries. The original source README and GPL files remain available in Git and source archives. The `.run` now explicitly requires Python 3 as a build-time prerequisite.
+
+**Upgrade controls and test coverage:** Removal of the legacy `Documentation/Defragmenter` directory uses only `rmdir` after `dpkg` retires its previously owned README and GPL files, leaving any unowned or user-created files untouched. The Debian builder fails if the legacy folder is staged, if more than one documentation file is staged, or if the PDF header is absent. Generic and native mock-packaging tests verify the new installed path and exclusion of the old folder. The release-asset test requires the exact manual-generator source in the source-bearing native `.run` payload. These are code review and source-path/test-fixture assertions, not a claim of completed CI, manual visual QA, successful upgrade on actual hardware, or independent physical-media safety qualification; each remains subject to its own exact-commit acceptance checks.
 
 ## Native build-only installer review — 2026-11-06
 
