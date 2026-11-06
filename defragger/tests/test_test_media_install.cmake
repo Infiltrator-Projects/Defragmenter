@@ -22,7 +22,6 @@ foreach(_path IN ITEMS
     "Programs/defragmenter"
     "System/Commands/Defragmenter/ext4/ext-metadata-worker"
     "System/Resources/Icons/defragmenter.png"
-    "System/Resources/Documentation/Defragmenter/README.md"
     "System/Resources/Themes/Defragmenter/art/hero-landscape.jpg"
     "System/Commands/Defragmenter/test-media-mkfs-ofs"
     "System/Commands/Defragmenter/test-media-mkfs-ffs"
@@ -32,6 +31,14 @@ foreach(_path IN ITEMS
         message(FATAL_ERROR "staged Test Media install is missing ${_path}")
     endif()
 endforeach()
+
+# CMake only stages binaries and resources. The Debian builder creates the
+# one flat Defragmenter.pdf *after* this cmake --install step. The standalone
+# package and native-RUN tests assert the document's presence and identity.
+# A CMake staged install must never resurrect the obsolete documentation folder.
+if(EXISTS "${_root}/System/Resources/Documentation/Defragmenter")
+    message(FATAL_ERROR "staged Test Media install resurrected legacy documentation folder")
+endif()
 
 file(REMOVE_RECURSE "${_root}")
 message(STATUS "Test Media staged install contains GUI plus OFS/FFS/UFS C creators")
