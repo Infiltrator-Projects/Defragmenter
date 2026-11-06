@@ -75,7 +75,7 @@ if grep -Fq 'local-installer-untracked-sentinel.secret' "$WORK/files.txt" || \
 fi
 # Retain exactly one audited PDF generator, no other Python in native RUN.
 if grep -vxF "defragmenter-${VERSION}/packaging/generate-manual.py" "$WORK/files.txt" | \
-    grep -Eq '/(build[^/]*)/|__pycache__|\.py$|\.pyc$|\.deb$|\.run$|\.zip
+    grep -Eq '/(build[^/]*)/|__pycache__|[.]py$|[.]pyc$|[.]deb$|[.]run$|[.]zip$' "$WORK/files.txt"; then
     printf '%s\n' 'Generated local installer contains a forbidden generated file.' >&2
     exit 1
 fi
