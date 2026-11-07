@@ -34,6 +34,31 @@ static int parse_case(const char *headers, const char *suffix, int omit, int dup
 }
 static int contracts(void)
 {
+    /* Regression: only current mounts of the selected block device may be
+     * unmounted. Old /media paths from a past lsblk snapshot are not
+     * authority, and a different disk must never be targeted. */
+    {
+        const LdtmMountedDevice selected[] = {
+            {179U, 0U}, {179U, 3U}, {179U, 4U}
+        };
+        char mountpoint[PATH_MAX];
+        CHECK(ldtm_mountinfo_target(
+            "41 21 179:4 / /media/ssmith/LD_EXT4 rw,relatime - ext4 /dev/mmcblk0p4 rw\n",
+            selected, 3U, mountpoint) == 1);
+        CHECK(strcmp(mountpoint, "/media/ssmith/LD_EXT4") == 0);
+        CHECK(ldtm_mountinfo_target(
+            "42 21 179:3 / /media/ssmith/LD\\040EXT3 rw,relatime - ext3 /dev/mmcblk0p3 rw\n",
+            selected, 3U, mountpoint) == 1);
+        CHECK(strcmp(mountpoint, "/media/ssmith/LD EXT3") == 0);
+        CHECK(ldtm_mountinfo_target(
+            "43 21 8:1 / /media/other rw,relatime - ext4 /dev/sda1 rw\n",
+            selected, 3U, mountpoint) == 0);
+        CHECK(mountpoint[0] == '\0');
+        CHECK(ldtm_mountinfo_target(
+            "not valid mountinfo", selected, 3U, mountpoint) == -1);
+        CHECK(ldtm_matches_device_number(179U, 4U, selected, 3U));
+        CHECK(!ldtm_matches_device_number(8U, 1U, selected, 3U));
+    }
     const char *headers = "schema\t3\ncorpus\t1\ndevice\t/dev/"
                           "qualification\nfingerprint\t0123456789abcdef0123456789abcdef0123456789ab"
                           "cdef0123456789abcdef\n";
