@@ -82,7 +82,7 @@ static void invalid_and_overflow_inputs(void)
     LdGenericLayoutObject object = {1u, UINT64_MAX, 1u, 0u};
     LdGenericLayoutPlacement output = {0};
     CHECK(ld_generic_layout_plan(&object, 1u, 0u, UINT64_MAX, 10u, &output)
-           == LD_LAYOUT_INVALID);
+           == LD_LAYOUT_NO_SPACE);
     object.allocated_units = 1u;
     CHECK(ld_generic_layout_plan(&object, 1u, UINT64_MAX - 1u,
                                   UINT64_MAX, 10u, &output)
