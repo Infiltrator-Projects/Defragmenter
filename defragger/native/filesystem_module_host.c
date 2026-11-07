@@ -410,7 +410,7 @@ static int run_command(const IfsDefragHostV2 *host, void *symbol, void *user) {
     /* Reject unsupported mutations before handing the module a writable
      * target. Recovery remains mandatory for Defrag and Growth operations. */
     if (required != 0u && (api->capabilities & required) != required) {
-        fprintf(stderr, "Filesystem module does not provide %s capability\\n",
+        fprintf(stderr, "Filesystem module does not provide %s capability\n",
                 operation);
         return 1;
     }
