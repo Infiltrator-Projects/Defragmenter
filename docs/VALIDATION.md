@@ -26,7 +26,7 @@ Every write-capable format must pass its bounded supported-subset contract:
 1. Generate an independently verified fragmented image; establish physical and filesystem identity.
 2. Analyse and qualify the original metadata, content and allocation state.
 3. Perform Defragment and, separately, Growth Defrag against disposable images.
-4. Verify **all** logical payload bytes, directory/metadata invariants, no forbidden overlap and canonical placement; Growth requires the **exact** documented 10% reserve.
+4. Verify **all** logical payload bytes, directory/metadata invariants, no forbidden overlap and canonical placement; Growth requires the **documented 10% reserve rounded upward to whole provider allocation units**, immediately after each file (or the final extent of a split file); alignment/fixed metadata constraints must be independently validated.
 5. Inject failures near durable-phase transitions; require safe unchanged/valid/recoverable outcomes and test Recover, Stop and journal tampering.
 6. Reject malformed, dirty, mounted, stale, incompatible or unsupported states before authoritative source changes.
 

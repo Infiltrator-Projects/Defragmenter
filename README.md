@@ -14,7 +14,7 @@
 - **Growth Defrag:** as above, with an exact 10% post-file free-space reserve, where admitted.
 - **Recover:** validate and resume/restore a supported interrupted durable transaction.
 
-The qualified support matrix, including format-specific exclusions, is in [the implementation README](defragger/README.md). ZFS/OpenZFS and Linux swap are **analysis-only by design**. Unsupported features, inconsistent geometry, mounted targets, mismatched identity or unverified recovery state are rejected rather than guessed.
+The qualified support matrix, including format-specific exclusions, is in [the implementation README](defragger/README.md). ZFS/OpenZFS and Linux swap are **currently analysis-only**. ZFS defragmentation is an outstanding filesystem-owned requirement, not a permanent exclusion; swap has no regular-file defragmentation semantics. Unsupported features, inconsistent geometry, mounted targets, mismatched identity or unverified recovery state are rejected rather than guessed.
 
 A new write operation requires native analysis, target and mounted-overlap checks, a supported plan, durable recovery material and independent post-operation verification. Recover instead requires a valid existing journal; an interrupted filesystem may not be analysable. A desktop label or filesystem-discovery hint never authorises a write.
 

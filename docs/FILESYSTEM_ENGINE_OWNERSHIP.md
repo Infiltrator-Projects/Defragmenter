@@ -24,17 +24,21 @@ Other format support remains subject to its current native worker/module, its ow
 
 ## Generic planner transition (November 2026)
 
-The Defragmenter core now includes `ld_generic_layout_plan`, an independent
-**read-only, two-pass placement planner** with deterministic object ordering,
-provider-selected allocation-unit alignment, contiguous packing, and rounded
-10% Growth gaps. It rejects malformed inventories, pinned/shared objects,
-capacity overruns and integer overflow without returning a partial plan.
-The planner and pure-memory regression live in Defragmenter, never in ZFS.so
-or other filesystem repositories.
+The core contains two **read-only, two-pass planners**. The function
+`ld_generic_layout_plan` packs a provider-certified contiguous region;
+`ld_generic_layout_plan_file_extents` plans one file across certified,
+sorted disjoint free runs, preferring a single extent. The Growth reserve
+must follow the final extent within its certified free range. Both enforce
+alignment, refuse pinned/shared objects and malformed inventories, and
+avoid publishing partial output after capacity or overflow failure.
+The 10% reserve is rounded UP in whole provider allocation units:
+`ceil(allocated_units / 10)`. Additional alignment padding is distinct.
+These functions and tests live in Defragmenter, not filesystem repositories.
 
-This is **not yet the production write path**. Existing SO-owned relocation
-engines remain in place to avoid regressing qualified volumes while the ABI
-is migrated. In the desired interface, modules expose a verified object/
+This is **not yet the universal production write path**. The independent OFS
+pilot has exercised the shared host planner on certified free runs, but
+existing SO-owned relocation/transaction engines remain while the common
+inventory and transactional execution ABI is migrated. In the desired interface, modules expose a verified object/
 extent inventory and constraints, validate the generic plan against their
 actual geometry, execute it in filesystem-valid transaction boundaries,
 recover interruptions and allow independent verification. The host must not

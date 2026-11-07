@@ -21,7 +21,7 @@ All write capability is limited to the parser's **explicitly qualified, clean an
 | APFS | Exact bounded checkpoint/spaceman subset | Yes, supported unencrypted/unshared subset |
 | Minix v1 / v2 / v3 | Exact supported volumes | Yes, bounded staged writer |
 | UFS1 / UFS2 | Exact bounded cylinder-group subset | Yes, clean, non-journalled, snapshot-free subset |
-| ZFS / OpenZFS | Bounded exact analysis or safe summary | **No — analysis only** |
+| ZFS / OpenZFS | Bounded exact analysis or safe summary | **Not yet — ZFS-owned transaction-safe mutation is outstanding** |
 | Linux swap | Exact inactive / aggregate active analysis | **No — analysis only** |
 
 A missing, untrusted or incompatible required `.so` rejects the operation. Module identity, format, ABI, mounted state and target identity are rechecked at the corresponding trust boundaries. Legacy format code is not a silent production fallback. See [module ownership](../docs/FILESYSTEM_ENGINE_OWNERSHIP.md).

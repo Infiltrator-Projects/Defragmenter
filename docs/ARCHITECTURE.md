@@ -33,7 +33,7 @@ A raw write may begin only after all relevant checks succeed:
 2. Reject mounted/overlapping targets, inconsistent topology and unexpected device replacement, including aliases/hard links.
 3. Require an independently qualified native analysis, declared operation and supported geometry/features for a new Defragment/Growth operation.
 4. Recheck target and format inside the privileged worker; verify the required filesystem module's trusted path, identity and ABI when the operation uses one.
-5. Build and validate an exact canonical plan, including the per-file 10% Growth Defrag reserve where applicable.
+5. Build and validate a canonical plan, including the 10% per-file Growth reserve rounded upward to whole provider allocation units where applicable. Plan-only arithmetic over contiguous or disjoint certified free runs does not authorise mutation.
 6. Persist recovery journal and verified staging **before** source mutation can require restoration.
 7. Perform bounded durable writes, honour Stop at safe/recoverable boundaries and then reopen the disk read-only for independent final verification.
 

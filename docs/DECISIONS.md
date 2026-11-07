@@ -194,7 +194,7 @@ non-shipping parallel application. Filesystem capability, mapping, operation,
 presentation and privileged-process authority all have one native source of
 truth. Language choice remains evidence-driven rather than a purity rule.
 
-## ADR-008 — Keep ZFS mutation inside the ZFS transaction engine
+## ADR-008 — Require ZFS-owned transactions before admitting ZFS mutation
 
 **Status update (2026-11-07):** The filesystem-ownership boundary still stands,
 but the earlier choice to leave ZFS analysis-only as a *permanent supported
@@ -224,22 +224,19 @@ each file and requires that reserve to be a meaningful postcondition.
 - keep ZFS analysis native and exact where provable, while leaving ZFS
   relocation to the filesystem's own transaction engine.
 
-**Decision.** ZFS/OpenZFS is analysis-only in Defragmenter. The native reader
-may advertise exact allocation/fragmentation only inside its explicitly
-qualified single-disk feature subset and must fall back or fail closed whenever
-the current allocator state cannot be reconstructed exactly. Defragment,
-Growth Defrag and Recover are not exposed for ZFS. Defragmenter will not
-implement a parallel raw ZFS transaction engine and will not weaken ADR-001 by
-silently delegating its write contract to an external command.
+**Decision.** Current shipped ZFS/OpenZFS mutation remains unavailable until
+the independent `Filesystem-ZFS` module exposes qualified transaction-aware
+relocation, recovery and verification. Exact allocation analysis is limited
+to the proven subset; unknown pool state fails closed. Defragmenter must
+not implement a second ZFS transaction-group writer or silently delegate
+to external utilities.
 
-**Consequences.** ZFS receives useful first-party physical-layout analysis
-without creating a second implementation of TXG publication, snapshot/reference
-accounting and pool recovery. The generic 10% Growth Defrag operation is
-intentionally unavailable because ZFS's allocator owns future physical
-placement, so an adjacent physical reserve is not a stable filesystem
-postcondition. If a future in-process ZFS interface can provide Defragmenter's
-full deterministic placement and recovery contract, this decision may be
-revisited.
+**Consequences.** Actual ZFS Defragment is an outstanding product
+requirement, not a permanent exclusion. Exact adjacent Growth reserve needs
+separate feasibility and postcondition evidence: a rewrite through the ZFS
+allocator alone cannot certify physical placement or stable 10% gaps.
+Until those requirements pass, no ZFS mutation operation is presented as
+implemented or successfully qualified.
 
 ## Review rule
 

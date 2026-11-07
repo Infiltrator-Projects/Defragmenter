@@ -31,6 +31,16 @@ The reusable first-party dependency is pinned to Libraries 1.19.46 at exact comm
 
 Release construction follows the same ownership rule. Qualification owns artefact creation once; publication owns only verification and distribution of those exact files. The hardware-native installer source payload is selected from committed Git objects and the exact Common revision rather than from the ambient build directory, so an untracked runner file cannot silently become part of a qualified release.
 
+## Allocation-unit precision
+
+Growth Defrag's 10% adjacent reserve is expressed as a whole number of
+provider-certified filesystem allocation units: `ceil(allocated_units / 10)`.
+For example, 19 allocated units require 2 free units and 1 unit requires
+1 free unit. Alignment or fixed-metadata boundaries can add padding or
+prevent a plan entirely; they do not justify silently lowering the reserve.
+The module must validate any plan against real filesystem metadata and
+transaction constraints before mutation.
+
 ## Failure philosophy
 
 A destructive operation has a higher evidence bar than a read-only operation. Unknown features, impossible geometry, stale recovery state, target replacement, mounted overlap, failed staging or failed verification stop mutation rather than triggering a best-effort guess.

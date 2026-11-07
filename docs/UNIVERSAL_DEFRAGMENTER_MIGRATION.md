@@ -68,14 +68,15 @@ the requested operation as not supported; never count a skip as a pass.
 - Defragmenter can discover compatible generic Defrag V2 modules via
   `--list-installed-modules`, but the GUI and Test Media still use older static
   format lists and many per-format worker executables.
-- `ld_generic_layout_plan` is a **pure, plan-only** shared C planner in
-  Defragmenter's core for ordered contiguous packing and 10% gaps, with
-  alignment, no-space, integer-overflow and unsupported-object checks.
-  The module-host V2 service table now exposes an **optional appended**
-  `plan_layout` callback. **No production filesystem is yet migrated to
-  execute this shared plan.** This planner currently handles only a contiguous
-  provider-certified region; it is *not* a general free-range allocator or
-  correct for every filesystem layout without further work.
+- The **plan-only** core includes `ld_generic_layout_plan` for a certified
+  contiguous region and `ld_generic_layout_plan_file_extents` for one file
+  across disjoint, sorted provider-certified free runs, preferring a single
+  fit and reserving the final Growth gap within the last data extent's run.
+  Defrag V2 host ABI exposes optional appended, size-checked `plan_layout`
+  and `plan_file_extents` callbacks. These functions do not certify an
+  SO transaction or supply a general filesystem allocator. OFS has a
+  bounded shared-planner pilot; **general production ABI migration is still
+  incomplete**.
 - Existing filesystem-specific production movers and their recovery paths are
   **preserved intentionally**. Do not delete them merely because the new
   planner compiles; retain them until equivalent end-to-end verified behaviour
@@ -101,16 +102,16 @@ the requested operation as not supported; never count a skip as a pass.
       relocate/commit/rollback, Stop and postcondition inspection. One header
       owned by the interface authority, shared with SO repos; no duplicated
       divergent definitions. Keep older ABI compatibility only during migration.
-- [ ] **Gate 2: Extend the generic planner.** Deterministic object ordering,
-      reserved/free interval representation, relocatable vs pinned/shared
-      distinction, alignment, packing, growth gaps and observable strict
-      postconditions. No raw physical write in the planner.
-- [ ] **Gate 3: ONE pilot filesystem.** Start with a qualified simpler module
-      (candidate: OFS, which already has Defrag V2). Make it supply inventory
-      and implement translation of a *generic* plan through its existing safe
-      transaction writer. Run byte-for-byte, exact placement, power-loss,
-      Stop/recovery and physical-media regressions. No old engine removal until
-      this is genuinely equivalent.
+- [ ] **Gate 2: Complete the generic planner.** Contiguous and disjoint
+      free-run plan-only functions are implemented. Remaining work includes
+      complete reserved/pinned/shared interval modelling, allocation across
+      multiple objects and independently observable exact postconditions.
+      No raw physical write belongs in the planner.
+- [ ] **Gate 3: Finish the OFS pilot.** Shared-planner calls are already
+      integrated in a bounded OFS pilot. Require complete inventory, safe
+      transaction translation, exact-placement and full-byte comparisons,
+      Stop/recovery, interruption replay and sacrificial physical-media
+      evidence before replacing any existing production engine.
 - [ ] **Gate 4: Generalize the host/GUI.** Replace hardcoded format switches
       and worker lists with dynamic discovery and capability-driven actions.
       Convert Test Media qualification from fixed 21-format assumptions to the
