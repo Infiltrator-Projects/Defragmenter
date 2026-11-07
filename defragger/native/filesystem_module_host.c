@@ -272,7 +272,8 @@ int ifs_filesystem_module_call(const char *format, const char *filename, const c
         const IfsDefragModuleV2 *api = entry ? entry() : NULL;
         if (!api || api->abi_version != IFS_DEFRAG_ABI_V2 || api->structure_bytes < sizeof(*api) ||
             !api->format_id || strcmp(api->format_id, format) || !api->run ||
-            (api->capabilities & 15u) != 15u) {
+            (api->capabilities & (IFS_DEFRAG_ANALYSE | IFS_DEFRAG_RELAYOUT |
+                                  IFS_DEFRAG_GROWTH | IFS_DEFRAG_RECOVER)) == 0u) {
             fprintf(stderr, "%s lacks the required %s Defragmenter interface\n", filename, format);
             dlclose(image); close(fd); return 1;
         }
@@ -365,7 +366,9 @@ int ifs_filesystem_module_list_v2(void) {
                       (ch >= '0' && ch <= '9') || ch == '_'))
                     safe = 0;
             }
-            if (safe && (api->capabilities & IFS_DEFRAG_ANALYSE)) {
+            if (safe && (api->capabilities &
+                        (IFS_DEFRAG_ANALYSE | IFS_DEFRAG_RELAYOUT |
+                         IFS_DEFRAG_GROWTH | IFS_DEFRAG_RECOVER))) {
                 if (!first) fputc(',', stdout);
                 first = 0;
                 printf("{\"format_id\":\"%s\",\"filename\":\"%s\","
@@ -387,7 +390,31 @@ static int run_command(const IfsDefragHostV2 *host, void *symbol, void *user) {
     const IfsDefragModuleV2 *(*entry)(void) = NULL;
     memcpy(&entry, &symbol, sizeof(entry));
     Command *command = user;
-    return entry()->run(host, command->argc, command->argv);
+    const IfsDefragModuleV2 *api = entry ? entry() : NULL;
+    if (!api || command->argc < 2 || !command->argv[1])
+        return 1;
+    const char *operation = command->argv[1];
+    uint64_t required = 0u;
+    if (!strcmp(operation, "defrag"))
+        required = IFS_DEFRAG_ANALYSE | IFS_DEFRAG_RELAYOUT |
+                   IFS_DEFRAG_RECOVER;
+    else if (!strcmp(operation, "growth-defrag"))
+        required = IFS_DEFRAG_ANALYSE | IFS_DEFRAG_GROWTH |
+                   IFS_DEFRAG_RECOVER;
+    else if (!strcmp(operation, "recover"))
+        required = IFS_DEFRAG_RECOVER;
+    else if (!strcmp(operation, "analyse") ||
+             !strcmp(operation, "analyse-json") ||
+             !strcmp(operation, "map"))
+        required = IFS_DEFRAG_ANALYSE;
+    /* Reject unsupported mutations before handing the module a writable
+     * target. Recovery remains mandatory for Defrag and Growth operations. */
+    if (required != 0u && (api->capabilities & required) != required) {
+        fprintf(stderr, "Filesystem module does not provide %s capability\\n",
+                operation);
+        return 1;
+    }
+    return api->run(host, command->argc, command->argv);
 }
 int ifs_filesystem_module_run(const char *format, const char *filename, int argc, char **argv) {
     if (argc >= 2 && (!strcmp(argv[1], "defrag") || !strcmp(argv[1], "growth-defrag") || !strcmp(argv[1], "recover"))) {
