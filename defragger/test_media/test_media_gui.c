@@ -64,6 +64,7 @@ typedef struct {
     guint stderr_watch;
     guint child_watch;
     guint completed_rows;
+    char active_operation[16];
     gboolean worker_running;
     gboolean discovering_devices;
     gboolean shutting_down;
@@ -445,13 +446,23 @@ static void worker_finished(GPid pid, gint status, gpointer user_data)
     if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
         gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(app->progress), 1.0);
         gtk_progress_bar_set_text(GTK_PROGRESS_BAR(app->progress), "Completed");
-        gtk_label_set_text(GTK_LABEL(app->operation_summary), "Operation completed successfully");
+        const char *success =
+            strcmp(app->active_operation, "verify") == 0
+                ? "File verification passed — defragmentation qualification is separate"
+                : strcmp(app->active_operation, "qualify") == 0
+                    ? "All production defragmentation qualifications passed"
+                    : "Test media creation completed successfully";
+        gtk_label_set_text(GTK_LABEL(app->operation_summary), success);
         append_log(app, "\nWorker completed successfully.\n");
         return;
     }
     gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(app->progress), 0.0);
     gtk_progress_bar_set_text(GTK_PROGRESS_BAR(app->progress), "Operation failed");
-    gtk_label_set_text(GTK_LABEL(app->operation_summary), "Operation failed — diagnostic log opened");
+    gtk_label_set_text(
+        GTK_LABEL(app->operation_summary),
+        strcmp(app->active_operation, "qualify") == 0
+            ? "Defragmentation qualification failed — diagnostic log opened"
+            : "Operation failed — diagnostic log opened");
     if (app->result_stack != NULL)
         gtk_stack_set_visible_child_name(GTK_STACK(app->result_stack), "log");
     if (WIFEXITED(status))
@@ -527,6 +538,8 @@ static gboolean spawn_worker(LdtmApp *app, const char *operation,
         G_IO_IN | G_IO_HUP | G_IO_ERR | G_IO_NVAL, channel_watch, app);
     app->stderr_watch = g_io_add_watch(app->stderr_channel,
         G_IO_IN | G_IO_HUP | G_IO_ERR | G_IO_NVAL, channel_watch, app);
+    (void)g_strlcpy(app->active_operation, operation,
+                     sizeof(app->active_operation));
     app->child_watch = g_child_watch_add(app->child_pid, worker_finished, app);
     set_worker_controls(app, TRUE);
     return TRUE;
