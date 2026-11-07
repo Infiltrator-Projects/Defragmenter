@@ -98,8 +98,34 @@ static void invalid_and_overflow_inputs(void)
            == LD_LAYOUT_OK);
 }
 
+static void public_module_host_abi(void)
+{
+    /* Verify that a filesystem SO can consume the shared planner using
+     * its public ABI types, without format-specific code or unsafe casts.
+     * The installed host provides this optional appended callback. */
+    IfsDefragHostV2 host = {0};
+    host.abi_version = IFS_DEFRAG_ABI_V2;
+    host.structure_bytes = sizeof(host);
+    host.plan_layout = ld_generic_layout_plan;
+    CHECK(host.structure_bytes >=
+          offsetof(IfsDefragHostV2, plan_layout) + sizeof(host.plan_layout));
+    const IfsDefragLayoutObject objects[] = {
+        {4u, 10u, 1u, 0u}, {8u, 20u, 1u, 0u}
+    };
+    IfsDefragLayoutPlacement placements[2] = {0};
+    CHECK(host.plan_layout(objects, 2u, 0u, 40u, 10u, placements)
+          == LD_LAYOUT_OK);
+    CHECK(placements[0].first_unit == 0u);
+    CHECK(placements[0].gap_after_units == 1u);
+    CHECK(placements[1].first_unit == 11u);
+    CHECK(placements[1].gap_after_units == 2u);
+    CHECK(host.plan_layout(objects, 2u, 0u, 30u, 10u, placements)
+          == LD_LAYOUT_NO_SPACE);
+}
+
 int main(void)
 {
+    public_module_host_abi();
     basic_defrag_growth();
     alignment_and_exclusive_limit();
     failures_never_publish_partial_plan();
