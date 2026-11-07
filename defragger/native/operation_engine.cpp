@@ -95,12 +95,16 @@ int main(int argc, char** argv) {
                 std::fputs("invalid generic filesystem identifier\n", stderr);
                 return 2;
             }
-            generic_filename.push_back(
-                character >= 'a' && character <= 'z'
-                    ? static_cast<char>(character - 'a' + 'A')
-                    : static_cast<char>(character));
         }
-        generic_filename += ".so";
+        char module_file[64] = {};
+        if (ifs_filesystem_module_find_v2(filesystem.c_str(), module_file,
+                                           sizeof(module_file)) != 0) {
+            std::fprintf(stderr,
+                         "defragmenter-operation-engine: no installed trusted "
+                         "Defrag V2 SO advertises %s\n", filesystem.c_str());
+            return 2;
+        }
+        generic_filename = module_file;
     }
 
     const defragger::OperationSpec* specification =
