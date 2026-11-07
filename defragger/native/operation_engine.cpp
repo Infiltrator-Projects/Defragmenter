@@ -2,6 +2,7 @@
 #include "runtime.hpp"
 
 extern "C" {
+#include "filesystem_module_host.h"
 #include "ld_device.h"
 #include "version.h"
 }
@@ -20,7 +21,7 @@ namespace {
 int usage() {
     std::fputs(
         "usage: defragmenter-operation-engine-cpp "
-        "[--list-plugins] OPERATION DEVICE --filesystem TYPE [worker options...]\n",
+        "[--list-plugins|--list-installed-modules] OPERATION DEVICE --filesystem TYPE [worker options...]\n",
         stderr);
     return 2;
 }
@@ -42,6 +43,9 @@ int main(int argc, char** argv) {
         if (token == "--list-plugins") {
             std::puts(defragger::registry_manifest_json().c_str());
             return 0;
+        }
+        if (token == "--list-installed-modules") {
+            return ifs_filesystem_module_list_v2();
         }
         if (token == "--filesystem") {
             if (++index >= argc) return usage();
@@ -68,16 +72,40 @@ int main(int argc, char** argv) {
 
     const defragger::BackendInfo* backend =
         defragger::backend_by_fstype(filesystem);
-    if (backend == nullptr) {
-        std::fprintf(stderr,
-                     "defragmenter-operation-engine: no filesystem plugin "
-                     "is registered for %s\n",
-                     filesystem.c_str());
-        return 2;
+    const bool generic_module = backend == nullptr;
+    std::string generic_filename;
+
+    if (generic_module) {
+        /* A newly installed filesystem is eligible without recompiling the
+         * application only if it implements the standard V2 ABI. The trusted
+         * module host independently verifies ownership, ABI, exact format ID
+         * and required capabilities before executing any operation. */
+        if (filesystem.empty() || filesystem.size() > 15U ||
+            (operation != "defrag" && operation != "growth-defrag" &&
+             operation != "recover")) {
+            std::fprintf(stderr,
+                         "defragmenter-operation-engine: unsupported generic "
+                         "filesystem or operation\n");
+            return 2;
+        }
+        for (unsigned char character : filesystem) {
+            if (!((character >= 'a' && character <= 'z') ||
+                  (character >= '0' && character <= '9') ||
+                  character == '_')) {
+                std::fputs("invalid generic filesystem identifier\n", stderr);
+                return 2;
+            }
+            generic_filename.push_back(
+                character >= 'a' && character <= 'z'
+                    ? static_cast<char>(character - 'a' + 'A')
+                    : static_cast<char>(character));
+        }
+        generic_filename += ".so";
     }
+
     const defragger::OperationSpec* specification =
-        defragger::operation_for(*backend, operation);
-    if (specification == nullptr) {
+        backend ? defragger::operation_for(*backend, operation) : nullptr;
+    if (!generic_module && specification == nullptr) {
         std::fprintf(stderr,
                      "defragmenter-operation-engine: the %s plugin does not "
                      "implement %s\n",
@@ -123,6 +151,27 @@ int main(int argc, char** argv) {
                          device.c_str());
             return 2;
         }
+    }
+
+    if (generic_module) {
+        /* The same offline-device safety preflight above applies to every
+         * future module. No format-specific parser or mutation code lives in
+         * this dispatcher, and absent/incompatible SOs fail closed. */
+        std::vector<std::string> command;
+        command.reserve(3U + forwarded.size());
+        command.emplace_back("defragmenter-generic-module");
+        command.push_back(operation);
+        command.push_back(device);
+        command.insert(command.end(), forwarded.begin(), forwarded.end());
+        std::vector<char*> arguments;
+        arguments.reserve(command.size() + 1U);
+        for (auto& element : command) arguments.push_back(element.data());
+        arguments.push_back(nullptr);
+        (void)setenv("LC_ALL", "C", 1);
+        (void)setenv("LANG", "C", 1);
+        return ifs_filesystem_module_run(
+            filesystem.c_str(), generic_filename.c_str(),
+            static_cast<int>(command.size()), arguments.data());
     }
 
     std::string worker;
