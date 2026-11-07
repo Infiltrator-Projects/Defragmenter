@@ -178,6 +178,7 @@ add_subdirectory(
     EXCLUDE_FROM_ALL)
 
 add_library(defragmenter-core STATIC
+    src/core/ld_generic_layout.c
     src/core/ld_runtime.c
     src/core/ld_io.c
     src/core/ld_device.c
@@ -657,6 +658,19 @@ if(BUILD_TESTING)
         defragmenter-runtime-cpp defragmenter-core)
     add_test(NAME defragmenter-cpp-runtime
         COMMAND defragmenter-cpp-runtime-test)
+
+    # Shared, filesystem-neutral layout planning is proven without a disk.
+    # A filesystem SO still owns metadata, safe relocation and recovery.
+    add_executable(defragmenter-generic-layout-test
+        tests/test_generic_layout.c)
+    target_include_directories(defragmenter-generic-layout-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/core")
+    target_compile_options(defragmenter-generic-layout-test PRIVATE
+        ${LD_WARNING_FLAGS})
+    target_link_libraries(defragmenter-generic-layout-test PRIVATE
+        defragmenter-core)
+    add_test(NAME defragmenter-generic-layout
+        COMMAND defragmenter-generic-layout-test)
     add_test(NAME defragmenter-generic-module-dispatch
         COMMAND python3
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_generic_module_dispatch.py"
