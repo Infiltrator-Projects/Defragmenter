@@ -434,6 +434,12 @@ target_compile_definitions(defragmenter-filesystem-module-host PRIVATE _FILE_OFF
 target_link_libraries(defragmenter-filesystem-module-host PUBLIC
     defragmenter-core OpenSSL::Crypto ${CMAKE_DL_LIBS})
 
+# The universal operation dispatcher can discover and invoke any newly
+# installed root-owned filesystem SO implementing the common Defrag V2 ABI.
+# Existing format workers remain available until all old interfaces migrate.
+target_link_libraries(defragmenter-operation-engine-cpp PRIVATE
+    defragmenter-filesystem-module-host)
+
 # SWAP owns its native analyser, map and Test Media formatter.
 # The installed application has only a trusted process-hosted SO loader.
 add_executable(defragmenter-swap-worker native/swap_module_loader.c)
