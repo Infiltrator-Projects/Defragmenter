@@ -301,7 +301,7 @@ int ifs_filesystem_module_list_v2(void) {
     int parent = open("/System", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     if (parent < 0 || !trusted(parent, 1)) {
         if (parent >= 0) close(parent);
-        fputs("{\\\"schema\\\":1,\\\"modules\\\":[]}\\n", stdout);
+        fputs("{\"schema\":1,\"modules\":[]}\n", stdout);
         return 0;
     }
     int directory = openat(parent, "Filesystems",
@@ -309,7 +309,7 @@ int ifs_filesystem_module_list_v2(void) {
     close(parent);
     if (directory < 0 || !trusted(directory, 1)) {
         if (directory >= 0) close(directory);
-        fputs("{\\\"schema\\\":1,\\\"modules\\\":[]}\\n", stdout);
+        fputs("{\"schema\":1,\"modules\":[]}\n", stdout);
         return 0;
     }
     DIR *entries = fdopendir(directory);
@@ -318,7 +318,7 @@ int ifs_filesystem_module_list_v2(void) {
         return 1;
     }
     int first = 1;
-    fputs("{\\\"schema\\\":1,\\\"modules\\\":[", stdout);
+    fputs("{\"schema\":1,\"modules\":[", stdout);
     struct dirent *item;
     while ((item = readdir(entries)) != NULL) {
         const size_t length = strlen(item->d_name);
@@ -368,8 +368,8 @@ int ifs_filesystem_module_list_v2(void) {
             if (safe && (api->capabilities & IFS_DEFRAG_ANALYSE)) {
                 if (!first) fputc(',', stdout);
                 first = 0;
-                printf("{\\\"format_id\\\":\\\"%s\\\",\\\"filename\\\":\\\"%s\\\","
-                       "\\\"capabilities\\\":%llu}",
+                printf("{\"format_id\":\"%s\",\"filename\":\"%s\","
+                       "\"capabilities\":%llu}",
                        api->format_id, item->d_name,
                        (unsigned long long)api->capabilities);
             }
@@ -377,7 +377,7 @@ int ifs_filesystem_module_list_v2(void) {
         dlclose(image);
         close(fd);
     }
-    fputs("]}\\n", stdout);
+    fputs("]}\n", stdout);
     closedir(entries);
     return ferror(stdout) ? 1 : 0;
 }
