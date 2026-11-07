@@ -290,99 +290,155 @@ missing:
     fprintf(stderr, "Install or update the trusted /System/Filesystems/%s module; %s operations require its SO interface.\n", filename, format);
     return 1;
 }
-/* Enumerate only trusted, root-owned filesystem modules with a compatible
- * generic ABI. This is discovery, not filesystem detection and never writes
- * to a device. Modules without the shared interface are not advertised as
- * generic drivers; legacy adapters remain available independently.
- *
- * There is deliberately no call to lsblk, findmnt or a provider-specific
- * filesystem executable here. Each SO states its own format and capabilities.
- */
-int ifs_filesystem_module_list_v2(void) {
+/* Open the authority namespace once. Every path component must be owned
+ * by root and not writable by group/others; symlink traversal is forbidden. */
+static int ifs_open_module_directory(void) {
     int parent = open("/System", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     if (parent < 0 || !trusted(parent, 1)) {
         if (parent >= 0) close(parent);
-        fputs("{\"schema\":1,\"modules\":[]}\n", stdout);
-        return 0;
+        return -1;
     }
     int directory = openat(parent, "Filesystems",
                            O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     close(parent);
     if (directory < 0 || !trusted(directory, 1)) {
         if (directory >= 0) close(directory);
+        return -1;
+    }
+    return directory;
+}
+
+static int ifs_safe_module_filename(const char *name) {
+    const size_t length = strlen(name);
+    if (length < 4u || length > 59u ||
+        strcmp(name + length - 3u, ".so") != 0)
+        return 0;
+    for (size_t n = 0u; n < length; ++n) {
+        const unsigned char ch = (unsigned char)name[n];
+        if (!((ch >= 'a' && ch <= 'z') ||
+              (ch >= 'A' && ch <= 'Z') ||
+              (ch >= '0' && ch <= '9') ||
+              ch == '_' || ch == '-' || ch == '.'))
+            return 0;
+    }
+    return 1;
+}
+
+/* Inspect metadata without opening or writing any filesystem target. Never
+ * trust a filename as a format identity: that identity comes from the SO's
+ * versioned interface. An incompatible module is not a generic provider. */
+static int ifs_probe_module_v2(int directory, const char *name,
+                               char format[16], uint64_t *capabilities) {
+    if (!ifs_safe_module_filename(name) || !format || !capabilities)
+        return -1;
+    int fd = openat(directory, name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    if (fd < 0) return -1;
+    if (!trusted(fd, 0)) { close(fd); return -1; }
+    char path[64];
+    if (snprintf(path, sizeof(path), "/proc/self/fd/%d", fd) >=
+        (int)sizeof(path)) {
+        close(fd);
+        return -1;
+    }
+    void *image = dlopen(path, RTLD_NOW | RTLD_LOCAL);
+    if (!image) { close(fd); return -1; }
+    void *symbol = dlsym(image, "infiltrator_filesystem_defrag_v2");
+    const IfsDefragModuleV2 *(*entry)(void) = NULL;
+    _Static_assert(sizeof(entry) == sizeof(symbol), "dlsym pointer width");
+    memcpy(&entry, &symbol, sizeof(entry));
+    const IfsDefragModuleV2 *api = entry ? entry() : NULL;
+    int result = -1;
+    if (api && api->abi_version == IFS_DEFRAG_ABI_V2 &&
+        api->structure_bytes >= sizeof(*api) && api->format_id && api->run &&
+        (api->capabilities & (IFS_DEFRAG_ANALYSE | IFS_DEFRAG_RELAYOUT |
+                              IFS_DEFRAG_GROWTH | IFS_DEFRAG_RECOVER))) {
+        const size_t length = strnlen(api->format_id, 16u);
+        int valid = length > 0u && length <= 15u;
+        for (size_t n = 0u; valid && n < length; ++n) {
+            const unsigned char ch = (unsigned char)api->format_id[n];
+            if (!((ch >= 'a' && ch <= 'z') ||
+                  (ch >= '0' && ch <= '9') || ch == '_'))
+                valid = 0;
+        }
+        if (valid) {
+            memcpy(format, api->format_id, length + 1u);
+            *capabilities = api->capabilities;
+            result = 0;
+        }
+    }
+    dlclose(image);
+    close(fd);
+    return result;
+}
+
+/* Generic discovery is a read-only operation; a new trusted SO is visible
+ * without adding any filesystem code or registry entry to Defragmenter. */
+int ifs_filesystem_module_list_v2(void) {
+    int directory = ifs_open_module_directory();
+    if (directory < 0) {
         fputs("{\"schema\":1,\"modules\":[]}\n", stdout);
         return 0;
     }
     DIR *entries = fdopendir(directory);
-    if (!entries) {
-        close(directory);
-        return 1;
-    }
+    if (!entries) { close(directory); return 1; }
     int first = 1;
     fputs("{\"schema\":1,\"modules\":[", stdout);
     struct dirent *item;
     while ((item = readdir(entries)) != NULL) {
-        const size_t length = strlen(item->d_name);
-        if (length < 4u || length > 59u ||
-            strcmp(item->d_name + length - 3u, ".so") != 0)
+        char format[16];
+        uint64_t capabilities = 0u;
+        if (ifs_probe_module_v2(directory, item->d_name,
+                                format, &capabilities) != 0)
             continue;
-        int permitted = 1;
-        for (size_t n = 0u; n < length; ++n) {
-            const unsigned char ch = (unsigned char)item->d_name[n];
-            if (!((ch >= 'a' && ch <= 'z') ||
-                  (ch >= 'A' && ch <= 'Z') ||
-                  (ch >= '0' && ch <= '9') ||
-                  ch == '_' || ch == '-' || ch == '.')) {
-                permitted = 0;
-                break;
-            }
-        }
-        if (!permitted) continue;
-        int fd = openat(directory, item->d_name,
-                        O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
-        if (fd < 0) continue;
-        if (!trusted(fd, 0)) { close(fd); continue; }
-
-        char path[64];
-        if (snprintf(path, sizeof(path), "/proc/self/fd/%d", fd) >=
-            (int)sizeof(path)) {
-            close(fd);
-            continue;
-        }
-        void *image = dlopen(path, RTLD_NOW | RTLD_LOCAL);
-        if (!image) { close(fd); continue; }
-        void *symbol = dlsym(image, "infiltrator_filesystem_defrag_v2");
-        const IfsDefragModuleV2 *(*entry)(void) = NULL;
-        _Static_assert(sizeof(entry) == sizeof(symbol), "dlsym pointer width");
-        memcpy(&entry, &symbol, sizeof(entry));
-        const IfsDefragModuleV2 *api = entry ? entry() : NULL;
-        if (api && api->abi_version == IFS_DEFRAG_ABI_V2 &&
-            api->structure_bytes >= sizeof(*api) && api->format_id && api->run) {
-            const size_t id_length = strnlen(api->format_id, 16u);
-            int safe = id_length > 0u && id_length <= 15u;
-            for (size_t n = 0u; safe && n < id_length; ++n) {
-                const unsigned char ch = (unsigned char)api->format_id[n];
-                if (!((ch >= 'a' && ch <= 'z') ||
-                      (ch >= '0' && ch <= '9') || ch == '_'))
-                    safe = 0;
-            }
-            if (safe && (api->capabilities &
-                        (IFS_DEFRAG_ANALYSE | IFS_DEFRAG_RELAYOUT |
-                         IFS_DEFRAG_GROWTH | IFS_DEFRAG_RECOVER))) {
-                if (!first) fputc(',', stdout);
-                first = 0;
-                printf("{\"format_id\":\"%s\",\"filename\":\"%s\","
-                       "\"capabilities\":%llu}",
-                       api->format_id, item->d_name,
-                       (unsigned long long)api->capabilities);
-            }
-        }
-        dlclose(image);
-        close(fd);
+        if (!first) fputc(',', stdout);
+        first = 0;
+        printf("{\"format_id\":\"%s\",\"filename\":\"%s\","
+               "\"capabilities\":%llu}",
+               format, item->d_name, (unsigned long long)capabilities);
     }
     fputs("]}\n", stdout);
     closedir(entries);
     return ferror(stdout) ? 1 : 0;
+}
+
+/* Resolve by the module's exported format_id, not a guessed name or a host
+ * filesystem registry. Duplicate providers fail closed. The dispatcher then
+ * loads the returned trusted SO again and revalidates its ABI and identity. */
+int ifs_filesystem_module_find_v2(const char *format, char *filename,
+                                  size_t capacity) {
+    if (!format || !filename || capacity == 0u) return -1;
+    const size_t length = strnlen(format, 16u);
+    if (length == 0u || length > 15u) return -1;
+    for (size_t n = 0u; n < length; ++n) {
+        const unsigned char ch = (unsigned char)format[n];
+        if (!((ch >= 'a' && ch <= 'z') ||
+              (ch >= '0' && ch <= '9') || ch == '_'))
+            return -1;
+    }
+    int directory = ifs_open_module_directory();
+    if (directory < 0) return -1;
+    DIR *entries = fdopendir(directory);
+    if (!entries) { close(directory); return -1; }
+    char selected[64] = "";
+    unsigned int matches = 0u;
+    struct dirent *item;
+    while ((item = readdir(entries)) != NULL) {
+        char discovered[16];
+        uint64_t capabilities = 0u;
+        if (ifs_probe_module_v2(directory, item->d_name,
+                                discovered, &capabilities) != 0 ||
+            strcmp(discovered, format) != 0)
+            continue;
+        if (++matches != 1u) break;
+        (void)snprintf(selected, sizeof(selected), "%s", item->d_name);
+    }
+    closedir(entries);
+    const size_t selected_length = strlen(selected);
+    if (matches != 1u || selected_length == 0u ||
+        selected_length + 1u > capacity)
+        return -1;
+    memcpy(filename, selected, selected_length + 1u);
+    return 0;
 }
 
 typedef struct { int argc; char **argv; } Command;
