@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mount.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <sys/types.h>
@@ -1038,11 +1039,20 @@ static int unmount_descendants(const char *device)
                 return -1;
             continue;
         }
-        const char *const umount_argv[] = {"umount", "--", target, NULL};
-        if (run_process(umount_argv, NULL, 0) != 0) {
-            /* A desktop automount race may have unmounted this exact path.
-             * Retry from live mountinfo, but never ignore a persistent
-             * busy mount or an active swap before destructive writes. */
+        /* Unmount through the kernel directly. Do not depend on the host's
+         * util-linux umount binary, option parsing or PATH. No lazy detach:
+         * the selected filesystem must actually be released before GPT
+         * mutation. Retain the fail-closed post-unmount topology check. */
+        printf("+ unmount selected filesystem %s\\n", target);
+        fflush(stdout);
+        if (umount2(target, 0) != 0) {
+            const int failure = errno;
+            /* A desktop automount race may have already removed this exact
+             * mount. Re-read the live mount table rather than trusting a
+             * transient ENOENT/EINVAL. Persistent EBUSY or ownership changes
+             * remain fatal; never detach an unrelated filesystem. */
+            fprintf(stderr, "Unmount of %s: %s\\n",
+                    target, strerror(failure));
             if (++failures >= 3U)
                 return -1;
         } else {
