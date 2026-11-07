@@ -953,7 +953,7 @@ static void update_result_summary(LdtmApp *app)
 {
     if (app->result_summary == NULL) return;
     GtkTreeIter iter;
-    guint complete = 0U, failed = 0U, waiting = 0U;
+    guint complete = 0U, skipped = 0U, failed = 0U, waiting = 0U;
     gboolean valid = gtk_tree_model_get_iter_first(GTK_TREE_MODEL(app->filesystem_store), &iter);
     while (valid) {
         char *result = NULL;
@@ -961,11 +961,16 @@ static void update_result_summary(LdtmApp *app)
         const char *state = filesystem_status_class(result);
         if (strcmp(state, "ldtm-fs-failure") == 0) ++failed;
         else if (strcmp(state, "ldtm-fs-waiting") == 0) ++waiting;
+        else if (strcmp(state, "ldtm-fs-warning") == 0) ++skipped;
         else ++complete;
         g_free(result);
         valid = gtk_tree_model_iter_next(GTK_TREE_MODEL(app->filesystem_store), &iter);
     }
-    char *text = g_strdup_printf("%u complete  •  %u failed  •  %u waiting", complete, failed, waiting);
+    /* A skipped write qualification must never inflate the successful count.
+     * ZFS and SWAP remain explicitly incomplete for write qualification. */
+    char *text = g_strdup_printf(
+        "%u complete  •  %u analysis only  •  %u failed  •  %u waiting",
+        complete, skipped, failed, waiting);
     gtk_label_set_text(GTK_LABEL(app->result_summary), text);
     g_free(text);
 }
