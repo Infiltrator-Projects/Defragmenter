@@ -10,5 +10,7 @@ int ifs_filesystem_module_call(const char *, const char *, const char *,
 int ifs_filesystem_module_run(const char *, const char *, int, char **);
 /* Discover root-owned modules advertising the standard Defrag V2 ABI. */
 int ifs_filesystem_module_list_v2(void);
+/* Resolve a trusted installed SO by its exported format_id, not filename. */
+int ifs_filesystem_module_find_v2(const char *, char *, size_t);
 int ifs_filesystem_journal_matches(const char *, const char *);
 #endif
