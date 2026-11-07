@@ -191,6 +191,17 @@ truth. Language choice remains evidence-driven rather than a purity rule.
 
 ## ADR-008 — Keep ZFS mutation inside the ZFS transaction engine
 
+**Status update (2026-11-07):** The filesystem-ownership boundary still stands,
+but the earlier choice to leave ZFS analysis-only as a *permanent supported
+product outcome* is superseded. Actual ZFS Defragment is an outstanding
+capability requirement, owned by `Filesystem-ZFS`; it must not be treated as
+passed just because analysis and Test Media fixture creation succeed.
+Until a proven ZFS transaction-group writer exists, the shipped read-only
+limit must remain enforced. The exact 10% per-file Growth Defrag guarantee
+requires its own feasibility and postcondition evidence and cannot be claimed
+by simply rewriting blocks through an existing allocator. See ROADMAP.md.
+
+
 **Context.** Defragmenter can parse a bounded ZFS/OpenZFS subset deeply enough
 to reconstruct exact allocation and regular-file physical fragmentation.
 Mutation is different: relocating a ZFS block changes a copy-on-write graph
