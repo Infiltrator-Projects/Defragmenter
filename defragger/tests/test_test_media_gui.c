@@ -207,6 +207,16 @@ static gboolean layout_probe(gpointer user_data)
             if (strcmp(ldtm_specs()[index].key, "zfs") == 0) gtk_button_clicked(GTK_BUTTON(app->filesystem_tiles[index]));
         }
         CHECK(strstr(gtk_label_get_text(GTK_LABEL(app->selected_title)), "ZFS") != NULL);
+        /* An engine skipped during qualification must count as a FAILURE.
+         * The stand-alone Verify files command has a separate success path. */
+        CHECK(strcmp(display_result("qualification-skipped"),
+                     "Qualification failed (skipped)") == 0);
+        update_filesystem_status(app, "zfs", "qualification-skipped",
+                                 "No production ZFS writer");
+        CHECK(strstr(gtk_label_get_text(GTK_LABEL(app->result_summary)),
+                     "1 failed") != NULL);
+        CHECK(strstr(gtk_label_get_text(GTK_LABEL(app->selected_result)),
+                     "Qualification failed") != NULL);
         update_filesystem_status(app, "zfs", "qualification-failed", "nlevels=2 indblkshift=11 — retained diagnostic");
         CHECK(strstr(gtk_label_get_text(GTK_LABEL(app->selected_detail)), "retained diagnostic") != NULL);
         CHECK(strstr(gtk_label_get_text(GTK_LABEL(app->result_summary)), "1 failed") != NULL);
