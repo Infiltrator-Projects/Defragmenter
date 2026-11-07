@@ -35,7 +35,7 @@ def main() -> None:
     assert isinstance(inventory["modules"], list)
     for module in inventory["modules"]:
         assert re.fullmatch(r"[a-z0-9_]{1,15}", module["format_id"])
-        assert re.fullmatch(r"[A-Za-z0-9_.-]{1,59}\\.so", module["filename"])
+        assert re.fullmatch(r"[A-Za-z0-9_.-]{1,59}\.so", module["filename"])
         assert isinstance(module["capabilities"], int)
         assert 0 < module["capabilities"]
 
