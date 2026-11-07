@@ -18,6 +18,28 @@ typedef struct {
     char path[IFS_DEFRAG_PATH_BYTES];
     char identity[IFS_DEFRAG_ID_BYTES];
 } IfsDefragTarget;
+
+/* Generic layout exchange types. The SO provides an exact, certified object
+ * inventory and allocation-unit boundaries. Defragmenter owns policy; the SO
+ * retains ALL authority for allocation validity, metadata and durable moves.
+ * A successful plan is informational only and cannot authorize disk writes.
+ * These fixed structs form the optional layout-planning host extension. */
+#define IFS_DEFRAG_LAYOUT_OBJECT_PINNED 1u
+#define IFS_DEFRAG_LAYOUT_OBJECT_SHARED 2u
+#define IFS_DEFRAG_LAYOUT_OBJECT_UNSUPPORTED 4u
+typedef struct {
+    uint64_t object_id;
+    uint64_t allocated_units;
+    uint64_t alignment_units;
+    uint32_t flags;
+} IfsDefragLayoutObject;
+typedef struct {
+    uint64_t object_id;
+    uint64_t first_unit;
+    uint64_t allocated_units;
+    uint64_t gap_after_units;
+} IfsDefragLayoutPlacement;
+
 typedef struct {
     uint32_t abi_version, structure_bytes;
     void *context;
@@ -41,6 +63,15 @@ typedef struct {
     int (*stop_requested)(void *);
     int (*print)(void *, int, const char *, ...); /* 0 stdout, 1 stderr. */
     int (*format)(char *, size_t, const char *, ...);
+    /* Optional appended extension; check structure_bytes before access.
+     * Return: 0 success, -1 malformed/overflow, -2 no space,
+     * -3 unsupported/pinned/shared. Output unchanged on failure.
+     * growth_percent is 0 for Defrag or 10 for Growth Defrag.
+     * No filesystem mutations, no allocation authority, no side effects.
+     */
+    int (*plan_layout)(const IfsDefragLayoutObject *, size_t,
+                       uint64_t first_unit, uint64_t limit_unit,
+                       unsigned growth_percent, IfsDefragLayoutPlacement *);
 } IfsDefragHostV2;
 typedef struct {
     uint32_t abi_version, structure_bytes;
