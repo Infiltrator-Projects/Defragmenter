@@ -4,10 +4,16 @@
 
 Status: **complete**
 
-Audited source commit: c8fca6165790bee0cb259ac8fdce94739bc65cec
+Audited source commit: 2e9a62847cbb1fe0b58e21faeba4d2bcd8708430
 Audited release-governance commit: 3934c470b7ff3c8411515b37651dc9346c4d99ca
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Restored package script execution modes — 2026-11-07
+
+**Reviewed source baseline:** `2e9a62847cbb1fe0b58e21faeba4d2bcd8708430` against preceding source audit `c8fca6165790bee0cb259ac8fdce94739bc65cec`. The intervening commits are documentation/release-version updates plus **exactly two audited source-input file-mode restorations**, with no byte/content differences in either source file: `defragger/packaging/build-deb.sh` and `defragger/tests/test_deb_package_versions.sh` changed from Git mode `100644` back to their previously established executable mode `100755`. The earlier document/manual multi-file Git tree creation accidentally stripped these two flags; all other modified executable-source paths retain their prior modes. No disk writer, filesystem module, ABI, journal, privileged target policy, packaging logic, test assertion or release-governance script is modified by this correction.
+
+**Failure evidence:** Exact `v1.8.0-290` candidate [project quality run 42358802104](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/42358802104) passed 43 of 44 native CTests but failed `defragmenter-tests` at `test_release_artifacts.sh:115` with `test_deb_package_versions.sh: Permission denied`. Both needed executable-mode restorations are retained as source-integrity fixes, **not** waived test conditions. A fresh exact-head full quality gate and ASan/UBSan qualification must still run and pass; release, checksummed assets, APT and physical SD-card tests remain independently unproven until observed. Release-governance audit baseline remains `3934c470b7ff3c8411515b37651dc9346c4d99ca`.
 
 ## User manual expansion and ZFS package-language source review — 2026-11-07
 
