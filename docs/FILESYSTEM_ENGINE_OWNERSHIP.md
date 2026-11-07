@@ -20,6 +20,35 @@ Required modules load only from trusted paths with checked ABI, filesystem ident
 
 Other format support remains subject to its current native worker/module, its own qualified source and the current tests. The existence of an independent integration workflow is not itself proof that every component or kernel consumer migrated.
 
+## Universal discovery transition (November 2026)
+
+The native operation engine now has an additive **generic Defrag V2 path**:
+`--list-installed-modules` enumerates root-owned, non-writable-by-others
+`/System/Filesystems/*.so` objects with the common
+`infiltrator_filesystem_defrag_v2` interface. It obtains `format_id` and
+operation capability bits **from each loaded module**, not a filesystem table
+or guessed filename. For an unknown filesystem ID, the engine resolves the
+matching installed SO and dispatches supported offline Defrag/Growth/Recover
+through the same trusted host, after its ordinary target safety checks.
+Conflicting identities, absent modules, mismatched ABIs and missing required
+operation capabilities fail closed. Defrag and Growth also require recovery
+capability.
+
+This is **not yet universal GUI integration**. The existing desktop backend
+registry, legacy format worker adapters, and the fixed 21-format Test Media
+qualification layout remain for compatibility until their ABI consumers can
+be converted and retested. In particular, the GUI does not yet automatically
+offer every discovered V2 module. Do not retire any working legacy adapter
+until an end-to-end module-only replacement is qualified.
+
+Test Media's unmount loop now uses the native `umount2` kernel interface in
+place of an external `umount` executable. Other Linux-facing external
+utilities (`lsblk`, `partx`, `sfdisk`, `wipefs`, and optional
+`udevadm`) and external application libraries remain; they must not be
+described as removed. Low-level kernel interfaces remain necessary on the
+Linux-hosted transitional InfiltratorOS, but file-system format semantics
+must stay in the independently installed modules.
+
 ## Required proof
 
 For each migrated format, test the real `dlopen`/ABI path and exercise:
