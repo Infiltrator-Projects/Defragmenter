@@ -147,7 +147,7 @@ def qualify(fs: str, parent: Path) -> None:
         if fs == "zfs":
             reject_corruption(image, fs, marker)
             print("zfs: native creation, exact analysis, every payload byte and corruption rejection passed", flush=True)
-            return  # ZFS is analysis-only by design.
+            return  # ZFS mutation is not yet qualified; the fixture verifies analysis only.
         assert before["defrag_qualified"] and before["growth_qualified"], before
         # The CI workspace contains both production-only and test-only
         # loaders. Select the exact same trusted SO code with the explicitly
