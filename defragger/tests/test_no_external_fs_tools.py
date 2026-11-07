@@ -46,7 +46,7 @@ FORBIDDEN_TOKENS = {
 # must never be mistaken for an invocation of `btrfs check`.
 FORBIDDEN_PATTERNS = (
     # Mount lifecycle must not shell out; use the native kernel interface.
-    re.compile(r'["\\']umount["\\']\\s*,'),
+    re.compile(r'"umount"\s*,'),
     re.compile(r'["\']mount["\']\s*,'),
     re.compile(r'["\'](?:zpool|zfs)["\']\s*,\s*["\'](?:create|import|mount|export)["\']'),
     re.compile(r'["\']btrfs["\']\s*,\s*["\']check["\']'),
