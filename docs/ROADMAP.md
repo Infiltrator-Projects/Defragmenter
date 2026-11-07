@@ -1,5 +1,7 @@
 # Roadmap
 
+**Canonical cross-filesystem design:** [Universal Defragmenter and SO migration](UNIVERSAL_DEFRAGMENTER_MIGRATION.md). **Tracked work:** [issue #61](https://github.com/Infiltrator-Projects/Defragmenter/issues/61). This plan overrides any older suggestion that every filesystem SO should duplicate the generic Defrag/Growth placement algorithm. Module-specific metadata, transaction and recovery semantics remain module-owned. The shared planner is currently plan-only, not a completed production migration.
+
 This document records **remaining work and admission criteria**, not a diary of completed alpha iterations. Implemented operations and their bounded filesystem support are listed in [the source README](../defragger/README.md); exact claims require code and tests, not a checked box.
 
 ## Active engineering boundaries
