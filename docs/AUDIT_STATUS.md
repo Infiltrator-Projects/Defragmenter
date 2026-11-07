@@ -4,10 +4,20 @@
 
 Status: **complete**
 
-Audited source commit: 2e9a62847cbb1fe0b58e21faeba4d2bcd8708430
+Audited source commit: db61b8955c700d645f874da4a80224a48002ee63
 Audited release-governance commit: 3934c470b7ff3c8411515b37651dc9346c4d99ca
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Physical MMC CID-based identity stability — 2026-11-07
+
+**Exact reviewed source baseline:** `db61b8955c700d645f874da4a80224a48002ee63`, compared directly with the preceding audited source `2e9a62847cbb1fe0b58e21faeba4d2bcd8708430` using the repository compare endpoint. The release-qualified input delta is limited to `defragger/test_media/test_media_worker.c`, `defragger/test_media/test_media.h`, and `defragger/tests/test_test_media.c`. No filesystem relocation writer, raw disk formatter, journal, partition-table writer, library pin, installer script, quality workflow, or release-governance code changed. The intervening release-source state `1.8.0-290` was already published and qualified independently; this baseline review is **not** a claim of new full-CI or physical-hardware success.
+
+**Observed trigger and failure:** A physical `/dev/mmcblk0` SD-card run of **1. Build test disk** repeatedly refused after successfully unmounting desktop automounted partitions with `The physical disk identity changed before repartitioning; refusing to continue`. The check is before any `sfdisk` or fixture writer. The GUI's Build operation was intentionally selected by Shannon and is a valid, required feature—not an incorrectly selected Qualify operation. A separate **3. Verify files** run already proved 21/21 existing corpus bytes, and `lsblk` confirmed the partition table remained present.
+
+**Source cause and bounded correction:** The old `ldtm_device_fingerprint` hashed size, model, serial, WWN and transport assembled from sysfs **and asynchronous udev** properties. For MMC, udev can populate or change serial/WWN/bus descriptions while the desktop unmounts the same physical card, leading to a false rejection at the mandatory second check. The new MMC-specific path reads the **kernel card CID** directly from `/sys/dev/block/<major>:<minor>/device/cid` and combines validated 32-digit nonzero hardware CID, kernel device major:minor and current capacity into domain-separated SHA-256 confirmation material. It normalises CID case, rejects missing/malformed/anonymous CID and buffer overflow and retains both pre-unmount and post-unmount checks unchanged. A change of card CID, device number, capacity, or an unavailable hardware CID still **fails closed**. Non-MMC media retain the existing serial/WWN-bearing fingerprint. No system disk is admitted or mounted/busy check relaxed. The second-check error now distinguishes unreadable hardware identity from a changed identity and shows only shortened fingerprint digests. Log-only escaped newline defects in the selected unmount messages are fixed.
+
+**Unit regression:** `defragger/tests/test_test_media.c` exercises the pure MMC CID material builder (normalised case, exact domain and rdev, different device number, different capacity, different CID, all-zero/invalid CID, zero capacity, and truncated output buffer). This intentionally tests the stable confirmation input without writing any disk. Full self-hosted native+sanitizer CI, exact audited-source gate, release asset checks, APT publication and actual physical MMC Build completion are **separate remaining gates**; a source patch and synthetic unit test are not physical-media qualification. Governance baseline `3934c470b7ff3c8411515b37651dc9346c4d99ca` remains unchanged.
 
 ## Restored package script execution modes — 2026-11-07
 
