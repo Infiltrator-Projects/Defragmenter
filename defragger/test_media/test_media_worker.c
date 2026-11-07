@@ -2340,11 +2340,17 @@ int ldtm_worker_qualify(const char *device)
 
         if (spec->creator == LDTM_CREATOR_ZFS ||
             spec->creator == LDTM_CREATOR_SWAP) {
+            /* Every slot included in Qualify engines must pass both
+             * production mutation operations. A missing writer is a failed
+             * qualification, never a silent skip or a successful test.
+             * The independent Verify files action remains read-only and may
+             * still validate the test corpus without qualifying mutation. */
             emit_status(
-                spec->key, "qualification-skipped",
+                spec->key, "qualification-failed",
                 spec->creator == LDTM_CREATOR_ZFS
-                    ? "ZFS is analysis-only; retained payload and exact analysis will still be verified"
-                    : "swap has no Defragment operation; its native map will still be verified");
+                    ? "ZFS.so has no qualified Defragment and Growth Defrag writer"
+                    : "swap has no file defragmentation or Growth Defrag operation");
+            ++failures;
             continue;
         }
 
