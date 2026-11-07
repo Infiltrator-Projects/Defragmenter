@@ -10,9 +10,27 @@ This document records **remaining work and admission criteria**, not a diary of 
 - **Unsupported formats/features:** keep fail-closed limits explicit. For example, unsupported APFS sharing/encryption, complex Btrfs layouts, NTFS special streams and other unqualified metadata must not be advertised as general write support.
 - **UFS variants:** retain separate UFS1/UFS2 identities; UFS1 Test Media creation requires its own explicit fixture and compatibility qualification rather than borrowing UFS2 evidence.
 
-## Deliberate exclusions
+## Incomplete filesystem capability — ZFS/OpenZFS
 
-ZFS/OpenZFS and Linux swap remain **analysis-only by design**. ZFS physical relocation belongs to its copy-on-write transaction-group allocator; an exact persistent 10% adjacent physical reserve is not a stable ZFS postcondition. Swap has no file defragmentation contract.
+**ZFS Defragment and Growth Defrag remain unimplemented.** Their absence is an
+open capability gap, not a successful defragmentation qualification or a
+permanent exclusion from InfiltratorOS. The independent `Filesystem-ZFS`
+repository owns the missing write-capable module. Defragmenter must discover
+its operation capabilities from that SO; it must not add a private ZFS writer,
+pretend that read-only analysis passed mutation tests, or dispatch through an
+external `zfs` executable.
+
+ZFS's copy-on-write block pointers, transaction-group publication, snapshots,
+clones, shared blocks and allocator policy require a filesystem-owned,
+crash-recoverable rewrite/relocation implementation. OpenZFS's file rewrite
+capability establishes that block rewriting is possible but does not itself
+prove canonical physical packing or exact adjacent 10% Growth Defrag reserves.
+The specific operation contract must be truthful and independently verified,
+not inferred from a generic capability label. Unsupported pool layouts must
+continue to fail closed until the module has a validated writer.
+
+**Linux swap** remains analysis-only because it does not have regular files
+or a file defragmentation contract.
 
 ## Completion and regression rule
 
