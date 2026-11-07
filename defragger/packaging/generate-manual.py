@@ -9,6 +9,7 @@ the independently released filesystem manuals.
 from pathlib import Path
 import re
 import sys
+import textwrap
 
 
 INK = (.060, .115, .200)
@@ -26,7 +27,7 @@ def esc(text):
 
 
 class Page:
-    def __init__(self, title, version, number):
+    def __init__(self, title, version, number, total):
         self.parts = []
         self.rect(0, 750, 595, 92, INK)
         self.rect(45, 747, 90, 4, TEAL)
@@ -34,7 +35,7 @@ class Page:
         self.text(45, 774, title, 20, "F2", (1, 1, 1))
         self.parts.append("0.810 0.850 0.880 RG 1 w 45 50 m 550 50 l S")
         self.text(45, 37, f"Defragmenter  /  {version}  /  User manual", 9, "F1", MUTED)
-        self.text(514, 37, f"{number:02d} / 03", 9, "F1", MUTED)
+        self.text(514, 37, f"{number:02d} / {total:02d}", 9, "F1", MUTED)
 
     def rect(self, x, y, w, h, rgb):
         self.parts.append(f"{colour(rgb)} rg {x} {y} {w} {h} re f")
@@ -55,86 +56,38 @@ class Page:
 
 
 def guide(version):
-    pages = []
-    p = Page("Safe filesystem maintenance", version, 1)
-    p.section("What the application does", 705)
-    p.text(45, 678, "Analyse disk allocation and fragmentation without writing to the device.", 11)
-    p.text(45, 658, "Where qualified, reorganise supported unmounted layouts and verify results.", 11)
-    p.text(45, 638, "Recover uses valid durable recovery state, not an assumed repair.", 11)
-    p.section("Allocation map: simplified illustration", 594)
-    p.text(45, 567, "Blocks illustrate fragmentation; they do not represent real sectors.", 10, "F1", MUTED)
-    p.text(45, 534, "BEFORE", 10, "F2", MUTED)
-    for i in range(12):
-        p.rect(111 + i * 36, 522, 29, 27,
-               TEAL if i in (0, 3, 5, 8, 10) else (.72, .80, .83))
-    p.text(45, 477, "AFTER", 10, "F2", MUTED)
-    for i in range(12):
-        p.rect(111 + i * 36, 465, 29, 27, TEAL if i < 5 else (.72, .80, .83))
-    p.section("A controlled operation", 407)
-    p.rect(45, 313, 506, 72, PALE)
-    for i, label in enumerate(("ANALYSE", "PLAN", "VERIFY", "WRITE / RESTORE")):
-        x = 58 + i * 125
-        p.rect(x, 343, 112, 30, TEAL)
-        p.text(x + 9, 354, label, 9, "F2", (1, 1, 1))
-    p.text(58, 326, "Write paths require an exact target and an admitted, verifiable plan.")
-    p.section("Important boundaries", 261)
-    p.text(45, 232, "Mounted, unsupported or inconsistent targets are refused.", 11)
-    p.text(45, 210, "Independent filesystem .so modules must pass identity and ABI checks.", 11)
-    p.text(45, 188, "ZFS/OpenZFS and Linux swap are analysis-only.", 11, "F2", (.65, .35, .15))
-    p.text(45, 102, "This guide does not establish physical-media recovery qualification.", 10, "F1", MUTED)
-    pages.append(p.bytes())
-
-    p = Page("Operations and safety", version, 2)
-    p.section("Select the operation", 708)
-    operations = (
-        ("ANALYSE / MAP", "Read-only inspection of supported filesystem allocations."),
-        ("DEFRAGMENT", "Move supported allocations into a verified canonical layout."),
-        ("GROWTH DEFRAG", "Reserve exactly 10% post-file free space when admitted."),
-        ("RECOVER", "Resume or restore a supported interrupted transaction."),
-    )
-    for i, (title, description) in enumerate(operations):
-        y = 606 - 77 * i
-        p.rect(45, y, 506, 64, PALE)
-        p.rect(45, y, 4, 64, TEAL)
-        p.text(61, y + 40, f"0{i+1}  {title}", 12, "F2")
-        p.text(61, y + 17, description, 10.5)
-    p.section("Preflight, in order", 340)
-    p.text(45, 311, "1. Select and confirm the exact target identity and capacity.", 10.5)
-    p.text(45, 290, "2. Reject mounted or overlapping devices and unsafe geometry.", 10.5)
-    p.text(45, 269, "3. Verify the external module, layout and recovery prerequisites.", 10.5)
-    p.text(45, 248, "4. Confirm operations and independently verify changes.", 10.5)
-    p.section("Test Media destroys target contents", 213)
-    p.rect(45, 112, 506, 77, (.98, .95, .90))
-    p.text(61, 166, "Use only sacrificial disks or test images.", 12, "F2", (.65, .35, .15))
-    p.text(61, 145, "The separate 21-slot Test Media workflow is intentionally destructive.")
-    p.text(61, 128, "Do not select system disks or irreplaceable storage devices.")
-    pages.append(p.bytes())
-
-    p = Page("Installation and ownership", version, 3)
-    p.section("Two applications, one user manual", 707)
-    p.rect(45, 594, 506, 91, PALE)
-    p.text(59, 661, "/Programs/defragmenter", 11, "F3")
-    p.text(59, 641, "/Programs/defragmenter-test-media", 11, "F3")
-    p.text(59, 611, "/System/Resources/Documentation/Defragmenter.pdf", 10, "F3")
-    p.section("Trusted component boundaries", 565)
-    p.text(45, 538, "Filesystem drivers are independently owned .so files in", 10.5)
-    p.text(45, 520, "/System/Filesystems/ with verified entry points.", 10.5)
-    p.text(45, 489, "Private helpers belong to /System/Commands/Defragmenter.", 10.5)
-    p.section("Installation and upgrades", 450)
-    p.text(45, 422, "Install the published .deb through APT, or use the verified", 10.5)
-    p.text(45, 403, "source-bearing .run to compile the CPU-native Debian package.", 10.5)
-    p.text(45, 376, "Both paths use Debian ownership, versions and checksum checks.", 10.5)
-    p.section("Old documentation folder", 335)
-    p.text(45, 306, "Previous packages installed README.md and COPYING.GPL-3.0", 10.5)
-    p.text(45, 288, "in a Defragmenter subfolder. Debian retires those old files.", 10.5)
-    p.text(45, 270, "Only an empty legacy folder is removed; user files are preserved.", 10.5)
-    p.section("Licence and source", 221)
-    p.rect(45, 111, 506, 89, PALE)
-    p.text(60, 177, "GPL-3.0-or-later", 13, "F2")
-    p.text(60, 153, "The complete GNU General Public License v3 follows this guide.", 10)
-    p.text(60, 132, "Editable manual source and engineering documentation stay in Git.", 10)
-    pages.append(p.bytes())
-    return pages
+    # All user documentation is authored once here and built deterministically.
+    catalogue = [["Overview and safety",[["Purpose",["Analyse/Map inspects filesystem allocation and fragmentation without modifying a target. Defragment and Growth Defrag move supported allocations on clean, unmounted volumes. Recover uses verified transaction state after interruption.","This is an offline maintenance application, not an online defragmenter, general repair suite or replacement kernel filesystem driver."]],["Supported does not mean universal",["Each write is limited to explicitly qualified format features and geometry. Missing modules, mounted targets, uncertain metadata and stale device identity cause pre-write refusal.","Synthetic tests, a passing CI run, a published package and a successful physical-media test are different claims. Do not substitute one for another."]],["Destructive test media",["The separate Test Media program intentionally erases sacrificial disks. Never use it on a system disk or on any device with irreplaceable data."]]]],["Choosing a safe target",[["Selection",["Choose the intended unmounted volume or supported image in Defragmenter. Check device, capacity, filesystem type and operation before confirming.","Labels and desktop discovery hints help select a candidate but do not authorise mutation."]],["Mandatory write admission",["The worker binds device identity and capacity, refuses mounted or overlapping devices, rechecks the target at privilege boundaries and rejects unexpected hardware or geometry changes.","The selected external filesystem .so must be trusted, ABI-compatible and capable of validating the selected operation."]],["When refused",["A busy target, unknown format feature, unsupported geometry or missing module is a refusal, not permission for an automatic fallback or risky retry.","Recover differs: an interrupted volume may be unreadable to fresh analysis; a valid existing target-bound journal can still authorise its own recovery path."]]]],["Analyse and allocation map",[["Read-only analysis",["Analyse enumerates physical allocation, file fragmentation and reserved or unknown ranges only within the validated reader subset.","Incomplete accounting must be displayed as uncertain rather than silently treated as empty or presenting a false exact percentage."]],["Reading the map",["Physical order runs from left to right, then top to bottom. Adjacent pixels may magnify a known unit or represent neighbouring physical ranges combined in order.","The diagram is schematic; it does not depict actual sectors from the selected device."]],["Interpretation",["A successful Analyse operation is not approval to write. Defragment and Growth each need additional module, layout, target and recoverability checks."]]]],["Defragment operation",[["Objective",["Move independently movable regular-file allocations into a verified canonical arrangement. This does not repair arbitrary corruption or guarantee one extent per file for every supported format.","The generic planner proposes placement. The authoritative filesystem module must validate and translate the plan into safe metadata and transaction operations."]],["Before writing",["Verify selected identity, unmounted state, supported features and operation capabilities. Required staging and durable recovery records precede authoritative changes.","Failed preflight must not clear a volume signature or partially prepare the device."]],["Successful completion",["The worker must reopen the result and independently verify all retained logical file bytes, relevant metadata invariants, non-overlap and the required physical placement.","A zero exit code, a formatted test disk or a successful read-only Verify action alone cannot establish a passed defragmentation qualification."]],["Limitations",["ZFS remains analysis-only in shipped builds while its filesystem-owned transaction-safe defragmenter is developed. Swap has no regular files and therefore no regular-file defragmentation contract."]]]],["Growth Defrag operation",[["Exact reserve in allocation units",["Growth requests 10 percent free space immediately after each regular file, rounded UP to whole filesystem allocation units. A 19-unit file requires 2 adjacent free units; a 1-unit file requires 1.","For a split file, the planned reserve follows the final extent inside its provider-certified free range."]],["Constraints",["The module certifies the allocation-unit size, alignment, pinned/shared ranges and real layout restrictions. Alignment padding can introduce extra space; fixed metadata can make the requested plan impossible.","An impossible or unsupported result is refused rather than silently reducing the reserve."]],["Planner status",["Defragmenter's pure C planner handles a certified contiguous region or proposes extents across sorted disjoint certified free runs, preferring a single fit.","Neither planner writes a disk. General inventory, plan execution, transaction translation and cross-filesystem production migration are incomplete."]]]],["Stop and Recover",[["Stop",["Stop is cooperative. A worker may need to reach a valid or recoverable transaction boundary before exiting.","A closed GUI, interrupted protocol or worker termination is not evidence that on-disk recovery requirements have been satisfied."]],["Durable recovery record",["A journal binds target identity, capacity, transaction phase and verified staged bytes. Records are validated before recovery is admitted.","Recover must not invent an unknown transaction or accept mismatched targets, missing data, tampered staged hashes or invalid phases."]],["After an interrupted operation",["Preserve recovery files and report the exact failed phase. Do not erase or reformat a partly modified target just to remove a warning.","Recovery-state cleanup occurs only after verified completion. Process-kill and synthetic replay tests do not prove protection against every physical power interruption."]]]],["Test Media: Build",[["Choose a disposable disk",["Run /Programs/defragmenter-test-media and select the correct physical sacrificial disk. The '1. Build test disk' action destroys its existing partitions and data.","The current Test Media layout contains 21 fixed filesystem slots while full dynamic capability discovery is being developed."]],["Deterministic corpus",["The large file sizes are 4, 6, 10, 16, 26, 34, 44 and 60 MiB, totalling 200 MiB, plus 0, 1, 511, 512, 513, 4095, 4096 and 4097 byte boundary files.","Fixture creation and raw verification are first-party native C paths, not host formatting utilities or mounted target files."]],["Trust the actual bytes",["Protected schema 3 state binds the disk fingerprint, corpus version and per-slot build outcomes. Its records are not substitutes for rereading actual payload bytes.","Disks created under obsolete schema 2 require rebuilding before current qualification."]]]],["Test Media: Qualify and Verify",[["2. Qualify engines",["Requests actual Defragment and Growth Defrag on applicable partitions, then verifies retained file content. A skipped or unimplemented requested mutation is a failed mutation qualification.","An analysis-only slot cannot be counted as a successful defragmentation engine simply because its files remain readable."]],["3. Verify files",["Independently rereads the deterministic corpus and validates retained logical payload bytes. It does not establish that any file movement, Growth reserve or recovery operation happened.","Build, Qualify and Verify report separate results; inspect per-slot status and diagnostic logs rather than interpreting a green summary as proof of all operations."]],["Known unavailable mutations",["ZFS and swap are present in the transitional layout but have no qualified production Defrag or Growth writer. Their Verify action may pass without changing that capability status.","A 21/21 production Defrag qualification is not currently established."]]]],["Independent filesystem modules",[["Installed ownership",["Independent filesystem engines are installed under /System/Filesystems as individually versioned .so files. Private application workers belong instead under /System/Commands/Defragmenter.","Module identity, filesystem type, capabilities, ABI, ownership and trust path must match before it can perform an operation."]],["Bounded filesystem families",["Qualified subsets include FAT12/16/32, exFAT, NTFS, EXT2/3/4, XFS v5, Amiga OFS/FFS/SFS/PFS3, classic HFS/HFS+/HFSX, Btrfs, APFS, Minix and UFS1/UFS2.","Encryption, sharing, snapshots, dirty metadata or unrecognised feature combinations may cause write refusal even for a listed family."]],["Migration is not finished",["The native engine supports --list-installed-modules for compatible generic Defrag V2 providers. GUI and Test Media discovery are not yet fully dynamic.","OFS has a bounded shared-planner pilot. Existing safe filesystem-specific movers remain until fully equivalent, independently verified replacements exist."]]]],["Installation and releases",[["Application layout",["The generic Debian package installs /Programs/defragmenter and /Programs/defragmenter-test-media plus a single searchable user manual in /System/Resources/Documentation/Defragmenter.pdf.","The obsolete documentation subfolder is retired only when empty; unrelated user content is preserved."]],["Generic and CPU-native choices",["The published amd64 .deb is built for broad compatibility. The versioned .run contains committed source and a pinned Common revision, then builds a CPU-native Debian package.","The .run supports --build-only --output DIRECTORY for building a package without installing it."]],["Release evidence",["Only a defragger/VERSION change expresses release intent. Both mandatory quality lanes, exact source/governance audit checks and checksum-bound, once-built assets must pass.","GitHub release publication and public APT availability are verified separately; neither can be inferred from a new Git commit alone."]]]],["Diagnostics and assurance",[["Understanding failure",["A missing or incompatible .so, mounted-overlap refusal, target replacement, unsupported feature, transaction failure or verification mismatch must be treated as a real negative outcome.","Record the operation, exact application/module versions, relevant device type, logged phase and returned status, without including unrelated private information."]],["Physical-media limits",["Host-image tests, sanitizers and replay fixtures cannot reproduce every physical SD-card controller, removable-media race, firmware flush defect or unexpected whole-system power loss.","Physical /dev/mmcblk0p11 qualification requires a controlled sacrificial-device run and its own observed result. A GitHub workflow cannot certify that result."]],["Canonical engineering documents",["Maintained source design, module ownership, safety decisions, release audit identities and exact support boundaries live in the Defragmenter GitHub repository.","This manual describes current bounded operation. It does not certify completion of the proposed universal filesystem module migration."]]]]]
+    output = []
+    total = len(catalogue)
+    for number, (title, sections) in enumerate(catalogue, 1):
+        page = Page(title, version, number, total)
+        y = 700
+        for heading, paragraphs in sections:
+            page.section(heading, y)
+            y -= 33
+            for paragraph in paragraphs:
+                for line in textwrap.wrap(paragraph, width=86,
+                                          break_long_words=False,
+                                          break_on_hyphens=False):
+                    page.text(53, y, line, 10.2)
+                    y -= 15
+                y -= 8
+            y -= 13
+        if number == 3:
+            if y < 222:
+                raise ValueError("Map illustration overlaps user manual text")
+            page.text(53, 189, "SCHEMATIC: FRAGMENTED / PACKED", 10, "F2", MUTED)
+            for i in range(12):
+                page.rect(53 + i * 40, 152, 32, 23,
+                          TEAL if i in (0, 2, 5, 8, 11) else (.72, .80, .83))
+                page.rect(53 + i * 40, 113, 32, 23,
+                          TEAL if i < 5 else (.72, .80, .83))
+            page.text(53, 91, "Schematic only; not actual sectors.", 9, "F1", MUTED)
+        elif y < 88:
+            raise ValueError("User manual page overflows: " + title)
+        output.append(page.bytes())
+    return output
 
 
 def licence_pages(source):

@@ -92,6 +92,13 @@ done
 [ "$(find "$WORK/extracted/System/Resources/Documentation" -type f | wc -l)" -eq 1 ]
 [ "$(head -c 5 "$WORK/extracted/System/Resources/Documentation/Defragmenter.pdf")" = '%PDF-' ]
 grep -aFq 'GNU GENERAL PUBLIC LICENSE' "$WORK/extracted/System/Resources/Documentation/Defragmenter.pdf"
+# Protect the expanded instructional manual against accidental regression to
+# the former three-page guide. GPL appendix pages remain intact.
+MANUAL="$WORK/extracted/System/Resources/Documentation/Defragmenter.pdf"
+grep -aFq '(11 / 11)' "$MANUAL"
+grep -aFq 'SCHEMATIC: FRAGMENTED / PACKED' "$MANUAL"
+grep -aFq 'Test Media: Qualify and Verify' "$MANUAL"
+grep -aFq 'Growth Defrag operation' "$MANUAL"
 [ ! -e "$WORK/extracted/usr/lib/defragmenter" ]
 [ ! -e "$WORK/extracted/usr/share/doc/defragmenter" ]
 dpkg-deb -e "$PACKAGE" "$WORK/metadata"
