@@ -4,7 +4,9 @@
 
 ## Separation of responsibility
 
-Defragmenter owns its GUI, native application registry, target safety, mounted-overlap refusal, privilege and process lifetime, host raw I/O, bounded module services, Stop/progress and independent post-write verification. **The filesystem module** owns its on-disk parser, allocation geometry, format-specific planner/relocation, metadata changes, journalling and recovery where migrated. Common owns only generic cross-project primitives.
+Defragmenter owns its GUI, native application registry, target safety, mounted-overlap refusal, privilege and process lifetime, host raw I/O, bounded module services, Stop/progress, generic Defrag/Growth placement policy, and independent post-write verification. **The filesystem module** owns its on-disk parser, allocation geometry, format-specific constraints, safe relocation/metadata translation, and filesystem-specific atomic commit/recovery where migrated. Common owns only generic cross-project primitives.
+
+**Intended end state:** Defragmenter plans a generic sequence of movements; a filesystem SO translates that plan into *filesystem-valid* operations. The SO must not duplicate the ordinary packing and 10% Growth Defrag decision logic. It must, however, own the mechanism that makes a movement and its metadata references valid. A ZFS copy-on-write transaction is not equivalent to writing a byte range at another offset.
 
 Required modules load only from trusted paths with checked ABI, filesystem identity, ownership and version. A failed, missing or incompatible module **must fail closed**, never select an old private implementation. A working screen or superficially correct allocation map is not evidence that module dispatch happened.
 
@@ -19,6 +21,26 @@ Required modules load only from trusted paths with checked ABI, filesystem ident
 - **EXT2/EXT3/EXT4:** distinct module identities and ABI checks are enforced, including isolated EXT metadata-worker tests. Integration coverage must not accidentally select host-installed production modules.
 
 Other format support remains subject to its current native worker/module, its own qualified source and the current tests. The existence of an independent integration workflow is not itself proof that every component or kernel consumer migrated.
+
+## Generic planner transition (November 2026)
+
+The Defragmenter core now includes `ld_generic_layout_plan`, an independent
+**read-only, two-pass placement planner** with deterministic object ordering,
+provider-selected allocation-unit alignment, contiguous packing, and rounded
+10% Growth gaps. It rejects malformed inventories, pinned/shared objects,
+capacity overruns and integer overflow without returning a partial plan.
+The planner and pure-memory regression live in Defragmenter, never in ZFS.so
+or other filesystem repositories.
+
+This is **not yet the production write path**. Existing SO-owned relocation
+engines remain in place to avoid regressing qualified volumes while the ABI
+is migrated. In the desired interface, modules expose a verified object/
+extent inventory and constraints, validate the generic plan against their
+actual geometry, execute it in filesystem-valid transaction boundaries,
+recover interruptions and allow independent verification. The host must not
+assume any raw block copy can safely implement a move. For ZFS, the module
+does not yet expose a safe relocation/transaction translator, so neither
+Defrag nor Growth Defrag can be reported as qualified.
 
 ## Universal discovery transition (November 2026)
 
