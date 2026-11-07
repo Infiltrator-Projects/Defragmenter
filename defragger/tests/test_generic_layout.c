@@ -9,7 +9,7 @@
 
 #define CHECK(expression) do { \
     if (!(expression)) { \
-        fprintf(stderr, "generic layout check failed: %s at %s:%d\\n", \
+        fprintf(stderr, "generic layout check failed: %s at %s:%d\n", \
                 #expression, __FILE__, __LINE__); \
         exit(1); \
     } \
