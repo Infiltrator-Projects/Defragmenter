@@ -2,7 +2,13 @@
 
 This is a **maintained milestone summary**, not an assertion that every intermediate alpha build was individually release-qualified. The exact source, release notes, asset identities and original detailed chronology are preserved in [Git history](https://github.com/Infiltrator-Projects/Defragmenter/commits/main) and [published tags/releases](https://github.com/Infiltrator-Projects/Defragmenter/releases). The full pre-cleanup changelog and 17 historical release notes are retained at [v1.8.0-281](https://github.com/Infiltrator-Projects/Defragmenter/tree/v1.8.0-281).
 
-## Unreleased — documentation maintenance
+## Unreleased — documentation and manual maintenance
+
+- Reconciled the ZFS capability requirement with the currently enforced analysis-only runtime limit.
+- Documented both contiguous and disjoint-free-run generic plan-only algorithms, the OFS pilot boundary and rounded whole-allocation-unit Growth reserves.
+- Expanded the installed Defragmenter PDF guide from three to eleven instructional pages while retaining its full GPL appendix and exact package layout; strengthened the manual packaging regression.
+
+## Earlier unreleased documentation consolidation
 
 - Consolidated current ownership, safety, validation and release contracts.
 - Removed repetitive historical audit/update narration and superseded release-note duplicates from the active tree. No executable implementation, installer or test changed in this documentation pass.

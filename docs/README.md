@@ -12,6 +12,7 @@ Current contracts are organised by **responsibility**, not by alpha release numb
 - [Audit Status](AUDIT_STATUS.md) — **exact release-gate baseline IDs**, current qualification limitations and safety case.
 - [Technical references](REFERENCES.md) — external format/platform evidence.
 - [UI vision](UI_VISION.md) — desktop design and physical-map rules.
+- Installed user manual — eleven searchable guide pages plus the full GPL appendix, generated at package build time by `defragger/packaging/generate-manual.py` and installed flat at `/System/Resources/Documentation/Defragmenter.pdf`.
 - [Changelog](../CHANGELOG.md) — concise milestones and immutable-history links.
 - [Contributing](../CONTRIBUTING.md) and [Security](../SECURITY.md) — contribution and vulnerability rules.
 

@@ -11,7 +11,7 @@
 
 - **Analyse / Map:** inspect allocation and physical fragmentation without writing.
 - **Defragment:** relocate supported movable allocations into a verified canonical layout.
-- **Growth Defrag:** as above, with an exact 10% post-file free-space reserve, where admitted.
+- **Growth Defrag:** as above, with a post-file 10% reserve rounded upward to whole allocation units, where admitted.
 - **Recover:** validate and resume/restore a supported interrupted durable transaction.
 
 The qualified support matrix, including format-specific exclusions, is in [the implementation README](defragger/README.md). ZFS/OpenZFS and Linux swap are **currently analysis-only**. ZFS defragmentation is an outstanding filesystem-owned requirement, not a permanent exclusion; swap has no regular-file defragmentation semantics. Unsupported features, inconsistent geometry, mounted targets, mismatched identity or unverified recovery state are rejected rather than guessed.

@@ -67,9 +67,10 @@ compare across filesystems or recover deterministically.
 - heuristic gaps based on file size or available space;
 - an exact per-file reserve.
 
-**Decision.** Growth Defrag requires exactly 10% of the regular file's allocated
-length to remain free immediately after that file, subject only to the documented
-fixed-metadata boundary rule.
+**Decision.** Growth Defrag requires the 10% reserve rounded up to a whole provider
+allocation unit immediately after the regular file (or its final planned
+extent), subject to the documented fixed-metadata boundary rule. Provider
+alignment may add padding but cannot silently reduce the required reserve.
 
 **Consequences.** The operation has a precise oracle and consistent semantics
 across writers, but layouts that cannot satisfy the exact reserve are rejected

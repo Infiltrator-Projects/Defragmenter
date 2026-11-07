@@ -4,10 +4,18 @@
 
 Status: **complete**
 
-Audited source commit: b04110296a2c0b174a493042e189c2ef95e6625a
+Audited source commit: c8fca6165790bee0cb259ac8fdce94739bc65cec
 Audited release-governance commit: 3934c470b7ff3c8411515b37651dc9346c4d99ca
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## User manual expansion and ZFS package-language source review — 2026-11-07
+
+**Audited source baseline:** `c8fca6165790bee0cb259ac8fdce94739bc65cec`, reviewed against previously audited source `b04110296a2c0b174a493042e189c2ef95e6625a`. GitHub's compare endpoint shows a linear five-commit delta; the intervening 1.8.0-289 change is version intent only. The entire tracked release-qualified **production/build/test** diff is limited to four files: `defragger/packaging/generate-manual.py`, `defragger/packaging/build-deb.sh`, `defragger/tests/test_deb_package_versions.sh` and `defragger/tests/test_test_media_raw.py`. Maintained README/design changes are prose outside the qualified input set. No filesystem parser, movement engine, data writer, recovery journal, target identity check, privilege boundary, module ABI, first-party dependency pin, source archive constructor, publication procedure or workflow changed.
+
+**Reviewed semantics:** The manual generator remains a single Python standard-library **build-time-only** program. Its unmodified deterministic PDF 1.4 emitter appends the full GPL-3.0 source licence after the guide. The user guide has been expanded from three to eleven authored searchable pages, adding accurate target admission, physical allocation map, Defrag/Growth operation, whole-unit reserve rounding, Stop/Recover, independent filesystem SOs, Test Media Build/Qualify/Verify, evidence and release boundaries. Its new `textwrap` dependency is standard library only; the guide enforces a lower-page-space preflight and renders a labelled schematic rather than claiming an actual device map. `test_deb_package_versions.sh` additionally rejects loss of the last guide page and selected essential instructional headings while retaining the old GPL and one-flat-PDF checks. Debian package wording now calls ZFS write support outstanding rather than permanently excluded. The ZFS test fixture's changed comment is explanatory only.
+
+**Safety and qualification distinction:** These changes do not touch any raw disk operation or make ZFS write-capable; the source baseline advance records the reviewed input delta, **not** a successful exact-head CI run, published release, visual PDF rendering test, proof of universal module migration or physical SD-card qualification. The mandatory self-hosted project, sanitizer, packaging, independent SO and publication gates remain in force for any later versioned release. The separately audited release-governance baseline remains `3934c470b7ff3c8411515b37651dc9346c4d99ca`; no governance input changed. Installed applications continue to own only `/System/Resources/Documentation/Defragmenter.pdf`.
 
 ## Shared Defragmenter planner and strict qualification review — 2026-11-07
 

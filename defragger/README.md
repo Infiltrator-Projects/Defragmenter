@@ -6,7 +6,7 @@ This is the CMake project root. [The product README](../README.md) covers operat
 
 All write capability is limited to the parser's **explicitly qualified, clean and recoverable subset**. “Yes” is not blanket support for arbitrary filesystem features.
 
-| Family | Analyse | Defragment / exact 10% Growth / Recover |
+| Family | Analyse | Defragment / rounded-up 10% Growth / Recover |
 | --- | --- | --- |
 | FAT12 / FAT16 / FAT32 | Exact supported volumes | Yes, matching authoritative `.so` required |
 | exFAT | Exact supported volumes | Yes, verified exFAT.so |
