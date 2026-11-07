@@ -897,8 +897,21 @@ static int ldtm_mountinfo_target(
     number[lengths[2]] = '\0';
     if (sscanf(number, "%u:%u%c", &major_number, &minor_number, &extra) != 2)
         return -1;
-    if (!ldtm_matches_device_number(major_number, minor_number, devices, count))
-        return 0;
+    if (!ldtm_matches_device_number(major_number, minor_number, devices, count)) {
+        /* Btrfs and other filesystems can expose a virtual superblock
+         * major:minor. Resolve their mountinfo SOURCE block device too. */
+        const char *separator = strstr(line, " - ");
+        char source[PATH_MAX];
+        struct stat source_status;
+        if (separator == NULL ||
+            sscanf(separator + 3, "%*s %4095s", source) != 1 ||
+            stat(source, &source_status) != 0 ||
+            !S_ISBLK(source_status.st_mode) ||
+            !ldtm_matches_device_number(
+                major(source_status.st_rdev), minor(source_status.st_rdev),
+                devices, count))
+            return 0;
+    }
 
     /* mountinfo escapes spaces, tabs, newlines and backslashes as octal.
      * Decode only an exact kernel mountpoint field, never shell-evaluate it. */
@@ -981,6 +994,7 @@ static int unmount_descendants(const char *device)
         size_t capacity = 0U;
         char target[PATH_MAX] = "";
         size_t longest = 0U;
+        unsigned int target_major = 0U, target_minor = 0U;
         int parse_failure = 0;
 
         if (mounts == NULL)
@@ -994,6 +1008,13 @@ static int unmount_descendants(const char *device)
                 break;
             }
             if (matches > 0 && strlen(current) > longest) {
+                /* Remember the selected live mount's superblock identity.
+                 * It can be virtual for Btrfs, not the partition MAJ:MIN. */
+                if (sscanf(line, "%*s %*s %u:%u",
+                           &target_major, &target_minor) != 2) {
+                    parse_failure = 1;
+                    break;
+                }
                 longest = strlen(current);
                 (void)snprintf(target, sizeof(target), "%s", current);
             }
@@ -1011,8 +1032,8 @@ static int unmount_descendants(const char *device)
          * any unrelated filesystem covering the selected disk's mount. */
         struct stat status;
         if (stat(target, &status) != 0 ||
-            !ldtm_matches_device_number(
-                major(status.st_dev), minor(status.st_dev), devices, count)) {
+            major(status.st_dev) != target_major ||
+            minor(status.st_dev) != target_minor) {
             if (++failures >= 3U)
                 return -1;
             continue;
