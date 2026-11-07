@@ -35,6 +35,8 @@ enum {
 };
 typedef IfsDefragLayoutObject LdGenericLayoutObject;
 typedef IfsDefragLayoutPlacement LdGenericLayoutPlacement;
+typedef IfsDefragFreeExtent LdGenericFreeExtent;
+typedef IfsDefragPlannedExtent LdGenericPlannedExtent;
 
 /* [first_unit, limit_unit) is a provider-certified relocatable data region
  * in abstract allocation units. Each file is packed contiguously in input
@@ -51,5 +53,23 @@ int ld_generic_layout_plan(const LdGenericLayoutObject *objects, size_t count,
                            uint64_t first_unit, uint64_t limit_unit,
                            unsigned growth_percent,
                            LdGenericLayoutPlacement *placements);
+
+/* Plan the data extents of a single file around multiple disjoint provider-
+ * certified free ranges. Prefer the earliest complete contiguous extent. If
+ * impossible, deterministically split across ascending free runs and reserve
+ * the 10% Growth gap *after the final data extent*.
+ *
+ * Preflight validates every range and verifies space/capacity BEFORE writing
+ * output. Neither extents nor *written are modified on failure.
+ * Returns LD_LAYOUT_OK, INVALID, NO_SPACE, UNSUPPORTED or OUTPUT_TOO_SMALL.
+ * This function is plan-only; no I/O or filesystem-specific decisions.
+ */
+#define LD_LAYOUT_OUTPUT_TOO_SMALL (-4)
+int ld_generic_layout_plan_file_extents(
+    const LdGenericLayoutObject *object,
+    const LdGenericFreeExtent *free_extents, size_t free_count,
+    unsigned growth_percent,
+    LdGenericPlannedExtent *output, size_t output_capacity,
+    size_t *written);
 
 #endif
