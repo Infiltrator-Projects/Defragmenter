@@ -123,8 +123,85 @@ static void public_module_host_abi(void)
           == LD_LAYOUT_NO_SPACE);
 }
 
+
+static void provider_certified_free_ranges(void)
+{
+    LdGenericLayoutObject file = {42u, 7u, 1u, 0u};
+    const LdGenericFreeExtent one_run[] = {
+        {2u, 3u}, {10u, 8u}, {21u, 4u}
+    };
+    LdGenericPlannedExtent output[4] = {{0}};
+    size_t count = 0u;
+    CHECK(ld_generic_layout_plan_file_extents(
+        &file, one_run, 3u, 10u, output, 4u, &count) == LD_LAYOUT_OK);
+    CHECK(count == 1u && output[0].first_unit == 10u);
+    CHECK(output[0].allocated_units == 7u &&
+          output[0].gap_after_units == 1u);
+
+    const LdGenericFreeExtent split[] = {
+        {2u, 3u}, {9u, 2u}, {20u, 4u}
+    };
+    file.allocated_units = 6u;
+    CHECK(ld_generic_layout_plan_file_extents(
+        &file, split, 3u, 10u, output, 4u, &count) == LD_LAYOUT_OK);
+    CHECK(count == 3u);
+    CHECK(output[0].first_unit == 2u &&
+          output[0].allocated_units == 3u &&
+          output[0].gap_after_units == 0u);
+    CHECK(output[1].first_unit == 9u &&
+          output[1].allocated_units == 2u &&
+          output[1].gap_after_units == 0u);
+    CHECK(output[2].first_unit == 20u &&
+          output[2].allocated_units == 1u &&
+          output[2].gap_after_units == 1u);
+
+    /* The output buffer and count are untouched for every refused plan. */
+    LdGenericPlannedExtent original[4];
+    memcpy(original, output, sizeof(output));
+    const size_t previous_count = count;
+    CHECK(ld_generic_layout_plan_file_extents(
+        &file, split, 3u, 10u, output, 2u, &count)
+          == LD_LAYOUT_OUTPUT_TOO_SMALL);
+    CHECK(count == previous_count && memcmp(original, output, sizeof(output)) == 0);
+    const LdGenericFreeExtent bad_gap[] = {{2u,3u}, {9u,2u}, {20u,1u}};
+    CHECK(ld_generic_layout_plan_file_extents(
+        &file, bad_gap, 3u, 10u, output, 4u, &count) == LD_LAYOUT_NO_SPACE);
+    CHECK(count == previous_count && memcmp(original, output, sizeof(output)) == 0);
+    const LdGenericFreeExtent overlap[] = {{2u,3u}, {4u,3u}};
+    CHECK(ld_generic_layout_plan_file_extents(
+        &file, overlap, 2u, 0u, output, 4u, &count) == LD_LAYOUT_INVALID);
+    CHECK(count == previous_count && memcmp(original, output, sizeof(output)) == 0);
+    const LdGenericFreeExtent overflow[] = {{UINT64_MAX - 3u, 4u}};
+    CHECK(ld_generic_layout_plan_file_extents(
+        &file, overflow, 1u, 0u, output, 4u, &count) == LD_LAYOUT_INVALID);
+    file.flags = LD_LAYOUT_OBJECT_SHARED;
+    CHECK(ld_generic_layout_plan_file_extents(
+        &file, split, 3u, 0u, output, 4u, &count) == LD_LAYOUT_UNSUPPORTED);
+    file.flags = 0u;
+
+    /* Alignment can force a later range; the generic routine must respect
+     * the provider's explicit allocation-unit constraints. */
+    file.allocated_units = 2u;
+    file.alignment_units = 8u;
+    const LdGenericFreeExtent aligned[] = {{3u,4u}, {11u,8u}};
+    CHECK(ld_generic_layout_plan_file_extents(
+        &file, aligned, 2u, 0u, output, 4u, &count) == LD_LAYOUT_OK);
+    CHECK(count == 1u && output[0].first_unit == 16u);
+
+    IfsDefragHostV2 host = {0};
+    host.abi_version = IFS_DEFRAG_ABI_V2;
+    host.structure_bytes = sizeof(host);
+    host.plan_file_extents = ld_generic_layout_plan_file_extents;
+    CHECK(host.structure_bytes >=
+        offsetof(IfsDefragHostV2, plan_file_extents) +
+        sizeof(host.plan_file_extents));
+    CHECK(host.plan_file_extents(&file, aligned, 2u, 0u,
+                                output, 4u, &count) == LD_LAYOUT_OK);
+}
+
 int main(void)
 {
+    provider_certified_free_ranges();
     public_module_host_abi();
     basic_defrag_growth();
     alignment_and_exclusive_limit();
