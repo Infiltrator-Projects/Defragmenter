@@ -11,6 +11,8 @@
 #include "ld_path.h"
 #include "ld_stop.h"
 #include "infiltratr/posix.h"
+#include <ctype.h>
+#include <dirent.h>
 #include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -287,6 +289,99 @@ missing:
     fprintf(stderr, "Install or update the trusted /System/Filesystems/%s module; %s operations require its SO interface.\n", filename, format);
     return 1;
 }
+/* Enumerate only trusted, root-owned filesystem modules with a compatible
+ * generic ABI. This is discovery, not filesystem detection and never writes
+ * to a device. Modules without the shared interface are not advertised as
+ * generic drivers; legacy adapters remain available independently.
+ *
+ * There is deliberately no call to lsblk, findmnt or a provider-specific
+ * filesystem executable here. Each SO states its own format and capabilities.
+ */
+int ifs_filesystem_module_list_v2(void) {
+    int parent = open("/System", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (parent < 0 || !trusted(parent, 1)) {
+        if (parent >= 0) close(parent);
+        fputs("{\\\"schema\\\":1,\\\"modules\\\":[]}\\n", stdout);
+        return 0;
+    }
+    int directory = openat(parent, "Filesystems",
+                           O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    close(parent);
+    if (directory < 0 || !trusted(directory, 1)) {
+        if (directory >= 0) close(directory);
+        fputs("{\\\"schema\\\":1,\\\"modules\\\":[]}\\n", stdout);
+        return 0;
+    }
+    DIR *entries = fdopendir(directory);
+    if (!entries) {
+        close(directory);
+        return 1;
+    }
+    int first = 1;
+    fputs("{\\\"schema\\\":1,\\\"modules\\\":[", stdout);
+    struct dirent *item;
+    while ((item = readdir(entries)) != NULL) {
+        const size_t length = strlen(item->d_name);
+        if (length < 4u || length > 59u ||
+            strcmp(item->d_name + length - 3u, ".so") != 0)
+            continue;
+        int permitted = 1;
+        for (size_t n = 0u; n < length; ++n) {
+            const unsigned char ch = (unsigned char)item->d_name[n];
+            if (!((ch >= 'a' && ch <= 'z') ||
+                  (ch >= 'A' && ch <= 'Z') ||
+                  (ch >= '0' && ch <= '9') ||
+                  ch == '_' || ch == '-' || ch == '.')) {
+                permitted = 0;
+                break;
+            }
+        }
+        if (!permitted) continue;
+        int fd = openat(directory, item->d_name,
+                        O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+        if (fd < 0) continue;
+        if (!trusted(fd, 0)) { close(fd); continue; }
+
+        char path[64];
+        if (snprintf(path, sizeof(path), "/proc/self/fd/%d", fd) >=
+            (int)sizeof(path)) {
+            close(fd);
+            continue;
+        }
+        void *image = dlopen(path, RTLD_NOW | RTLD_LOCAL);
+        if (!image) { close(fd); continue; }
+        void *symbol = dlsym(image, "infiltrator_filesystem_defrag_v2");
+        const IfsDefragModuleV2 *(*entry)(void) = NULL;
+        _Static_assert(sizeof(entry) == sizeof(symbol), "dlsym pointer width");
+        memcpy(&entry, &symbol, sizeof(entry));
+        const IfsDefragModuleV2 *api = entry ? entry() : NULL;
+        if (api && api->abi_version == IFS_DEFRAG_ABI_V2 &&
+            api->structure_bytes >= sizeof(*api) && api->format_id && api->run) {
+            const size_t id_length = strnlen(api->format_id, 16u);
+            int safe = id_length > 0u && id_length <= 15u;
+            for (size_t n = 0u; safe && n < id_length; ++n) {
+                const unsigned char ch = (unsigned char)api->format_id[n];
+                if (!((ch >= 'a' && ch <= 'z') ||
+                      (ch >= '0' && ch <= '9') || ch == '_'))
+                    safe = 0;
+            }
+            if (safe && (api->capabilities & IFS_DEFRAG_ANALYSE)) {
+                if (!first) fputc(',', stdout);
+                first = 0;
+                printf("{\\\"format_id\\\":\\\"%s\\\",\\\"filename\\\":\\\"%s\\\","
+                       "\\\"capabilities\\\":%llu}",
+                       api->format_id, item->d_name,
+                       (unsigned long long)api->capabilities);
+            }
+        }
+        dlclose(image);
+        close(fd);
+    }
+    fputs("]}\\n", stdout);
+    closedir(entries);
+    return ferror(stdout) ? 1 : 0;
+}
+
 typedef struct { int argc; char **argv; } Command;
 static int run_command(const IfsDefragHostV2 *host, void *symbol, void *user) {
     const IfsDefragModuleV2 *(*entry)(void) = NULL;
