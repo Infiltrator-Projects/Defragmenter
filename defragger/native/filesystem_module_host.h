@@ -8,5 +8,7 @@ typedef int (*IfsFilesystemCall)(const IfsDefragHostV2 *, void *, void *);
 int ifs_filesystem_module_call(const char *, const char *, const char *,
                                IfsFilesystemCall, void *);
 int ifs_filesystem_module_run(const char *, const char *, int, char **);
+/* Discover root-owned modules advertising the standard Defrag V2 ABI. */
+int ifs_filesystem_module_list_v2(void);
 int ifs_filesystem_journal_matches(const char *, const char *);
 #endif
