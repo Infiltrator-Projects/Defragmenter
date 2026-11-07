@@ -22,6 +22,55 @@
     } \
 } while (0)
 
+static int test_mmc_cid_identity_is_independent_of_udev(void)
+{
+    const char cid_lower[] = "1b534d303030303010ffffffff123456";
+    const char cid_upper[] = "1B534D303030303010FFFFFFFF123456";
+    char first[256];
+    char second[256];
+    char changed_slot[256];
+    char changed_size[256];
+    char short_buffer[8];
+
+    /* A confirmed MMC identity is built from immutable sysfs card CID,
+     * actual kernel device number and capacity, NOT udev-derived serial,
+     * WWN, model or transport. This reproduces those properties arriving
+     * during desktop unmount without weakening card replacement checks. */
+    CHECK(ldtm_mmc_identity_material(
+        UINT64_C(127865454592), 179U, 0U, cid_lower,
+        first, sizeof(first)) == 0);
+    CHECK(ldtm_mmc_identity_material(
+        UINT64_C(127865454592), 179U, 0U, cid_upper,
+        second, sizeof(second)) == 0);
+    CHECK(strcmp(first, second) == 0);
+    CHECK(strstr(first, "mmc-cid-v1") != NULL);
+    CHECK(strstr(first, "rdev=179:0") != NULL);
+    CHECK(ldtm_mmc_identity_material(
+        UINT64_C(127865454592), 179U, 1U, cid_lower,
+        changed_slot, sizeof(changed_slot)) == 0);
+    CHECK(strcmp(first, changed_slot) != 0);
+    CHECK(ldtm_mmc_identity_material(
+        UINT64_C(127865454593), 179U, 0U, cid_lower,
+        changed_size, sizeof(changed_size)) == 0);
+    CHECK(strcmp(first, changed_size) != 0);
+    CHECK(ldtm_mmc_identity_material(1U, 179U, 0U,
+        "1b534d303030303010ffffffff123457",
+        changed_slot, sizeof(changed_slot)) == 0);
+    CHECK(strcmp(first, changed_slot) != 0);
+    CHECK(ldtm_mmc_identity_material(
+        UINT64_C(127865454592), 179U, 0U,
+        "00000000000000000000000000000000", second, sizeof(second)) != 0);
+    CHECK(ldtm_mmc_identity_material(
+        UINT64_C(127865454592), 179U, 0U,
+        "invalid-CID", second, sizeof(second)) != 0);
+    CHECK(ldtm_mmc_identity_material(
+        UINT64_C(127865454592), 179U, 0U, cid_lower,
+        short_buffer, sizeof(short_buffer)) != 0);
+    CHECK(ldtm_mmc_identity_material(
+        0U, 179U, 0U, cid_lower, second, sizeof(second)) != 0);
+    return 0;
+}
+
 static uint32_t test_load_be32(const unsigned char *bytes)
 {
     return ((uint32_t)bytes[0] << 24U) |
@@ -705,6 +754,7 @@ int main(void) {
      * stable-identity and explicit destructive-confirmation checks around this
      * policy point, so fixed, virtual and unclassified transports are valid.
      */
+    CHECK(test_mmc_cid_identity_is_independent_of_udev() == 0);
     CHECK(ldtm_transport_is_field_media(0, "mmc") == 1);
     CHECK(ldtm_transport_is_field_media(0, "usb") == 1);
     CHECK(ldtm_transport_is_field_media(0, "sd") == 1);

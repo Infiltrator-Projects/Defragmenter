@@ -728,6 +728,44 @@ static int extract_pair(const char *line, const char *key, char *value, size_t c
     return 1;
 }
 
+/*
+ * The MMC CID is the hardware identity of a particular SD/eMMC medium.
+ * Udev enriches serial, WWN and bus descriptions asynchronously, especially
+ * while a desktop unmounts user-media partitions. Those descriptions are NOT
+ * stable confirmation material. Bind card CID + kernel device number + actual
+ * capacity instead; refuse anonymous/all-zero CID cards rather than falling
+ * back to model/capacity or silently relaxing the destructive confirmation.
+ *
+ * This pure builder is also directly exercised by the Test Media unit suite.
+ */
+int ldtm_mmc_identity_material(
+    uint64_t size_bytes, unsigned int major_number, unsigned int minor_number,
+    const char *cid, char *material, size_t capacity)
+{
+    char normalised_cid[33];
+    int nonzero = 0;
+    if (size_bytes == 0U || cid == NULL || material == NULL ||
+        capacity == 0U || strlen(cid) != 32U)
+        return -1;
+    for (size_t index = 0U; index < 32U; ++index) {
+        const unsigned char value = (unsigned char)cid[index];
+        if (!isxdigit(value))
+            return -1;
+        normalised_cid[index] = (char)tolower(value);
+        if (normalised_cid[index] != '0')
+            nonzero = 1;
+    }
+    if (!nonzero)
+        return -1;
+    normalised_cid[32] = '\0';
+    const int length = snprintf(
+        material, capacity,
+        "mmc-cid-v1\nsize=%llu\nrdev=%u:%u\ncid=%s\n",
+        (unsigned long long)size_bytes, major_number, minor_number,
+        normalised_cid);
+    return length > 0 && (size_t)length < capacity ? 0 : -1;
+}
+
 int ldtm_device_fingerprint(const char *device, char output[65]) {
     char canonical[PATH_MAX];
     char material[1024];
@@ -743,21 +781,49 @@ int ldtm_device_fingerprint(const char *device, char output[65]) {
         !info.whole_disk || info.size_bytes == 0U)
         return -1;
 
-    /*
-     * A destructive confirmation must identify a physical medium, not merely
-     * a model/capacity class. Two anonymous devices can legitimately have the
-     * same geometry, so serial or WWN remains mandatory.
-     */
-    if (info.serial[0] == '\0' && info.wwn[0] == '\0')
-        return -1;
-
-    const int length = snprintf(
-        material, sizeof(material),
-        "size=%llu\nmodel=%s\nserial=%s\nwwn=%s\ntransport=%s\n",
-        (unsigned long long)info.size_bytes, info.model, info.serial,
-        info.wwn, info.transport);
-    if (length < 0 || (size_t)length >= sizeof(material))
-        return -1;
+    const char *base = infiltratr_path_basename(canonical);
+    if (base != NULL && strncmp(base, "mmcblk", 6U) == 0) {
+        /*
+         * Physical MMC card identity must not depend on opportunistically
+         * populated udev properties. Read the kernel card CID directly.
+         * Its absence/invalidity is a hard refusal, never an anonymous
+         * model/size fallback. Kernel device number binds this invocation
+         * to the selected block target even if a different card is inserted.
+         */
+        struct stat status;
+        char cid_path[PATH_MAX];
+        char cid[96] = "";
+        if (stat(canonical, &status) != 0 || !S_ISBLK(status.st_mode))
+            return -1;
+        const int path_length = snprintf(
+            cid_path, sizeof(cid_path),
+            "/sys/dev/block/%u:%u/device/cid",
+            major(status.st_rdev), minor(status.st_rdev));
+        if (path_length <= 0 || (size_t)path_length >= sizeof(cid_path) ||
+            !infiltratr_read_text_file(cid_path, cid, sizeof(cid)))
+            return -1;
+        infiltratr_trim_line_end(cid);
+        if (ldtm_mmc_identity_material(
+                info.size_bytes, major(status.st_rdev),
+                minor(status.st_rdev), cid, material,
+                sizeof(material)) != 0)
+            return -1;
+    } else {
+        /*
+         * Other device classes retain their original trusted physical
+         * serial/WWN identity contract; never approve an anonymous disk
+         * from a model/capacity match.
+         */
+        if (info.serial[0] == '\0' && info.wwn[0] == '\0')
+            return -1;
+        const int length = snprintf(
+            material, sizeof(material),
+            "size=%llu\nmodel=%s\nserial=%s\nwwn=%s\ntransport=%s\n",
+            (unsigned long long)info.size_bytes, info.model, info.serial,
+            info.wwn, info.transport);
+        if (length < 0 || (size_t)length >= sizeof(material))
+            return -1;
+    }
 
     context = EVP_MD_CTX_new();
     if (context == NULL ||
@@ -1043,7 +1109,7 @@ static int unmount_descendants(const char *device)
          * util-linux umount binary, option parsing or PATH. No lazy detach:
          * the selected filesystem must actually be released before GPT
          * mutation. Retain the fail-closed post-unmount topology check. */
-        printf("+ unmount selected filesystem %s\\n", target);
+        printf("+ unmount selected filesystem %s\n", target);
         fflush(stdout);
         if (umount2(target, 0) != 0) {
             const int failure = errno;
@@ -1051,7 +1117,7 @@ static int unmount_descendants(const char *device)
              * mount. Re-read the live mount table rather than trusting a
              * transient ENOENT/EINVAL. Persistent EBUSY or ownership changes
              * remain fatal; never detach an unrelated filesystem. */
-            fprintf(stderr, "Unmount of %s: %s\\n",
+            fprintf(stderr, "Unmount of %s: %s\n",
                     target, strerror(failure));
             if (++failures >= 3U)
                 return -1;
@@ -1836,10 +1902,16 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device,
         fputs("Unable to unmount all descendants.\n", stderr);
         return 2;
     }
-    if (ldtm_device_fingerprint(canonical, current_fingerprint) != 0 ||
-        strcmp(current_fingerprint, confirmed_fingerprint) != 0) {
-        fputs("The physical disk identity changed before repartitioning; refusing to continue.\n",
+    if (ldtm_device_fingerprint(canonical, current_fingerprint) != 0) {
+        fputs("Unable to re-read the physical disk identity after unmount; refusing repartitioning.\n",
               stderr);
+        return 2;
+    }
+    if (strcmp(current_fingerprint, confirmed_fingerprint) != 0) {
+        fprintf(stderr,
+                "The physical disk identity changed before repartitioning "
+                "(confirmed fingerprint %.16s, current %.16s); refusing to continue.\n",
+                confirmed_fingerprint, current_fingerprint);
         return 2;
     }
     /*

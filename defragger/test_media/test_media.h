@@ -108,6 +108,10 @@ int ldtm_is_system_disk(const char *device);
 int ldtm_device_safety_check(const char *device, int allow_non_removable,
                              char *detail, size_t detail_capacity);
 int ldtm_device_fingerprint(const char *device, char output[65]);
+/* Pure hardware-CID identity material; rejects missing/invalid CID and overflow. */
+int ldtm_mmc_identity_material(
+    uint64_t size_bytes, unsigned int major_number, unsigned int minor_number,
+    const char *cid, char *material, size_t capacity);
 int ldtm_is_reserved_partition_label(const char *label);
 int ldtm_sanitize_reserved_partitions(const char *device);
 int ldtm_worker_prepare(const char *device, const char *confirmed_device,
