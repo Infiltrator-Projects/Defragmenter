@@ -430,7 +430,15 @@ int ifs_filesystem_module_find_v2(const char *format, char *filename,
             strcmp(discovered, format) != 0)
             continue;
         if (++matches != 1u) break;
-        (void)snprintf(selected, sizeof(selected), "%s", item->d_name);
+        /* The trust/filename probe above already bounds names to 59
+         * characters. Re-check here before copying because dirent names
+         * are externally supplied and -Werror must not permit truncation. */
+        const size_t name_length = strnlen(item->d_name, sizeof(selected));
+        if (name_length == 0u || name_length >= sizeof(selected)) {
+            matches = 2u;
+            break;
+        }
+        memcpy(selected, item->d_name, name_length + 1u);
     }
     closedir(entries);
     const size_t selected_length = strlen(selected);
