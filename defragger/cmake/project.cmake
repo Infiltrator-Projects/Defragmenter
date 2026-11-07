@@ -657,6 +657,10 @@ if(BUILD_TESTING)
         defragmenter-runtime-cpp defragmenter-core)
     add_test(NAME defragmenter-cpp-runtime
         COMMAND defragmenter-cpp-runtime-test)
+    add_test(NAME defragmenter-generic-module-dispatch
+        COMMAND python3
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_generic_module_dispatch.py"
+            "$<TARGET_FILE:defragmenter-operation-engine-cpp>")
 
     # EXT bitmap-cache and descriptor-race regression now runs in Filesystem-EXT4 CI.
 
