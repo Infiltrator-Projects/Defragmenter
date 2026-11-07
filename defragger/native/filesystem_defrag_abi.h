@@ -40,6 +40,23 @@ typedef struct {
     uint64_t gap_after_units;
 } IfsDefragLayoutPlacement;
 
+/* A provider-certified, sorted, disjoint free interval in filesystem
+ * allocation units. System metadata, reserved regions, snapshots and other
+ * unavailable storage are absent from this inventory. */
+typedef struct {
+    uint64_t first_unit;
+    uint64_t allocated_units;
+} IfsDefragFreeExtent;
+
+/* Ordered data extents for one file. Only the final extent may reserve free
+ * growth units immediately after its last data unit. A reserved gap is NOT
+ * allocated or copied into the output filesystem. */
+typedef struct {
+    uint64_t first_unit;
+    uint64_t allocated_units;
+    uint64_t gap_after_units;
+} IfsDefragPlannedExtent;
+
 typedef struct {
     uint32_t abi_version, structure_bytes;
     void *context;
@@ -72,6 +89,19 @@ typedef struct {
     int (*plan_layout)(const IfsDefragLayoutObject *, size_t,
                        uint64_t first_unit, uint64_t limit_unit,
                        unsigned growth_percent, IfsDefragLayoutPlacement *);
+    /* Optional, appended range-aware host service. The SO supplies certified
+     * ordered/disjoint free ranges; Defragmenter chooses either one contiguous
+     * run or data extents split around reserved/pinned regions. No mutation.
+     * Returns 0 on a completely valid plan, -1 invalid/overflow, -2 no space,
+     * -3 unsupported objects, -4 insufficient output slots. On failure neither
+     * the planned extents nor *written is modified.
+     * Existing older V2 hosts omit this field: probe structure_bytes.
+     */
+    int (*plan_file_extents)(const IfsDefragLayoutObject *,
+                             const IfsDefragFreeExtent *, size_t free_count,
+                             unsigned growth_percent,
+                             IfsDefragPlannedExtent *, size_t output_capacity,
+                             size_t *written);
 } IfsDefragHostV2;
 typedef struct {
     uint32_t abi_version, structure_bytes;
