@@ -112,11 +112,16 @@ engine.
 **Decision.** Common owns generic parsing, checked arithmetic, array growth,
 byte order, escaping, path/string helpers, exact I/O, generic durable-file
 publication/removal and neutral design contracts where semantics match.
-Defragmenter's native core owns product-local filesystem-neutral target safety
-and transaction-binding mechanics. Filesystem engines retain volume identity,
-geometry, placement, transaction stages, recovery meaning and fail-closed
-policy. Python may be used by independent test fixtures/drivers, but it owns no
-product control plane, mutation, durability, presentation or filesystem policy.
+Defragmenter's native core owns product-local filesystem-neutral target safety,
+generic deterministic file-packing/Growth Defrag placement, Stop/progress and
+transaction coordination. Filesystem SOs retain volume identity, allocation
+geometry, feature constraints, metadata translation, safe relocation and
+filesystem-specific durable publication/recovery semantics; the generic planner
+cannot safely replace an SO's copy-on-write or journalling transaction rules.
+The new `ld_generic_layout_plan` is currently **plan-only**, not wired to
+production mutation. Python may be used by independent test fixtures/drivers,
+but it owns no product control plane, mutation, durability, presentation or
+filesystem policy.
 
 **Consequences.** Generic code is reused without obscuring the safety boundary.
 A smaller codebase is not treated as a sufficient reason to move
