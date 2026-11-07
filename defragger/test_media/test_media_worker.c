@@ -828,7 +828,7 @@ int ldtm_device_fingerprint(const char *device, char output[65]) {
     context = EVP_MD_CTX_new();
     if (context == NULL ||
         EVP_DigestInit_ex(context, EVP_sha256(), NULL) != 1 ||
-        EVP_DigestUpdate(context, material, (size_t)length) != 1 ||
+        EVP_DigestUpdate(context, material, strlen(material)) != 1 ||
         EVP_DigestFinal_ex(context, digest, &digest_length) != 1)
         goto cleanup;
     digest_to_hex(digest, digest_length, output);
