@@ -11,6 +11,9 @@
 
 #include <stddef.h>
 #include <stdint.h>
+/* Reuse the one public binary layout definition; avoid two subtly different
+ * representations between the generic application and filesystem modules. */
+#include "../../native/filesystem_defrag_abi.h"
 
 enum {
     LD_LAYOUT_OK = 0,
@@ -26,23 +29,12 @@ enum {
  * movable; a ZFS shared block, snapshot reference or metadata block is
  * not independently movable by an arbitrary byte copy. */
 enum {
-    LD_LAYOUT_OBJECT_PINNED = 1u,
-    LD_LAYOUT_OBJECT_SHARED = 2u,
-    LD_LAYOUT_OBJECT_UNSUPPORTED = 4u
+    LD_LAYOUT_OBJECT_PINNED = IFS_DEFRAG_LAYOUT_OBJECT_PINNED,
+    LD_LAYOUT_OBJECT_SHARED = IFS_DEFRAG_LAYOUT_OBJECT_SHARED,
+    LD_LAYOUT_OBJECT_UNSUPPORTED = IFS_DEFRAG_LAYOUT_OBJECT_UNSUPPORTED
 };
-typedef struct {
-    uint64_t object_id;
-    uint64_t allocated_units;
-    uint64_t alignment_units;
-    uint32_t flags;
-} LdGenericLayoutObject;
-
-typedef struct {
-    uint64_t object_id;
-    uint64_t first_unit;
-    uint64_t allocated_units;
-    uint64_t gap_after_units;
-} LdGenericLayoutPlacement;
+typedef IfsDefragLayoutObject LdGenericLayoutObject;
+typedef IfsDefragLayoutPlacement LdGenericLayoutPlacement;
 
 /* [first_unit, limit_unit) is a provider-certified relocatable data region
  * in abstract allocation units. Each file is packed contiguously in input
