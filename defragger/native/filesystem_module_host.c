@@ -284,7 +284,7 @@ int ifs_filesystem_module_call(const char *format, const char *filename, const c
         malloc, free, target_open, stage_create, target_close, target_read, target_write,
         target_sync, file_exists, file_read, file_atomic, file_remove,
         digest_create, digest_update, digest_finish, digest_release, stop_requested, print, snprintf,
-        ld_generic_layout_plan};
+        ld_generic_layout_plan, ld_generic_layout_plan_file_extents};
     void *requested = dlsym(image, interface);
     int r = requested ? call(&host, requested, user) : 1;
     dlclose(image); close(fd); return r;
