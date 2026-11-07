@@ -47,7 +47,7 @@ def main() -> None:
         target.write_bytes(b"UNMODIFIED")
         future = run(engine, "defrag", str(target), "--filesystem", "zzdefragtest")
         assert future.returncode != 0
-        assert "ZZDEFRAGTEST.so" in future.stderr, future.stderr
+        assert "no installed trusted Defrag V2 SO advertises zzdefragtest" in future.stderr, future.stderr
         assert target.read_bytes() == b"UNMODIFIED"
 
     invalid = run(engine, "defrag", "/dev/null", "--filesystem", "bad/path")
