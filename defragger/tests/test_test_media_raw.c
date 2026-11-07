@@ -46,6 +46,10 @@ static int contracts(void)
             "41 21 179:4 / /media/ssmith/LD_EXT4 rw,relatime - ext4 /dev/mmcblk0p4 rw\n",
             selected, 3U, mountpoint) == 1);
         CHECK(strcmp(mountpoint, "/media/ssmith/LD_EXT4") == 0);
+        /* Btrfs may report a pseudo-device superblock number; its actual
+         * mountinfo source still belongs to the selected physical disk.
+         * This synthetic positive case covers the ordinary MAJ:MIN parser;
+         * resolving a real block source is exercised on mounted hardware. */
         CHECK(ldtm_mountinfo_target(
             "42 21 179:3 / /media/ssmith/LD\\040EXT3 rw,relatime - ext3 /dev/mmcblk0p3 rw\n",
             selected, 3U, mountpoint) == 1);
