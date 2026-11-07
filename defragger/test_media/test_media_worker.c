@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/sysmacros.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -845,24 +846,189 @@ int ldtm_device_safety_check(const char *device, int allow_non_removable,
     return 0;
 }
 
-static int unmount_descendants(const char *device) {
-    const char *const argv[] = {"lsblk", "-n", "-p", "-r", "-o", "MOUNTPOINT", "--", device, NULL};
-    char *output = NULL;
-    char *line;
-    char *saveptr = NULL;
-    int result = 0;
-    if (capture_process(argv, &output) != 0) return -1;
-    line = strtok_r(output, "\n", &saveptr);
+/* Resolve the exact selected disk and its descendants to kernel device IDs.
+ * Never use a previously observed mountpoint as authority to unmount: the
+ * desktop may already have removed it, or mounted another disk there. */
+typedef struct {
+    unsigned int major_number;
+    unsigned int minor_number;
+} LdtmMountedDevice;
+
+#define LDTM_MAX_UNMOUNT_DEVICES 256U
+#define LDTM_MAX_UNMOUNT_ATTEMPTS 256U
+
+static bool ldtm_matches_device_number(
+    unsigned int major_number, unsigned int minor_number,
+    const LdtmMountedDevice *devices, size_t count)
+{
+    for (size_t index = 0U; index < count; ++index) {
+        if (devices[index].major_number == major_number &&
+            devices[index].minor_number == minor_number)
+            return true;
+    }
+    return false;
+}
+
+static int ldtm_mountinfo_target(
+    const char *line, const LdtmMountedDevice *devices, size_t count,
+    char target[PATH_MAX])
+{
+    const char *cursor = line;
+    const char *fields[5];
+    size_t lengths[5];
+    unsigned int major_number = 0U, minor_number = 0U;
+    char number[64];
+    char extra;
+
+    if (line == NULL || devices == NULL || target == NULL)
+        return -1;
+    target[0] = '\0';
+    for (unsigned int field = 0U; field < 5U; ++field) {
+        while (*cursor == ' ') ++cursor;
+        if (*cursor == '\0' || *cursor == '\n') return -1;
+        fields[field] = cursor;
+        while (*cursor != '\0' && *cursor != ' ' && *cursor != '\n')
+            ++cursor;
+        lengths[field] = (size_t)(cursor - fields[field]);
+    }
+    if (lengths[2] == 0U || lengths[2] >= sizeof(number))
+        return -1;
+    memcpy(number, fields[2], lengths[2]);
+    number[lengths[2]] = '\0';
+    if (sscanf(number, "%u:%u%c", &major_number, &minor_number, &extra) != 2)
+        return -1;
+    if (!ldtm_matches_device_number(major_number, minor_number, devices, count))
+        return 0;
+
+    /* mountinfo escapes spaces, tabs, newlines and backslashes as octal.
+     * Decode only an exact kernel mountpoint field, never shell-evaluate it. */
+    size_t used = 0U;
+    for (size_t index = 0U; index < lengths[4]; ++index) {
+        unsigned char value = (unsigned char)fields[4][index];
+        if (value == '\\') {
+            if (index + 3U >= lengths[4])
+                return -1;
+            unsigned int decoded = 0U;
+            for (unsigned int digit = 1U; digit <= 3U; ++digit) {
+                const char byte = fields[4][index + digit];
+                if (byte < '0' || byte > '7')
+                    return -1;
+                decoded = decoded * 8U + (unsigned int)(byte - '0');
+            }
+            if (decoded == 0U || decoded > 255U)
+                return -1;
+            value = (unsigned char)decoded;
+            index += 3U;
+        }
+        if (used + 1U >= PATH_MAX)
+            return -1;
+        target[used++] = (char)value;
+    }
+    if (used == 0U)
+        return -1;
+    target[used] = '\0';
+    return 1;
+}
+
+static int ldtm_selected_device_numbers(
+    const char *device, LdtmMountedDevice *devices, size_t *count)
+{
+    const char *const argv[] = {
+        "lsblk", "-n", "-r", "-o", "MAJ:MIN", "--", device, NULL
+    };
+    char *output = NULL, *saveptr = NULL;
+    if (device == NULL || devices == NULL || count == NULL ||
+        capture_process(argv, &output) != 0)
+        return -1;
+    *count = 0U;
+    char *line = strtok_r(output, "\n", &saveptr);
     while (line != NULL) {
+        unsigned int major_number = 0U, minor_number = 0U;
+        char extra;
         infiltratr_trim(line);
-        if (*line != '\0') {
-            const char *const umount_argv[] = {"umount", line, NULL};
-            if (run_process(umount_argv, NULL, 0) != 0) result = -1;
+        if (sscanf(line, "%u:%u%c", &major_number, &minor_number, &extra) != 2 ||
+            *count >= LDTM_MAX_UNMOUNT_DEVICES) {
+            free(output);
+            return -1;
+        }
+        if (!ldtm_matches_device_number(
+                major_number, minor_number, devices, *count)) {
+            devices[*count].major_number = major_number;
+            devices[*count].minor_number = minor_number;
+            ++*count;
         }
         line = strtok_r(NULL, "\n", &saveptr);
     }
     free(output);
-    return result;
+    return *count > 0U ? 0 : -1;
+}
+
+static int unmount_descendants(const char *device)
+{
+    LdtmMountedDevice devices[LDTM_MAX_UNMOUNT_DEVICES];
+    size_t count = 0U;
+    if (ldtm_selected_device_numbers(device, devices, &count) != 0)
+        return -1;
+
+    /* Re-read live mountinfo after each unmount. An old lsblk MOUNTPOINT
+     * snapshot can contain directories no longer mounted (the reported
+     * LD_EXT3/LD_EXT4 regression), or now owned by another device. */
+    unsigned int failures = 0U;
+    for (unsigned int attempt = 0U;
+         attempt < LDTM_MAX_UNMOUNT_ATTEMPTS; ++attempt) {
+        FILE *mounts = fopen("/proc/self/mountinfo", "r");
+        char *line = NULL;
+        size_t capacity = 0U;
+        char target[PATH_MAX] = "";
+        size_t longest = 0U;
+        int parse_failure = 0;
+
+        if (mounts == NULL)
+            return -1;
+        while (getline(&line, &capacity, mounts) >= 0) {
+            char current[PATH_MAX];
+            const int matches =
+                ldtm_mountinfo_target(line, devices, count, current);
+            if (matches < 0) {
+                parse_failure = 1;
+                break;
+            }
+            if (matches > 0 && strlen(current) > longest) {
+                longest = strlen(current);
+                (void)snprintf(target, sizeof(target), "%s", current);
+            }
+        }
+        if (ferror(mounts))
+            parse_failure = 1;
+        free(line);
+        if (fclose(mounts) != 0 || parse_failure)
+            return -1;
+
+        if (longest == 0U)
+            return ld_path_is_mounted(device) ? -1 : 0;
+
+        /* stat() identifies the TOP mount at this path. Refuse to unmount
+         * any unrelated filesystem covering the selected disk's mount. */
+        struct stat status;
+        if (stat(target, &status) != 0 ||
+            !ldtm_matches_device_number(
+                major(status.st_dev), minor(status.st_dev), devices, count)) {
+            if (++failures >= 3U)
+                return -1;
+            continue;
+        }
+        const char *const umount_argv[] = {"umount", "--", target, NULL};
+        if (run_process(umount_argv, NULL, 0) != 0) {
+            /* A desktop automount race may have unmounted this exact path.
+             * Retry from live mountinfo, but never ignore a persistent
+             * busy mount or an active swap before destructive writes. */
+            if (++failures >= 3U)
+                return -1;
+        } else {
+            failures = 0U;
+        }
+    }
+    return -1;
 }
 
 static int settle_partitions(const char *device, LdtmPartitionMap *map) {
