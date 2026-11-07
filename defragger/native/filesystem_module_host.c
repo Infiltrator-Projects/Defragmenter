@@ -5,6 +5,7 @@
  */
 #include "filesystem_module_host.h"
 #include "filesystem_defrag_abi.h"
+#include "ld_generic_layout.h"
 #include "version.h"
 #include "ld_device.h"
 #include "ld_io.h"
@@ -282,7 +283,8 @@ int ifs_filesystem_module_call(const char *format, const char *filename, const c
     IfsDefragHostV2 host = {IFS_DEFRAG_ABI_V2, sizeof(host), &context, LD_VERSION,
         malloc, free, target_open, stage_create, target_close, target_read, target_write,
         target_sync, file_exists, file_read, file_atomic, file_remove,
-        digest_create, digest_update, digest_finish, digest_release, stop_requested, print, snprintf};
+        digest_create, digest_update, digest_finish, digest_release, stop_requested, print, snprintf,
+        ld_generic_layout_plan};
     void *requested = dlsym(image, interface);
     int r = requested ? call(&host, requested, user) : 1;
     dlclose(image); close(fd); return r;
