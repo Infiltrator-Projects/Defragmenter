@@ -4,10 +4,20 @@
 
 Status: **complete**
 
-Audited source commit: d9af8fd2425aaf464af17ac6a1d967a783fc7b4c
+Audited source commit: c0dd5e77a540b64c6f31485193aae977cd23623d
 Audited release-governance commit: 3934c470b7ff3c8411515b37651dc9346c4d99ca
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Test Media mount isolation and generic filesystem module discovery — 2026-11-07
+
+**Source revision reviewed:** `c0dd5e77a540b64c6f31485193aae977cd23623d`, 25 linear commits after the previous source audit `d9af8fd2425aaf464af17ac6a1d967a783fc7b4c`. The source-diff inventory is limited to the application build manifest, generic process-host SO loader and dispatch, selected-device Test Media worker, their focused regression tests, and maintained prose. The reviewed source changes include **no changes to filesystem-specific allocation, relocation, journalling, or on-disk format implementations**. All previously installed filesystem workers remain in place.
+
+**Device safety review:** Test Media selects the exact block device and its kernel major:minor descendants, scans live `/proc/self/mountinfo` after every unmount, checks the current top-mounted superblock before unmounting, and uses `umount2(target, 0)` without lazy detach or an external `umount` process. No such operation substitutes a different disk, disables the existing fingerprint confirmation, or removes the mandatory refusal to repartition a still-mounted/active target. The still-external `lsblk`, `partx`, `sfdisk`, `wipefs`, and optional `udevadm` commands remain in the transitional Linux Test Media implementation; this review does not call the app dependency-free.
+
+**Module contract review:** The new generic route discovers only trusted root-owned `/System/Filesystems/*.so` modules, obtains the `format_id` and capability bits from each standard Defrag V2 ABI, rejects duplicate providers, verifies format identity again at execution, and checks required capabilities before invoking Defrag/Growth/Recover. Missing, incompatible, or ambiguous modules fail closed. Existing filesystem-specific workers and fixed Test Media layout are intentionally retained for regression compatibility. Discovery does not claim that the graphical interface has become entirely generic, nor that any plugin beyond the existing tested formats is fully qualified.
+
+**Qualification evidence and boundary:** [The initial quality run](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/42332053317) exposed a `-Werror=format-truncation` compiler defect in the new discovery resolver; the final reviewed source includes the bounded-length check and exact bounded copy instead of the truncated `snprintf`. The standard and sanitizer builds, new generic-dispatch tests, real SO integration, exact-artifact release qualification, and public APT propagation remain required *independent gates*. This source review alone is not proof those gates have passed or that physical-device testing succeeded. The release-governance audit baseline remains unchanged, because no release-governance implementation or workflow file changed.
 
 ## Release artifact shell syntax correction — 2026-11-06
 
