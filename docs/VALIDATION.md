@@ -36,7 +36,7 @@ The native allocation map must account for each physical span exactly in used/fr
 
 ## Test Media contract
 
-All 21 registered slots require first-party C creation and raw verification, not host formatters, mounting or ZFS pool utilities. File-bearing fixtures use the deterministic eight large files of 4, 6, 10, 16, 26, 34, 44 and 60 MiB (**200 MiB total**) plus files of 0, 1, 511, 512, 513, 4095, 4096 and 4097 bytes. Independent readers re-open on-disk mappings and verify all payload bytes after creation and each supported operation. ZFS and swap remain analysis-only.
+All 21 registered slots require first-party C creation and raw verification, not host formatters, mounting or ZFS pool utilities. File-bearing fixtures use the deterministic eight large files of 4, 6, 10, 16, 26, 34, 44 and 60 MiB (**200 MiB total**) plus files of 0, 1, 511, 512, 513, 4095, 4096 and 4097 bytes. Independent readers re-open on-disk mappings and verify all payload bytes after creation and each supported operation. ZFS and swap remain analysis-only; **if included in a Defragment/Growth Defrag qualification run, missing write operations are qualification failures and make the run exit nonzero**. Running the separate Verify files action may still succeed for these formats, but that validates retained data only and must never be reported as production-defragmentation qualification.
 
 The protected **schema 3** state file binds disk fingerprint, corpus version and exactly one build result per slot. The expected file list and bytes are compiled policy; missing/duplicate/unknown records, truncated state, mismatched disk identity, an altered payload and obsolete schema 2 are all rejected. Existing schema 2 disks must be rebuilt.
 
