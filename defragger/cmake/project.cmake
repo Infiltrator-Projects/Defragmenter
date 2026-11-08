@@ -696,11 +696,18 @@ if(BUILD_TESTING)
         COMMAND /bin/bash
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_privileged_helper_protocol.sh"
             "$<TARGET_FILE:defragmenter-privileged-helper-test>")
+    # The supervised child itself must be a native executable, not Python.
+    add_executable(defragmenter-helper-child-test tests/helper_child.c)
+    target_compile_definitions(defragmenter-helper-child-test PRIVATE
+        _POSIX_C_SOURCE=200809L)
+    target_compile_options(defragmenter-helper-child-test PRIVATE
+        ${LD_WARNING_FLAGS})
     find_program(LD_HELPER_TEST_PYTHON NAMES python3 REQUIRED)
     add_test(NAME defragmenter-privileged-helper-lifecycle
         COMMAND "${LD_HELPER_TEST_PYTHON}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_privileged_helper_lifecycle.py"
-            "$<TARGET_FILE:defragmenter-privileged-helper-test>")
+            "$<TARGET_FILE:defragmenter-privileged-helper-test>"
+            "$<TARGET_FILE:defragmenter-helper-child-test>")
     set_tests_properties(defragmenter-privileged-helper-lifecycle
         PROPERTIES TIMEOUT 90)
 

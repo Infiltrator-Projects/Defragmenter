@@ -12,7 +12,8 @@ import threading
 import time
 
 helper = sys.argv[1]
-child = Path(__file__).with_name("helper_child.py")
+child = Path(sys.argv[2]).resolve()
+assert child.is_file(), f"Missing native supervised child: {child}"
 
 
 def wait_for(predicate):
