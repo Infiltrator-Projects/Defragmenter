@@ -62,3 +62,7 @@ The generic `.deb` and source-based `.run` are built from the versioned source; 
 The 21-slot native C creator exercises disposable media through first-party format interfaces, with independent raw verification of exact logical payloads. No host formatter, target mount or ZFS pool import/export is used for fixture creation/verification. State schema 3 binds disk identity, corpus version and build results; the expected corpus is compiled policy, not editable saved state. ZFS and swap are analysis-only. Tests must still prove the actual external SO was used wherever mandated.
 
 See [Design](DESIGN.md), [References](REFERENCES.md) and [UI vision](UI_VISION.md) for specialist requirements.
+
+## FAT12 single-module pilot (9 November 2026)
+
+The authoritative installed FAT12 engine is `/System/Filesystems/FAT12.so`. The FAT12 owner has begun the Common/Libraries `infiltrator_filesystem_api_v1` adapter with probe and guarded reformat, while its **existing** `infiltrator_filesystem_defrag_v1` remains the separately versioned defrag ABI. Common V1 explicitly reserves generic defrag capability bits until that contract is specified, so it does **not** advertise FAT12 analysis/relocation under the new ABI. Defragmenter must continue using its verified FAT12 SO defrag host, with independent device/identity/mount/journal checks, until a generic adopted ABI is proven. Do not add another FAT12 relocation implementation inside Defragmenter and do not silently fall back to private format code.
