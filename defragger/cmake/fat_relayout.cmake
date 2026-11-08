@@ -15,8 +15,12 @@ endif()
 # Focused integration coverage for the shared FAT12/FAT16/FAT32 relayout engine.
 
 if(BUILD_TESTING AND TARGET defragmenter-fat-worker)
+    add_executable(defragmenter-fat-module-architecture-test
+        "${CMAKE_CURRENT_LIST_DIR}/../tests/test_fat_relayout_architecture.cpp")
+    target_compile_features(defragmenter-fat-module-architecture-test PRIVATE cxx_std_17)
     add_test(NAME defragmenter-fat-module-architecture
-        COMMAND python3 "${CMAKE_CURRENT_LIST_DIR}/../tests/test_fat_relayout_architecture.py")
+        COMMAND $<TARGET_FILE:defragmenter-fat-module-architecture-test>
+                "${CMAKE_CURRENT_LIST_DIR}/..")
     add_test(
         NAME defragmenter-fat-relayout
         COMMAND bash
