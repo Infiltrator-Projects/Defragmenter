@@ -31,13 +31,11 @@ if(BUILD_TESTING)
     set_tests_properties(defragmenter-device-topology PROPERTIES
         SKIP_RETURN_CODE 77)
 
-    # Python is an independent test-driver language only. No Python application
-    # model, GTK compatibility layer or product control plane is qualified here.
-    find_package(Python3 REQUIRED COMPONENTS Interpreter)
-    add_test(
-        NAME defragmenter-system-update-contract
-        COMMAND "${Python3_EXECUTABLE}"
-                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_update_service.py")
-    set_tests_properties(defragmenter-system-update-contract PROPERTIES
-        ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1")
+    add_executable(defragmenter-system-update-contract-test
+        tests/test_update_service.cpp)
+    target_compile_features(defragmenter-system-update-contract-test PRIVATE cxx_std_17)
+    target_compile_options(defragmenter-system-update-contract-test PRIVATE ${LD_WARNING_FLAGS})
+    add_test(NAME defragmenter-system-update-contract
+        COMMAND $<TARGET_FILE:defragmenter-system-update-contract-test>
+                "${CMAKE_CURRENT_SOURCE_DIR}")
 endif()
