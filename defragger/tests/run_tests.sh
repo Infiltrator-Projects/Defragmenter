@@ -40,8 +40,11 @@ version=$($FAT_WORKER --version)
 python3 "$ROOT/tests/test_no_external_fs_tools.py"
 python3 "$ROOT/tests/test_architecture.py"
 python3 "$ROOT/tests/test_registry_mapper.py"
-python3 "$ROOT/tests/test_ext_catalog_fuzz.py"
-python3 "$ROOT/tests/test_worker_entrypoints.py"
+# Build once and exercise the production worker launch protocol without Python.
+c++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -pthread \
+    "$ROOT/tests/native_worker_smoke.cpp" -o "$WORK/native-worker-smoke"
+"$WORK/native-worker-smoke" ext-catalog-fuzz
+"$WORK/native-worker-smoke" worker-entrypoints
 DEFRAGMENTER_BUILD_DIR="$BUILD_DIR" PYTHONPATH="$ROOT/tests" python3 "$ROOT/tests/test_native_top3.py"
 DEFRAGMENTER_BUILD_DIR="$BUILD_DIR" PYTHONPATH="$ROOT/tests" python3 "$ROOT/tests/test_affs_native.py"
 DEFRAGMENTER_BUILD_DIR="$BUILD_DIR" PYTHONPATH="$ROOT/tests" python3 "$ROOT/tests/test_hfsplus_native.py"
