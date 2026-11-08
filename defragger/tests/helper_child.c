@@ -38,7 +38,7 @@ static double elapsed(const struct timespec *start,const struct timespec *now){
 }
 int main(int argc,char **argv){
     const char *marker=getenv("LD_HELPER_TEST_MARKER");
-    if(marker==NULL||!*marker||argc!=2){
+    if(marker==NULL||!*marker||argc<2){
         fputs("Usage: helper-child {defrag|mapper} (with LD_HELPER_TEST_MARKER)\n",stderr);
         return 2;
     }
