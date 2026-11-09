@@ -4,10 +4,16 @@
 
 Status: **complete**
 
-Audited source commit: 7f54d66d300fc7c5140894f2cc9cf7fbf523fb6e
+Audited source commit: c38dc23a16a604d1b3a7d3e05df7a1c53380251b
 Audited release-governance commit: 3934c470b7ff3c8411515b37651dc9346c4d99ca
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Native test-driver migration review — 2026-11-09
+
+**Reviewed exact source baseline:** `c38dc23a16a604d1b3a7d3e05df7a1c53380251b`, compared with the previous audited source `7f54d66d300fc7c5140894f2cc9cf7fbf523fb6e`. The GitHub compare operation reports eight linear commits and 16 changed paths. The release-qualified changes are to `defragger/cmake/application_regressions.cmake`, `fat_relayout.cmake`, `project.cmake`, test-only C/C++ binaries, the test runner, and retirement of their corresponding Python test drivers. Version and documentation changes are separate. No production FAT engine, raw disk format/relocation writer, recovery journal, privileged device policy, release script, Common gitlink or filesystem implementation changed.
+
+**Verification:** The self-hosted project quality run [42533513923](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/42533513923) passed the native regression suites, including 16/16 Test Media integration tests, and its separate ASan/UBSan job passed. The quality job stopped at `test_release_gate.py` solely because this exact source baseline had not yet been re-audited: `qualified source/test/install input changed after the audited source baseline`. This section records the reviewed delta and restores the intentionally strict gate; it is **not** a waiver, an assertion that the failed workflow was green, or evidence of physical-media qualification. A new exact-head workflow is still required. The release-governance baseline remains `3934c470b7ff3c8411515b37651dc9346c4d99ca`.
 
 ## Physical MMC CID-based identity stability — 2026-11-07
 
