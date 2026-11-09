@@ -27,6 +27,14 @@ jobs:
           ref: ${{ steps.fat.outputs.sha }}
           path: ci-filesystems
           submodules: recursive
+      - name: Pin independent FAT12 source
+        id: fat12
+        run: echo "sha=$(tr -d '\r\n' < defragger/shared/fat12-module-revision)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: Infiltrator-Projects/Filesystem-FAT12
+          ref: ${{ steps.fat12.outputs.sha }}
+          path: ci-fat12
       - name: Locate exact independent exFAT module revision
         id: exfat
         run: echo "sha=$(tr -d '\r\n' < defragger/shared/exfat-module-revision)" >> "$GITHUB_OUTPUT"
@@ -39,7 +47,9 @@ jobs:
         run: |
           set -euo pipefail
           cmake -S ci-filesystems -B /tmp/ifs-fat-ci -DBUILD_TESTING=OFF
-          cmake --build /tmp/ifs-fat-ci --target filesystems-fat12-module filesystems-fat16-module --parallel 2
+          cmake --build /tmp/ifs-fat-ci --target filesystems-fat16-module --parallel 2
+          python3 ci-fat12/standalone/build.py --profile portable \
+            --output /tmp/ifs-fat12-ci/FAT12.so --check
           make -C ci-exfat OUT=/tmp/ifs-exfat-ci
           sed 's|#include "../../fat/portable/fatfs_module.h"|#include "fat_module_abi.h"|' \
             ci-exfat/native/filesystems/exfat/module/exfat_api.h |
@@ -56,7 +66,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p defragger/build-fixture/test-modules/Filesystems
-          install -m 0644 /tmp/ifs-fat-ci/FAT{12,16}.so /tmp/ifs-exfat-ci/exFAT.so \
+          install -m 0644 /tmp/ifs-fat12-ci/FAT12.so /tmp/ifs-fat-ci/FAT16.so /tmp/ifs-exfat-ci/exFAT.so \
             defragger/build-fixture/test-modules/Filesystems/
           export IFS_TEST_MODULE_PARENT="$PWD/defragger/build-fixture/test-modules"
           raw=defragger/build-fixture/defragmenter-test-media-raw-test
