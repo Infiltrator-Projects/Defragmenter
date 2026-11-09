@@ -139,8 +139,7 @@ static int call_module(FatFixture *f, IfsFilesystemCall call) {
     if (f->spec->creator == LDTM_CREATOR_EXFAT)
         return ifs_filesystem_module_call("exfat", "exFAT.so",
             "infiltrator_filesystem_module_v5", call, f);
-    const unsigned bits = f->spec->creator == LDTM_CREATOR_FAT12 ? 12U :
-                          f->spec->creator == LDTM_CREATOR_FAT16 ? 16U :
+    const unsigned bits = f->spec->creator == LDTM_CREATOR_FAT16 ? 16U :
                           f->spec->creator == LDTM_CREATOR_FAT32 ? 32U : 0U;
     if (!bits) return -1;
     char module[16];
@@ -149,10 +148,14 @@ static int call_module(FatFixture *f, IfsFilesystemCall call) {
         "infiltrator_filesystem_module_v4", call, f);
 }
 int ldtm_fat_module_available(const LdtmFilesystemSpec *spec) {
+    if (spec && spec->creator == LDTM_CREATOR_FAT12)
+        return ldtm_fat12_common_available(spec) == 0;
     FatFixture f = {.spec = spec};
     return spec && call_module(&f, available) == 0;
 }
 int ldtm_fat_module_create(const LdtmFilesystemSpec *spec, const char *path) {
+    if (spec && spec->creator == LDTM_CREATOR_FAT12)
+        return ldtm_fat12_common_create(spec, path);
     FatFixture f = {.spec = spec, .path = path};
     return spec && path ? call_module(&f, create_fixture) : -1;
 }
@@ -223,6 +226,9 @@ done:
 }
 int ldtm_raw_fat(const LdtmFilesystemSpec *spec, const char *path, bool create) {
     if (!spec || !path) return -1;
+    if (spec->creator == LDTM_CREATOR_FAT12)
+        return create ? ldtm_fat12_common_create(spec, path) :
+                        ldtm_fat12_common_verify(spec, path);
     if (create) return ldtm_fat_module_create(spec, path);
     FatFixture f = { .spec = spec, .path = path };
     return call_module(&f, verify_fixture);
