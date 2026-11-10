@@ -90,7 +90,7 @@ jobs:
           install -m 0644 "$RUNNER_TEMP/filesystems-fat-$GITHUB_RUN_ID-$GITHUB_JOB"/FAT{16,32}.so "$PWD/build/fat-module-test/Filesystems/"
           # The independent filesystem owns FAT12.so. Never build an old FAT12
           # implementation from the Filesystems repository.
-          test "$(cat shared/fat12-module-revision)" = "824cbe6ed56eee938cd9ca9b619785719df8c8b8"
+          test "$(cat shared/fat12-module-revision)" = "93a67b9bac471b0e4a99ad112b0bca7ca1c63a93"
           python3 "$GITHUB_WORKSPACE/ci-fat12/standalone/build.py" \
             --profile portable --output "$PWD/build/fat-module-test/Filesystems/FAT12.so" --check
           # New FAT32 Test Media must consume the independently owned FAT32.so,
@@ -631,7 +631,7 @@ jobs:
           install -m 0644 "$RUNNER_TEMP/filesystems-fat-$GITHUB_RUN_ID-$GITHUB_JOB"/FAT{16,32}.so "$PWD/build-sanitize/fat-module-test/Filesystems/"
           # Independently compile FAT12.so with sanitizers, retaining the
           # authoritative native engine and Common ABI.
-          test "$(cat shared/fat12-module-revision)" = "824cbe6ed56eee938cd9ca9b619785719df8c8b8"
+          test "$(cat shared/fat12-module-revision)" = "93a67b9bac471b0e4a99ad112b0bca7ca1c63a93"
           IFS_FAT12_SOURCE="$GITHUB_WORKSPACE/ci-fat12" python3 - <<'PY'
           import os,sys
           from pathlib import Path
