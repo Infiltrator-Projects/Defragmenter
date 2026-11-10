@@ -4,10 +4,14 @@
 
 Status: **complete**
 
-Audited source commit: ce863328e1d5b8cdf837e5f8862c3674c25638ae
+Audited source commit: 483e541b5bb2b2820aaf11089285a1652115cda7
 Audited release-governance commit: 3c98b43f0945cc0016781cf1709ffaba92894a9a
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Strict V2 consent-negative regression fixture correction — 2026-11-11
+
+Reviewed exact source `483e541b5bb2b2820aaf11089285a1652115cda7`: the sole change since audited code `b2eca56b6c18657c7a34b3189b5510ab57d8de06` is `defragger/tests/test_common_v2_dispatch.sh`. The previous test source accidentally passed valid `--write --confirm DEVICE` in its alleged unconfirmed rejection case; CI correctly exposed that it succeeded. The test now omits consent in that negative case and supplies it for the separate duplicate-provider rejection case. The production V2 consent guard, supported operation set, filesystem engine, device authority, journal and release-governance scripts are unchanged. Full exact-head CI is required; the earlier failed run is not reused or waived.
 
 ## Common V2 destructive-consent boundary — reviewed 2026-11-11
 
