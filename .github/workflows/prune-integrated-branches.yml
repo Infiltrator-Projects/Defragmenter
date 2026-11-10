@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Retire reviewed superseded branches without bringing V1 code back into main.
+# Always preserve the exact old tip as an archive tag before removing its ref.
+name: Prune integrated and superseded branches
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  prune:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Preserve old history and remove superseded branch references
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS='|' read -r branch expected; do
+            [ -n "$branch" ] || continue
+            actual="$(gh api "repos/$REPO/git/ref/heads/$branch" --jq '.object.sha' 2>/dev/null || true)"
+            [ "$actual" = "$expected" ] || continue
+            tag="archive/v2-20261110/${branch//\//-}"
+            archived="$(gh api "repos/$REPO/git/ref/tags/$tag" --jq '.object.sha' 2>/dev/null || true)"
+            if [ -z "$archived" ]; then
+              gh api --method POST "repos/$REPO/git/refs" -f ref="refs/tags/$tag" -f sha="$expected" >/dev/null
+            elif [ "$archived" != "$expected" ]; then
+              echo "::error::Archive ref mismatch for $branch"; exit 1
+            fi
+            actual="$(gh api "repos/$REPO/git/ref/heads/$branch" --jq '.object.sha' 2>/dev/null || true)"
+            if [ "$actual" = "$expected" ]; then
+              gh api --method DELETE "repos/$REPO/git/refs/heads/$branch"
+              printf 'Archived and retired: %s\n' "$branch"
+            fi
+          done <<'RETIRED_BRANCHES'
+          hal/strict-common-v2-defrag-consumer-20261110|4c7047790fec16edb051da4d6aa1d0d856cc7cb1
+          hal/strict-v2-defragmenter-20261110|ad569c7b7ed1a8ddf5a25e8a66e03613acded635
+          RETIRED_BRANCHES
+          gh api --paginate "repos/$REPO/branches?per_page=100" --jq '.[].name' | while IFS= read -r branch; do
+            [ "$branch" != main ] || continue
+            sha="$(gh api "repos/$REPO/git/ref/heads/$branch" --jq '.object.sha' 2>/dev/null || true)"
+            [ -n "$sha" ] || continue
+            encoded="$(jq -rn --arg name "$branch" '$name | @uri')"
+            ahead="$(gh api "repos/$REPO/compare/main...$encoded" --jq '.ahead_by' 2>/dev/null || true)"
+            [ "$ahead" = 0 ] || continue
+            current="$(gh api "repos/$REPO/git/ref/heads/$branch" --jq '.object.sha' 2>/dev/null || true)"
+            if [ "$current" = "$sha" ]; then
+              gh api --method DELETE "repos/$REPO/git/refs/heads/$branch"
+            fi
+          done
