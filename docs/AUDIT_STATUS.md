@@ -4,10 +4,16 @@
 
 Status: **complete**
 
-Audited source commit: b291ea65a824dd06d58d27b9db9eb59d079c86fd
+Audited source commit: 95496f5fce3684b4c37099ee869f0f3d9ad3161d
 Audited release-governance commit: 3c98b43f0945cc0016781cf1709ffaba92894a9a
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## OFS native identify command contract correction — 2026-11-11
+
+**Exact reviewed source baseline:** `95496f5fce3684b4c37099ee869f0f3d9ad3161d`, one source commit after the preceding reviewed `8e0d63367472417a676329dc4a1ab14664d952b7`. The only production change is the explicit OFS native dispatcher's allowed analysis command names in `defragger/native/filesystem_module_host.c`. The authoritative OFS.so engine accepts `analyse-json` and `identify`, not the invented aliases `analyse` or `map`. The temporary native entry point now authorises `identify` using the existing analysis capability and refuses the unsupported aliases. This preserves the existing AFFS integration test's OFS identification after defragmentation. It does not change any mutation implementation, ABI fallback, privileged target guard or journal.
+
+A new exact-head native and sanitizer run is required; the previous source baseline's results cannot qualify this correction. No claim is made that the OFS Common V2 DEFRAG group has been implemented.
 
 ## OFS strict-V2 dispatcher separation — reviewed 2026-11-11
 
