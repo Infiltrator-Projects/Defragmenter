@@ -38,7 +38,7 @@ int main(int argc,char **argv) {
     /* A recovery journal takes precedence over a possibly damaged boot
      * signature. All remaining FFS identity checks occur inside FFS.so. */
     if(recover && ifs_filesystem_journal_matches(journal,"ofs"))
-        return ifs_filesystem_module_run("ofs","OFS.so",argc,argv);
+        return ifs_filesystem_module_run_ofs_native(argc, argv);
     unsigned char signature[4]={0};
     int fd=open(argv[2],O_RDONLY|O_NOFOLLOW|O_CLOEXEC);
     if(fd>=0) {
@@ -48,7 +48,7 @@ int main(int argc,char **argv) {
     }
     if(signature[0]=='D'&&signature[1]=='O'&&signature[2]=='S'&&
        signature[3]<=6U && (signature[3]&1U)==0U)
-        return ifs_filesystem_module_run("ofs","OFS.so",argc,argv);
+        return ifs_filesystem_module_run_ofs_native(argc, argv);
     if(!recover && !(signature[0]=='D'&&signature[1]=='O'&&
        signature[2]=='S'&&(signature[3]==1U||signature[3]==3U||signature[3]==5U))) {
         fputs("No supported OFS/FFS filesystem signature\n",stderr);
