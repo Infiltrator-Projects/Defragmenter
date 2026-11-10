@@ -4,10 +4,16 @@
 
 Status: **complete**
 
-Audited source commit: 95496f5fce3684b4c37099ee869f0f3d9ad3161d
+Audited source commit: ce863328e1d5b8cdf837e5f8862c3674c25638ae
 Audited release-governance commit: 3c98b43f0945cc0016781cf1709ffaba92894a9a
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Common V2 destructive-consent boundary — reviewed 2026-11-11
+
+**Exact reviewed source:** `ce863328e1d5b8cdf837e5f8862c3674c25638ae`; two linear changes after `8659674ec26bd7775260c6c82471008be6976a09`, limited to the generic host `defragger/native/filesystem_module_host.c` and disposable host test `defragger/tests/test_common_v2_dispatch.sh`. Generic strict V2 mutation commands now require the caller's explicit `--write` and `--confirm DEVICE`, with exact command target matching, before an exclusive writable volume lease is opened. Missing, duplicate, mismatched or analysis-mode confirmations are rejected. The test asserts that unconfirmed or wrong-device requests cannot alter any image bytes, then proves authorized real V2 plan/execute/verify and recover still mutate, verify and durably sync the disposable image. Other providers' independent on-disk algorithms, raw-device safety, trust-root policy and the separate OFS native path are unchanged.
+
+This closes an actual write-permission gap found during review, rather than relaxing regression coverage. It requires exact-head self-hosted quality and ASan/UBSan qualification before release; the earlier results do not qualify this new source.
 
 ## OFS native identify command contract correction — 2026-11-11
 
