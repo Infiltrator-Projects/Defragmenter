@@ -684,9 +684,8 @@ static int run_ofs_native(const IfsDefragHostV2 *host, void *symbol, void *opaqu
                    IFS_DEFRAG_RECOVER;
     else if (!strcmp(operation, "recover"))
         required = IFS_DEFRAG_RECOVER;
-    else if (!strcmp(operation, "analyse") ||
-             !strcmp(operation, "analyse-json") ||
-             !strcmp(operation, "map"))
+    else if (!strcmp(operation, "analyse-json") ||
+             !strcmp(operation, "identify"))
         required = IFS_DEFRAG_ANALYSE;
     if (required == 0u || (api->capabilities & required) != required) {
         fputs("OFS.so does not qualify the requested native operation\n", stderr);
