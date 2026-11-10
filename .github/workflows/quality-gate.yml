@@ -521,6 +521,15 @@ jobs:
           fi
           test "$(git -C "$GITHUB_WORKSPACE/ci-fat12-v2" rev-parse HEAD)" = \
             93a67b9bac471b0e4a99ad112b0bca7ca1c63a93
+          # Execute actual format, create, read-back and independent verify
+          # against private disposable media through the production V2 ABI.
+          # No mock, V1 fallback, device path or privileged host mutation.
+          image="$RUNNER_TEMP/fat12-v2-$GITHUB_RUN_ID-$GITHUB_JOB.img"
+          trap 'rm -f -- "$image"' EXIT
+          IFS_TEST_MODULE_PARENT="$root" \
+            "$PWD/build/defragmenter-test-media-raw-test" create fat12 "$image"
+          IFS_TEST_MODULE_PARENT="$root" \
+            "$PWD/build/defragmenter-test-media-raw-test" verify fat12 "$image"
 
       - name: Run complete native, filesystem, GUI and release test suite
         env:
@@ -1100,6 +1109,15 @@ jobs:
           fi
           test "$(git -C "$GITHUB_WORKSPACE/ci-fat12-v2" rev-parse HEAD)" = \
             93a67b9bac471b0e4a99ad112b0bca7ca1c63a93
+          # Execute actual format, create, read-back and independent verify
+          # against private disposable media through the production V2 ABI.
+          # No mock, V1 fallback, device path or privileged host mutation.
+          image="$RUNNER_TEMP/fat12-v2-$GITHUB_RUN_ID-$GITHUB_JOB.img"
+          trap 'rm -f -- "$image"' EXIT
+          IFS_TEST_MODULE_PARENT="$root" \
+            "$PWD/build-sanitize/defragmenter-test-media-raw-test" create fat12 "$image"
+          IFS_TEST_MODULE_PARENT="$root" \
+            "$PWD/build-sanitize/defragmenter-test-media-raw-test" verify fat12 "$image"
 
       - name: Run sanitizer-safe native and filesystem tests
         env:
