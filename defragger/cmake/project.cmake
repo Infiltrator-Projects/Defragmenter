@@ -691,7 +691,7 @@ if(BUILD_TESTING)
     target_include_directories(defragmenter-common-v2-test-provider PRIVATE
         "${INFILTRATR_COMMON_DIR}/include")
     target_compile_options(defragmenter-common-v2-test-provider PRIVATE
-        -Wall -Wextra -Wpedantic -Werror)
+        -Wall -Wextra -Wpedantic -Werror -fPIC)
 
     add_library(defragmenter-common-v2-test-host STATIC
         native/filesystem_module_host.c)
