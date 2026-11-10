@@ -38,6 +38,13 @@ if(NOT EXISTS "${INFILTRATR_COMMON_DIR}/VERSION")
             COMMAND "${LD_GIT_EXECUTABLE}" clone --filter=blob:none
                     "${INFILTRATR_COMMON_URL}" "${INFILTRATR_COMMON_DIR}"
             RESULT_VARIABLE LD_COMMON_FETCH_RESULT)
+        if(LD_COMMON_FETCH_RESULT EQUAL 0)
+            execute_process(
+                COMMAND "${LD_GIT_EXECUTABLE}" -C
+                        "${INFILTRATR_COMMON_DIR}" checkout --detach
+                        "${INFILTRATR_COMMON_EXPECTED_COMMIT}"
+                RESULT_VARIABLE LD_COMMON_FETCH_RESULT)
+        endif()
     endif()
     if(NOT LD_COMMON_FETCH_RESULT EQUAL 0 OR
        NOT EXISTS "${INFILTRATR_COMMON_DIR}/VERSION")
