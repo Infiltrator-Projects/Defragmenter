@@ -4,10 +4,18 @@
 
 Status: **complete**
 
-Audited source commit: 732491756697b03785fddc977fddebd5ac292533
+Audited source commit: b291ea65a824dd06d58d27b9db9eb59d079c86fd
 Audited release-governance commit: 3c98b43f0945cc0016781cf1709ffaba92894a9a
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## OFS strict-V2 dispatcher separation — reviewed 2026-11-11
+
+**Exact source candidate:** `b291ea65a824dd06d58d27b9db9eb59d079c86fd`; four linear commits since the preceding audited source `4d73402a3cf80764858042617bfd8d5153358249`, changing only `defragger/native/filesystem_module_host.c`, `filesystem_module_host.h`, `affs_module_loader.c` and `ofs_module_loader.c`. No new release-governance file or device mutation primitive changed; the governance baseline remains `3c98b43f0945cc0016781cf1709ffaba92894a9a`.
+
+**Failure reproduced from CI and corrected at the ABI boundary:** [Run 42838481047](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/42838481047) had an AFFS sanitizer regression on its first OFS `analyse-json` command. The strict Common V2 dispatcher was correctly rejecting OFS.so because that provider has not yet migrated its DEFRAG group. Existing OFS/FFS workers incorrectly called that generic dispatcher. The correction is an explicit **OFS-only native Defrag V2 operation**, with full format/ABI/structure/operation/capability validation before invoking the historical OFS.so engine, separate from Common V2 discovery and execution. Generic `--filesystem` dispatch remains strict Common V2 with no fallback. FFS continues its pre-existing dedicated worker. This is a staged preservation of a separately named existing native OFS interface, **not a claim** that OFS's Common V2 DEFRAG port has been completed.
+
+**Safety and qualification:** The existing authenticated SO authority directory, filesystem-bound exclusive storage lease, target identity, durability and cancellation remain unchanged. No Common V1 loader or generic compatibility probing was introduced. Re-qualify the entire exact new candidate, including OFS/FFS native media and ASan/UBSan, before merge. Elimination of OFS's remaining noncanonical operation interface is an explicit outstanding cutover requirement; this review cannot be used as evidence of system-wide V2-only completion.
 
 ## Consolidated generic V2 DEFRAG consumer review — 2026-11-11
 
