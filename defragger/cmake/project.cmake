@@ -19,10 +19,10 @@ set(INFILTRATR_COMMON_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/shared/infiltratr-common")
 set(INFILTRATR_COMMON_URL
     "https://github.com/Infiltrator-Projects/Libraries.git")
-set(INFILTRATR_COMMON_TAG "v1.19.82")
-set(INFILTRATR_COMMON_EXPECTED_VERSION "1.19.82")
+set(INFILTRATR_COMMON_TAG "v1.19.84")
+set(INFILTRATR_COMMON_EXPECTED_VERSION "1.19.84")
 set(INFILTRATR_COMMON_EXPECTED_COMMIT
-    "ce5759070f6ea70fa155f130145c615fa7ad9e33")
+    "5b5fb95988c8d0b53ed29fdecfb0b70274182fd6")
 
 if(NOT EXISTS "${INFILTRATR_COMMON_DIR}/VERSION")
     find_program(LD_GIT_EXECUTABLE git REQUIRED)
@@ -35,15 +35,14 @@ if(NOT EXISTS "${INFILTRATR_COMMON_DIR}/VERSION")
     else()
         file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/shared")
         execute_process(
-            COMMAND "${LD_GIT_EXECUTABLE}" clone --depth 1 --branch
-                    "${INFILTRATR_COMMON_TAG}" "${INFILTRATR_COMMON_URL}"
-                    "${INFILTRATR_COMMON_DIR}"
+            COMMAND "${LD_GIT_EXECUTABLE}" clone --filter=blob:none
+                    "${INFILTRATR_COMMON_URL}" "${INFILTRATR_COMMON_DIR}"
             RESULT_VARIABLE LD_COMMON_FETCH_RESULT)
     endif()
     if(NOT LD_COMMON_FETCH_RESULT EQUAL 0 OR
        NOT EXISTS "${INFILTRATR_COMMON_DIR}/VERSION")
         message(FATAL_ERROR
-            "Unable to retrieve Libraries ${INFILTRATR_COMMON_EXPECTED_VERSION}.")
+            "Unable to retrieve strict Libraries V2 ${INFILTRATR_COMMON_EXPECTED_VERSION}.")
     endif()
 endif()
 
