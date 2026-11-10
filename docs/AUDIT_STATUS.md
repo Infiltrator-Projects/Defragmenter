@@ -4,10 +4,18 @@
 
 Status: **complete**
 
-Audited source commit: 3c98b43f0945cc0016781cf1709ffaba92894a9a
+Audited source commit: 732491756697b03785fddc977fddebd5ac292533
 Audited release-governance commit: 3c98b43f0945cc0016781cf1709ffaba92894a9a
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Consolidated generic V2 DEFRAG consumer review — 2026-11-11
+
+**Exact reviewed source:** `732491756697b03785fddc977fddebd5ac292533`, four linear source commits after the prior audited `a5eef31eaf8fca014d0ae6a957e20eaf55296304`. The comparison contains exactly four release-qualified paths: `defragger/cmake/project.cmake`, `defragger/native/filesystem_module_host.c`, `defragger/tests/mock_common_v2_provider.c` and `defragger/tests/test_common_v2_dispatch.sh`. The release workflow, privileged device-open policy, FAT12 V2 test-media lifecycle, fixed-format worker implementations, journal code and installer are not altered by this consolidation. The recorded release-governance baseline remains the independently reviewed `3c98b43f0945cc0016781cf1709ffaba92894a9a`.
+
+**Code review:** The native host now discovers only root-owned, trusted Common V2 providers at the existing filesystem-module authority directory. V2 descriptors must pass exact ABI and format checks, with mandatory CORE and DEFRAG groups; duplicate format providers and incompatible modules fail closed. Block accesses remain partition-bounded and tied to the existing exclusive/identity-checked target. Provider-owned map/plan/execute/verify/recover runs only where the V2 capability group declares the operation; the host does not reconstruct filesystem metadata or invent cluster moves. The project build gains an uninstalled mock V2 provider and a disposable-image end-to-end dispatch test. The fallback Common source materialization uses an explicit detached commit checkout, rather than a transient development branch. No test provider is installed.
+
+**Qualification status:** Previous [FAT12-only migration run 42810752568](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/42810752568) passed 44/44 native and 16/16 independent filesystem media tests and the ASan/UBSan job; its sole normal gate failure was the older audit baseline, subsequently reviewed and corrected. Those results **do not qualify** this expanded four-file candidate. A fresh full native, V2 dispatch, ASan/UBSan and release gate run is mandatory. No claim is made that all other legacy format-specific workers have already moved to V2, that V2 defrag transactions exist for every provider, or that kernel-mode .so loading is complete.
 
 ## Strict Common V2 FAT12 Test Media cutover — reviewed 2026-11-11
 
