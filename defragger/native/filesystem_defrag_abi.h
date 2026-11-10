@@ -103,6 +103,15 @@ typedef struct {
                              IfsDefragPlannedExtent *, size_t output_capacity,
                              size_t *written);
 } IfsDefragHostV2;
-/* Internal host service context remains until all old workers are replaced.
- * Filesystem discovery and dispatch ONLY use canonical Common V2 metadata. */
+typedef struct {
+    uint32_t abi_version, structure_bytes;
+    const char *format_id;
+    uint64_t capabilities;
+    int (*run)(const IfsDefragHostV2 *, int, char **);
+} IfsDefragModuleV2;
+#define IFS_DEFRAG_ANALYSE UINT64_C(1)
+#define IFS_DEFRAG_RELAYOUT UINT64_C(2)
+#define IFS_DEFRAG_GROWTH UINT64_C(4)
+#define IFS_DEFRAG_RECOVER UINT64_C(8)
+const IfsDefragModuleV2 *infiltrator_filesystem_defrag_v2(void);
 #endif
