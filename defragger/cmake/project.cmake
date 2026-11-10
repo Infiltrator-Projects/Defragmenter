@@ -682,6 +682,50 @@ if(BUILD_TESTING)
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_generic_module_dispatch.py"
             "$<TARGET_FILE:defragmenter-operation-engine-cpp>")
 
+    # Test-only rootless authority and disposable Common V2 provider.
+    # No mock SO is ever installed or packaged with Defragmenter.
+    add_library(defragmenter-common-v2-test-provider SHARED
+        tests/mock_common_v2_provider.c)
+    set_target_properties(defragmenter-common-v2-test-provider PROPERTIES
+        PREFIX "" OUTPUT_NAME "TESTV2" SUFFIX ".so")
+    target_include_directories(defragmenter-common-v2-test-provider PRIVATE
+        "${INFILTRATR_COMMON_DIR}/include")
+    target_compile_options(defragmenter-common-v2-test-provider PRIVATE
+        -Wall -Wextra -Wpedantic -Werror)
+
+    add_library(defragmenter-common-v2-test-host STATIC
+        native/filesystem_module_host.c)
+    target_include_directories(defragmenter-common-v2-test-host PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/native"
+        PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
+                "${LD_GENERATED_DIR}")
+    target_compile_definitions(defragmenter-common-v2-test-host PRIVATE
+        _FILE_OFFSET_BITS=64 _GNU_SOURCE IFS_MODULE_TESTING)
+    target_compile_options(defragmenter-common-v2-test-host PRIVATE
+        ${LD_WARNING_FLAGS})
+    target_link_libraries(defragmenter-common-v2-test-host PUBLIC
+        defragmenter-core OpenSSL::Crypto ${CMAKE_DL_LIBS})
+
+    add_executable(defragmenter-operation-engine-v2-test
+        native/operation_engine.cpp)
+    target_include_directories(defragmenter-operation-engine-v2-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/native"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
+        "${LD_GENERATED_DIR}")
+    target_compile_options(defragmenter-operation-engine-v2-test PRIVATE
+        ${LD_WARNING_FLAGS})
+    target_compile_definitions(defragmenter-operation-engine-v2-test PRIVATE
+        _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+    target_link_libraries(defragmenter-operation-engine-v2-test PRIVATE
+        defragmenter-runtime-cpp defragmenter-core
+        defragmenter-common-v2-test-host)
+    add_test(NAME defragmenter-strict-common-v2-host
+        COMMAND /bin/bash
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_common_v2_dispatch.sh"
+            "$<TARGET_FILE:defragmenter-operation-engine-v2-test>"
+            "$<TARGET_FILE:defragmenter-common-v2-test-provider>")
+
+
     # EXT bitmap-cache and descriptor-race regression now runs in Filesystem-EXT4 CI.
 
     # NTFS native stream-index tests run from Filesystem-NTFS CI.
