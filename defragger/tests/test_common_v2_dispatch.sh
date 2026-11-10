@@ -24,7 +24,7 @@ printf 'TESTV2FS' | dd of="$device" bs=1 conv=notrunc status=none
 # confirmation must be rejected before any filesystem block is modified.
 original=$(sha256sum "$device" | cut -d' ' -f1)
 if "$engine" defrag "$device" --filesystem testv2 --path=/FILE \
-   --write --confirm "$device" > /dev/null 2>&1; then
+   > /dev/null 2>&1; then
     echo "Unconfirmed strict V2 mutation was accepted" >&2; exit 1
 fi
 test "$original" = "$(sha256sum "$device" | cut -d' ' -f1)"
@@ -66,7 +66,7 @@ test "$before" = "$after"
 # be rejected rather than choosing one arbitrarily.
 cp -- "$module" "$root/Filesystems/DUPLICATE.so"
 if "$engine" defrag "$device" --filesystem testv2 --path=/FILE \
-   > /dev/null 2>&1; then
+   --write --confirm "$device" > /dev/null 2>&1; then
     echo "Duplicate V2 providers were accepted" >&2; exit 1
 fi
 rm -f "$root/Filesystems/DUPLICATE.so"
