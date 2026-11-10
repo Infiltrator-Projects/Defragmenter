@@ -36,14 +36,25 @@ static int unmount(void *m) {
 }
 static int map(void *m,const char *path,uint64_t first,IfsFsExtentV2 *out,
                uint32_t cap,uint32_t *written) {
-    if(!m || !path || strcmp(path,"/FILE") || first || !out || !cap || !written)
+    if(!m || !path || (strcmp(path,"/FILE") && strcmp(path,"/")) ||
+       !out || !cap || !written)
         return IFS_FS_INVALID;
+    if(!strcmp(path,"/")) {
+        if(first>=33u) { *written=0u; return IFS_FS_END; }
+        const uint32_t count=(uint32_t)((33u-first)<cap?(33u-first):cap);
+        for(uint32_t i=0u;i<count;++i)
+            out[i]=(IfsFsExtentV2){(first+i)*4u,64u+(first+i)*4u,4u,0u,0u};
+        *written=count;
+        return IFS_FS_OK;
+    }
+    if(first) { *written=0u; return IFS_FS_END; }
     out[0]=(IfsFsExtentV2){0u,64u,4u,0u,0u};
     *written=1u;
     return IFS_FS_OK;
 }
 static int plan(void *m,const char *path,uint32_t policy,void **out) {
-    if(!m || !path || strcmp(path,"/FILE") || (policy!=0u && policy!=10u) ||
+    if(!m || !path || (strcmp(path,"/FILE") && strcmp(path,"/")) ||
+       (policy!=0u && policy!=10u) ||
        !out)return IFS_FS_INVALID;
     MockVolume *v=m;
     MockPlan *p=v->host->allocate(v->host->context,sizeof(*p));

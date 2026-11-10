@@ -507,7 +507,8 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
         return 1;
     }
     if(command->argc<3 || !command->argv[1] || !command->argv[2])return 2;
-    const char *operation=command->argv[1],*path=NULL,*confirmed_target=NULL;
+    const char *operation=command->argv[1],*path="/",*confirmed_target=NULL;
+    int explicit_path=0;
     uint32_t requested_sector=0u;
     int explicit_write=0;
     const int recovering=!strcmp(operation,"recover");
@@ -525,11 +526,13 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
             if(confirmed_target || ++i==command->argc)return 2;
             confirmed_target=command->argv[i];
         } else if(!strcmp(arg,"--path")) {
-            if(path || ++i==command->argc)return 2;
+            if(explicit_path || ++i==command->argc)return 2;
             path=command->argv[i];
+            explicit_path=1;
         } else if(!strncmp(arg,"--path=",7u)) {
-            if(path)return 2;
+            if(explicit_path)return 2;
             path=arg+7;
+            explicit_path=1;
         } else if(!strncmp(arg,"--sector-bytes=",15u)) {
             if(requested_sector)return 2;
             char *end=NULL;
@@ -552,7 +555,7 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
         return 2;
     }
     if(!recovering && !v2_path_valid(path)) {
-        fputs("Common V2 mapping/planning requires --path=/absolute/file\n",stderr);
+        fputs("Common V2 mapping/planning requires a valid absolute filesystem path\n",stderr);
         return 2;
     }
     const uint64_t required=recovering?IFS_FS_DEFRAG_RECOVER:
@@ -624,10 +627,25 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
         operation_ok=defrag->recover(volume,0u,&repaired)==IFS_FS_OK;
 
     } else if(analysing) {
-        IfsFsExtentV2 extents[32]={{0}};
-        uint32_t written=0u;
-        int rc=defrag->map(volume,path,0u,extents,32u,&written);
-        operation_ok=rc==IFS_FS_OK && written<=32u;
+        /* Exhaust the provider's paginated extent map. A first page of 32
+         * is not evidence of a complete volume; prevent a false success. */
+        uint64_t first=0u;
+        for(unsigned page=0u;page<131072u;++page) {
+            IfsFsExtentV2 extents[32]={{0}};
+            uint32_t written=0u;
+            const int rc=defrag->map(volume,path,first,extents,32u,&written);
+            if(rc==IFS_FS_END) {
+                operation_ok=written==0u;
+                break;
+            }
+            if(rc!=IFS_FS_OK || written==0u || written>32u ||
+               first>UINT64_MAX-written) break;
+            first+=written;
+            if(written<32u) {
+                operation_ok=1;
+                break;
+            }
+        }
 
     } else {
         void *plan=NULL;

@@ -55,12 +55,19 @@ if "$engine" defrag "$device" --filesystem testv2 --path=/../FILE \
     echo "Unsafe path was accepted" >&2; exit 1
 fi
 before=$(sha256sum "$device" | cut -d' ' -f1)
-if "$engine" defrag "$device" --filesystem testv2 \
-   --write --confirm "$device" > /dev/null 2>&1; then
-    echo "Missing path was accepted" >&2; exit 1
-fi
+# Absence of --path means the filesystem root: a whole-volume operation.
+"$engine" defrag "$device" --filesystem testv2 \
+   --write --confirm "$device" > "$root/output.txt"
+grep -Fq 'durably synced' "$root/output.txt"
+# Read-only V2 mapping must consume all 33 extents in two pages.
+"$engine" map "$device" --filesystem testv2 > "$root/output.txt"
+grep -Fq 'durably synced' "$root/output.txt"
 after=$(sha256sum "$device" | cut -d' ' -f1)
 test "$before" = "$after"
+if "$engine" defrag "$device" --filesystem testv2 --path= \
+   --write --confirm "$device" > /dev/null 2>&1; then
+    echo "Empty V2 path was accepted" >&2; exit 1
+fi
 
 # Both competing modules are trusted, but duplicate format ownership must
 # be rejected rather than choosing one arbitrarily.
