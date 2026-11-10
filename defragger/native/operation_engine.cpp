@@ -84,14 +84,14 @@ int main(int argc, char** argv) {
         return usage();
     }
     if (filesystem.empty() || filesystem.size() > 15U) {
-        std::fputs("invalid V2 filesystem identifier\n", stderr);
+        std::fputs("invalid generic filesystem identifier\n", stderr);
         return 2;
     }
     for (unsigned char character : filesystem) {
         if (!((character >= 'a' && character <= 'z') ||
               (character >= '0' && character <= '9') ||
               character == '_')) {
-            std::fputs("invalid V2 filesystem identifier\n", stderr);
+            std::fputs("invalid generic filesystem identifier\n", stderr);
             return 2;
         }
     }
@@ -99,8 +99,8 @@ int main(int argc, char** argv) {
     if (ifs_filesystem_module_find_v2(filesystem.c_str(), module_file,
                                        sizeof(module_file)) != 0) {
         std::fprintf(stderr,
-                     "defragmenter-operation-engine: no trusted Common V2 "
-                     "filesystem provider for %s\n", filesystem.c_str());
+                     "defragmenter-operation-engine: no installed trusted "
+                     "Defrag V2 SO advertises %s\n", filesystem.c_str());
         return 2;
     }
     const std::string generic_filename(module_file);
