@@ -5,6 +5,7 @@
  */
 #include "filesystem_module_host.h"
 #include "filesystem_defrag_abi.h"
+#include "infiltratr/filesystem_module_v2.h"
 #include "ld_generic_layout.h"
 #include "version.h"
 #include "ld_device.h"
@@ -24,6 +25,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/file.h>
+#include <sys/ioctl.h>
+#include <linux/fs.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -262,23 +265,8 @@ int ifs_filesystem_module_call(const char *format, const char *filename, const c
     char path[64]; (void)snprintf(path, sizeof(path), "/proc/self/fd/%d", fd);
     void *image = dlopen(path, RTLD_NOW | RTLD_LOCAL);
     if (!image) { fprintf(stderr, "Cannot load %s: %s\n", filename, dlerror()); close(fd); return 1; }
-    /* Trust and bounded I/O are shared by all interfaces. A format/create
-     * caller validates its own ABI; requiring Defrag V2 here would reject
-     * genuine FAT modules whose independent defrag contract is still V1. */
-    if (!strcmp(interface, "infiltrator_filesystem_defrag_v2")) {
-        void *symbol = dlsym(image, interface);
-        const IfsDefragModuleV2 *(*entry)(void) = NULL;
-        _Static_assert(sizeof(entry) == sizeof(symbol), "dlsym pointer width");
-        memcpy(&entry, &symbol, sizeof(entry));
-        const IfsDefragModuleV2 *api = entry ? entry() : NULL;
-        if (!api || api->abi_version != IFS_DEFRAG_ABI_V2 || api->structure_bytes < sizeof(*api) ||
-            !api->format_id || strcmp(api->format_id, format) || !api->run ||
-            (api->capabilities & (IFS_DEFRAG_ANALYSE | IFS_DEFRAG_RELAYOUT |
-                                  IFS_DEFRAG_GROWTH | IFS_DEFRAG_RECOVER)) == 0u) {
-            fprintf(stderr, "%s lacks the required %s Defragmenter interface\n", filename, format);
-            dlclose(image); close(fd); return 1;
-        }
-    }
+    /* The Common V2 callback validates its canonical descriptor before
+     * obtaining a target lease. No additional independent V2 ABI exists. */
     Context context = {0};
     IfsDefragHostV2 host = {IFS_DEFRAG_ABI_V2, sizeof(host), &context, LD_VERSION,
         malloc, free, target_open, stage_create, target_close, target_read, target_write,
@@ -295,7 +283,12 @@ missing:
 /* Open the authority namespace once. Every path component must be owned
  * by root and not writable by group/others; symlink traversal is forbidden. */
 static int ifs_open_module_directory(void) {
-    int parent = open("/System", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    const char *parent_path="/System";
+#ifdef IFS_MODULE_TESTING
+    const char *test_parent=getenv("IFS_TEST_MODULE_PARENT");
+    if(test_parent && *test_parent) parent_path=test_parent;
+#endif
+    int parent = open(parent_path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     if (parent < 0 || !trusted(parent, 1)) {
         if (parent >= 0) close(parent);
         return -1;
@@ -344,28 +337,24 @@ static int ifs_probe_module_v2(int directory, const char *name,
     }
     void *image = dlopen(path, RTLD_NOW | RTLD_LOCAL);
     if (!image) { close(fd); return -1; }
-    void *symbol = dlsym(image, "infiltrator_filesystem_defrag_v2");
-    const IfsDefragModuleV2 *(*entry)(void) = NULL;
+    void *symbol = dlsym(image, IFS_FS_COMMON_EXPORT_V2);
+    IfsFsModuleApiEntryV2 entry = NULL;
     _Static_assert(sizeof(entry) == sizeof(symbol), "dlsym pointer width");
     memcpy(&entry, &symbol, sizeof(entry));
-    const IfsDefragModuleV2 *api = entry ? entry() : NULL;
+    const IfsFsModuleApiV2 *api = entry ? entry() : NULL;
     int result = -1;
-    if (api && api->abi_version == IFS_DEFRAG_ABI_V2 &&
-        api->structure_bytes >= sizeof(*api) && api->format_id && api->run &&
-        (api->capabilities & (IFS_DEFRAG_ANALYSE | IFS_DEFRAG_RELAYOUT |
-                              IFS_DEFRAG_GROWTH | IFS_DEFRAG_RECOVER))) {
-        const size_t length = strnlen(api->format_id, 16u);
-        int valid = length > 0u && length <= 15u;
-        for (size_t n = 0u; valid && n < length; ++n) {
-            const unsigned char ch = (unsigned char)api->format_id[n];
-            if (!((ch >= 'a' && ch <= 'z') ||
-                  (ch >= '0' && ch <= '9') || ch == '_'))
-                valid = 0;
-        }
-        if (valid) {
-            memcpy(format, api->format_id, length + 1u);
-            *capabilities = api->capabilities;
-            result = 0;
+    if (api && ifs_fs_api_v2_valid(api, api->format_id) &&
+        (api->runtime_profiles & IFS_FS_PROFILE_HOSTED)) {
+        const IfsFsDefragOpsV2 *defrag =
+            (const IfsFsDefragOpsV2 *)ifs_fs_group_v2(
+                api, IFS_FS_GROUP_DEFRAG);
+        if (defrag && defrag->header.capabilities != 0u) {
+            const size_t length = strnlen(api->format_id, 16u);
+            if (length > 0u && length <= 15u) {
+                memcpy(format, api->format_id, length + 1u);
+                *capabilities = defrag->header.capabilities;
+                result = 0;
+            }
         }
     }
     dlclose(image);
@@ -451,41 +440,214 @@ int ifs_filesystem_module_find_v2(const char *format, char *filename,
     return 0;
 }
 
-typedef struct { int argc; char **argv; } Command;
-static int run_command(const IfsDefragHostV2 *host, void *symbol, void *user) {
-    const IfsDefragModuleV2 *(*entry)(void) = NULL;
-    memcpy(&entry, &symbol, sizeof(entry));
-    Command *command = user;
-    const IfsDefragModuleV2 *api = entry ? entry() : NULL;
-    if (!api || command->argc < 2 || !command->argv[1])
-        return 1;
-    const char *operation = command->argv[1];
-    uint64_t required = 0u;
-    if (!strcmp(operation, "defrag"))
-        required = IFS_DEFRAG_ANALYSE | IFS_DEFRAG_RELAYOUT |
-                   IFS_DEFRAG_RECOVER;
-    else if (!strcmp(operation, "growth-defrag"))
-        required = IFS_DEFRAG_ANALYSE | IFS_DEFRAG_GROWTH |
-                   IFS_DEFRAG_RECOVER;
-    else if (!strcmp(operation, "recover"))
-        required = IFS_DEFRAG_RECOVER;
-    else if (!strcmp(operation, "analyse") ||
-             !strcmp(operation, "analyse-json") ||
-             !strcmp(operation, "map"))
-        required = IFS_DEFRAG_ANALYSE;
-    /* Reject unsupported mutations before handing the module a writable
-     * target. Recovery remains mandatory for Defrag and Growth operations. */
-    if (required != 0u && (api->capabilities & required) != required) {
-        fprintf(stderr, "Filesystem module does not provide %s capability\n",
-                operation);
+/* Strict Common V2 provider execution. No format-specific worker, private
+ * filesystem ABI, or automatic compatibility fallback is permitted here.
+ * This bridge reuses the already exclusive, identity-bound native Target. */
+typedef struct {
+    const IfsDefragHostV2 *services;
+    IfsDefragTarget target;
+} CommonV2Host;
+typedef struct { int argc; char **argv; const char *format; } Command;
+static void *v2_allocate(void *opaque,size_t bytes) {
+    (void)opaque;
+    return malloc(bytes);
+}
+static void v2_release(void *opaque,void *p) {
+    (void)opaque;
+    free(p);
+}
+static int v2_read_at(void *opaque,uint64_t at,void *out,uint32_t bytes) {
+    CommonV2Host *b=opaque;
+    return b->services->read_at(b->services->context,&b->target,at,out,bytes);
+}
+static int v2_write_at(void *opaque,uint64_t at,const void *source,uint32_t bytes) {
+    CommonV2Host *b=opaque;
+    return b->services->write_at(b->services->context,&b->target,at,source,bytes);
+}
+static int v2_sync(void *opaque) {
+    CommonV2Host *b=opaque;
+    return b->services->sync_target(b->services->context,&b->target);
+}
+static int v2_cancelled(void *opaque) {
+    CommonV2Host *b=opaque;
+    return b->services->stop_requested(b->services->context);
+}
+static int v2_path_valid(const char *path) {
+    if (!path || path[0]!='/') return 0;
+    const size_t n=strnlen(path,4096u);
+    if(!n || n>=4096u)return 0;
+    for(size_t i=0;i<n;++i) {
+        if((unsigned char)path[i]<32u || path[i]=='\\')return 0;
+        if(path[i]=='/' && path[i+1]=='/')return 0;
+        if(path[i]=='.' && (i==1u || path[i-1]=='/') &&
+           (path[i+1]=='/' || path[i+1]==0 ||
+            (path[i+1]=='.' &&
+             (path[i+2]=='/' || path[i+2]==0))))
+            return 0;
+    }
+    return 1;
+}
+static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user) {
+    const Command *command=user;
+    IfsFsModuleApiEntryV2 entry=NULL;
+    _Static_assert(sizeof(entry)==sizeof(symbol),"module entry width");
+    memcpy(&entry,&symbol,sizeof(entry));
+    const IfsFsModuleApiV2 *api=entry?entry():NULL;
+    if(!api || !ifs_fs_api_v2_valid(api,command->format) ||
+       !(api->runtime_profiles & IFS_FS_PROFILE_HOSTED)) {
+        fputs("Provider does not implement the exact strict Common V2 ABI\n",stderr);
         return 1;
     }
-    return api->run(host, command->argc, command->argv);
+    const IfsFsCoreOpsV2 *core=
+        (const IfsFsCoreOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_CORE);
+    const IfsFsDefragOpsV2 *defrag=
+        (const IfsFsDefragOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_DEFRAG);
+    if(!core || !defrag || !(core->header.capabilities & IFS_FS_CORE_MOUNT)) {
+        fputs("V2 provider lacks mounted CORE and DEFRAG groups\n",stderr);
+        return 1;
+    }
+    if(command->argc<3 || !command->argv[1] || !command->argv[2])return 2;
+    const char *operation=command->argv[1],*path=NULL;
+    uint32_t requested_sector=0u;
+    const int recovering=!strcmp(operation,"recover");
+    const int analysing=!strcmp(operation,"analyse") ||
+        !strcmp(operation,"analyse-json") || !strcmp(operation,"map");
+    const int defragging=!strcmp(operation,"defrag");
+    const int growing=!strcmp(operation,"growth-defrag");
+    if(!recovering && !analysing && !defragging && !growing)return 2;
+    for(int i=3;i<command->argc;++i) {
+        const char *arg=command->argv[i];
+        if(!strcmp(arg,"--path")) {
+            if(path || ++i==command->argc)return 2;
+            path=command->argv[i];
+        } else if(!strncmp(arg,"--path=",7u)) {
+            if(path)return 2;
+            path=arg+7;
+        } else if(!strncmp(arg,"--sector-bytes=",15u)) {
+            if(requested_sector)return 2;
+            char *end=NULL;
+            errno=0;
+            unsigned long v=strtoul(arg+15,&end,10);
+            if(errno || !end || *end || v<512u || v>65536u ||
+               (v & (v-1u)))return 2;
+            requested_sector=(uint32_t)v;
+        } else {
+            fprintf(stderr,"Unsupported Common V2 argument: %s\n",arg);
+            return 2;
+        }
+    }
+    if(!recovering && !v2_path_valid(path)) {
+        fputs("Common V2 mapping/planning requires --path=/absolute/file\n",stderr);
+        return 2;
+    }
+    const uint64_t required=recovering?IFS_FS_DEFRAG_RECOVER:
+        analysing?IFS_FS_DEFRAG_MAP:
+        IFS_FS_DEFRAG_PLAN|IFS_FS_DEFRAG_EXECUTE|
+        IFS_FS_DEFRAG_VERIFY|IFS_FS_DEFRAG_RECOVER;
+    if((defrag->header.capabilities & required)!=required) {
+        fputs("Provider does not qualify the requested strict V2 operation\n",stderr);
+        return 2;
+    }
+    const int writable=!analysing;
+    CommonV2Host b={0};
+    b.services=services;
+    if(services->open_target(services->context,command->argv[2],writable,
+                             NULL,0u,&b.target)) {
+        fputs("Cannot obtain trusted exclusive V2 storage lease\n",stderr);
+        return 1;
+    }
+    int result=1;
+    Target *t=b.target.handle;
+    uint32_t logical=512u,physical=512u;
+    if(t && t->device.is_block) {
+        int logical_kernel=0,physical_kernel=0;
+        if(ioctl(t->device.fd,BLKSSZGET,&logical_kernel)!=0 ||
+           logical_kernel<512 || logical_kernel>65536 ||
+           (logical_kernel & (logical_kernel-1)) ||
+           (requested_sector && requested_sector!=(uint32_t)logical_kernel))
+            goto cleanup_target;
+        logical=(uint32_t)logical_kernel;
+        if(ioctl(t->device.fd,BLKPBSZGET,&physical_kernel)==0 &&
+           physical_kernel>=logical_kernel && physical_kernel<=65536 &&
+           !(physical_kernel & (physical_kernel-1)))
+            physical=(uint32_t)physical_kernel;
+        else physical=logical;
+    } else if(requested_sector) logical=physical=requested_sector;
+    IfsFsHostRuntimeV2 h={0};
+    h.abi_version=IFS_FS_HOST_ABI_V2;
+    h.structure_bytes=sizeof(h);
+    h.capabilities=(writable?
+         IFS_FS_HOST_EXCLUSIVE|IFS_FS_HOST_DURABLE:
+         IFS_FS_HOST_READ_ONLY)|IFS_FS_HOST_CANCEL;
+    h.volume_bytes=b.target.bytes;
+    h.logical_sector_bytes=logical;
+    h.physical_sector_bytes=physical;
+    h.maximum_transfer_bytes=65536u;
+    h.context=&b;
+    h.read_at=v2_read_at;
+    h.write_at=writable?v2_write_at:NULL;
+    h.flush=writable?v2_sync:NULL;
+    h.allocate=v2_allocate;
+    h.release=v2_release;
+    h.cancelled=v2_cancelled;
+    if(!ifs_fs_host_v2_valid(&h))goto cleanup_target;
+    uint32_t variant=0u;
+    if(core->probe(&h,&variant)!=IFS_FS_OK) {
+        fputs("V2 provider rejected the target's filesystem geometry\n",stderr);
+        goto cleanup_target;
+    }
+    IfsFsVolumeInfoV2 info={0};
+    info.structure_bytes=sizeof(info);
+    void *volume=NULL;
+    if(core->mount(&h,&volume,&info)!=IFS_FS_OK || !volume) {
+        fputs("Native V2 filesystem mount failed\n",stderr);
+        goto cleanup_target;
+    }
+    int operation_ok=0;
+    if(recovering) {
+        uint64_t repaired=0u;
+        operation_ok=defrag->recover(volume,0u,&repaired)==IFS_FS_OK;
+
+    } else if(analysing) {
+        IfsFsExtentV2 extents[32]={{0}};
+        uint32_t written=0u;
+        int rc=defrag->map(volume,path,0u,extents,32u,&written);
+        operation_ok=rc==IFS_FS_OK && written<=32u;
+
+    } else {
+        void *plan=NULL;
+        const uint32_t policy=growing?10u:0u;
+        int rc=defrag->plan(volume,path,policy,&plan);
+        if(rc==IFS_FS_OK && plan) {
+            uint64_t moved=0u;
+            rc=defrag->execute(volume,plan,&moved);
+            if(rc==IFS_FS_OK)rc=defrag->verify(volume,plan);
+            operation_ok=rc==IFS_FS_OK;
+            defrag->release_plan(volume,plan);
+
+        }
+    }
+    /* Always unmount; never report successful mutation until both provider
+     * volume sync and exclusive descriptor durability have succeeded. */
+    const IfsFsVolumeOpsV2 *ops=
+        (const IfsFsVolumeOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_VOLUME);
+    if(writable && operation_ok && ops && ops->sync)
+        operation_ok=ops->sync(volume)==IFS_FS_OK;
+    if(core->unmount(volume)!=IFS_FS_OK)operation_ok=0;
+    if(writable && v2_sync(&b))operation_ok=0;
+    result=operation_ok?0:1;
+    if(!result)fputs("Common V2 provider operation verified and durably synced\n",stdout);
+cleanup_target:
+    services->close_target(services->context,&b.target);
+    return result;
 }
-int ifs_filesystem_module_run(const char *format, const char *filename, int argc, char **argv) {
-    if (argc >= 2 && (!strcmp(argv[1], "defrag") || !strcmp(argv[1], "growth-defrag") || !strcmp(argv[1], "recover"))) {
+int ifs_filesystem_module_run(const char *format, const char *filename,
+                              int argc, char **argv) {
+    if(argc>=2 && (!strcmp(argv[1],"defrag") ||
+       !strcmp(argv[1],"growth-defrag") || !strcmp(argv[1],"recover"))) {
         ld_stop_clear(); ld_stop_install_handlers(); ld_stop_report_ready();
     }
-    Command command = {argc, argv};
-    return ifs_filesystem_module_call(format, filename, "infiltrator_filesystem_defrag_v2", run_command, &command);
+    Command command={argc,argv,format};
+    return ifs_filesystem_module_call(format,filename,
+        IFS_FS_COMMON_EXPORT_V2,run_common_v2,&command);
 }
