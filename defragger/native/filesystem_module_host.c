@@ -298,7 +298,12 @@ missing:
 /* Open the authority namespace once. Every path component must be owned
  * by root and not writable by group/others; symlink traversal is forbidden. */
 static int ifs_open_module_directory(void) {
-    int parent = open("/System", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    const char *parent_path="/System";
+#ifdef IFS_MODULE_TESTING
+    const char *test_parent=getenv("IFS_TEST_MODULE_PARENT");
+    if(test_parent && *test_parent) parent_path=test_parent;
+#endif
+    int parent = open(parent_path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     if (parent < 0 || !trusted(parent, 1)) {
         if (parent >= 0) close(parent);
         return -1;
