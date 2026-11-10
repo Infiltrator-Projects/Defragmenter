@@ -1,0 +1,67 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Nonprivileged disposable-media Common V2 provider test.
+set -euo pipefail
+engine=$1
+module=$2
+root=$(mktemp -d /tmp/defrag-v2-dispatch-XXXXXXXX)
+trap 'rm -rf -- "$root"' EXIT
+chmod 700 "$root"
+mkdir -m 700 "$root/Filesystems"
+cp -- "$module" "$root/Filesystems/TESTV2.so"
+chmod 700 "$root/Filesystems/TESTV2.so"
+export IFS_TEST_MODULE_PARENT="$root"
+
+"$engine" --list-installed-modules > "$root/list.json"
+grep -Fq '"format_id":"testv2"' "$root/list.json"
+grep -Fq '"capabilities":31' "$root/list.json"
+
+device="$root/sample.img"
+truncate -s 1048576 "$device"
+printf 'TESTV2FS' | dd of="$device" bs=1 conv=notrunc status=none
+
+# Analysis must require a valid filesystem-local absolute path and make
+# no media mutations. Defrag must invoke a real V2 plan/execute/verify.
+"$engine" defrag "$device" --filesystem testv2 --path=/FILE \
+   > "$root/output.txt"
+grep -Fq 'durably synced' "$root/output.txt"
+actual=$(dd if="$device" bs=1 skip=64 count=4 status=none)
+test "$actual" = 'MOVE'
+
+# Recovery has a different provider callback but still requires a writable
+# lease, durable sync and correct mount identification.
+"$engine" recover "$device" --filesystem testv2 > "$root/output.txt"
+grep -Fq 'durably synced' "$root/output.txt"
+actual=$(dd if="$device" bs=1 skip=80 count=4 status=none)
+test "$actual" = 'REST'
+
+# Untrusted traversal and invalid filesystem-local paths must fail closed.
+if "$engine" defrag "$device" --filesystem testv2 --path=/../FILE \
+   > /dev/null 2>&1; then
+    echo "Unsafe path was accepted" >&2; exit 1
+fi
+before=$(sha256sum "$device" | cut -d' ' -f1)
+if "$engine" defrag "$device" --filesystem testv2 \
+   > /dev/null 2>&1; then
+    echo "Missing path was accepted" >&2; exit 1
+fi
+after=$(sha256sum "$device" | cut -d' ' -f1)
+test "$before" = "$after"
+
+# Both competing modules are trusted, but duplicate format ownership must
+# be rejected rather than choosing one arbitrarily.
+cp -- "$module" "$root/Filesystems/DUPLICATE.so"
+if "$engine" defrag "$device" --filesystem testv2 --path=/FILE \
+   > /dev/null 2>&1; then
+    echo "Duplicate V2 providers were accepted" >&2; exit 1
+fi
+rm -f "$root/Filesystems/DUPLICATE.so"
+
+# The image is not exFAT/FAT and only the V2 test provider recognises it.
+if "$engine" defrag "$device" --filesystem notinstalled --path=/FILE \
+   > /dev/null 2>&1; then
+    echo "Unknown provider accepted" >&2;exit 1
+fi
+after=$(sha256sum "$device" | cut -d' ' -f1)
+test "$before" = "$after"
+echo 'DEFRAGGER-STRICT-COMMON-V2-TRUST-EXECUTE-VERIFY-RECOVER-PASS'
