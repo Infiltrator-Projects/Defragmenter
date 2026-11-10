@@ -5,7 +5,7 @@
  */
 #include "test_media_raw.h"
 #include "filesystem_module_host.h"
-#include "infiltratr/filesystem_module.h"
+#include "infiltratr/filesystem_module_v2.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -31,27 +31,54 @@ static int flush_at(void *user)
     Fat12Fixture *f=user;
     return f->host->sync_target(f->host->context,&f->target);
 }
-static const IfsFsModuleApiV1 *canonical(void *symbol)
+static void *allocate_at(void *ctx,size_t n) {(void)ctx;return malloc(n);}
+static void release_at(void *ctx,void *p) {(void)ctx;free(p);}
+static IfsFsHostRuntimeV2 make_host(Fat12Fixture *f,int writable)
 {
-    IfsFsModuleApiEntryV1 entry=NULL;
+    IfsFsHostRuntimeV2 io={0};
+    io.abi_version=IFS_FS_HOST_ABI_V2;
+    io.structure_bytes=sizeof(io);
+    io.capabilities=writable ? IFS_FS_HOST_EXCLUSIVE|IFS_FS_HOST_DURABLE :
+                               IFS_FS_HOST_READ_ONLY;
+    io.context=f;
+    io.volume_bytes=f->target.bytes;
+    io.logical_sector_bytes=512u;
+    io.physical_sector_bytes=512u;
+    io.maximum_transfer_bytes=65536u;
+    io.read_at=read_at;
+    io.write_at=writable?write_at:NULL;
+    io.flush=writable?flush_at:NULL;
+    io.allocate=allocate_at;
+    io.release=release_at;
+    return io;
+}
+static const IfsFsModuleApiV2 *canonical(void *symbol)
+{
+    IfsFsModuleApiEntryV2 entry=NULL;
     _Static_assert(sizeof(entry)==sizeof(symbol),"dynamic symbol width");
-    memcpy(&entry,&symbol,sizeof entry);
-    const IfsFsModuleApiV1 *api=entry?entry():NULL;
-    const uint64_t required=IFS_FS_CAP_PROBE|IFS_FS_CAP_MOUNT|
-        IFS_FS_CAP_LIST|IFS_FS_CAP_READ|IFS_FS_CAP_WRITE|
-        IFS_FS_CAP_CREATE|IFS_FS_CAP_FORMAT|IFS_FS_CAP_CHECK;
-    if(!ifs_fs_common_api_valid(api,"fat12") ||
-       (api->capabilities & required)!=required ||
-       !api->format || !api->probe || !api->mount || !api->unmount ||
-       !api->create || !api->write || !api->read || !api->stat ||
-       !api->directory_entry || !api->check)
+    memcpy(&entry,&symbol,sizeof(entry));
+    const IfsFsModuleApiV2 *api=entry?entry():NULL;
+    if(!ifs_fs_api_v2_valid(api,"fat12"))return NULL;
+    const IfsFsCoreOpsV2 *core=
+        (const IfsFsCoreOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_CORE);
+    const IfsFsVolumeOpsV2 *volume=
+        (const IfsFsVolumeOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_VOLUME);
+    const uint64_t required=IFS_FS_CORE_PROBE|IFS_FS_CORE_MOUNT|
+        IFS_FS_CORE_LIST|IFS_FS_CORE_STAT|IFS_FS_CORE_READ|
+        IFS_FS_CORE_WRITE|IFS_FS_CORE_CREATE;
+    if(!core || (core->header.capabilities & required)!=required ||
+       !core->mount || !core->unmount || !core->create ||
+       !core->write || !core->read || !core->stat || !core->directory_entry ||
+       !volume || !(volume->header.capabilities & IFS_FS_VOLUME_FORMAT) ||
+       !(volume->header.capabilities & IFS_FS_VOLUME_CHECK) ||
+       !volume->format || !volume->check)
         return NULL;
     return api;
 }
 static int call(Fat12Fixture *f,IfsFilesystemCall action)
 {
     return ifs_filesystem_module_call("fat12","FAT12.so",
-        IFS_FS_COMMON_EXPORT_V1,action,f);
+        IFS_FS_COMMON_EXPORT_V2,action,f);
 }
 static int available(const IfsDefragHostV2 *host,void *symbol,void *opaque)
 {
@@ -74,8 +101,10 @@ static int make_name(unsigned file,char path[32])
 static int create(const IfsDefragHostV2 *host,void *symbol,void *opaque)
 {
     Fat12Fixture *f=opaque;
-    const IfsFsModuleApiV1 *api=canonical(symbol);
+    const IfsFsModuleApiV2 *api=canonical(symbol);
     if(!api)return -1;
+    const IfsFsCoreOpsV2 *core=(const IfsFsCoreOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_CORE);
+    const IfsFsVolumeOpsV2 *volume=(const IfsFsVolumeOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_VOLUME);
     f->host=host;
     if(host->open_target(host->context,f->path,1,NULL,0,&f->target)!=0)return -1;
     int result=-1,mounted=0;
@@ -94,21 +123,13 @@ static int create(const IfsDefragHostV2 *host,void *symbol,void *opaque)
             goto done;
     }
 
-    IfsFsHostFormatIoV1 io={0};
-    io.host.structure_bytes=sizeof io;
-    io.host.flags=IFS_FS_IO_EXCLUSIVE;
-    io.host.context=f;
-    io.host.volume_bytes=f->target.bytes;
-    io.host.read_at=read_at;
-    io.host.write_at=write_at;
-    io.host.flush=flush_at;
-    io.logical_sector_bytes=512u;
-    /* The sole FAT12 engine owns allocation-unit selection and format.
-     * No host-minted FAT tables or host-coded boot sectors exist here. */
-    if(api->format(&io.host,12u,NULL)!=IFS_FS_OK)goto done;
-    IfsFsVolumeInfoV1 info={0};
-    info.structure_bytes=sizeof info;
-    if(api->mount(&io.host,&session,&info)!=IFS_FS_OK)goto done;
+    IfsFsHostRuntimeV2 io=make_host(f,1);
+    if(!ifs_fs_host_v2_valid(&io) ||
+       volume->format(&io,12u,NULL,0u)!=IFS_FS_OK)
+        goto done;
+    IfsFsVolumeInfoV2 info={0};
+    info.structure_bytes=sizeof(info);
+    if(core->mount(&io,&session,&info)!=IFS_FS_OK)goto done;
     mounted=1;
     if(info.variant!=12u || info.block_bytes!=65536u)goto done;
 
@@ -117,7 +138,7 @@ static int create(const IfsDefragHostV2 *host,void *symbol,void *opaque)
     result=0;
     for(unsigned file=0;file<LDTM_RAW_FILES && !result;++file) {
         if(make_name(file,path)!=0 ||
-           api->create(session,path,IFS_FS_ENTRY_FILE)!=IFS_FS_OK)
+           core->create(session,path,IFS_FS_ENTRY_FILE)!=IFS_FS_OK)
             result=-1;
     }
     /* Interleave half-file allocations to deliberately fragment the corpus. */
@@ -135,13 +156,13 @@ static int create(const IfsDefragHostV2 *host,void *symbol,void *opaque)
                 const uint32_t n=(uint32_t)((end-at)<sizeof buffer?(end-at):sizeof buffer);
                 if(host->stop_requested(host->context)) {result=-1;break;}
                 ldtm_raw_payload(buffer,n,file,at);
-                if(api->write(session,path,at,buffer,n)!=IFS_FS_OK)result=-1;
+                if(core->write(session,path,at,buffer,n)!=IFS_FS_OK)result=-1;
                 at+=n;
             }
         }
     }
 done:
-    if(mounted && api->unmount(session)!=IFS_FS_OK)result=-1;
+    if(mounted && core->unmount(session)!=IFS_FS_OK)result=-1;
     if(host->sync_target(host->context,&f->target)!=0)result=-1;
     host->close_target(host->context,&f->target);
     return result;
@@ -155,33 +176,31 @@ int ldtm_fat12_common_create(const LdtmFilesystemSpec *spec,const char *path)
 static int verify(const IfsDefragHostV2 *host,void *symbol,void *opaque)
 {
     Fat12Fixture *f=opaque;
-    const IfsFsModuleApiV1 *api=canonical(symbol);
+    const IfsFsModuleApiV2 *api=canonical(symbol);
     if(!api)return -1;
+    const IfsFsCoreOpsV2 *core=(const IfsFsCoreOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_CORE);
+    const IfsFsVolumeOpsV2 *volume=(const IfsFsVolumeOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_VOLUME);
     f->host=host;
     if(host->open_target(host->context,f->path,0,NULL,0,&f->target)!=0)return -1;
     int result=-1,mounted=0;
     void *session=NULL;
-    IfsFsHostIoV1 io={0};
-    io.structure_bytes=sizeof io;
-    io.flags=IFS_FS_IO_READ_ONLY;
-    io.context=f;
-    io.volume_bytes=f->target.bytes;
-    io.read_at=read_at;
-    IfsFsVolumeInfoV1 info={0};
-    info.structure_bytes=sizeof info;
+    IfsFsHostRuntimeV2 io=make_host(f,0);
+    IfsFsVolumeInfoV2 info={0};
+    info.structure_bytes=sizeof(info);
     if(f->target.bytes!=(uint64_t)f->spec->size_mib*LDTM_MIB ||
-       api->mount(&io,&session,&info)!=IFS_FS_OK)goto done;
+       !ifs_fs_host_v2_valid(&io) ||
+       core->mount(&io,&session,&info)!=IFS_FS_OK)goto done;
     mounted=1;
     if(info.variant!=12u || info.block_bytes!=65536u)goto done;
     uint8_t actual[65536],expected[65536];
     bool seen[LDTM_RAW_FILES]={false};
     for(uint32_t index=0;index<=LDTM_RAW_FILES;++index) {
         char name[768]={0};
-        IfsFsEntryV1 entry={0};
+        IfsFsEntryV2 entry={0};
         entry.structure_bytes=sizeof entry;
         entry.name=name;
         entry.name_capacity=sizeof name;
-        int status=api->directory_entry(session,"/",index,&entry);
+        int status=core->directory_entry(session,"/",index,&entry);
         if(index==LDTM_RAW_FILES) {
             if(status!=IFS_FS_END)goto done;
             break;
@@ -197,30 +216,30 @@ static int verify(const IfsDefragHostV2 *host,void *symbol,void *opaque)
     for(unsigned file=0;file<LDTM_RAW_FILES;++file) {
         if(!seen[file])goto done;
         char path[32],name[768]={0};
-        IfsFsEntryV1 entry={0};
+        IfsFsEntryV2 entry={0};
         entry.structure_bytes=sizeof entry;
         entry.name=name;
         entry.name_capacity=sizeof name;
         const uint64_t length=ldtm_raw_file_bytes(f->spec,file);
         if(make_name(file,path)!=0 ||
-           api->stat(session,path,&entry)!=IFS_FS_OK ||
+           core->stat(session,path,&entry)!=IFS_FS_OK ||
            entry.size_bytes!=length || entry.type!=IFS_FS_ENTRY_FILE)
             goto done;
         for(uint64_t offset=0;offset<length;) {
             const uint32_t n=(uint32_t)((length-offset)<sizeof actual?
                 (length-offset):sizeof actual);
             if(host->stop_requested(host->context) ||
-               api->read(session,path,offset,actual,n)!=IFS_FS_OK)goto done;
+               core->read(session,path,offset,actual,n)!=IFS_FS_OK)goto done;
             ldtm_raw_payload(expected,n,file,offset);
             if(memcmp(actual,expected,n)!=0)goto done;
             offset+=n;
         }
     }
-    uint32_t errors=UINT32_MAX;
-    if(api->check(session,&errors)!=IFS_FS_OK || errors!=0u)goto done;
+    uint64_t errors=UINT64_MAX;
+    if(volume->check(session,0u,&errors)!=IFS_FS_OK || errors!=0u)goto done;
     result=0;
 done:
-    if(mounted && api->unmount(session)!=IFS_FS_OK)result=-1;
+    if(mounted && core->unmount(session)!=IFS_FS_OK)result=-1;
     host->close_target(host->context,&f->target);
     return result;
 }
