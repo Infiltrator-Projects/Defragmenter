@@ -7,6 +7,7 @@
 #include "filesystem_module_host.h"
 #include "infiltratr/filesystem_module_v2.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 typedef struct {
