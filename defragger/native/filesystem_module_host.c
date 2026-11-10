@@ -507,8 +507,9 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
         return 1;
     }
     if(command->argc<3 || !command->argv[1] || !command->argv[2])return 2;
-    const char *operation=command->argv[1],*path=NULL;
+    const char *operation=command->argv[1],*path=NULL,*confirmed_target=NULL;
     uint32_t requested_sector=0u;
+    int explicit_write=0;
     const int recovering=!strcmp(operation,"recover");
     const int analysing=!strcmp(operation,"analyse") ||
         !strcmp(operation,"analyse-json") || !strcmp(operation,"map");
@@ -517,7 +518,13 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
     if(!recovering && !analysing && !defragging && !growing)return 2;
     for(int i=3;i<command->argc;++i) {
         const char *arg=command->argv[i];
-        if(!strcmp(arg,"--path")) {
+        if(!strcmp(arg,"--write")) {
+            if(explicit_write)return 2;
+            explicit_write=1;
+        } else if(!strcmp(arg,"--confirm")) {
+            if(confirmed_target || ++i==command->argc)return 2;
+            confirmed_target=command->argv[i];
+        } else if(!strcmp(arg,"--path")) {
             if(path || ++i==command->argc)return 2;
             path=command->argv[i];
         } else if(!strncmp(arg,"--path=",7u)) {
@@ -535,6 +542,14 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
             fprintf(stderr,"Unsupported Common V2 argument: %s\n",arg);
             return 2;
         }
+    }
+    /* A trusted V2 module may mutate real offline media. The host, not the
+     * provider, must require explicit, target-bound destructive consent. */
+    if((!analysing && (!explicit_write || !confirmed_target ||
+         strcmp(confirmed_target,command->argv[2]))) ||
+       (analysing && (explicit_write || confirmed_target))) {
+        fputs("Common V2 mutation requires --write --confirm DEVICE\n",stderr);
+        return 2;
     }
     if(!recovering && !v2_path_valid(path)) {
         fputs("Common V2 mapping/planning requires --path=/absolute/file\n",stderr);
