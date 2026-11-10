@@ -651,3 +651,61 @@ int ifs_filesystem_module_run(const char *format, const char *filename,
     return ifs_filesystem_module_call(format,filename,
         IFS_FS_COMMON_EXPORT_V2,run_common_v2,&command);
 }
+
+/* OFS.so's existing native Defrag V2 operation is deliberately separate
+ * from strict Common V2 discovery and execution. This is not a fallback:
+ * only the explicitly named OFS worker may request this entry point.
+ * Remove this path when OFS.so exposes qualified Common V2 DEFRAG. */
+typedef struct {
+    int argc;
+    char **argv;
+} OfsNativeCommand;
+
+static int run_ofs_native(const IfsDefragHostV2 *host, void *symbol, void *opaque) {
+    const OfsNativeCommand *command = opaque;
+    const IfsDefragModuleV2 *(*entry)(void) = NULL;
+    _Static_assert(sizeof(entry) == sizeof(symbol), "Defrag entry width");
+    memcpy(&entry, &symbol, sizeof(entry));
+    const IfsDefragModuleV2 *api = entry ? entry() : NULL;
+    if (!api || api->abi_version != IFS_DEFRAG_ABI_V2 ||
+        api->structure_bytes < sizeof(*api) || !api->format_id ||
+        strcmp(api->format_id, "ofs") != 0 || !api->run ||
+        command->argc < 2 || !command->argv[1]) {
+        fputs("OFS.so does not expose its expected native Defrag interface\n", stderr);
+        return 1;
+    }
+    const char *operation = command->argv[1];
+    uint64_t required = 0u;
+    if (!strcmp(operation, "defrag"))
+        required = IFS_DEFRAG_ANALYSE | IFS_DEFRAG_RELAYOUT |
+                   IFS_DEFRAG_RECOVER;
+    else if (!strcmp(operation, "growth-defrag"))
+        required = IFS_DEFRAG_ANALYSE | IFS_DEFRAG_GROWTH |
+                   IFS_DEFRAG_RECOVER;
+    else if (!strcmp(operation, "recover"))
+        required = IFS_DEFRAG_RECOVER;
+    else if (!strcmp(operation, "analyse") ||
+             !strcmp(operation, "analyse-json") ||
+             !strcmp(operation, "map"))
+        required = IFS_DEFRAG_ANALYSE;
+    if (required == 0u || (api->capabilities & required) != required) {
+        fputs("OFS.so does not qualify the requested native operation\n", stderr);
+        return 1;
+    }
+    return api->run(host, command->argc, command->argv);
+}
+
+int ifs_filesystem_module_run_ofs_native(int argc, char **argv) {
+    if (argc < 3 || !argv || !argv[1] || !argv[2])
+        return 2;
+    if (!strcmp(argv[1], "defrag") ||
+        !strcmp(argv[1], "growth-defrag") ||
+        !strcmp(argv[1], "recover")) {
+        ld_stop_clear();
+        ld_stop_install_handlers();
+        ld_stop_report_ready();
+    }
+    OfsNativeCommand command = {argc, argv};
+    return ifs_filesystem_module_call("ofs", "OFS.so",
+        "infiltrator_filesystem_defrag_v2", run_ofs_native, &command);
+}
