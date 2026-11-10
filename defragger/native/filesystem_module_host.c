@@ -5,6 +5,7 @@
  */
 #include "filesystem_module_host.h"
 #include "filesystem_defrag_abi.h"
+#include "infiltratr/filesystem_module_v2.h"
 #include "ld_generic_layout.h"
 #include "version.h"
 #include "ld_device.h"
@@ -344,28 +345,24 @@ static int ifs_probe_module_v2(int directory, const char *name,
     }
     void *image = dlopen(path, RTLD_NOW | RTLD_LOCAL);
     if (!image) { close(fd); return -1; }
-    void *symbol = dlsym(image, "infiltrator_filesystem_defrag_v2");
-    const IfsDefragModuleV2 *(*entry)(void) = NULL;
+    void *symbol = dlsym(image, IFS_FS_COMMON_EXPORT_V2);
+    IfsFsModuleApiEntryV2 entry = NULL;
     _Static_assert(sizeof(entry) == sizeof(symbol), "dlsym pointer width");
     memcpy(&entry, &symbol, sizeof(entry));
-    const IfsDefragModuleV2 *api = entry ? entry() : NULL;
+    const IfsFsModuleApiV2 *api = entry ? entry() : NULL;
     int result = -1;
-    if (api && api->abi_version == IFS_DEFRAG_ABI_V2 &&
-        api->structure_bytes >= sizeof(*api) && api->format_id && api->run &&
-        (api->capabilities & (IFS_DEFRAG_ANALYSE | IFS_DEFRAG_RELAYOUT |
-                              IFS_DEFRAG_GROWTH | IFS_DEFRAG_RECOVER))) {
-        const size_t length = strnlen(api->format_id, 16u);
-        int valid = length > 0u && length <= 15u;
-        for (size_t n = 0u; valid && n < length; ++n) {
-            const unsigned char ch = (unsigned char)api->format_id[n];
-            if (!((ch >= 'a' && ch <= 'z') ||
-                  (ch >= '0' && ch <= '9') || ch == '_'))
-                valid = 0;
-        }
-        if (valid) {
-            memcpy(format, api->format_id, length + 1u);
-            *capabilities = api->capabilities;
-            result = 0;
+    if (api && ifs_fs_api_v2_valid(api, api->format_id) &&
+        (api->runtime_profiles & IFS_FS_PROFILE_HOSTED)) {
+        const IfsFsDefragOpsV2 *defrag =
+            (const IfsFsDefragOpsV2 *)ifs_fs_group_v2(
+                api, IFS_FS_GROUP_DEFRAG);
+        if (defrag && defrag->header.capabilities != 0u) {
+            const size_t length = strnlen(api->format_id, 16u);
+            if (length > 0u && length <= 15u) {
+                memcpy(format, api->format_id, length + 1u);
+                *capabilities = defrag->header.capabilities;
+                result = 0;
+            }
         }
     }
     dlclose(image);
