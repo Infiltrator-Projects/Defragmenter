@@ -70,52 +70,40 @@ int main(int argc, char** argv) {
 
     if (operation.empty() || device.empty() || filesystem.empty()) return usage();
 
+    // Every filesystem, including built-in names, uses the one strict Common
+    // V2 module contract. Known aliases are naming conveniences only; they
+    // must never select the retired format-specific worker executables.
     const defragger::BackendInfo* backend =
         defragger::backend_by_fstype(filesystem);
-    const bool generic_module = backend == nullptr;
-    std::string generic_filename;
-
-    if (generic_module) {
-        /* A newly installed filesystem is eligible without recompiling the
-         * application only if it implements the standard V2 ABI. The trusted
-         * module host independently verifies ownership, ABI, exact format ID
-         * and required capabilities before executing any operation. */
-        if (filesystem.empty() || filesystem.size() > 15U ||
-            (operation != "defrag" && operation != "growth-defrag" &&
-             operation != "recover")) {
-            std::fprintf(stderr,
-                         "defragmenter-operation-engine: unsupported generic "
-                         "filesystem or operation\n");
-            return 2;
-        }
-        for (unsigned char character : filesystem) {
-            if (!((character >= 'a' && character <= 'z') ||
-                  (character >= '0' && character <= '9') ||
-                  character == '_')) {
-                std::fputs("invalid generic filesystem identifier\n", stderr);
-                return 2;
-            }
-        }
-        char module_file[64] = {};
-        if (ifs_filesystem_module_find_v2(filesystem.c_str(), module_file,
-                                           sizeof(module_file)) != 0) {
-            std::fprintf(stderr,
-                         "defragmenter-operation-engine: no installed trusted "
-                         "Defrag V2 SO advertises %s\n", filesystem.c_str());
-            return 2;
-        }
-        generic_filename = module_file;
+    if (backend && backend->id != "affs" && backend->id != "ufs") {
+        filesystem = backend->id;
     }
-
-    const defragger::OperationSpec* specification =
-        backend ? defragger::operation_for(*backend, operation) : nullptr;
-    if (!generic_module && specification == nullptr) {
-        std::fprintf(stderr,
-                     "defragmenter-operation-engine: the %s plugin does not "
-                     "implement %s\n",
-                     backend->display_name.c_str(), operation.c_str());
+    if (operation != "defrag" && operation != "growth-defrag" &&
+        operation != "recover" && operation != "analyse" &&
+        operation != "analyse-json" && operation != "map") {
+        return usage();
+    }
+    if (filesystem.empty() || filesystem.size() > 15U) {
+        std::fputs("invalid V2 filesystem identifier\n", stderr);
         return 2;
     }
+    for (unsigned char character : filesystem) {
+        if (!((character >= 'a' && character <= 'z') ||
+              (character >= '0' && character <= '9') ||
+              character == '_')) {
+            std::fputs("invalid V2 filesystem identifier\n", stderr);
+            return 2;
+        }
+    }
+    char module_file[64] = {};
+    if (ifs_filesystem_module_find_v2(filesystem.c_str(), module_file,
+                                       sizeof(module_file)) != 0) {
+        std::fprintf(stderr,
+                     "defragmenter-operation-engine: no trusted Common V2 "
+                     "filesystem provider for %s\n", filesystem.c_str());
+        return 2;
+    }
+    const std::string generic_filename(module_file);
 
     struct stat status {};
     if (stat(device.c_str(), &status) != 0) {
@@ -157,55 +145,20 @@ int main(int argc, char** argv) {
         }
     }
 
-    if (generic_module) {
-        /* The same offline-device safety preflight above applies to every
-         * future module. No format-specific parser or mutation code lives in
-         * this dispatcher, and absent/incompatible SOs fail closed. */
-        std::vector<std::string> command;
-        command.reserve(3U + forwarded.size());
-        command.emplace_back("defragmenter-generic-module");
-        command.push_back(operation);
-        command.push_back(device);
-        command.insert(command.end(), forwarded.begin(), forwarded.end());
-        std::vector<char*> arguments;
-        arguments.reserve(command.size() + 1U);
-        for (auto& element : command) arguments.push_back(element.data());
-        arguments.push_back(nullptr);
-        (void)setenv("LC_ALL", "C", 1);
-        (void)setenv("LANG", "C", 1);
-        return ifs_filesystem_module_run(
-            filesystem.c_str(), generic_filename.c_str(),
-            static_cast<int>(command.size()), arguments.data());
-    }
-
-    std::string worker;
-    try {
-        worker = defragger::resolve_program(specification->worker, false);
-    } catch (const std::exception& error) {
-        std::fprintf(stderr, "defragmenter-operation-engine: %s\n",
-                     error.what());
-        return 2;
-    }
-
-    const auto options =
-        defragger::without_options(forwarded, specification->unsupported_options);
     std::vector<std::string> command;
-    command.reserve(3U + options.size());
-    command.push_back(worker);
+    command.reserve(3U + forwarded.size());
+    command.emplace_back("defragmenter-generic-module");
     command.push_back(operation);
     command.push_back(device);
-    command.insert(command.end(), options.begin(), options.end());
-
-    std::vector<char*> raw;
-    raw.reserve(command.size() + 1U);
-    for (auto& item : command) raw.push_back(item.data());
-    raw.push_back(nullptr);
-
+    command.insert(command.end(), forwarded.begin(), forwarded.end());
+    std::vector<char*> arguments;
+    arguments.reserve(command.size() + 1U);
+    for (auto& element : command) arguments.push_back(element.data());
+    arguments.push_back(nullptr);
     (void)setenv("LC_ALL", "C", 1);
     (void)setenv("LANG", "C", 1);
-    execv(raw[0], raw.data());
-    std::fprintf(stderr,
-                 "defragmenter-operation-engine: exec %s failed: %s\n",
-                 worker.c_str(), std::strerror(errno));
-    return 127;
+    return ifs_filesystem_module_run(
+        filesystem.c_str(), generic_filename.c_str(),
+        static_cast<int>(command.size()), arguments.data());
+
 }
