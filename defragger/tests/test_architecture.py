@@ -237,7 +237,7 @@ def test_ofs_disposable_media_requires_final_integrity_and_sync() -> None:
 def test_common_is_a_versioned_dependency_not_copied_source() -> None:
     common = ROOT / "shared" / "infiltratr-common"
     assert common.is_dir()
-    assert _read(common / "VERSION").strip() == "1.19.82"
+    assert _read(common / "VERSION").strip() == "1.19.84"
 
     # One repository-level declaration owns the gitlink. Do not mirror
     # .gitmodules inside the application directory.
