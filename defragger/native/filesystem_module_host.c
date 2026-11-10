@@ -617,14 +617,13 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
     if(recovering) {
         uint64_t repaired=0u;
         operation_ok=defrag->recover(volume,0u,&repaired)==IFS_FS_OK;
-        if(operation_ok)printf("Common V2 recovery completed (%llu units)\n",
-                              (unsigned long long)repaired);
+
     } else if(analysing) {
         IfsFsExtentV2 extents[32]={{0}};
         uint32_t written=0u;
         int rc=defrag->map(volume,path,0u,extents,32u,&written);
         operation_ok=rc==IFS_FS_OK && written<=32u;
-        if(operation_ok)printf("Common V2 mapped %u initial extents\n",written);
+
     } else {
         void *plan=NULL;
         const uint32_t policy=growing?10u:0u;
@@ -635,8 +634,7 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
             if(rc==IFS_FS_OK)rc=defrag->verify(volume,plan);
             operation_ok=rc==IFS_FS_OK;
             defrag->release_plan(volume,plan);
-            if(operation_ok)printf("Common V2 verified %llu moved bytes\n",
-                                   (unsigned long long)moved);
+
         }
     }
     /* Always unmount; never report successful mutation until both provider
@@ -648,6 +646,7 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
     if(core->unmount(volume)!=IFS_FS_OK)operation_ok=0;
     if(writable && v2_sync(&b))operation_ok=0;
     result=operation_ok?0:1;
+    if(!result)fputs("Common V2 provider operation verified and durably synced\n",stdout);
 cleanup_target:
     services->close_target(services->context,&b.target);
     return result;
