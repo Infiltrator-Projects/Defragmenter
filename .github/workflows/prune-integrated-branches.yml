@@ -23,7 +23,7 @@ jobs:
             actual="$(gh api "repos/$REPO/git/ref/heads/$branch" --jq '.object.sha' 2>/dev/null || true)"
             [ "$actual" = "$expected" ] || continue
             tag="archive/v2-20261110/${branch//\//-}"
-            archived="$(gh api "repos/$REPO/git/ref/tags/$tag" --jq '.object.sha' 2>/dev/null || true)"
+            archived="$(gh api "repos/$REPO/git/ref/tags/$tag" --jq 'if type == "object" then (.object.sha // empty) else empty end' 2>/dev/null || true)"
             if [ -z "$archived" ]; then
               gh api --method POST "repos/$REPO/git/refs" -f ref="refs/tags/$tag" -f sha="$expected" >/dev/null
             elif [ "$archived" != "$expected" ]; then
