@@ -48,24 +48,27 @@ Defrag nor Growth Defrag can be reported as qualified.
 
 ## Universal discovery transition (November 2026)
 
-The native operation engine now has an additive **generic Defrag V2 path**:
-`--list-installed-modules` enumerates root-owned, non-writable-by-others
-`/System/Filesystems/*.so` objects with the common
-`infiltrator_filesystem_defrag_v2` interface. It obtains `format_id` and
-operation capability bits **from each loaded module**, not a filesystem table
-or guessed filename. For an unknown filesystem ID, the engine resolves the
-matching installed SO and dispatches supported offline Defrag/Growth/Recover
-through the same trusted host, after its ordinary target safety checks.
-Conflicting identities, absent modules, mismatched ABIs and missing required
-operation capabilities fail closed. Defrag and Growth also require recovery
-capability.
+The native operation engine now has a staged **strict Common V2 consumer**.
+`--list-installed-modules` enumerates trusted root-owned and non-writable-by-
+others `/System/Filesystems/*.so` files only when they export exactly
+`infiltrator_filesystem_api_v2`, validate as a canonical Common V2 descriptor,
+declare the HOSTED profile, and supply CORE.MOUNT and DEFRAG groups. The
+matching `format_id` is read from the provider, not inferred from filenames.
 
-This is **not yet universal GUI integration**. The existing desktop backend
-registry, legacy format worker adapters, and the fixed 21-format Test Media
-qualification layout remain for compatibility until their ABI consumers can
-be converted and retested. In particular, the GUI does not yet automatically
-offer every discovered V2 module. Do not retire any working legacy adapter
-until an end-to-end module-only replacement is qualified.
+Generic operation dispatch requires an explicit filesystem-local
+`--path=/absolute/file` for mapping and planned relocation. Recovery and
+relocation use the original verified device lease, bounded I/O, the actual
+V2 DEFRAG callback contract, mandatory plan verification, volume sync,
+unmount and durability barriers. Unsupported operations and duplicate
+providers fail closed. A mock provider in the test suite verifies discovery,
+real callback execution, negative paths and recovery on disposable images.
+
+**This migration branch is not yet release-ready.** Several fixed-format
+workers and Test Media helpers retain old independently versioned contracts
+while their providers are being upgraded. These are migration blockers,
+not compatibility fallbacks to preserve in a V2-only release. Do not merge
+the new contract into production until those workers are replaced and every
+required filesystem capability passes end-to-end media qualification.
 
 Test Media's unmount loop now uses the native `umount2` kernel interface in
 place of an external `umount` executable. Other Linux-facing external
