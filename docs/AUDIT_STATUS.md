@@ -4,10 +4,18 @@
 
 Status: **complete**
 
-Audited source commit: 5d3c87d586fbfae0bd575bde3fea6bb57b9d9556
-Audited release-governance commit: 9bd79d57a091231ecdc41694b89ecbb0c6800ec6
+Audited source commit: 3c98b43f0945cc0016781cf1709ffaba92894a9a
+Audited release-governance commit: 3c98b43f0945cc0016781cf1709ffaba92894a9a
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Strict Common V2 FAT12 Test Media cutover — reviewed 2026-11-11
+
+**Exact independently reviewed source and governance candidate:** `3c98b43f0945cc0016781cf1709ffaba92894a9a`, relative to previously audited source `5d3c87d586fbfae0bd575bde3fea6bb57b9d9556` and governance `9bd79d57a091231ecdc41694b89ecbb0c6800ec6`. GitHub comparison verified a linear, nine-commit advance with no behind commits. The qualified inputs changed only in `defragger/cmake/project.cmake`, `defragger/shared/fat12-module-revision`, the Libraries gitlink, `defragger/test_media/test_media_fat12_common.c`, `defragger/tests/test_architecture.py`, and two pinned-source SHA checks in `.github/workflows/quality-gate.yml`; `defragger/VERSION` and this audit document were also modified. No relocator, raw device open, FAT allocation algorithm, recovery journal, format writer, install script, privilege boundary or publish script was modified.
+
+**Actual implementation review:** FAT12 test media now obtains only `infiltrator_filesystem_api_v2` and validates mandatory V2 CORE/VOLUME operation groups before leasing media. The native FAT12.so candidate is pinned to `93a67b9bac471b0e4a99ad112b0bca7ca1c63a93`; Common is pinned to `5b5fb95988c8d0b53ed29fdecfb0b70274182fd6` (version 1.19.84). Read-only verification and exclusive/durable format/write are bound to the existing identity-protected host target; all FAT12 metadata interpretation, format, enumeration and file I/O remain provider-owned. Full-byte round-trip, cross-format refusal and independent native tests are retained. The existing Defragmenter non-FAT12 worker interfaces have **not** been migrated and are **not** qualified as strict Common V2.
+
+**Observed tests and remaining gates:** [Defragmenter PR run 42810752568](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/42810752568) passed 44 of 44 native CTests, 16 of 16 per-filesystem media fixtures and the complete ASan/UBSan job. The normal quality job failed **solely** at `test_release_gate.py` with the expected `qualified source/test/install input changed after the audited source baseline`; the gate was not weakened. The present reviewed audit update restores that specific baseline check against the exact audited ancestor. A fresh exact-head quality/sanitizer run and independent producer/consumer release qualification are still required. This review is not certification for raw physical-media writes, kernel .so loading, or system-wide V2-only completion.
 
 ## FAT12 canonical ABI migration review — 2026-11-09
 
