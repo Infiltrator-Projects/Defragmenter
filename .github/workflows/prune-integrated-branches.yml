@@ -23,11 +23,9 @@ jobs:
             actual="$(gh api "repos/$REPO/git/ref/heads/$branch" --jq '.object.sha' 2>/dev/null || true)"
             [ "$actual" = "$expected" ] || continue
             tag="archive/v2-20261110/${branch//\//-}"
-            archived="$(gh api "repos/$REPO/git/ref/tags/$tag" --jq 'if type == "object" then (.object.sha // empty) else empty end' 2>/dev/null || true)"
-            if [ -z "$archived" ]; then
-              gh api --method POST "repos/$REPO/git/refs" -f ref="refs/tags/$tag" -f sha="$expected" >/dev/null
-            elif [ "$archived" != "$expected" ]; then
-              echo "::error::Archive ref mismatch for $branch"; exit 1
+            created="$(gh api --method POST "repos/$REPO/git/refs" -f ref="refs/tags/$tag" -f sha="$expected" --jq '.object.sha')"
+            if [ "$created" != "$expected" ]; then
+              echo "::error::Archive was not created at expected commit for $branch"; exit 1
             fi
             actual="$(gh api "repos/$REPO/git/ref/heads/$branch" --jq '.object.sha' 2>/dev/null || true)"
             if [ "$actual" = "$expected" ]; then
