@@ -79,6 +79,7 @@ static int verify(void *m,void *plan) {
     return v->host->read_at(v->host->context,64u,got,4u) ||
         memcmp(got,"MOVE",4u) ? IFS_FS_IO_ERROR:IFS_FS_OK;
 }
+#ifndef IFS_TEST_NO_RECOVERY
 static int recover(void *m,uint32_t flags,uint64_t *repaired) {
     MockVolume *v=m;
     if(!v||!repaired||flags||!v->host->write_at)return IFS_FS_INVALID;
@@ -87,6 +88,7 @@ static int recover(void *m,uint32_t flags,uint64_t *repaired) {
     *repaired=1u;
     return IFS_FS_OK;
 }
+#endif
 static void release_plan(void *m,void *plan) {
     MockVolume *v=m;
     if(v && plan)v->host->release(v->host->context,plan);
