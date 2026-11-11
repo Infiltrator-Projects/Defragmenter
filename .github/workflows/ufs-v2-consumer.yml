@@ -1,0 +1,134 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Contract check against the CURRENT independent UFS1/UFS2 Common V2 SOs.
+# The historical UFS writer integration gate separately proves its pinned
+# V1 fixture; that green result MUST NOT count as V2 consumer qualification.
+name: Verify current UFS V2 universal consumer
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'defragger/native/filesystem_module_host.c'
+      - 'defragger/native/filesystem_module_host.h'
+      - 'defragger/native/operation_engine.cpp'
+      - 'defragger/cmake/project.cmake'
+      - '.github/workflows/ufs-v2-consumer.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  v2-ufs-consumer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out universal Defragmenter and its pinned Common
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config jq \
+            libgtk-3-dev libssl-dev libsqlite3-dev libext2fs-dev
+      - name: Check out current authoritative UFS1.so
+        uses: actions/checkout@v4
+        with:
+          repository: Infiltrator-Projects/Filesystem-UFS1
+          ref: main
+          path: ci-ufs1-current
+      - name: Check out current authoritative UFS2.so
+        uses: actions/checkout@v4
+        with:
+          repository: Infiltrator-Projects/Filesystem-UFS2
+          ref: main
+          path: ci-ufs2-current
+      # Retain only this pinned old SO as a fixture *generator*, since the
+      # currently published UFS2 Common V2 API does not advertise formatting.
+      # It is never installed as the provider under test.
+      - name: Check out historical, qualified UFS2 fixture generator
+        uses: actions/checkout@v4
+        with:
+          repository: Infiltrator-Projects/Filesystem-UFS2
+          ref: 8f3514883827d2a72e65c2f45580e937571e0372
+          path: ci-ufs2-fixture
+      - name: Compile current V2 providers and provider-owned tests
+        run: |
+          set -euo pipefail
+          for format in ufs1 ufs2; do
+            cmake -S "ci-${format}-current" -B "/tmp/${format}-v2" \
+              -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+            cmake --build "/tmp/${format}-v2" --parallel 2
+            ctest --test-dir "/tmp/${format}-v2" --output-on-failure
+            so="/tmp/${format}-v2/${format^^}.so"
+            nm -D "$so" | grep -F 'infiltrator_filesystem_api_v2'
+            if nm -D "$so" | grep -E 'infiltrator_filesystem_.*_v1'; then
+              echo "::error::Current UFS provider still exports retired filesystem V1" >&2
+              exit 1
+            fi
+            echo "${format} current source: $(git -C "ci-${format}-current" rev-parse HEAD)"
+          done
+      - name: Build historical UFS2 fixture provider
+        run: |
+          cmake -S ci-ufs2-fixture -B /tmp/ufs2-fixture -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+          cmake --build /tmp/ufs2-fixture --target ufs-driver --parallel 2
+      - name: Compile isolated universal Defragmenter consumer
+        run: |
+          set -euo pipefail
+          cd defragger
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=ON -DLD_ENABLE_WERROR=ON \
+            -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build/module-test"
+          cmake --build build --parallel 2 --target \
+            defragmenter-operation-engine-v2-test \
+            defragmenter-test-media-mkfs-ufs-test
+      - name: Create real UFS2 image with historical native fixture generator
+        run: |
+          set -euo pipefail
+          cd defragger
+          mkdir -p build/module-test/Filesystems build/test-source
+          install -m 0644 /tmp/ufs2-fixture/UFS2.so build/module-test/Filesystems/UFS2.so
+          dd if=/dev/zero of=build/test-source/source.bin bs=1024 count=256 status=none
+          export IFS_TEST_MODULE_PARENT="$PWD/build/module-test"
+          build/defragmenter-test-media-mkfs-ufs-test \
+            -t ffs -B little -s 64m \
+            -o version=2,bsize=8192,fsize=1024,minfree=5 \
+            "$PWD/build/ufs2-real.img" "$PWD/build/test-source"
+          test -s build/ufs2-real.img
+      - name: Prove universal V2 read-only query and safe refusal
+        run: |
+          set -euo pipefail
+          cd defragger
+          install -m 0644 /tmp/ufs2-v2/UFS2.so build/module-test/Filesystems/UFS2.so
+          install -m 0644 /tmp/ufs1-v2/UFS1.so build/module-test/Filesystems/UFS1.so
+          export IFS_TEST_MODULE_PARENT="$PWD/build/module-test"
+          consumer=build/defragmenter-operation-engine-v2-test
+          image="$PWD/build/ufs2-real.img"
+          "$consumer" --list-installed-modules > build/ufs-v2-inventory.json
+          jq -e '.modules | any(.format_id == "ufs1" and .abi == 2)' build/ufs-v2-inventory.json
+          jq -e '.modules | any(.format_id == "ufs2" and .abi == 2)' build/ufs-v2-inventory.json
+          "$consumer" volume-info "$image" --filesystem ufs2 > build/ufs2-volume.json
+          jq -e '.filesystem == "ufs2" and .abi == 2 and .variant == 3
+                 and .block_bytes == 8192 and .total_bytes > 0
+                 and .free_bytes > 0 and .free_bytes < .total_bytes
+                 and .source == "Common V2 VOLUME_QUERY"' build/ufs2-volume.json
+          "$consumer" volume-info "$image" --filesystem ufs2 \
+            --sector-bytes=4096 > build/ufs2-4kn.json
+          jq -e '.filesystem == "ufs2" and .total_bytes > 0' build/ufs2-4kn.json
+          original="$(sha256sum "$image" | cut -d' ' -f1)"
+          if "$consumer" volume-info "$image" --filesystem ufs1; then
+            echo "ERROR: UFS1 accepted a real UFS2 volume" >&2; exit 1
+          fi
+          if "$consumer" volume-info "$image" --filesystem ufs2 --write; then
+            echo "ERROR: read-only volume-info accepted --write" >&2; exit 1
+          fi
+          if "$consumer" defrag "$image" --filesystem ufs2 \
+            --write --confirm "$image"; then
+            echo "ERROR: unqualified UFS2 DEFRAG reported success" >&2; exit 1
+          fi
+          test "$original" = "$(sha256sum "$image" | cut -d' ' -f1)"
+          mkdir -p build/empty-v2-root/Filesystems
+          if IFS_TEST_MODULE_PARENT="$PWD/build/empty-v2-root" \
+            "$consumer" volume-info "$image" --filesystem ufs2; then
+            echo "ERROR: provider-less query reported success" >&2; exit 1
+          fi
+          test "$original" = "$(sha256sum "$image" | cut -d' ' -f1)"
+          echo "Universal Common V2 UFS2 volume-info passed; unqualified mutation refused"
