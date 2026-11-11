@@ -4,10 +4,22 @@
 
 Status: **complete**
 
-Audited source commit: 483e541b5bb2b2820aaf11089285a1652115cda7
-Audited release-governance commit: 3c98b43f0945cc0016781cf1709ffaba92894a9a
+Audited source commit: 9c2130ca2f8141c8903f91a8dee2ced73b73a670
+Audited release-governance commit: 9c2130ca2f8141c8903f91a8dee2ced73b73a670
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Reviewed strict-V2 consumer consolidation and release-governance delta — 2026-11-11
+
+**Reviewed main source and governance commit:** `9c2130ca2f8141c8903f91a8dee2ced73b73a670`, a 14-commit, linear, zero-behind descendant of the previous source audit `483e541b5bb2b2820aaf11089285a1652115cda7`. The previously reviewed release-governance baseline was `3c98b43f0945cc0016781cf1709ffaba92894a9a`. This audit entry advances both baselines only after inspection of the exact GitHub comparison, the changed production dispatch and host code, the associated Common V2 fixture tests, and the release/workflow controls.
+
+**Exact changed qualified paths:** `defragger/native/operation_engine.cpp`, `defragger/native/filesystem_module_host.c`, `defragger/cmake/project.cmake`, `defragger/shared/infiltratr-common` (pinned immutable Libraries `38a076fa35f5c212b589575304dac8086c660123`, version 1.19.85), `defragger/tests/mock_common_v2_provider.c`, `defragger/tests/test_common_v2_dispatch.sh`, `defragger/tests/test_architecture.py`, and `defragger/tests/test_release_gate.py`. The other changed files are the VERSION (now 1.8.0-296), the governance workflow `.github/workflows/prune-integrated-branches.yml`, and this audit record. No Defragmenter native filesystem algorithm, physical device opener, recovery journal, Linux privileged target guard, installer, or publish script was changed by this delta.
+
+**Production review:** the generic operation-engine entry resolves a single trusted Common V2 SO and rejects unknown or unsupported filesystem/operation requests rather than selecting retired per-format executables. Known aliases only normalise source-owned IDs. The V2 host still checks the exact ABI, filesystem identity, supported CORE/DEFRAG groups and bounded volume ownership. Mutating commands require explicit `--write --confirm DEVICE` with exact target match, before the exclusive target is opened. The V2 mount/plan/execute/verify/recover and durable-sync lifecycle remains provider owned; an absent path means filesystem root for a whole-volume operation. Read-only map iteration now pages through all provider extents rather than silently accepting only 32. Missing/invalid providers fail closed; no V1 compatibility fallback was added.
+
+**Regression and governance review:** the mock V2 provider exercises 33 extents across pages and permits a whole-volume root plan. The dispatch test verifies an unconfirmed or empty-path request cannot produce a false successful operation. The new main-only branch-prune workflow deletes *only* non-main branch refs whose GitHub comparison reports zero commits ahead of main, and re-reads each tip before deletion; it does not create a release or alter source. `test_release_gate.py` includes that specific workflow in its allowlist with additional checks; its newline-sensitive permissions assertion was corrected to check the actual YAML content. All other integration workflows stay read-only. The strict source/governance diff gate in `ci/release.sh` and the two self-hosted qualification lanes remain unmodified.
+
+**Observed, exact-source evidence:** [quality run 42934008092](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/42934008092) passed 45/45 core CTests and 16/16 native Test Media tests. Its ASan/UBSan job passed. The quality job failed at the intentionally enforced source-audit baseline check, not a native or sanitizer regression; publication was skipped. Fifteen independent integration workflows on the same source also passed. This record corrects that *specific, independently reviewed* audit mismatch. **A new full exact-head quality/sanitizer and publisher verification is still required**. This audit does not establish physical disk power-loss safety, a universal V2 DEFRAG provider implementation, complete GUI migration, or kernel-mode filesystem module loading.
 
 ## Strict V2 consent-negative regression fixture correction — 2026-11-11
 
