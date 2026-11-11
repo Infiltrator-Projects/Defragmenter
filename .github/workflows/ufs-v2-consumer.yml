@@ -33,13 +33,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Infiltrator-Projects/Filesystem-UFS1
-          ref: main
+          ref: 1f2d64b63ed4952285e6b7f57621b1856c0dc4c3
           path: ci-ufs1-current
       - name: Check out current authoritative UFS2.so
         uses: actions/checkout@v4
         with:
           repository: Infiltrator-Projects/Filesystem-UFS2
-          ref: main
+          ref: bb4e33a786d5b6a22b9a2f5c33bf2222cae86fd0
           path: ci-ufs2-current
       # Retain only this pinned old SO as a fixture *generator*, since the
       # currently published UFS2 Common V2 API does not advertise formatting.
