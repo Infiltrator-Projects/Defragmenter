@@ -68,7 +68,8 @@ jobs:
           # but must not qualify for a defragmentation mutation.
           build/defragmenter-operation-engine-v2-test --list-installed-modules > build/v2-inventory.json
           grep -Fq '"authority_available":true' build/v2-inventory.json
-          grep -Fq '"format_id":"swap","filename":"SWAP.so","abi":2,"group_mask":9,"capabilities":0,"defrag_group":false' build/v2-inventory.json
+          # Shared Common V2: CORE is group 7 (bit 64), VOLUME group 3 (bit 4).
+          grep -Fq '"format_id":"swap","filename":"SWAP.so","abi":2,"group_mask":68,"capabilities":0,"defrag_group":false' build/v2-inventory.json
           original_sha="$(sha256sum build/swap-test.img | cut -d ' ' -f1)"
           if build/defragmenter-operation-engine-v2-test defrag "$PWD/build/swap-test.img" \
               --filesystem swap --path=/TEST --write --confirm "$PWD/build/swap-test.img" > /dev/null 2>&1; then
