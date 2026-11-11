@@ -10,7 +10,7 @@ int ifs_filesystem_module_call(const char *, const char *, const char *,
 int ifs_filesystem_module_run(const char *, const char *, int, char **);
 /* Dedicated, existing OFS native worker only; never a Common V2 fallback. */
 int ifs_filesystem_module_run_ofs_native(int, char **);
-/* Discover root-owned modules advertising the standard Defrag V2 ABI. */
+/* Inventory trusted hosted Common V2 modules including those without DEFRAG. */
 int ifs_filesystem_module_list_v2(void);
 /* Resolve a trusted installed SO by its exported format_id, not filename. */
 int ifs_filesystem_module_find_v2(const char *, char *, size_t);

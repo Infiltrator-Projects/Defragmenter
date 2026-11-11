@@ -707,9 +707,18 @@ if(BUILD_TESTING)
         defragmenter-core)
     add_test(NAME defragmenter-generic-layout
         COMMAND defragmenter-generic-layout-test)
+    # Native C++ test: inventories CORE-only modules without falsely treating
+    # them as qualified defragmentation engines. No Python driver is needed.
+    add_executable(defragmenter-generic-module-dispatch-test
+        tests/test_generic_module_dispatch.cpp)
+    target_include_directories(defragmenter-generic-module-dispatch-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/native")
+    target_compile_options(defragmenter-generic-module-dispatch-test PRIVATE
+        ${LD_WARNING_FLAGS})
+    target_link_libraries(defragmenter-generic-module-dispatch-test PRIVATE
+        defragmenter-runtime-cpp defragmenter-core)
     add_test(NAME defragmenter-generic-module-dispatch
-        COMMAND python3
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_generic_module_dispatch.py"
+        COMMAND "$<TARGET_FILE:defragmenter-generic-module-dispatch-test>"
             "$<TARGET_FILE:defragmenter-operation-engine-cpp>")
 
     # Test-only rootless authority and disposable Common V2 provider.

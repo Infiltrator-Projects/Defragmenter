@@ -43,7 +43,8 @@ jobs:
             -DLD_ENABLE_WERROR=ON
           cmake --build build --target \
             defragmenter-swap-worker defragmenter-swap-test-worker \
-            defragmenter-test-media-raw-test defragmenter-mapper-cpp --parallel 2
+            defragmenter-test-media-raw-test defragmenter-mapper-cpp \
+            defragmenter-operation-engine-v2-test --parallel 2
       - name: Verify trusted module dispatch and real SWAP test media
         run: |
           set -euo pipefail
@@ -63,6 +64,19 @@ jobs:
           # This independent gate invokes the actual SWAP fixture directly.
           build/defragmenter-test-media-raw-test create swap "$PWD/build/swap-test.img"
           build/defragmenter-test-media-raw-test verify swap "$PWD/build/swap-test.img"
+          # A valid CORE/VOLUME-only Common V2 SO belongs in the inventory,
+          # but must not qualify for a defragmentation mutation.
+          build/defragmenter-operation-engine-v2-test --list-installed-modules > build/v2-inventory.json
+          grep -Fq '"authority_available":true' build/v2-inventory.json
+          grep -Fq '"format_id":"swap","filename":"SWAP.so","abi":2,"group_mask":9,"capabilities":0,"defrag_group":false' build/v2-inventory.json
+          original_sha="$(sha256sum build/swap-test.img | cut -d ' ' -f1)"
+          if build/defragmenter-operation-engine-v2-test defrag "$PWD/build/swap-test.img" \
+              --filesystem swap --path=/TEST --write --confirm "$PWD/build/swap-test.img" > /dev/null 2>&1; then
+            echo "ERROR: CORE-only SWAP.so was accepted for V2 defrag" >&2
+            exit 1
+          fi
+          test "$original_sha" = "$(sha256sum build/swap-test.img | cut -d ' ' -f1)"
+
           # The strict V2 SWAP provider currently exposes only CORE.PROBE
           # and VOLUME.FORMAT. An unqualified mapper must refuse rather than
           # generate a fabricated exact allocation map.

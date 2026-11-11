@@ -323,8 +323,9 @@ static int ifs_safe_module_filename(const char *name) {
  * trust a filename as a format identity: that identity comes from the SO's
  * versioned interface. An incompatible module is not a generic provider. */
 static int ifs_probe_module_v2(int directory, const char *name,
-                               char format[16], uint64_t *capabilities) {
-    if (!ifs_safe_module_filename(name) || !format || !capabilities)
+                               char format[16], uint64_t *capabilities,
+                               uint64_t *group_mask, int require_defrag) {
+    if (!ifs_safe_module_filename(name) || !format || !capabilities || !group_mask)
         return -1;
     int fd = openat(directory, name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
     if (fd < 0) return -1;
@@ -348,11 +349,12 @@ static int ifs_probe_module_v2(int directory, const char *name,
         const IfsFsDefragOpsV2 *defrag =
             (const IfsFsDefragOpsV2 *)ifs_fs_group_v2(
                 api, IFS_FS_GROUP_DEFRAG);
-        if (defrag && defrag->header.capabilities != 0u) {
+        if (!require_defrag || (defrag && defrag->header.capabilities != 0u)) {
             const size_t length = strnlen(api->format_id, 16u);
             if (length > 0u && length <= 15u) {
                 memcpy(format, api->format_id, length + 1u);
-                *capabilities = defrag->header.capabilities;
+                *capabilities = defrag ? defrag->header.capabilities : 0u;
+                *group_mask = api->group_mask;
                 result = 0;
             }
         }
@@ -362,30 +364,35 @@ static int ifs_probe_module_v2(int directory, const char *name,
     return result;
 }
 
-/* Generic discovery is a read-only operation; a new trusted SO is visible
- * without adding any filesystem code or registry entry to Defragmenter. */
+/* Read-only inventory includes all trusted hosted Common V2 providers, even
+ * CORE/VOLUME-only modules. The mutation lookup still requires DEFRAG. */
 int ifs_filesystem_module_list_v2(void) {
     int directory = ifs_open_module_directory();
     if (directory < 0) {
-        fputs("{\"schema\":1,\"modules\":[]}\n", stdout);
+        fputs("{\"schema\":1,\"authority_available\":false,\"modules\":[]}\n", stdout);
         return 0;
     }
     DIR *entries = fdopendir(directory);
     if (!entries) { close(directory); return 1; }
     int first = 1;
-    fputs("{\"schema\":1,\"modules\":[", stdout);
+    fputs("{\"schema\":1,\"authority_available\":true,\"modules\":[", stdout);
     struct dirent *item;
     while ((item = readdir(entries)) != NULL) {
         char format[16];
-        uint64_t capabilities = 0u;
+        uint64_t capabilities = 0u, groups = 0u;
         if (ifs_probe_module_v2(directory, item->d_name,
-                                format, &capabilities) != 0)
+                                format, &capabilities, &groups, 0) != 0)
             continue;
         if (!first) fputc(',', stdout);
         first = 0;
+        const int has_defrag =
+            (groups & IFS_FS_GROUP_BIT(IFS_FS_GROUP_DEFRAG)) != 0u;
         printf("{\"format_id\":\"%s\",\"filename\":\"%s\","
-               "\"capabilities\":%llu}",
-               format, item->d_name, (unsigned long long)capabilities);
+               "\"abi\":2,\"group_mask\":%llu,\"capabilities\":%llu,"
+               "\"defrag_group\":%s}",
+               format, item->d_name, (unsigned long long)groups,
+               (unsigned long long)capabilities,
+               has_defrag ? "true" : "false");
     }
     fputs("]}\n", stdout);
     closedir(entries);
@@ -415,9 +422,9 @@ int ifs_filesystem_module_find_v2(const char *format, char *filename,
     struct dirent *item;
     while ((item = readdir(entries)) != NULL) {
         char discovered[16];
-        uint64_t capabilities = 0u;
+        uint64_t capabilities = 0u, groups = 0u;
         if (ifs_probe_module_v2(directory, item->d_name,
-                                discovered, &capabilities) != 0 ||
+                                discovered, &capabilities, &groups, 1) != 0 ||
             strcmp(discovered, format) != 0)
             continue;
         if (++matches != 1u) break;
