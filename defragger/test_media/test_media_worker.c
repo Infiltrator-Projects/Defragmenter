@@ -2235,8 +2235,6 @@ int ldtm_worker_verify(const char *device) {
 
         if (spec->creator == LDTM_CREATOR_AFFS ||
             spec->creator == LDTM_CREATOR_PFS3) {
-            const uint8_t dostype =
-                strcmp(spec->key, "ofs") == 0 ? (uint8_t)0 : (uint8_t)1;
             const LdtmFragmentProfile profile =
                 ldtm_fragment_profile(spec);
             char detail[512] = {0};
