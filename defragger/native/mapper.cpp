@@ -192,6 +192,12 @@ int main(int argc, char** argv) {
                 probe_result(*backend, identified_filesystem).dump().c_str());
             return 0;
         }
+        // SWAP.so provides Common V2 probing and formatting, but no
+        // allocation map or DEFRAG group. Never advertise a fabricated map.
+        if ((backend->capabilities & defragger::CAP_MAP) == 0U) {
+            std::fputs("Defragmenter mapper: allocation mapping is unavailable for this filesystem\n", stderr);
+            return 2;
+        }
         defragger::Json result =
             defragger::map_backend(*backend, path, std::max<std::size_t>(1U, cells));
         if (!result.is_object())
