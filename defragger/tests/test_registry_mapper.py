@@ -27,8 +27,15 @@ payload = json.loads(listed_result.stdout)
 assert payload["schema"] == 2
 manifest = payload["backends"]
 assert len(manifest) == 20
-assert all(int(item["capabilities"]) & 1 for item in manifest)
-assert all(int(item["capabilities"]) & 2 for item in manifest)
+# SWAP.so supports Common V2 CORE probe and VOLUME format only.
+# It cannot report an allocation map until its DEFRAG group exists.
+assert all(
+    (int(item["capabilities"]) & 3) == 3
+    for item in manifest if item["id"] != "swap"
+)
+swap = next(item for item in manifest if item["id"] == "swap")
+assert int(swap["capabilities"]) == 0
+assert swap["operations"] == []
 backend_ids = {item["id"] for item in manifest}
 assert len(backend_ids) == 20
 assert {"ext2", "ext3", "ext4"} <= backend_ids
