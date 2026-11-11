@@ -4,10 +4,20 @@
 
 Status: **complete**
 
-Audited source commit: f1b8f329a5a7851a5c96b9235cf281e6917c441e
+Audited source commit: 92f890fff58eb005fcd4ee0c121c7cf35d82d80a
 Audited release-governance commit: f1b8f329a5a7851a5c96b9235cf281e6917c441e
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Reviewed removal of retired SWAP V1 header and embedded-engine prevention — 2026-11-11
+
+**Reviewed exact source candidate:** `92f890fff58eb005fcd4ee0c121c7cf35d82d80a`, three linear commits after the previous audited source `f1b8f329a5a7851a5c96b9235cf281e6917c441e`: the intervening `f535bea2f6743a51b84a5e5e8df9ddbff948635a` only refreshed the recorded audit of the earlier Common V2 SWAP changes; `7b4052305229f00b0335798f6d84209fa5870436` deletes the now-unused `defragger/native/ifs_swap_module_v1.h`; and `92f890fff58eb005fcd4ee0c121c7cf35d82d80a` introduces a fail-closed CMake embedded-engine guard in `defragger/cmake/project.cmake`. GitHub comparison of the latter two changes reports two commits ahead, zero behind and **exactly those two qualified paths**. No production disk parser, filesystem writer, object allocator, journal, host loader, privilege policy, test-media format implementation, packaging script, or publisher was changed.
+
+**Ownership and interface review:** SWAP.so already uses the sole Common V2 entry point, and the removed header declared a retired V1 contract with no active application call sites. The added configure-time guard rejects filesystem implementation source/header trees under Defragmenter's `native/filesystems`, `src/filesystems`, GUI-native filesystem directories, and `test_media/native/filesystems`; it also prevents the obsolete SWAP V1 header from reappearing. The existing dedicated XFS/NTFS/EXT engine guards remain intact. This is an enforceable boundary for known embedded-engine locations, **not a substitute for a full semantic audit of all C/C++ files**.
+
+**Remaining gaps, expressly not waived:** Multiple independent filesystem producers still provide format-specific V1 defrag interfaces (including FAT, EXT, NTFS, APFS, XFS, Btrfs, HFS+, UFS, SFS, PFS3, FFS and ZFS); Defragmenter legitimately uses those `.so` interfaces pending producer-owned Common V2 DEFRAG groups. The application retains format-aware adapters for presenting module-returned maps and statistics. Their semantic ownership requires further review. The current CMake guard does not establish universal V2-only operation, and this change has **not** been run against Shannon's installed modules on his physical Linux computer.
+
+**Qualification:** The preceding exact-head [v1.8.0-297 quality and publication run 42979936293](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/42979936293) passed the native suites, sanitizers, release gate and publication. The next version `1.8.0-298` contains these intentionally narrow architecture safeguards; this audit advances only the source baseline to `92f890fff58eb005fcd4ee0c121c7cf35d82d80a`. Release-governance input files are unchanged and retain the previous governance baseline `f1b8f329a5a7851a5c96b9235cf281e6917c441e`. Fresh exact-head CI and release qualification must pass before v1.8.0-298 is considered released. No physical-media or power-loss qualification is inferred.
 
 ## Independently reviewed SWAP Common V2 cutover and capability-bound release fix — 2026-11-11
 
