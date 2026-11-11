@@ -187,7 +187,7 @@ if(BUILD_TESTING)
     # Start the longer EXT family early; no format, payload or assertion is skipped.
     set(LDTM_NATIVE_FIXTURE_FORMATS
         ext2 ext3 ext4 xfs btrfs ntfs
-        fat12 fat16 fat32 exfat hfs hfsplus minix ufs zfs swap)
+        fat12 fat16 fat32 exfat hfs hfsplus minix ufs zfs)
     foreach(ldtm_fs IN LISTS LDTM_NATIVE_FIXTURE_FORMATS)
         add_test(NAME "defragmenter-test-media-native-${ldtm_fs}"
             COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_test_media_raw.py"
@@ -196,6 +196,17 @@ if(BUILD_TESTING)
             PROPERTIES TIMEOUT 1800
                 ENVIRONMENT "DEFRAGMENTER_FAT_WORKER=${FAT_WORKER_FOR_TESTS};DEFRAGMENTER_EXT_WORKER=${EXT_WORKER_FOR_TESTS};DEFRAGMENTER_EXT_METADATA_WORKER=${EXT_METADATA_WORKER_FOR_TESTS}")
     endforeach()
+    # SWAP.so exposes V2 CORE/VOLUME only, not a DEFRAG map. Qualify its
+    # real native fixture and fail-closed mapper contract in C, not by
+    # pretending that SWAP can report filesystem allocation extents.
+    add_executable(defragmenter-swap-native-v2-test tests/test_swap_native_v2.c)
+    target_compile_options(defragmenter-swap-native-v2-test PRIVATE ${LD_WARNING_FLAGS})
+    target_link_libraries(defragmenter-swap-native-v2-test PRIVATE OpenSSL::Crypto)
+    add_test(NAME defragmenter-test-media-native-swap
+        COMMAND "$<TARGET_FILE:defragmenter-swap-native-v2-test>"
+            "$<TARGET_FILE:defragmenter-test-media-raw-test>"
+            "$<TARGET_FILE:defragmenter-mapper>")
+    set_tests_properties(defragmenter-test-media-native-swap PROPERTIES TIMEOUT 240)
     add_executable(defragmenter-test-media-gui-test
         tests/test_test_media_gui.c test_media/test_media_theme.c)
     target_include_directories(defragmenter-test-media-gui-test PRIVATE
