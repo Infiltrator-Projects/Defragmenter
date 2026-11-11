@@ -21,12 +21,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential cmake pkg-config \
-            libgtk-3-dev libssl-dev libsqlite3-dev libext2fs-dev
+            libgtk-3-dev libssl-dev libsqlite3-dev libext2fs-dev jq
       - name: Checkout qualified SWAP driver
         uses: actions/checkout@v4
         with:
           repository: Infiltrator-Projects/Filesystem-Swap
-          ref: 72e7a4ccbb20df1fa05c1b3b5b52595882072ff1
+          ref: a1029dced02aeb496a04856c13d4db4a21f84cec
           path: ci-swap
       - name: Compile the real SWAP.so driver
         run: |
@@ -50,7 +50,11 @@ jobs:
           cd defragger
           mkdir -p build/module-test/Filesystems
           install -m 0644 /tmp/swap-so/SWAP.so build/module-test/Filesystems/SWAP.so
-          cmp native/ifs_swap_module_v1.h ../ci-swap/include/ifs_swap_module_v1.h
+          nm -D /tmp/swap-so/SWAP.so | grep -F 'infiltrator_filesystem_api_v2'
+          if nm -D /tmp/swap-so/SWAP.so | grep -E 'infiltrator_filesystem_.*_v1'; then
+            echo "ERROR: SWAP.so still exposes retired V1 filesystem interfaces" >&2
+            exit 1
+          fi
           export IFS_TEST_MODULE_PARENT="$PWD/build/module-test"
           export DEFRAGMENTER_SWAP_WORKER="$PWD/build/defragmenter-swap-test-worker"
           export DEFRAGMENTER_BUILD_DIR="$PWD/build"
@@ -60,15 +64,8 @@ jobs:
           build/defragmenter-test-media-raw-test create swap "$PWD/build/swap-test.img"
           build/defragmenter-test-media-raw-test verify swap "$PWD/build/swap-test.img"
           build/defragmenter-mapper "$PWD/build/swap-test.img" --fstype swap --cells 8 > build/swap-map.json
-          python3 - <<'PY'
-          import json
-          with open("build/swap-map.json", encoding="utf-8") as f:
-              result = json.load(f)
-          assert result["filesystem"] == "swap", result
-          assert result["map_accuracy"] == "exact", result
-          assert result.get("unknown_bytes", 1) == 0, result
-          print("SWAP.so create, verify and Defragmenter map passed")
-          PY
+          jq -e '.filesystem == "swap" and .map_accuracy == "exact" and .unknown_bytes == 0' build/swap-map.json
+          echo "SWAP.so V2 create, verify and Defragmenter map passed"
       - name: Verify module is mandatory rather than falling back to internal code
         run: |
           set -euo pipefail
