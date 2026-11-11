@@ -692,6 +692,18 @@ if(BUILD_TESTING)
         "${INFILTRATR_COMMON_DIR}/include")
     target_compile_options(defragmenter-common-v2-test-provider PRIVATE
         -Wall -Wextra -Wpedantic -Werror -fPIC)
+    # Independent strict V2 provider without a recovery capability. It must
+    # still be eligible for mapping and PLAN/EXECUTE/VERIFY operations.
+    add_library(defragmenter-common-v2-test-no-recovery SHARED
+        tests/mock_common_v2_provider.c)
+    set_target_properties(defragmenter-common-v2-test-no-recovery PROPERTIES
+        PREFIX "" OUTPUT_NAME "TESTV2NORECOV" SUFFIX ".so")
+    target_compile_definitions(defragmenter-common-v2-test-no-recovery PRIVATE
+        IFS_TEST_NO_RECOVERY=1)
+    target_include_directories(defragmenter-common-v2-test-no-recovery PRIVATE
+        "${INFILTRATR_COMMON_DIR}/include")
+    target_compile_options(defragmenter-common-v2-test-no-recovery PRIVATE
+        -Wall -Wextra -Wpedantic -Werror -fPIC)
 
     add_library(defragmenter-common-v2-test-host STATIC
         native/filesystem_module_host.c)
@@ -723,7 +735,8 @@ if(BUILD_TESTING)
         COMMAND /bin/bash
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_common_v2_dispatch.sh"
             "$<TARGET_FILE:defragmenter-operation-engine-v2-test>"
-            "$<TARGET_FILE:defragmenter-common-v2-test-provider>")
+            "$<TARGET_FILE:defragmenter-common-v2-test-provider>"
+            "$<TARGET_FILE:defragmenter-common-v2-test-no-recovery>")
 
 
     # EXT bitmap-cache and descriptor-race regression now runs in Filesystem-EXT4 CI.

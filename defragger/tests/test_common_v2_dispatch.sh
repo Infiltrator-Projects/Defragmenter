@@ -4,6 +4,7 @@
 set -euo pipefail
 engine=$1
 module=$2
+no_recovery_module=$3
 root=$(mktemp -d /tmp/defrag-v2-dispatch-XXXXXXXX)
 trap 'rm -rf -- "$root"' EXIT
 chmod 700 "$root"
@@ -77,6 +78,26 @@ if "$engine" defrag "$device" --filesystem testv2 --path=/FILE \
     echo "Duplicate V2 providers were accepted" >&2; exit 1
 fi
 rm -f "$root/Filesystems/DUPLICATE.so"
+
+# A valid V2 provider may implement planning, execution, verification and
+# mapping without supporting journal recovery. Discovery and mutation must
+# succeed, while explicit recovery must fail without touching the medium.
+cp -- "$no_recovery_module" "$root/Filesystems/TESTV2NORECOV.so"
+chmod 700 "$root/Filesystems/TESTV2NORECOV.so"
+"$engine" --list-installed-modules > "$root/list.json"
+grep -Fq '"format_id":"testv2nr"' "$root/list.json"
+"$engine" defrag "$device" --filesystem testv2nr --path=/FILE \
+  --write --confirm "$device" > "$root/output.txt"
+grep -Fq 'durably synced' "$root/output.txt"
+"$engine" map "$device" --filesystem testv2nr > "$root/output.txt"
+grep -Fq 'durably synced' "$root/output.txt"
+before_no_recover=$(sha256sum "$device" | cut -d' ' -f1)
+if "$engine" recover "$device" --filesystem testv2nr \
+   --write --confirm "$device" > /dev/null 2>&1; then
+    echo "Unsupported strict V2 recovery was accepted" >&2; exit 1
+fi
+test "$before_no_recover" = "$(sha256sum "$device" | cut -d' ' -f1)"
+rm -f "$root/Filesystems/TESTV2NORECOV.so"
 
 # The image is not exFAT/FAT and only the V2 test provider recognises it.
 if "$engine" defrag "$device" --filesystem notinstalled --path=/FILE \

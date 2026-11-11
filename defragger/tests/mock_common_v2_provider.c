@@ -98,9 +98,18 @@ static const IfsFsCoreOpsV2 core={
 };
 static const IfsFsDefragOpsV2 defrag={
     .header={IFS_FS_GROUP_ABI_V2,sizeof(IfsFsDefragOpsV2),
-             IFS_FS_GROUP_DEFRAG,0u,IFS_FS_DEFRAG_ALL},
+             IFS_FS_GROUP_DEFRAG,0u,
+#ifdef IFS_TEST_NO_RECOVERY
+             IFS_FS_DEFRAG_ALL & ~IFS_FS_DEFRAG_RECOVER
+#else
+             IFS_FS_DEFRAG_ALL
+#endif
+    },
     .map=map,.plan=plan,.execute=execute,.verify=verify,
-    .recover=recover,.release_plan=release_plan
+#ifndef IFS_TEST_NO_RECOVERY
+    .recover=recover,
+#endif
+    .release_plan=release_plan
 };
 static const IfsFsGroupHeaderV2 *query(uint32_t id,uint32_t min,uint32_t max) {
     if(min>IFS_FS_GROUP_ABI_V2 || max<IFS_FS_GROUP_ABI_V2)return NULL;
@@ -111,7 +120,11 @@ static const IfsFsGroupHeaderV2 *query(uint32_t id,uint32_t min,uint32_t max) {
 static const IfsFsModuleApiV2 api={
     .abi_version=IFS_FS_COMMON_ABI_V2,
     .structure_bytes=sizeof(IfsFsModuleApiV2),
+#ifdef IFS_TEST_NO_RECOVERY
+    .format_id="testv2nr",
+#else
     .format_id="testv2",
+#endif
     .runtime_profiles=IFS_FS_PROFILE_HOSTED,
     .group_mask=IFS_FS_GROUP_BIT(IFS_FS_GROUP_CORE)|
                 IFS_FS_GROUP_BIT(IFS_FS_GROUP_DEFRAG),

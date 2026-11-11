@@ -558,10 +558,11 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
         fputs("Common V2 mapping/planning requires a valid absolute filesystem path\n",stderr);
         return 2;
     }
+    /* Recovery is independent. Do not refuse a valid PLAN/EXECUTE/VERIFY
+     * provider just because it does not implement journal recovery. */
     const uint64_t required=recovering?IFS_FS_DEFRAG_RECOVER:
         analysing?IFS_FS_DEFRAG_MAP:
-        IFS_FS_DEFRAG_PLAN|IFS_FS_DEFRAG_EXECUTE|
-        IFS_FS_DEFRAG_VERIFY|IFS_FS_DEFRAG_RECOVER;
+        IFS_FS_DEFRAG_PLAN|IFS_FS_DEFRAG_EXECUTE|IFS_FS_DEFRAG_VERIFY;
     if((defrag->header.capabilities & required)!=required) {
         fputs("Provider does not qualify the requested strict V2 operation\n",stderr);
         return 2;
