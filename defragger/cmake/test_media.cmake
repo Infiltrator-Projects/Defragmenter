@@ -199,6 +199,17 @@ if(BUILD_TESTING)
     # SWAP.so exposes V2 CORE/VOLUME only, not a DEFRAG map. Qualify its
     # real native fixture and fail-closed mapper contract in C, not by
     # pretending that SWAP can report filesystem allocation extents.
+    # A missing EXFAT/EXT provider must be refused before the fixture's
+    # generic signature-clearing step writes any image bytes.
+    add_executable(defragmenter-test-media-missing-so-test
+        tests/test_media_missing_so.c)
+    target_compile_options(defragmenter-test-media-missing-so-test PRIVATE ${LD_WARNING_FLAGS})
+    target_link_libraries(defragmenter-test-media-missing-so-test PRIVATE OpenSSL::Crypto)
+    add_test(NAME defragmenter-test-media-missing-so
+        COMMAND "$<TARGET_FILE:defragmenter-test-media-missing-so-test>"
+            "$<TARGET_FILE:defragmenter-test-media-raw-test>")
+    set_tests_properties(defragmenter-test-media-missing-so PROPERTIES TIMEOUT 120)
+
     add_executable(defragmenter-swap-native-v2-test tests/test_swap_native_v2.c)
     target_compile_options(defragmenter-swap-native-v2-test PRIVATE ${LD_WARNING_FLAGS})
     target_link_libraries(defragmenter-swap-native-v2-test PRIVATE OpenSSL::Crypto)

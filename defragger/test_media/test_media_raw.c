@@ -205,6 +205,25 @@ int ldtm_raw_fixture(const LdtmFilesystemSpec *spec, const char *path, bool crea
             (void)snprintf(detail, capacity, "Install or update the %s filesystem driver.", spec->key);
         return -1;
     }
+    /* Check the actual independent provider before the generic disposable
+     * fixture preparation clears signatures. Absent or ABI-incompatible
+     * drivers must not alter even a sacrificial image. */
+    if (create && spec->creator == LDTM_CREATOR_EXFAT &&
+        !ldtm_fat_module_available(spec)) {
+        if (detail && capacity)
+            (void)snprintf(detail, capacity,
+                "Install or update the exFAT.so filesystem driver.");
+        return -1;
+    }
+    if (create && (spec->creator == LDTM_CREATOR_EXT2 ||
+                   spec->creator == LDTM_CREATOR_EXT3 ||
+                   spec->creator == LDTM_CREATOR_EXT4) &&
+        !ldtm_ext_module_available(spec)) {
+        if (detail && capacity)
+            (void)snprintf(detail, capacity,
+                "Install or update the %s.so filesystem driver.", spec->key);
+        return -1;
+    }
     if (create && spec->creator == LDTM_CREATOR_XFS &&
         !ldtm_xfs_module_available(spec)) {
         if (detail && capacity)
