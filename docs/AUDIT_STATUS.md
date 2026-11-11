@@ -4,10 +4,22 @@
 
 Status: **complete**
 
-Audited source commit: 9c2130ca2f8141c8903f91a8dee2ced73b73a670
-Audited release-governance commit: 9c2130ca2f8141c8903f91a8dee2ced73b73a670
+Audited source commit: f1b8f329a5a7851a5c96b9235cf281e6917c441e
+Audited release-governance commit: f1b8f329a5a7851a5c96b9235cf281e6917c441e
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Independently reviewed SWAP Common V2 cutover and capability-bound release fix — 2026-11-11
+
+**Exact reviewed source and governance candidate:** `f1b8f329a5a7851a5c96b9235cf281e6917c441e`, a linear 15-commit descendant of the previous audited source/governance commit `9c2130ca2f8141c8903f91a8dee2ced73b73a670` (GitHub compare reports 15 ahead, zero behind). This review covers the exact changed qualified inputs, governance workflows and their observed tests. No branch was introduced.
+
+**Reviewed qualified source and tests:** `defragger/cmake/project.cmake`, `defragger/cmake/test_media.cmake`, `defragger/native/filesystem_module_host.c`, `defragger/native/mapper.cpp`, `defragger/native/runtime.cpp`, `defragger/native/swap_module_loader.c`, `defragger/test_media/test_media_swap_module.c`, `defragger/tests/mock_common_v2_provider.c`, `defragger/tests/test_common_v2_dispatch.sh`, `defragger/tests/test_registry_mapper.py` and newly added `defragger/tests/test_swap_native_v2.c`. The release version changes to `1.8.0-297`. The two changed governance workflows are `.github/workflows/quality-gate.yml` and `.github/workflows/swap-integration.yml`; this audit record is the only changed release documentation. The core disk-opening/identity, journal durability, privileged helper, installer and publishing scripts were not changed in this comparison.
+
+**Production and safety review:** A strict Common V2 provider without RECOVER may still service a separately qualified MAP/PLAN/EXECUTE/VERIFY request; unsupported RECOVER remains refused. `SWAP.so` now exposes the single `infiltrator_filesystem_api_v2` entry point for hosted CORE probing and VOLUME formatting; neither a V1 fallback nor a non-existent DEFRAG map is advertised. Defragmenter's SWAP loader validates the exact V2 provider capabilities. The mapper rejects a SWAP allocation-map request before dispatch, with explicit exit code 2 and no generated allocation data. Test Media delegates SWAP formatting/probing to the independent provider through bounded host I/O, exclusive/durable formatting and read-only verification. The native C regression hashes the disposable image before and after expected mapper refusal and verifies media bytes remain unchanged. The CI SWAP gate checks the precise failure contract; qualified source remains pinned to SWAP provider commit `a1029dced02aeb496a04856c13d4db4a21f84cec`.
+
+**Observed exact-source qualification before this audit update:** [quality run 42975321970](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/42975321970) passed 45/45 main CTests and 16/16 native filesystem media tests; its separate AddressSanitizer/UndefinedBehaviorSanitizer job passed. The main quality job then failed only at the intended `test_release_gate.py` audited-baseline comparison because these source/test/workflow files were newer than the previous audit. [SWAP integration 42975322042](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/42975322042) and all 14 other independent integration/housekeeping workflows on the same source completed successfully. This review advances the audit to that exact, already-tested source and governance candidate; the strict release-gate comparison is **not disabled, skipped, or weakened**.
+
+**Outstanding verification:** The audit-update commit itself must complete a fresh exact-head quality gate, sanitizer gate and any required release/publication checks. This does not prove real-device power-loss safety, a SWAP defrag capability, universal V2 DEFRAG migration, or kernel-level filesystem loading.
 
 ## Reviewed strict-V2 consumer consolidation and release-governance delta — 2026-11-11
 
