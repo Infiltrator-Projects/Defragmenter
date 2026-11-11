@@ -163,7 +163,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: Infiltrator-Projects/Filesystem-Swap
-          ref: 72e7a4ccbb20df1fa05c1b3b5b52595882072ff1
+          ref: a1029dced02aeb496a04856c13d4db4a21f84cec
           path: ci-swap
 
       - name: Build SWAP.so for isolated application and Test Media tests
@@ -171,7 +171,11 @@ jobs:
           set -euo pipefail
           cmake -S "$GITHUB_WORKSPACE/ci-swap" -B "$RUNNER_TEMP/ifs-swap-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=OFF
           cmake --build "$RUNNER_TEMP/ifs-swap-$GITHUB_RUN_ID-$GITHUB_JOB" --target swap-driver -j2
-          cmp native/ifs_swap_module_v1.h "$GITHUB_WORKSPACE/ci-swap/include/ifs_swap_module_v1.h"
+          nm -D "$RUNNER_TEMP/ifs-swap-$GITHUB_RUN_ID-$GITHUB_JOB/SWAP.so" | grep -F 'infiltrator_filesystem_api_v2'
+          if nm -D "$RUNNER_TEMP/ifs-swap-$GITHUB_RUN_ID-$GITHUB_JOB/SWAP.so" | grep -E 'infiltrator_filesystem_.*_v1'; then
+            echo "ERROR: SWAP.so exposes retired V1 interfaces" >&2
+            exit 1
+          fi
           install -m 0644 "$RUNNER_TEMP/ifs-swap-$GITHUB_RUN_ID-$GITHUB_JOB/SWAP.so" "$PWD/build/fat-module-test/Filesystems/SWAP.so"
 
       - name: Check out independently qualified ZFS.so source
@@ -735,7 +739,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: Infiltrator-Projects/Filesystem-Swap
-          ref: 72e7a4ccbb20df1fa05c1b3b5b52595882072ff1
+          ref: a1029dced02aeb496a04856c13d4db4a21f84cec
           path: ci-swap
 
       - name: Instrument SWAP.so for isolated sanitizer tests
@@ -745,7 +749,11 @@ jobs:
             -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
             -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
           cmake --build "$RUNNER_TEMP/ifs-swap-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target swap-driver -j2
-          cmp native/ifs_swap_module_v1.h "$GITHUB_WORKSPACE/ci-swap/include/ifs_swap_module_v1.h"
+          nm -D "$RUNNER_TEMP/ifs-swap-san-$GITHUB_RUN_ID-$GITHUB_JOB/SWAP.so" | grep -F 'infiltrator_filesystem_api_v2'
+          if nm -D "$RUNNER_TEMP/ifs-swap-san-$GITHUB_RUN_ID-$GITHUB_JOB/SWAP.so" | grep -E 'infiltrator_filesystem_.*_v1'; then
+            echo "ERROR: SWAP.so exposes retired V1 interfaces" >&2
+            exit 1
+          fi
           install -m 0644 "$RUNNER_TEMP/ifs-swap-san-$GITHUB_RUN_ID-$GITHUB_JOB/SWAP.so" "$PWD/build-sanitize/fat-module-test/Filesystems/SWAP.so"
 
       - name: Check out exact ZFS.so driver for sanitizers
