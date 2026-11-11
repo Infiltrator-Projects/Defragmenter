@@ -4,10 +4,20 @@
 
 Status: **complete**
 
-Audited source commit: 92f890fff58eb005fcd4ee0c121c7cf35d82d80a
+Audited source commit: 2c5635579b9cd43a99819f0451279863da2f12bd
 Audited release-governance commit: f1b8f329a5a7851a5c96b9235cf281e6917c441e
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## EXFAT/EXT missing-provider pre-write refusal — reviewed 2026-11-11
+
+**Reviewed exact source candidate:** `2c5635579b9cd43a99819f0451279863da2f12bd`, a two-commit, zero-behind, linear descendant of the preceding source baseline `92f890fff58eb005fcd4ee0c121c7cf35d82d80a`. The first commit (11b2086157396f3f9c351e4c55ca9acb4629eba5) only updated the audit record and selected version `1.8.0-298`. The second commit is this source correction. The four changed source/test inputs are `defragger/test_media/test_media_raw.c`, `defragger/test_media/test_media_raw.h`, `defragger/cmake/test_media.cmake`, and new native C regression `defragger/tests/test_media_missing_so.c`. No on-disk filesystem algorithm, shared-object library, privilege helper, journal, installer, generic operation engine, or release workflow was changed.
+
+**Precise safety issue and fix:** The Test Media raw host was clearing the first and final MiB of a disposable target before calling some external filesystem modules. It already checked availability for FAT12/16/32, SWAP, XFS, NTFS, ZFS, HFS, HFS+, Btrfs and MINIX, but did not first require a trusted compatible `exFAT.so` or `EXT2.so`/`EXT3.so`/`EXT4.so`. As a result, a missing/incorrect provider could refuse format **after** the generic host had erased target bytes. The updated preflight invokes the existing independent EXFAT and EXT provider-ABI availability checks before the first writable target open. Any absence or ABI mismatch fails closed without altering the input. The module continues to own all filesystem-specific format and layout logic.
+
+**Regression:** New native C Test Media test creates only an 8-MiB temporary file containing sentinels, forces the test module parent to an empty directory, requests each of EXFAT/EXT2/EXT3/EXT4 to create a fixture, and requires a non-successful return with an identical full-file SHA-256 before and after. No real device, elevated privilege or Python test is involved. This ensures the availability guard cannot regress without the build's safety suite detecting it.
+
+**Release and ownership boundary:** The existing generic Test Media signature-clear operation is still present for independently qualified provider creation, and is a separate generic disposable-target preparation policy, not claimed to be filesystem semantics. The previously reviewed Common V2 SWAP and embedded-engine guards remain unchanged. Many other filesystem producers still require their legacy V1 defrag adapters; this specific fix does not claim universal V2 compliance. The `1.8.0-298` full quality, sanitizer and publication checks are **required after this audit update**, and are not presumed to have passed. No on-machine testing on Shannon's Latitude 5550 has been performed.
 
 ## Reviewed removal of retired SWAP V1 header and embedded-engine prevention — 2026-11-11
 
