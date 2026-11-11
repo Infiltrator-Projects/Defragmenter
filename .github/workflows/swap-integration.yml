@@ -66,12 +66,15 @@ jobs:
           # The strict V2 SWAP provider currently exposes only CORE.PROBE
           # and VOLUME.FORMAT. An unqualified mapper must refuse rather than
           # generate a fabricated exact allocation map.
-          if build/defragmenter-mapper "$PWD/build/swap-test.img" \
-              --fstype swap --cells 8 > build/swap-map.json 2> build/swap-map.err; then
-            echo "ERROR: SWAP map reported success without a V2 DEFRAG map" >&2
+          result=0
+          build/defragmenter-mapper "$PWD/build/swap-test.img" \
+              --fstype swap --cells 8 > build/swap-map.json 2> build/swap-map.err || result=$?
+          if [ "$result" -ne 2 ]; then
+            echo "ERROR: SWAP map must refuse unsupported allocation mapping with exit 2 (got $result)" >&2
             exit 1
           fi
-          grep -F 'V2 provider lacks mounted CORE and DEFRAG groups' build/swap-map.err
+          grep -F 'allocation mapping is unavailable for this filesystem' build/swap-map.err
+          test ! -s build/swap-map.json
           echo "SWAP.so V2 formatting/verification and fail-closed map gate passed"
       - name: Verify module is mandatory rather than falling back to internal code
         run: |
