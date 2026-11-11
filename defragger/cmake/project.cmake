@@ -510,6 +510,23 @@ if(BUILD_TESTING AND OFS_DEFRAG_TEST_MODULE_PARENT)
         _FILE_OFFSET_BITS=64 _GNU_SOURCE IFS_MODULE_TESTING)
     target_link_libraries(defragmenter-filesystem-module-test-host PUBLIC
         defragmenter-core OpenSSL::Crypto ${CMAKE_DL_LIBS})
+    # Exercise the *actual universal engine* against independent strict
+    # Common V2 filesystem SOs in a disposable, user-owned module root.
+    # Production continues to require root-owned /System/Filesystems.
+    add_executable(defragmenter-operation-engine-v2-test
+        native/operation_engine.cpp)
+    target_include_directories(defragmenter-operation-engine-v2-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/native"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
+        "${LD_GENERATED_DIR}")
+    target_compile_options(defragmenter-operation-engine-v2-test PRIVATE
+        ${LD_WARNING_FLAGS})
+    target_compile_definitions(defragmenter-operation-engine-v2-test PRIVATE
+        _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+    target_link_libraries(defragmenter-operation-engine-v2-test PRIVATE
+        defragmenter-runtime-cpp defragmenter-core
+        defragmenter-filesystem-module-test-host)
+
     # Test-only SO lookup is isolated from the installed /System/Filesystems.
     add_executable(defragmenter-exfat-test-worker native/exfat_module_loader.c)
     target_include_directories(defragmenter-exfat-test-worker PRIVATE
