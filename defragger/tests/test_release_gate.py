@@ -199,7 +199,7 @@ def main() -> None:
     ), "Unknown or missing release/integration workflow"
     prune = _read(WORKFLOWS / branch_hygiene)
     assert "  push:" in prune and "    branches: [main]" in prune
-    assert "permissions:\\n  contents: write" in prune
+    assert "permissions:\n  contents: write" in prune
     assert "compare/main..." in prune and '[ "$ahead" = 0 ]' in prune
     assert "refs/heads/$branch" in prune and "gh api --method DELETE" in prune
     assert 'if [ "$current" = "$sha" ]' in prune
