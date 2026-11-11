@@ -4,10 +4,14 @@
 
 Status: **complete**
 
-Audited source commit: f6477ff808e02610fa7fab259df8ec2868d147a9
+Audited source commit: ac71b9fbd8a69e17e15de357463d88efc15eacd3
 Audited release-governance commit: 6450d98bb2a6e987478417b4636bd8a590c56a89
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Remove unused Amiga verification local following explicit identity routing — reviewed 2026-11-12
+
+**Exact candidate:** `ac71b9fbd8a69e17e15de357463d88efc15eacd3`, one linear source commit after `f6477ff808e02610fa7fab259df8ec2868d147a9` and limited to `defragger/test_media/test_media_worker.c`. The previous explicit-SO-identity refactor made the old `dostype` variable unused in post-defrag verification. The dedicated HFS, SFS, PFS3 and SWAP integration builds all failed their `-Werror=unused-variable` check before running tests. This change removes only that dead local; all SO dispatch arguments, target access controls and format verification logic are unchanged. A fresh exact-head CI/ASan/UBSan and release result is mandatory; earlier failed workflow attempts are not accepted as qualification. Release governance remains at `6450d98bb2a6e987478417b4636bd8a590c56a89`.
 
 ## Remove duplicate Amiga disk-signature detection in Test Media — reviewed 2026-11-12
 
