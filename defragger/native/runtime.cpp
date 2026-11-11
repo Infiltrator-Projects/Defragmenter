@@ -373,8 +373,8 @@ const std::vector<BackendInfo>& backend_registry() {
                 "SFS0/SFS2 Growth Defrag leaves an exact 10% free-block reserve after every regular file.")});
         result.push_back({
             "swap", "Linux Swap", {"swap", "swapspace", "linux-swap"},
-            read, "summary", "swap-native", MapAdapter::NativeMap, {},
-            QualificationMode::None, {}, {"summary", "exact"}});
+            0U, "unavailable", "swap-native", MapAdapter::NativeMap, {},
+            QualificationMode::None, {}, {"unavailable"}});
         result.push_back({
             "ufs", "Solaris/BSD UFS", {"ufs", "ufs1", "ufs2", "4.2bsd"},
             write, "exact", "ufs-native", MapAdapter::NativeMap,
