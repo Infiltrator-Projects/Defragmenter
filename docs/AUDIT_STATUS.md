@@ -5,9 +5,13 @@
 Status: **complete**
 
 Audited source commit: 2693286a345efbcc9a649d58a6cbda0c05abfd78
-Audited release-governance commit: 2693286a345efbcc9a649d58a6cbda0c05abfd78
+Audited release-governance commit: 6450d98bb2a6e987478417b4636bd8a590c56a89
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## SWAP Common V2 group-bit assertion correction — reviewed 2026-11-12
+
+**Governance-only exact candidate:** `6450d98bb2a6e987478417b4636bd8a590c56a89`, one linear commit after the new Common V2 inventory source `2693286a345efbcc9a649d58a6cbda0c05abfd78`. The only change is `.github/workflows/swap-integration.yml`: the regression's expected SWAP group mask now follows the canonical Libraries/Common V2 immutable definitions, CORE group ID 7 (bit 64) and VOLUME group ID 3 (bit 4), hence mask 68 rather than an incorrectly assumed mask 9. The native host implementation already reports `api->group_mask` directly and uses `IFS_FS_GROUP_BIT(IFS_FS_GROUP_DEFRAG)`, so this is not a production engine or ABI change. Neither the source audit baseline nor the filesystem module itself changes. The CI assertion still requires `capabilities:0` and `defrag_group:false` and a byte-identical refusal of destructive SWAP operation. Full exact-head qualification and publication remain required; no failed workflow is waived.
 
 ## Common V2 installed-provider inventory and native regression — reviewed 2026-11-12
 
