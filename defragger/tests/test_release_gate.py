@@ -192,9 +192,18 @@ def main() -> None:
         "swap-integration.yml", "ufs-integration.yml",
         "xfs-integration.yml", "zfs-integration.yml",
     }
+    branch_hygiene = "prune-integrated-branches.yml"
     assert {path.name for path in WORKFLOWS.glob("*.yml")} == (
-        integration_workflows | {"quality-gate.yml", "release.yml"}
+        integration_workflows | {"quality-gate.yml", "release.yml",
+                                 branch_hygiene}
     ), "Unknown or missing release/integration workflow"
+    prune = _read(WORKFLOWS / branch_hygiene)
+    assert "  push:" in prune and "    branches: [main]" in prune
+    assert "permissions:\\n  contents: write" in prune
+    assert "compare/main..." in prune and '[ "$ahead" = 0 ]' in prune
+    assert "refs/heads/$branch" in prune and "gh api --method DELETE" in prune
+    assert 'if [ "$current" = "$sha" ]' in prune
+    assert "gh release" not in prune
     for workflow in integration_workflows:
         source = _read(WORKFLOWS / workflow)
         assert "permissions:\n  contents: read" in source, workflow
