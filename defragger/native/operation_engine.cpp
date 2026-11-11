@@ -80,7 +80,8 @@ int main(int argc, char** argv) {
     }
     if (operation != "defrag" && operation != "growth-defrag" &&
         operation != "recover" && operation != "analyse" &&
-        operation != "analyse-json" && operation != "map") {
+        operation != "analyse-json" && operation != "map" &&
+        operation != "volume-info") {
         return usage();
     }
     if (filesystem.empty() || filesystem.size() > 15U) {
@@ -96,11 +97,16 @@ int main(int argc, char** argv) {
         }
     }
     char module_file[64] = {};
-    if (ifs_filesystem_module_find_v2(filesystem.c_str(), module_file,
-                                       sizeof(module_file)) != 0) {
+    const bool readonly_volume_query = operation == "volume-info";
+    const int lookup_result = readonly_volume_query
+        ? ifs_filesystem_module_find_readonly_v2(
+              filesystem.c_str(), module_file, sizeof(module_file))
+        : ifs_filesystem_module_find_v2(
+              filesystem.c_str(), module_file, sizeof(module_file));
+    if (lookup_result != 0) {
         std::fprintf(stderr,
                      "defragmenter-operation-engine: no installed trusted "
-                     "Defrag V2 SO advertises %s\n", filesystem.c_str());
+                     "Common V2 SO qualifies for %s\n", filesystem.c_str());
         return 2;
     }
     const std::string generic_filename(module_file);
