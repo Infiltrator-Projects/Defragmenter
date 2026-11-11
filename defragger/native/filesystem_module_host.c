@@ -663,24 +663,16 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
         goto cleanup_target;
     }
     int operation_ok=0;
+    IfsFsVolumeInfoV2 reported={0};
     if(reporting) {
-        IfsFsVolumeInfoV2 reported={0};
         reported.structure_bytes=sizeof(reported);
         operation_ok=v2_volume->query(volume,&reported)==IFS_FS_OK &&
             reported.structure_bytes>=sizeof(reported) &&
             reported.total_bytes<=h.volume_bytes &&
             reported.free_bytes<=reported.total_bytes &&
             reported.block_bytes>=512u;
-        if(operation_ok) {
-            printf("{\"filesystem\":\"%s\",\"abi\":2,\"variant\":%u,"
-                   "\"block_bytes\":%u,\"total_bytes\":%llu,"
-                   "\"free_bytes\":%llu,\"source\":\"Common V2 VOLUME_QUERY\"}\n",
-                   api->format_id,reported.variant,reported.block_bytes,
-                   (unsigned long long)reported.total_bytes,
-                   (unsigned long long)reported.free_bytes);
-        } else {
+        if(!operation_ok)
             fputs("Common V2 volume query returned invalid geometry\n",stderr);
-        }
     } else if(recovering) {
         uint64_t repaired=0u;
         operation_ok=defrag->recover(volume,0u,&repaired)==IFS_FS_OK;
@@ -728,7 +720,19 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
     if(core->unmount(volume)!=IFS_FS_OK)operation_ok=0;
     if(writable && v2_sync(&b))operation_ok=0;
     result=operation_ok?0:1;
-    if(!result)fputs("Common V2 provider operation verified and durably synced\n",stdout);
+    /* Publish geometry only after the provider has successfully released its
+     * session; callers must never parse a successful JSON record from a
+     * failed or incompletely unmounted operation. */
+    if(!result && reporting) {
+        printf("{\"filesystem\":\"%s\",\"abi\":2,\"variant\":%u,"
+               "\"block_bytes\":%u,\"total_bytes\":%llu,"
+               "\"free_bytes\":%llu,\"source\":\"Common V2 VOLUME_QUERY\"}\n",
+               api->format_id,reported.variant,reported.block_bytes,
+               (unsigned long long)reported.total_bytes,
+               (unsigned long long)reported.free_bytes);
+    } else if(!result) {
+        fputs("Common V2 provider operation verified and durably synced\n",stdout);
+    }
 cleanup_target:
     services->close_target(services->context,&b.target);
     return result;
