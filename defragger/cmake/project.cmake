@@ -6,6 +6,36 @@ if(NOT DEFRAGMENTER_PACKAGE_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+-[0-9]+$")
     message(FATAL_ERROR "VERSION must contain a release such as 1.8.0-49")
 endif()
 
+# Filesystem engines are built by their independent Filesystem-* repositories.
+# The application may provide device leases, host callbacks, native adapters and
+# visualisation, but must never grow a second copy of an on-disk FS engine.
+file(GLOB_RECURSE LD_EMBEDDED_FS_ENGINE_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/native/filesystems/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/native/filesystems/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/native/filesystems/*.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/native/filesystems/*.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/filesystems/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/filesystems/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/filesystems/*.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/filesystems/*.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/*/native/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/*/native/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/*/native/*.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/gui/filesystems/*/native/*.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_media/native/filesystems/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_media/native/filesystems/*.h")
+if(LD_EMBEDDED_FS_ENGINE_SOURCES)
+    message(FATAL_ERROR
+        "Embedded filesystem engines are forbidden in Defragmenter; "
+        "move them to the independently owned Filesystem-*.so repository: "
+        "${LD_EMBEDDED_FS_ENGINE_SOURCES}")
+endif()
+# SWAP has a single Common V2 entry point; the old application-side V1
+# header must not silently return during future integration work.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/native/ifs_swap_module_v1.h")
+    message(FATAL_ERROR "Retired SWAP V1 ABI must not return to Defragmenter")
+endif()
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
