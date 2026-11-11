@@ -4,10 +4,20 @@
 
 Status: **complete**
 
-Audited source commit: 2c5635579b9cd43a99819f0451279863da2f12bd
-Audited release-governance commit: f1b8f329a5a7851a5c96b9235cf281e6917c441e
+Audited source commit: 2693286a345efbcc9a649d58a6cbda0c05abfd78
+Audited release-governance commit: 2693286a345efbcc9a649d58a6cbda0c05abfd78
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Common V2 installed-provider inventory and native regression — reviewed 2026-11-12
+
+**Exact reviewed source and governance candidate:** `2693286a345efbcc9a649d58a6cbda0c05abfd78`, one linear source commit after the v1.8.0-298 release `de9f6bb0d5c6340ff9b120be20da14e2aa005167`, with zero behind commits. The GitHub comparison lists precisely six changes: `defragger/native/filesystem_module_host.c`, `defragger/native/filesystem_module_host.h`, `defragger/cmake/project.cmake`, `defragger/tests/test_generic_module_dispatch.cpp` (added), `defragger/tests/test_generic_module_dispatch.py` (removed), and `.github/workflows/swap-integration.yml`. Comparing the prior governance baseline `f1b8f329a5a7851a5c96b9235cf281e6917c441e` to this candidate yields only the SWAP integration workflow as a governance delta. No filesystem algorithm, journal, privileged target lease, installer, other integration workflow, or publishing procedure is altered.
+
+**Root-cause and correction:** Previously `--list-installed-modules` excluded valid hosted Common V2 providers that did not export a nonzero DEFRAG capability, so a correctly installed CORE/VOLUME-only `SWAP.so` was invisible. The C module inspector now separates **read-only inventory** (all valid trusted hosted Common V2 providers) from **mutation dispatch** (still strictly requires a nonzero DEFRAG capability). The existing trusted root-owned module directory, symlink refusal, ABI and format validation, duplicate-provider refusal for mutation, and exclusive device lifecycle are unchanged. The inventory now reports `abi:2`, `group_mask`, `capabilities`, `defrag_group`, and `authority_available` to distinguish missing module authority from an empty trusted directory. This remains a Common V2 inventory; format-specific V1 providers are not falsely represented as V2.
+
+**Test changes:** The old Python `test_generic_module_dispatch.py` is removed, replaced by a native C++ regression using the application's JSON parser and native subprocess capture. It verifies valid inventory fields, CORE-only capability honesty, non-mutation when a provider is missing, and invalid-format refusal. The independent SWAP integration workflow additionally builds the actual V2 test engine, installs the real SWAP.so into its trusted disposable test authority, verifies SWAP is listed with CORE+VOLUME groups but zero DEFRAG capabilities, then explicitly refuses SWAP mutation and checks the complete disposable image SHA-256 remains unchanged.
+
+**Qualification and limits:** The previously published v1.8.0-298 was green on its exact prior source. The new version is `1.8.0-299`; it requires a fresh exact-head normal quality gate, sanitizer job, integration suite and release publication before being considered complete. No claim is made that the old V1-only filesystem providers have been migrated, that GUI or device use is universally format-neutral, or that the user's actual Latitude 5550 installation has been tested. The strict source and governance baseline checks remain enabled and are advanced only to the reviewed candidate `2693286a345efbcc9a649d58a6cbda0c05abfd78`.
 
 ## EXFAT/EXT missing-provider pre-write refusal — reviewed 2026-11-11
 
