@@ -90,7 +90,7 @@ jobs:
           export IFS_TEST_MODULE_PARENT="$PWD/build/module-test"
           build/defragmenter-test-media-mkfs-ufs-test \
             -t ffs -B little -s 64m \
-            -o version=2,bsize=8192,fsize=1024,minfree=5 \
+            -o version=2,bsize=65536,fsize=8192,minfree=5 \
             "$PWD/build/ufs2-real.img" "$PWD/build/test-source"
           test -s build/ufs2-real.img
       - name: Prove universal V2 read-only query and safe refusal
@@ -107,7 +107,7 @@ jobs:
           jq -e '.modules | any(.format_id == "ufs2" and .abi == 2)' build/ufs-v2-inventory.json
           "$consumer" volume-info "$image" --filesystem ufs2 > build/ufs2-volume.json
           jq -e '.filesystem == "ufs2" and .abi == 2 and .variant == 3
-                 and .block_bytes == 8192 and .total_bytes > 0
+                 and .block_bytes == 65536 and .total_bytes > 0
                  and .free_bytes > 0 and .free_bytes < .total_bytes
                  and .source == "Common V2 VOLUME_QUERY"' build/ufs2-volume.json
           "$consumer" volume-info "$image" --filesystem ufs2 \
