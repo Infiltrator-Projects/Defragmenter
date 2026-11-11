@@ -402,8 +402,8 @@ int ifs_filesystem_module_list_v2(void) {
 /* Resolve by the module's exported format_id, not a guessed name or a host
  * filesystem registry. Duplicate providers fail closed. The dispatcher then
  * loads the returned trusted SO again and revalidates its ABI and identity. */
-int ifs_filesystem_module_find_v2(const char *format, char *filename,
-                                  size_t capacity) {
+static int ifs_filesystem_module_find_selected_v2(
+    const char *format, char *filename, size_t capacity, int require_defrag) {
     if (!format || !filename || capacity == 0u) return -1;
     const size_t length = strnlen(format, 16u);
     if (length == 0u || length > 15u) return -1;
@@ -424,7 +424,8 @@ int ifs_filesystem_module_find_v2(const char *format, char *filename,
         char discovered[16];
         uint64_t capabilities = 0u, groups = 0u;
         if (ifs_probe_module_v2(directory, item->d_name,
-                                discovered, &capabilities, &groups, 1) != 0 ||
+                                discovered, &capabilities, &groups,
+                                require_defrag) != 0 ||
             strcmp(discovered, format) != 0)
             continue;
         if (++matches != 1u) break;
@@ -445,6 +446,20 @@ int ifs_filesystem_module_find_v2(const char *format, char *filename,
         return -1;
     memcpy(filename, selected, selected_length + 1u);
     return 0;
+}
+/* Mutation operations demand a real DEFRAG group. Read-only volume queries
+ * can use mounted CORE + VOLUME providers before DEFRAG is implemented. */
+int ifs_filesystem_module_find_v2(const char *format, char *filename,
+                                  size_t capacity)
+{
+    return ifs_filesystem_module_find_selected_v2(
+        format, filename, capacity, 1);
+}
+int ifs_filesystem_module_find_readonly_v2(const char *format, char *filename,
+                                           size_t capacity)
+{
+    return ifs_filesystem_module_find_selected_v2(
+        format, filename, capacity, 0);
 }
 
 /* Strict Common V2 provider execution. No format-specific worker, private
@@ -509,8 +524,9 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
         (const IfsFsCoreOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_CORE);
     const IfsFsDefragOpsV2 *defrag=
         (const IfsFsDefragOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_DEFRAG);
-    if(!core || !defrag || !(core->header.capabilities & IFS_FS_CORE_MOUNT)) {
-        fputs("V2 provider lacks mounted CORE and DEFRAG groups\n",stderr);
+    if(!core || !(core->header.capabilities & IFS_FS_CORE_MOUNT) ||
+       !core->mount || !core->unmount) {
+        fputs("V2 provider lacks a mounted CORE lifecycle\n",stderr);
         return 1;
     }
     if(command->argc<3 || !command->argv[1] || !command->argv[2])return 2;
@@ -518,12 +534,27 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
     int explicit_path=0;
     uint32_t requested_sector=0u;
     int explicit_write=0;
+    const int reporting=!strcmp(operation,"volume-info");
     const int recovering=!strcmp(operation,"recover");
-    const int analysing=!strcmp(operation,"analyse") ||
+    const int analysing=reporting || !strcmp(operation,"analyse") ||
         !strcmp(operation,"analyse-json") || !strcmp(operation,"map");
     const int defragging=!strcmp(operation,"defrag");
     const int growing=!strcmp(operation,"growth-defrag");
     if(!recovering && !analysing && !defragging && !growing)return 2;
+    const IfsFsVolumeOpsV2 *v2_volume =
+        (const IfsFsVolumeOpsV2 *)ifs_fs_group_v2(
+            api, IFS_FS_GROUP_VOLUME);
+    if(reporting) {
+        if(!v2_volume ||
+           !(v2_volume->header.capabilities & IFS_FS_VOLUME_QUERY) ||
+           !v2_volume->query) {
+            fputs("V2 provider does not support a real volume query\n",stderr);
+            return 2;
+        }
+    } else if(!defrag) {
+        fputs("V2 provider lacks the required DEFRAG group\n",stderr);
+        return 2;
+    }
     for(int i=3;i<command->argc;++i) {
         const char *arg=command->argv[i];
         if(!strcmp(arg,"--write")) {
@@ -561,7 +592,8 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
         fputs("Common V2 mutation requires --write --confirm DEVICE\n",stderr);
         return 2;
     }
-    if(!recovering && !v2_path_valid(path)) {
+    if((reporting && explicit_path) ||
+       (!recovering && !v2_path_valid(path))) {
         fputs("Common V2 mapping/planning requires a valid absolute filesystem path\n",stderr);
         return 2;
     }
@@ -570,7 +602,8 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
     const uint64_t required=recovering?IFS_FS_DEFRAG_RECOVER:
         analysing?IFS_FS_DEFRAG_MAP:
         IFS_FS_DEFRAG_PLAN|IFS_FS_DEFRAG_EXECUTE|IFS_FS_DEFRAG_VERIFY;
-    if((defrag->header.capabilities & required)!=required) {
+    if(!reporting &&
+       (defrag->header.capabilities & required)!=required) {
         fputs("Provider does not qualify the requested strict V2 operation\n",stderr);
         return 2;
     }
@@ -630,7 +663,25 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
         goto cleanup_target;
     }
     int operation_ok=0;
-    if(recovering) {
+    if(reporting) {
+        IfsFsVolumeInfoV2 reported={0};
+        reported.structure_bytes=sizeof(reported);
+        operation_ok=v2_volume->query(volume,&reported)==IFS_FS_OK &&
+            reported.structure_bytes>=sizeof(reported) &&
+            reported.total_bytes<=h.volume_bytes &&
+            reported.free_bytes<=reported.total_bytes &&
+            reported.block_bytes>=512u;
+        if(operation_ok) {
+            printf("{\"filesystem\":\"%s\",\"abi\":2,\"variant\":%u,"
+                   "\"block_bytes\":%u,\"total_bytes\":%llu,"
+                   "\"free_bytes\":%llu,\"source\":\"Common V2 VOLUME_QUERY\"}\n",
+                   api->format_id,reported.variant,reported.block_bytes,
+                   (unsigned long long)reported.total_bytes,
+                   (unsigned long long)reported.free_bytes);
+        } else {
+            fputs("Common V2 volume query returned invalid geometry\n",stderr);
+        }
+    } else if(recovering) {
         uint64_t repaired=0u;
         operation_ok=defrag->recover(volume,0u,&repaired)==IFS_FS_OK;
 
