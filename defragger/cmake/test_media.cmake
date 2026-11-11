@@ -205,7 +205,7 @@ if(BUILD_TESTING)
     add_test(NAME defragmenter-test-media-native-swap
         COMMAND "$<TARGET_FILE:defragmenter-swap-native-v2-test>"
             "$<TARGET_FILE:defragmenter-test-media-raw-test>"
-            "$<TARGET_FILE:defragmenter-mapper>")
+            "$<TARGET_FILE:defragmenter-mapper-cpp>")
     set_tests_properties(defragmenter-test-media-native-swap PROPERTIES TIMEOUT 240)
     add_executable(defragmenter-test-media-gui-test
         tests/test_test_media_gui.c test_media/test_media_theme.c)
