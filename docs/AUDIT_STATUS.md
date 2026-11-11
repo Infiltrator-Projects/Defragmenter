@@ -4,10 +4,22 @@
 
 Status: **complete**
 
-Audited source commit: ac71b9fbd8a69e17e15de357463d88efc15eacd3
-Audited release-governance commit: 6450d98bb2a6e987478417b4636bd8a590c56a89
+Audited source commit: 7cd6d600515d38c5652f926a674b1cfdd973f546
+Audited release-governance commit: 7cd6d600515d38c5652f926a674b1cfdd973f546
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Common V2 volume metadata and integration-target repair — source/governance review 2026-11-12
+
+**Exact reviewed candidate:** `7cd6d600515d38c5652f926a674b1cfdd973f546`. GitHub comparison shows nine linear commits since the previous audited source `ac71b9fbd8a69e17e15de357463d88efc15eacd3` (ahead by 9, behind by 0) and exactly seven changed paths: `defragger/native/filesystem_module_host.c`, `defragger/native/filesystem_module_host.h`, `defragger/native/operation_engine.cpp`, `defragger/cmake/project.cmake`, `defragger/tests/test_generic_module_dispatch.cpp`, the new `.github/workflows/ufs-v2-consumer.yml`, and this audit record. Release governance was also compared against the preceding `6450d98bb2a6e987478417b4636bd8a590c56a89` baseline; the new UFS V2 workflow is the governance delta, not a relaxed release gate. No changes to filesystem-specific engines, data-on-disk parsers, actual disk writers, journal or recovery algorithms, privileged device target policy, installer, or publication scripts occurred in this comparison.
+
+**Capabilities and safety review:** The Common V2 module-host keeps mutation lookup separate from read-only lookup. Mutation requires the installed trusted, root-owned, symlink-safe module to advertise DEFRAG capabilities; the new read-only lookup permits valid hosted CORE/VOLUME providers without falsely qualifying mutation. The `volume-info` request requires the standard CORE mount/unmount lifecycle and a real VOLUME query callback. It rejects a missing provider, nonqualified capability, unsupported options and explicit write intent; validates queried block/volume geometry against the read-only host target; and emits successful JSON **only after the provider unmount succeeds**. No read-only query is permitted to fall back to a format-specific V1 writer. The existing trusted module discovery and duplicate format-provider rejection remain in force. Device I/O remains controlled by the same bounded host lease.
+
+**Current independent-producer integration:** `.github/workflows/ufs-v2-consumer.yml` checks out the latest independent UFS1.so and UFS2.so implementations, confirms Common V2 exports, runs their own builds/tests, uses a pinned historical UFS2 provider solely to generate disposable fixture media, then installs only the current UFS providers as tested consumers. It checks V2 inventory and real UFS2 geometry, 512e/4Kn query cases, UFS1 wrong-format refusal, unavailable-provider refusal, and SHA-256-preserved refusal of read-only `--write` and unqualified defragmentation. This is the defined evidence path; the audit record does not assert that the workflow already succeeded.
+
+**CMake and regression defects corrected:** The new independent SO integration block inadvertently declared the test executable `defragmenter-operation-engine-v2-test` a second time when `OFS_DEFRAG_TEST_MODULE_PARENT` was enabled. The latter declaration now reuses the preexisting identical native test engine; when that independent integration is disabled, the original Common V2 test executable is still defined normally. The native C++ test was also updated to require the operation engine's current diagnostic string when an uninstalled Common V2 provider is rejected. No Python test reinstated. The test remains strictly fail-closed.
+
+**Qualification status:** Previous v1.8.0-298 was already released and green on a separate exact source. These nine changes are reviewed for ownership and safety scope, **not certified merely because the audit baseline advanced**. v1.8.0-299 must pass fresh exact-head CMake, native media, independent UFS and other filesystem integrations, ASan/UBSan, release invariants and publication. Real hardware/Latitude 5550, power-loss handling and full producer-side V2 DEFRAG migration remain unqualified.
 
 ## Remove unused Amiga verification local following explicit identity routing — reviewed 2026-11-12
 
