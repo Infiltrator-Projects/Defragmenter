@@ -114,6 +114,26 @@ jobs:
             --sector-bytes=4096 > build/ufs2-4kn.json
           jq -e '.filesystem == "ufs2" and .total_bytes > 0' build/ufs2-4kn.json
           original="$(sha256sum "$image" | cut -d' ' -f1)"
+          # Damage a genuine cylinder-group header without touching the
+          # original fixture. The new V2 query must detect it, even though
+          # the UFS2 superblock and its recorded totals remain intact.
+          cp -- "$image" build/ufs2-corrupt-cg.img
+          printf '\\000\\000\\000\\000' | dd of=build/ufs2-corrupt-cg.img \
+            bs=1 seek=$((16*8192+4)) conv=notrunc status=none
+          if "$consumer" volume-info "$PWD/build/ufs2-corrupt-cg.img" \
+              --filesystem ufs2; then
+            echo "ERROR: V2 query accepted damaged UFS2 cylinder-group header" >&2
+            exit 1
+          fi
+          # Truncated volumes must likewise be rejected before a query can
+          # claim authoritative geometry or mutate any media.
+          cp -- "$image" build/ufs2-truncated.img
+          truncate -s 1048576 build/ufs2-truncated.img
+          if "$consumer" volume-info "$PWD/build/ufs2-truncated.img" \
+              --filesystem ufs2; then
+            echo "ERROR: V2 query accepted truncated UFS2 media" >&2
+            exit 1
+          fi
           if "$consumer" volume-info "$image" --filesystem ufs1; then
             echo "ERROR: UFS1 accepted a real UFS2 volume" >&2; exit 1
           fi
