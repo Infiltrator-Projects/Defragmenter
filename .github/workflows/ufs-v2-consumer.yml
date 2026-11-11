@@ -118,7 +118,7 @@ jobs:
           # original fixture. The new V2 query must detect it, even though
           # the UFS2 superblock and its recorded totals remain intact.
           cp -- "$image" build/ufs2-corrupt-cg.img
-          printf '\\000\\000\\000\\000' | dd of=build/ufs2-corrupt-cg.img \
+          printf '\000\000\000\000' | dd of=build/ufs2-corrupt-cg.img \
             bs=1 seek=$((16*8192+4)) conv=notrunc status=none
           if "$consumer" volume-info "$PWD/build/ufs2-corrupt-cg.img" \
               --filesystem ufs2; then
