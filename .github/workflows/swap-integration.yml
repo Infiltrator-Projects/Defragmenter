@@ -21,7 +21,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential cmake pkg-config \
-            libgtk-3-dev libssl-dev libsqlite3-dev libext2fs-dev jq
+            libgtk-3-dev libssl-dev libsqlite3-dev libext2fs-dev
       - name: Checkout qualified SWAP driver
         uses: actions/checkout@v4
         with:
@@ -63,9 +63,16 @@ jobs:
           # This independent gate invokes the actual SWAP fixture directly.
           build/defragmenter-test-media-raw-test create swap "$PWD/build/swap-test.img"
           build/defragmenter-test-media-raw-test verify swap "$PWD/build/swap-test.img"
-          build/defragmenter-mapper "$PWD/build/swap-test.img" --fstype swap --cells 8 > build/swap-map.json
-          jq -e '.filesystem == "swap" and .map_accuracy == "exact" and .unknown_bytes == 0' build/swap-map.json
-          echo "SWAP.so V2 create, verify and Defragmenter map passed"
+          # The strict V2 SWAP provider currently exposes only CORE.PROBE
+          # and VOLUME.FORMAT. An unqualified mapper must refuse rather than
+          # generate a fabricated exact allocation map.
+          if build/defragmenter-mapper "$PWD/build/swap-test.img" \
+              --fstype swap --cells 8 > build/swap-map.json 2> build/swap-map.err; then
+            echo "ERROR: SWAP map reported success without a V2 DEFRAG map" >&2
+            exit 1
+          fi
+          grep -F 'V2 provider lacks mounted CORE and DEFRAG groups' build/swap-map.err
+          echo "SWAP.so V2 formatting/verification and fail-closed map gate passed"
       - name: Verify module is mandatory rather than falling back to internal code
         run: |
           set -euo pipefail
