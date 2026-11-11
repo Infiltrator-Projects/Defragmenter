@@ -4,10 +4,20 @@
 
 Status: **complete**
 
-Audited source commit: 2693286a345efbcc9a649d58a6cbda0c05abfd78
+Audited source commit: f6477ff808e02610fa7fab259df8ec2868d147a9
 Audited release-governance commit: 6450d98bb2a6e987478417b4636bd8a590c56a89
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Remove duplicate Amiga disk-signature detection in Test Media — reviewed 2026-11-12
+
+**Exact reviewed source candidate:** `f6477ff808e02610fa7fab259df8ec2868d147a9`, one linear, zero-behind commit after `808b87e1051300070e3a5e092b5a7395f55842c8`. The GitHub comparison shows exactly four files: `defragger/test_media/test_media_amiga_dispatch.c`, `defragger/test_media/test_media.h`, `defragger/test_media/test_media_worker.c`, and `defragger/tests/test_test_media.c`. The Common V2 module discovery, trusted path/target policy, journal, filesystem SO engines, release governance and packages are unchanged.
+
+**Ownership defect and correction:** The application previously opened Amiga Test Media volumes and read four bytes at hard-coded offsets to recognise SFS and PFS3 magic. This duplicated filesystem-specific on-disk interpretation and could misroute an unavailable/corrupted provider to an OFS/FFS fallback. Those raw reads, offsets and signature strings are removed from the dispatcher. The caller already owns the exact, immutable fixture catalogue entry (`ofs`, `ffs`, `sfs`, `pfs3`); it now passes that explicit format ID through the populator and both normal and post-defrag verifier calls. The dispatcher accepts only these four identities, rejects unknown/missing identifiers before dispatch, and invokes the matching independent SO's existing fixture/validation API. Filesystem-specific signatures, metadata and payload interpretation remain with their respective provider. The explicit formatter selection and the independent modules' own on-disk identity checks remain unchanged.
+
+**Regression review:** The pre-existing native C Test Media regression was updated in all 20 OFS, FFS, SFS and PFS3 populate/verify call sites to supply its known format identity explicitly. The normal disposable volume format, corruption rejection, byte-integrity and post-defrag tests therefore exercise the same source-owned SOs with no in-application disk signature parser. The worker likewise passes `spec->key` rather than guessing by reading the volume. No physical device or media is automatically opened by this audit.
+
+**Qualification:** This source candidate has **not** been declared fully green by merely updating the audited baseline. A fresh v1.8.0-299 exact-head quality gate, sanitizer suite, independent integration suite and release/publication checks are required. The Common V2 V1 producer migration and physical Latitude 5550 installation verification remain separate, unverified requirements. Governance baseline `6450d98bb2a6e987478417b4636bd8a590c56a89` remains unchanged because no governance path was modified in this source delta.
 
 ## SWAP Common V2 group-bit assertion correction — reviewed 2026-11-12
 
