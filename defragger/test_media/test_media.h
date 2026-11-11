@@ -76,13 +76,13 @@ int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
                                 char *detail, size_t detail_capacity);
 int ldtm_format_amiga_volume(const char *path, uint8_t dostype, const char *label);
 int ldtm_validate_amiga_volume(const char *path, uint8_t expected_dostype);
-int ldtm_populate_amiga_volume(const char *path, uint8_t dostype,
+int ldtm_populate_amiga_volume(const char *path, const char *format_id,
                                const LdtmFragmentProfile *profile);
-int ldtm_verify_amiga_payload(const char *path, uint8_t dostype,
+int ldtm_verify_amiga_payload(const char *path, const char *format_id,
                               const LdtmFragmentProfile *profile,
                               char *detail, size_t detail_capacity);
 int ldtm_verify_amiga_payload_after_defrag(
-    const char *path, uint8_t dostype,
+    const char *path, const char *format_id,
     const LdtmFragmentProfile *profile,
     char *detail, size_t detail_capacity);
 /* Versioned SFS.so-backed create, populate and integrity entrypoints. */

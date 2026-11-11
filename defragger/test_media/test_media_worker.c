@@ -1419,7 +1419,7 @@ static int create_amiga_and_populate(const LdtmFilesystemSpec *spec, const char 
         (void)state_write_status(state, spec, "format-failed", "wipefs failed");
         return 1;
     }
-    printf("+ built-in raw C Amiga DOS\\%u formatter/populator %s\n", dostype, partition);
+    printf("+ independent %s.so formatter/populator %s\n", spec->key, partition);
     fflush(stdout);
     int format_result = -1;
     /* On a freshly created GPT the desktop may automount the old OFS
@@ -1461,13 +1461,13 @@ static int create_amiga_and_populate(const LdtmFilesystemSpec *spec, const char 
         (void)state_write_status(state, spec, "format-failed", failure);
         return 1;
     }
-    if (ldtm_populate_amiga_volume(partition, dostype, &profile) != 0) {
+    if (ldtm_populate_amiga_volume(partition, spec->key, &profile) != 0) {
         emit_status(spec->key, "formatted-unpopulated", "raw C Amiga fragmentation payload generation failed");
         (void)state_write_status(state, spec, "formatted-unpopulated", "raw C payload generation failed");
         return 1;
     }
     detail[0] = '\0';
-    if (ldtm_verify_amiga_payload(partition, dostype, &profile, detail, sizeof(detail)) != 0) {
+    if (ldtm_verify_amiga_payload(partition, spec->key, &profile, detail, sizeof(detail)) != 0) {
         emit_status(spec->key, "formatted-unpopulated",
                     detail[0] != '\0' ? detail : "raw C Amiga payload self-check failed");
         (void)state_write_status(state, spec, "formatted-unpopulated", "raw C payload self-check failed");
@@ -2241,7 +2241,7 @@ int ldtm_worker_verify(const char *device) {
                 ldtm_fragment_profile(spec);
             char detail[512] = {0};
             if (ldtm_verify_amiga_payload_after_defrag(
-                    partition, dostype, &profile,
+                    partition, spec->key, &profile,
                     detail, sizeof(detail)) != 0 ||
                 require_fragmentation_state(
                     spec, partition, 0,

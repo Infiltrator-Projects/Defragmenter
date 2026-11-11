@@ -1,12 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "test_media.h"
 
-#include <infiltratr/posix_io.h>
-
-#include <fcntl.h>
 #include <stdint.h>
 #include <string.h>
-#include <unistd.h>
 
 int ldtm_ffs_module_available(void);
 int ldtm_format_ffs_module(const char *, const char *);
@@ -34,28 +30,6 @@ int ldtm_verify_pfs3_payload_after_defrag(
     const char *path, const LdtmFragmentProfile *profile,
     char *detail, size_t detail_capacity);
 
-static int path_is_pfs3(const char *path) {
-    int fd;
-    unsigned char magic[4];
-    if (path == NULL) return 0;
-    fd = open(path, O_RDONLY | O_CLOEXEC);
-    if (fd < 0) return 0;
-    const int read_result = infiltratr_pread_full(fd, magic, sizeof(magic), 2U * 512U);
-    (void)close(fd);
-    return read_result == 0 && memcmp(magic, "PFS\1", 4U) == 0;
-}
-
-static int path_is_sfs(const char *path) {
-    int fd;
-    unsigned char magic[4];
-    if (path == NULL) return 0;
-    fd = open(path, O_RDONLY | O_CLOEXEC);
-    if (fd < 0) return 0;
-    const int read_result = infiltratr_pread_full(fd, magic, sizeof(magic), 0U);
-    (void)close(fd);
-    return read_result == 0 && memcmp(magic, "SFS\0", 4U) == 0;
-}
-
 int ldtm_format_amiga_volume(const char *path, uint8_t dostype, const char *label) {
     if (label != NULL && strcmp(label, "LD_SFS") == 0)
         return ldtm_format_sfs_volume(path);
@@ -65,40 +39,54 @@ int ldtm_format_amiga_volume(const char *path, uint8_t dostype, const char *labe
                           ldtm_format_ffs_module(path, label);
 }
 
-int ldtm_populate_amiga_volume(const char *path, uint8_t dostype,
+/* Test Media already knows the selected filesystem identity. Dispatch by
+ * that explicit identity, never by reading or duplicating SFS/PFS3 disk magic.
+ * Each independent SO verifies its own on-disk format before any mutation. */
+int ldtm_populate_amiga_volume(const char *path, const char *format_id,
                                const LdtmFragmentProfile *profile) {
-    if (path_is_sfs(path)) return ldtm_populate_sfs_volume(path, profile);
-    if (path_is_pfs3(path)) return ldtm_populate_pfs3_volume(path, profile);
-    return dostype == 0U ? ldtm_populate_ofs_module(path, profile) :
-                          ldtm_populate_ffs_module(path, profile);
+    if (!path || !format_id || !profile) return -1;
+    if (strcmp(format_id, "sfs") == 0)
+        return ldtm_populate_sfs_volume(path, profile);
+    if (strcmp(format_id, "pfs3") == 0)
+        return ldtm_populate_pfs3_volume(path, profile);
+    if (strcmp(format_id, "ofs") == 0)
+        return ldtm_populate_ofs_module(path, profile);
+    if (strcmp(format_id, "ffs") == 0)
+        return ldtm_populate_ffs_module(path, profile);
+    return -1;
 }
 
-int ldtm_verify_amiga_payload(const char *path, uint8_t dostype,
+int ldtm_verify_amiga_payload(const char *path, const char *format_id,
                               const LdtmFragmentProfile *profile,
                               char *detail, size_t detail_capacity) {
-    if (path_is_sfs(path))
+    if (!path || !format_id || !profile) return -1;
+    if (strcmp(format_id, "sfs") == 0)
         return ldtm_verify_sfs_payload(path, profile, detail, detail_capacity);
-    if (path_is_pfs3(path))
+    if (strcmp(format_id, "pfs3") == 0)
         return ldtm_verify_pfs3_payload(path, profile, detail, detail_capacity);
-    return dostype == 1U
-        ? ldtm_verify_ffs_module(path, profile, 0, detail, detail_capacity)
-        : ldtm_verify_ofs_module(path, profile, 0, detail, detail_capacity);
+    if (strcmp(format_id, "ofs") == 0)
+        return ldtm_verify_ofs_module(path, profile, 0, detail, detail_capacity);
+    if (strcmp(format_id, "ffs") == 0)
+        return ldtm_verify_ffs_module(path, profile, 0, detail, detail_capacity);
+    return -1;
 }
 
-
 int ldtm_verify_amiga_payload_after_defrag(
-    const char *path, uint8_t dostype,
+    const char *path, const char *format_id,
     const LdtmFragmentProfile *profile,
     char *detail, size_t detail_capacity) {
-    if (path_is_sfs(path))
+    if (!path || !format_id || !profile) return -1;
+    if (strcmp(format_id, "sfs") == 0)
         return ldtm_verify_sfs_payload_after_defrag(
             path, profile, detail, detail_capacity);
-    if (path_is_pfs3(path))
+    if (strcmp(format_id, "pfs3") == 0)
         return ldtm_verify_pfs3_payload_after_defrag(
             path, profile, detail, detail_capacity);
-    return dostype == 1U
-        ? ldtm_verify_ffs_module(path, profile, 1, detail, detail_capacity)
-        : ldtm_verify_ofs_module(path, profile, 1, detail, detail_capacity);
+    if (strcmp(format_id, "ofs") == 0)
+        return ldtm_verify_ofs_module(path, profile, 1, detail, detail_capacity);
+    if (strcmp(format_id, "ffs") == 0)
+        return ldtm_verify_ffs_module(path, profile, 1, detail, detail_capacity);
+    return -1;
 }
 
 /* No fallback AmigaDOS parser/formatter is linked in Test Media. */

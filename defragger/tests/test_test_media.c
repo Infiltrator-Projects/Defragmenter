@@ -228,8 +228,8 @@ static int test_amiga_formatters_and_payload(void) {
         production_parser_rejects(path) != 0 ||
         set_amiga_dostype(path, 0U) != 0 ||
         production_parser_accepts(path, 0U, 0, 0U, 0U, 1U) != 0 ||
-        ldtm_populate_amiga_volume(path, 0U, &tiny) != 0 ||
-        ldtm_verify_amiga_payload(path, 0U, &tiny, detail, sizeof(detail)) != 0 ||
+        ldtm_populate_amiga_volume(path, "ofs", &tiny) != 0 ||
+        ldtm_verify_amiga_payload(path, "ofs", &tiny, detail, sizeof(detail)) != 0 ||
         production_parser_accepts(path, 0U, 0, expected_files, tiny.files, tiny.chunks) != 0 ||
         0) {
         (void)unlink(path);
@@ -243,7 +243,7 @@ static int test_amiga_formatters_and_payload(void) {
             affs_build_stage(path, stage, false, 10U, false,
                              &commit_bytes, &stage_error) != 0 ||
             ldtm_verify_amiga_payload_after_defrag(
-                stage, 0U, &tiny, detail, sizeof(detail)) != 0) {
+                stage, "ofs", &tiny, detail, sizeof(detail)) != 0) {
             free(stage_error);
             (void)unlink(stage);
             (void)unlink(path);
@@ -256,7 +256,7 @@ static int test_amiga_formatters_and_payload(void) {
         }
     }
     if (corrupt_first_payload_block(path) != 0 ||
-        ldtm_verify_amiga_payload(path, 0U, &tiny, detail, sizeof(detail)) == 0) {
+        ldtm_verify_amiga_payload(path, "ofs", &tiny, detail, sizeof(detail)) == 0) {
         (void)unlink(path);
         return 1;
     }
@@ -264,8 +264,8 @@ static int test_amiga_formatters_and_payload(void) {
         ldtm_validate_amiga_volume(path, 1U) != 0 ||
         ldtm_validate_amiga_volume(path, 0U) == 0 ||
         production_parser_accepts(path, 1U, 1, 0U, 0U, 1U) != 0 ||
-        ldtm_populate_amiga_volume(path, 1U, &tiny) != 0 ||
-        ldtm_verify_amiga_payload(path, 1U, &tiny, detail, sizeof(detail)) != 0 ||
+        ldtm_populate_amiga_volume(path, "ffs", &tiny) != 0 ||
+        ldtm_verify_amiga_payload(path, "ffs", &tiny, detail, sizeof(detail)) != 0 ||
         production_parser_accepts(path, 1U, 1, expected_files, tiny.files, tiny.chunks) != 0 ||
         0) {
         (void)unlink(path);
@@ -279,7 +279,7 @@ static int test_amiga_formatters_and_payload(void) {
             affs_build_stage(path, stage, false, 10U, false,
                              &commit_bytes, &stage_error) != 0 ||
             ldtm_verify_amiga_payload_after_defrag(
-                stage, 1U, &tiny, detail, sizeof(detail)) != 0) {
+                stage, "ffs", &tiny, detail, sizeof(detail)) != 0) {
             free(stage_error);
             (void)unlink(stage);
             (void)unlink(path);
@@ -292,7 +292,7 @@ static int test_amiga_formatters_and_payload(void) {
         }
     }
     if (corrupt_first_payload_block(path) != 0 ||
-        ldtm_verify_amiga_payload(path, 1U, &tiny, detail, sizeof(detail)) == 0) {
+        ldtm_verify_amiga_payload(path, "ffs", &tiny, detail, sizeof(detail)) == 0) {
         (void)unlink(path);
         return 1;
     }
@@ -321,13 +321,13 @@ static int test_sfs_formatter_and_payload(void) {
         (void)unlink(path);
         return 1;
     }
-    if (ldtm_populate_amiga_volume(path, 1U, &profile) != 0) {
+    if (ldtm_populate_amiga_volume(path, "sfs", &profile) != 0) {
         (void)fprintf(stderr, "SFS Test Media production analysis/populate check failed\n");
         (void)unlink(path);
         return 1;
     }
     if (ldtm_verify_amiga_payload(
-            path, 1U, &profile, detail, sizeof(detail)) != 0) {
+            path, "sfs", &profile, detail, sizeof(detail)) != 0) {
         (void)fprintf(stderr, "SFS Test Media payload verify failed: %s\n", detail);
         (void)unlink(path);
         return 1;
@@ -357,7 +357,7 @@ static int test_sfs_formatter_and_payload(void) {
             sfs_build_stage(path, stage, false, 10U, false,
                             &commit_bytes, error, sizeof(error)) != 0 ||
             ldtm_verify_amiga_payload_after_defrag(
-                stage, 1U, &profile, detail, sizeof(detail)) != 0) {
+                stage, "sfs", &profile, detail, sizeof(detail)) != 0) {
             (void)unlink(stage);
             (void)unlink(path);
             return 1;
@@ -380,7 +380,7 @@ static int test_sfs_formatter_and_payload(void) {
         return 1;
     }
     (void)close(fd);
-    if (ldtm_verify_amiga_payload(path, 1U, &profile, detail, sizeof(detail)) == 0) {
+    if (ldtm_verify_amiga_payload(path, "sfs", &profile, detail, sizeof(detail)) == 0) {
         (void)unlink(path);
         return 1;
     }
@@ -405,8 +405,8 @@ static int test_pfs3_formatter_and_payload(void) {
         return 1;
     }
     if (ldtm_format_amiga_volume(path, 1U, "LD_PFS3") != 0 ||
-        ldtm_populate_amiga_volume(path, 1U, &profile) != 0 ||
-        ldtm_verify_amiga_payload(path, 1U, &profile, detail, sizeof(detail)) != 0 ||
+        ldtm_populate_amiga_volume(path, "pfs3", &profile) != 0 ||
+        ldtm_verify_amiga_payload(path, "pfs3", &profile, detail, sizeof(detail)) != 0 ||
         pfs3_analyse(path, &analysis, NULL, 0U, error, sizeof(error)) != 0 ||
         analysis.regular_files != LDTM_TARGET_FILE_COUNT ||
         analysis.fragmented_files != LDTM_TARGET_FILE_COUNT ||
@@ -421,7 +421,7 @@ static int test_pfs3_formatter_and_payload(void) {
             pfs3_build_stage(path, stage, false, 10U, false,
                              &commit_bytes, error, sizeof(error)) != 0 ||
             ldtm_verify_amiga_payload_after_defrag(
-                stage, 1U, &profile, detail, sizeof(detail)) != 0) {
+                stage, "pfs3", &profile, detail, sizeof(detail)) != 0) {
             (void)unlink(stage);
             (void)unlink(path);
             return 1;
@@ -444,7 +444,7 @@ static int test_pfs3_formatter_and_payload(void) {
         return 1;
     }
     (void)close(fd);
-    if (ldtm_verify_amiga_payload(path, 1U, &profile, detail, sizeof(detail)) == 0) {
+    if (ldtm_verify_amiga_payload(path, "pfs3", &profile, detail, sizeof(detail)) == 0) {
         (void)unlink(path);
         return 1;
     }
@@ -602,9 +602,9 @@ static int test_two_gib_first_party_media_geometry(void)
 
     if (reset_two_gib_sparse_image(path) != 0 ||
         ldtm_format_amiga_volume(path, 1U, "LD_SFS") != 0 ||
-        ldtm_populate_amiga_volume(path, 1U, &sfs_profile) != 0 ||
+        ldtm_populate_amiga_volume(path, "sfs", &sfs_profile) != 0 ||
         ldtm_verify_amiga_payload(
-            path, 1U, &sfs_profile, detail, sizeof(detail)) != 0) {
+            path, "sfs", &sfs_profile, detail, sizeof(detail)) != 0) {
         (void)fprintf(stderr, "2 GiB SFS qualification fixture failed: %s\n",
                       detail[0] != '\0' ? detail : "unknown");
         (void)unlink(path);
@@ -612,9 +612,9 @@ static int test_two_gib_first_party_media_geometry(void)
     }
     if (reset_two_gib_sparse_image(path) != 0 ||
         ldtm_format_amiga_volume(path, 1U, "LD_PFS3") != 0 ||
-        ldtm_populate_amiga_volume(path, 1U, &pfs3_profile) != 0 ||
+        ldtm_populate_amiga_volume(path, "pfs3", &pfs3_profile) != 0 ||
         ldtm_verify_amiga_payload(
-            path, 1U, &pfs3_profile, detail, sizeof(detail)) != 0) {
+            path, "pfs3", &pfs3_profile, detail, sizeof(detail)) != 0) {
         (void)fprintf(stderr, "2 GiB PFS3 qualification fixture failed: %s\n",
                       detail[0] != '\0' ? detail : "unknown");
         (void)unlink(path);
