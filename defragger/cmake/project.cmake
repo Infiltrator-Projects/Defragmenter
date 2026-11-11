@@ -774,6 +774,10 @@ if(BUILD_TESTING)
     target_link_libraries(defragmenter-common-v2-test-host PUBLIC
         defragmenter-core OpenSSL::Crypto ${CMAKE_DL_LIBS})
 
+    # The same test engine is already created by the independent-SO
+    # integration setup when OFS_DEFRAG_TEST_MODULE_PARENT is provided.
+    # Reuse that executable rather than defining its CMake target twice.
+    if(NOT TARGET defragmenter-operation-engine-v2-test)
     add_executable(defragmenter-operation-engine-v2-test
         native/operation_engine.cpp)
     target_include_directories(defragmenter-operation-engine-v2-test PRIVATE
@@ -787,6 +791,7 @@ if(BUILD_TESTING)
     target_link_libraries(defragmenter-operation-engine-v2-test PRIVATE
         defragmenter-runtime-cpp defragmenter-core
         defragmenter-common-v2-test-host)
+    endif()
     add_test(NAME defragmenter-strict-common-v2-host
         COMMAND /bin/bash
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_common_v2_dispatch.sh"

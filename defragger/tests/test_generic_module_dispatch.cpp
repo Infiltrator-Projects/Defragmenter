@@ -81,7 +81,7 @@ static void test_no_untrusted_dispatch(const std::string& engine)
             {"defrag", file, "--filesystem", "zzdefragtest"});
         ensure(absent.return_code != 0, "missing V2 SO was accepted");
         ensure(absent.standard_error.find(
-            "no installed trusted Defrag V2 SO advertises zzdefragtest") !=
+            "no installed trusted Common V2 SO qualifies for zzdefragtest") !=
             std::string::npos, "wrong missing-module diagnostic");
         std::ifstream image(file, std::ios::binary);
         const std::string bytes((std::istreambuf_iterator<char>(image)),
