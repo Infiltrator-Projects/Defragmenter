@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: Infiltrator-Projects/Filesystem-UFS1
-          ref: 1f2d64b63ed4952285e6b7f57621b1856c0dc4c3
+          ref: 660e2e15f0ffad16bb4a6c5c616de7f0ead075e0
           path: ci-ufs1-current
       - name: Check out current authoritative UFS2.so
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -156,6 +156,10 @@ jobs:
           if "$consumer" volume-info "$PWD/build/ufs2-truncated.img" \
               --filesystem ufs2; then
             echo "ERROR: V2 query accepted truncated UFS2 media" >&2
+            exit 1
+          fi
+          if "$consumer" map "$image" --filesystem ufs1 --path /file000; then
+            echo "ERROR: UFS1 native V2 mapper accepted a UFS2 file" >&2
             exit 1
           fi
           if "$consumer" volume-info "$image" --filesystem ufs1; then
