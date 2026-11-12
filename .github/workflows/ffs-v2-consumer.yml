@@ -1,0 +1,94 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# This is a separate release dependency for REAL Common V2 FFS.so extents.
+# Legacy FFS V1 mutation/fixture tests are not evidence of V2 DEFRAG_MAP.
+name: Verify independent FFS Common V2 file-map consumer
+on:
+  workflow_call:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/ffs-v2-consumer.yml'
+      - 'defragger/native/filesystem_module_host.c'
+      - 'defragger/native/filesystem_module_host.h'
+      - 'defragger/native/operation_engine.cpp'
+      - 'defragger/cmake/project.cmake'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  v2-ffs-consumer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out exact Defragmenter and shared Common dependencies
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          submodules: recursive
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config jq \
+            libgtk-3-dev libssl-dev libsqlite3-dev libext2fs-dev
+      - name: Check out source-owned FFS Common V2 MAP implementation
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: Infiltrator-Projects/Filesystem-FFS
+          ref: d5e694df1f6a7aad036307c1a5d1fb3fd83e4885
+          path: ci-ffs-v2
+      - name: Build real FFS.so and run producer-owned checksum and corpus regressions
+        run: |
+          set -euo pipefail
+          cmake -S ci-ffs-v2 -B /tmp/ffs-v2 \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          cmake --build /tmp/ffs-v2 --parallel 2
+          ctest --test-dir /tmp/ffs-v2 --output-on-failure
+          nm -D /tmp/ffs-v2/FFS.so | grep -F infiltrator_filesystem_api_v2
+      - name: Build generic V2 Defragmenter without an FFS disk decoder
+        run: |
+          set -euo pipefail
+          cmake -S defragger -B defragger/build \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            -DLD_ENABLE_WERROR=ON \
+            -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/defragger/build/v2-modules"
+          cmake --build defragger/build --parallel 2 \
+            --target defragmenter-operation-engine-v2-test
+      - name: Validate actual source-owned FFS mapping and strict no-writer refusal
+        run: |
+          set -euo pipefail
+          mkdir -p defragger/build/v2-modules/Filesystems
+          image="$PWD/defragger/build/ffs-real.img"
+          /tmp/ffs-v2/ffs-fixture-test --output "$image"
+          test -s "$image"
+          install -m 0644 /tmp/ffs-v2/FFS.so defragger/build/v2-modules/Filesystems/FFS.so
+          export IFS_TEST_MODULE_PARENT="$PWD/defragger/build/v2-modules"
+          consumer="$PWD/defragger/build/defragmenter-operation-engine-v2-test"
+          file='/Defragmenter-TestData/fragmented-files/fragmented-00.bin'
+          old="$(sha256sum "$image" | cut -d' ' -f1)"
+          "$consumer" --list-installed-modules > defragger/build/ffs-v2-inventory.json
+          jq -e '.modules | any(.format_id=="ffs" and .abi==2 and
+                 .group_mask==76 and .capabilities==1 and .defrag_group==true)' \
+            defragger/build/ffs-v2-inventory.json
+          "$consumer" volume-info "$image" --filesystem ffs > defragger/build/ffs-v2-volume.json
+          jq -e '.filesystem=="ffs" and .abi==2 and .total_bytes>0 and
+                 .source=="Common V2 VOLUME_QUERY"' defragger/build/ffs-v2-volume.json
+          "$consumer" map "$image" --filesystem ffs --path="$file" \
+            > defragger/build/ffs-v2-map.log
+          grep -Fq 'Common V2 provider operation verified' defragger/build/ffs-v2-map.log
+          if "$consumer" map "$image" --filesystem ffs --path=/; then
+            echo "ERROR: FFS V2 mapped a directory as an allocated file" >&2; exit 1
+          fi
+          if "$consumer" map "$image" --filesystem ffs --path=/not-found; then
+            echo "ERROR: FFS V2 invented an absent file" >&2; exit 1
+          fi
+          if "$consumer" defrag "$image" --filesystem ffs --path="$file" \
+              --write --confirm "$image"; then
+            echo "ERROR: FFS MAP-only SO accepted unqualified mutation" >&2; exit 1
+          fi
+          test "$old" = "$(sha256sum "$image" | cut -d' ' -f1)"
+          mkdir -p defragger/build/empty-ffs-root/Filesystems
+          if IFS_TEST_MODULE_PARENT="$PWD/defragger/build/empty-ffs-root" \
+              "$consumer" map "$image" --filesystem ffs --path="$file"; then
+            echo "ERROR: missing FFS.so used internal fallback" >&2; exit 1
+          fi
+          test "$old" = "$(sha256sum "$image" | cut -d' ' -f1)"
+          echo "FFS Common V2 source-owned extent map and no-write refusal passed"

@@ -32,6 +32,13 @@ jobs:
       contents: read
     uses: ./.github/workflows/ufs-v2-consumer.yml
 
+  # Qualify actual source-owned FFS extent decoding as a release dependency.
+  ffs-v2-consumer:
+    name: Qualify independent FFS Common V2 map consumer
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ffs-v2-consumer.yml
+
   quality-gate:
     name: Self-hosted project quality gate
     runs-on: [self-hosted, Linux, X64, linux-native, bigbedroom]
@@ -1092,7 +1099,7 @@ jobs:
 
   publish-release:
     name: Publish qualified release
-    needs: [quality-gate, sanitizers, ufs-v2-consumer]
+    needs: [quality-gate, sanitizers, ufs-v2-consumer, ffs-v2-consumer]
     if: needs.quality-gate.outputs.release_intent == 'true'
     permissions:
       contents: write
