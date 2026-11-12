@@ -76,15 +76,23 @@ int main(int argc, char **argv)
         fputs("Specify the UFS target device or image\n", stderr);
         return 2;
     }
-    /* Current UFS1.so/UFS2.so own their read-only Common V2 mount,
-     * extent map and volume query. The installed worker must use that
-     * provider ABI, never quietly fall back to legacy UFS V1 for these
-     * operations. Both candidates are probed using the standard hosted
-     * V2 CORE probe, with no UFS magic or geometry decoded here.
-     * Legacy transactional writers are retained until independent V2
-     * PLAN/EXECUTE/VERIFY/RECOVER qualification exists. */
-    if (strcmp(argv[1], "map") == 0 ||
-        strcmp(argv[1], "volume-info") == 0) {
+    /* The V1 command "map --cells N" is a whole-volume allocation grid,
+     * not the V2 DEFRAG_MAP per-file extent API. Preserve the original
+     * grid/transaction paths; only an explicit --path file-map request can
+     * select V2. Never reinterpret those older request arguments as extents,
+     * and never fall back to V1 after selecting strict Common V2. */
+    int file_map = 0;
+    if (strcmp(argv[1], "map") == 0) {
+        for (int i = 3; i < argc; ++i) {
+            if (!argv[i]) return 2;
+            if (!strcmp(argv[i], "--path") ||
+                !strncmp(argv[i], "--path=", 7u)) {
+                file_map = 1;
+                break;
+            }
+        }
+    }
+    if (file_map || strcmp(argv[1], "volume-info") == 0) {
         char format[16] = {0};
         char filename[64] = {0};
         if (ifs_filesystem_module_detect_ufs_v2(
