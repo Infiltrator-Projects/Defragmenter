@@ -38,7 +38,40 @@ static int invoke(const IfsDefragHostV2 *host,void *symbol,void *opaque) {
     return api->run(r->argc,r->argv,ifs_defrag_services_v1());
 #endif
 }
+/* Explicit volume-info is a Common V2 operation, not a legacy EXT
+ * transaction. Identify the format only by independent CORE.PROBE calls;
+ * do not interpret EXT disk structures or fall back to the V1 ABI. */
+static int v2_volume_info(int argc,char **argv)
+{
+    char matched_format[16]={0},matched_file[64]={0};
+    unsigned matches=0u;
+    if(argc<3 || !argv[2])return 2;
+    for(size_t i=0;i<sizeof(formats)/sizeof(formats[0]);++i){
+        char candidate[64]={0};
+        char *probe_argv[]={argv[0],(char *)"probe-only",argv[2],NULL};
+        if(ifs_filesystem_module_find_readonly_v2(
+            formats[i].key,candidate,sizeof(candidate))!=0)
+            continue;
+        if(ifs_filesystem_module_run(formats[i].key,candidate,
+                                     3,probe_argv)!=0)
+            continue;
+        if(++matches!=1u){
+            fputs("Ambiguous EXT Common V2 filesystem probe; refusal\n",stderr);
+            return 1;
+        }
+        memcpy(matched_format,formats[i].key,
+               strlen(formats[i].key)+1u);
+        memcpy(matched_file,candidate,strlen(candidate)+1u);
+    }
+    if(matches!=1u){
+        fputs("No qualified EXT2/EXT3/EXT4 Common V2 provider recognises target\n",stderr);
+        return 1;
+    }
+    return ifs_filesystem_module_run(matched_format,matched_file,argc,argv);
+}
 int main(int argc,char **argv) {
+    if(argc>=3 && argv[1] && !strcmp(argv[1],"volume-info"))
+        return v2_volume_info(argc,argv);
     Request r={argc,argv,argc>=3 ? argv[2] : NULL,NULL,0};
     if(!r.path) {
         r.expected_format="ext4";

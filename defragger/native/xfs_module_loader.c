@@ -21,6 +21,11 @@ static int invoke(const IfsDefragHostV2 *host,void *symbol,void *opaque) {
  return api->run(r->argc,r->argv,ifs_defrag_services_v1());
 }
 int main(int argc,char **argv) {
+ /* Real Common V2 read-only volume query; never use V1 as a fallback.
+  * Existing native whole-volume analysis/writer remains independently
+  * available until genuine V2 operation parity is qualified. */
+ if(argc>=3 && argv[1] && !strcmp(argv[1],"volume-info"))
+     return ifs_filesystem_module_run("xfs","XFS.so",argc,argv);
  Request request={argc,argv};
  return ifs_filesystem_module_call("xfs","XFS.so",
     "infiltrator_filesystem_xfs_v1",invoke,&request);
