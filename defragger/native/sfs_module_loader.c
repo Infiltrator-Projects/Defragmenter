@@ -26,7 +26,37 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque) {
  const Request *request=opaque;
  return api->run(request->argc,request->argv,ifs_defrag_services_v1());
 }
+/* SFS and SFS2 have independent on-media formats and independent SOs.
+ * The respective native CORE.PROBE owns version recognition; the worker
+ * must not read signatures or silently select the legacy SFS ABI. */
+static int readonly_volume_info(int argc,char **argv)
+{
+ const char *const formats[]={"sfs","sfs2"};
+ char selected_format[16]={0},selected_file[64]={0};
+ unsigned matches=0u;
+ if(argc<3 || !argv[2])return 2;
+ for(unsigned i=0u;i<2u;++i){
+  char candidate[64]={0};
+  char *probe[]={argv[0],(char *)"probe-only",argv[2],NULL};
+  if(ifs_filesystem_module_find_readonly_v2(formats[i],candidate,
+                                            sizeof(candidate))!=0)continue;
+  if(ifs_filesystem_module_run(formats[i],candidate,3,probe)!=0)continue;
+  if(++matches!=1u){
+   fputs("Multiple independent SFS Common V2 modules matched target\n",stderr);
+   return 1;
+  }
+  memcpy(selected_format,formats[i],strlen(formats[i])+1u);
+  memcpy(selected_file,candidate,strlen(candidate)+1u);
+ }
+ if(matches!=1u){
+  fputs("No independently qualified SFS/SFS2 V2 module recognises target\n",stderr);
+  return 1;
+ }
+ return ifs_filesystem_module_run(selected_format,selected_file,argc,argv);
+}
 int main(int argc,char **argv) {
+ if(argc>=3 && argv[1] && !strcmp(argv[1],"volume-info"))
+     return readonly_volume_info(argc,argv);
  Request request={argc,argv};
  return ifs_filesystem_module_call("sfs","SFS.so",
    "infiltrator_filesystem_sfs_v1",execute,&request);

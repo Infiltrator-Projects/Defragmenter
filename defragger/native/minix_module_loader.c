@@ -24,6 +24,10 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque) {
  return api->run(r->argc,r->argv,ifs_defrag_services_v1());
 }
 int main(int argc,char **argv) {
+ /* Exact Common V2 volume metadata; never fall back to the legacy private
+  * MINIX defrag worker when the read-only provider is absent. */
+ if(argc>=3 && argv[1] && !strcmp(argv[1],"volume-info"))
+     return ifs_filesystem_module_run("minix","MINIX.so",argc,argv);
  /* Explicit per-file Minix mapping is now owned by MINIX.so's verified
   * Common V2 DEFRAG_MAP group. Never call the retired V1 module for this
   * operation, even when the matching V2 capability is unavailable. The
