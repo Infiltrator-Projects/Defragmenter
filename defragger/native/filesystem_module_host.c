@@ -840,7 +840,7 @@ int ifs_filesystem_module_detect_ufs_v2(
         if(ifs_filesystem_module_find_readonly_v2(
             candidates[i],found,sizeof(found))!=0)
             continue;
-        char *const argv[]={
+        char *argv[]={
             (char *)"defragmenter-ufs-native-v2-probe",
             (char *)"probe-only",(char *)target,NULL
         };
