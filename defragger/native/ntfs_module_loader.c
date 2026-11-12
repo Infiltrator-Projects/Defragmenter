@@ -21,6 +21,11 @@ static int invoke(const IfsDefragHostV2 *host,void *symbol,void *opaque) {
  return api->run(r->argc,r->argv,ifs_defrag_services_v1());
 }
 int main(int argc,char **argv) {
+ /* The installed independent NTFS.so owns its validated Common V2 CORE
+  * and VOLUME operations. This explicit read-only operation must never
+  * fall back to the retired V1 analyser or transaction interface. */
+ if(argc>=3 && argv[1] && strcmp(argv[1],"volume-info")==0)
+     return ifs_filesystem_module_run("ntfs","NTFS.so",argc,argv);
  Request request={argc,argv};
  return ifs_filesystem_module_call("ntfs","NTFS.so",
     "infiltrator_filesystem_ntfs_v1",invoke,&request);

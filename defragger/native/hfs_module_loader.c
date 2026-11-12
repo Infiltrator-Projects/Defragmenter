@@ -24,6 +24,11 @@ static int call(const IfsDefragHostV2 *h,void *symbol,void *opaque) {
  return api->run(r->argc,r->argv,ifs_defrag_services_v1());
 }
 int main(int argc,char **argv) {
+ /* The installed independent HFS.so owns its validated Common V2 CORE
+  * and VOLUME operations. This explicit read-only operation must never
+  * fall back to the retired V1 analyser or transaction interface. */
+ if(argc>=3 && argv[1] && strcmp(argv[1],"volume-info")==0)
+     return ifs_filesystem_module_run("hfs","HFS.so",argc,argv);
  Request r={argc,argv};
  return ifs_filesystem_module_call("hfs","HFS.so",
   "infiltrator_filesystem_hfs_v1",call,&r);

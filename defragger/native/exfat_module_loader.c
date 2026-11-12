@@ -25,6 +25,11 @@ static int execute(const IfsDefragHostV2 *host, void *symbol, void *opaque) {
     return api->run(request->argc, request->argv, ifs_defrag_services_v1());
 }
 int main(int argc, char **argv) {
+ /* The installed independent exFAT.so owns its validated Common V2 CORE
+  * and VOLUME operations. This explicit read-only operation must never
+  * fall back to the retired V1 analyser or transaction interface. */
+ if(argc>=3 && argv[1] && strcmp(argv[1],"volume-info")==0)
+     return ifs_filesystem_module_run("exfat","exFAT.so",argc,argv);
     Request request = {argc, argv};
     return ifs_filesystem_module_call("exfat", "exFAT.so",
         "infiltrator_filesystem_exfat_defrag_v1", execute, &request);
