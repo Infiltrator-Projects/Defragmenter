@@ -24,6 +24,19 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque) {
  return api->run(r->argc,r->argv,ifs_defrag_services_v1());
 }
 int main(int argc,char **argv) {
+ /* Explicit per-file Minix mapping is now owned by MINIX.so's verified
+  * Common V2 DEFRAG_MAP group. Never call the retired V1 module for this
+  * operation, even when the matching V2 capability is unavailable. The
+  * legacy whole-volume analyser and transactional writer remain separate
+  * until their complete native V2 equivalents are qualified. */
+ if(argc>=3 && argv[1] && strcmp(argv[1],"map")==0) {
+  for(int i=3;i<argc;++i) {
+   if(!argv[i])return 2;
+   if(strcmp(argv[i],"--path")==0 ||
+      strncmp(argv[i],"--path=",7u)==0)
+    return ifs_filesystem_module_run("minix","MINIX.so",argc,argv);
+  }
+ }
  Request r={argc,argv};
  return ifs_filesystem_module_call("minix","MINIX.so",
   "infiltrator_filesystem_minix_defrag_v1",execute,&r);

@@ -97,6 +97,10 @@ jobs:
           grep -Fq '"format_id":"minix"' build/minix-v2-inventory.json
           grep -Fq '"abi":2,"group_mask":76,"capabilities":1,"defrag_group":true' build/minix-v2-inventory.json
           "$engine" map "$image" --filesystem minix --path=/F000000.BIN > build/minix-v2-map.txt
+          # The installed format-specific worker must delegate explicitly
+          # requested per-file maps through Common V2, never the V1 engine.
+          build/defragmenter-minix-test-worker map "$image" --path=/F000000.BIN > build/minix-worker-v2-map.txt
+          grep -Fq 'Common V2 provider operation verified' build/minix-worker-v2-map.txt
           grep -Fq 'Common V2 provider operation verified' build/minix-v2-map.txt
           if "$engine" map "$image" --filesystem minix --path=/; then
             echo "ERROR: V2 Minix mapped a directory as a file" >&2
