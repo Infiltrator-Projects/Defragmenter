@@ -66,6 +66,54 @@ jobs:
           assert m['map_accuracy']=='exact',m
           assert m.get('unknown_bytes',1)==0,m
           PY
+      # Keep the pinned V1 fixture regression above while the separate
+      # producer-owned DEFRAG PLAN/EXECUTE/VERIFY/RECOVER cutover is unfinished.
+      # This is a separate, real Common V2 consumer qualification, never
+      # evidence that V1 mutation has been migrated.
+      - name: Check out source-owned Common V2 Minix extent map
+        uses: actions/checkout@v4
+        with:
+          repository: Infiltrator-Projects/Filesystem-Minix
+          ref: f74177f0b7d785acecda72b7102f38e3ff5ff672
+          path: ci-minix-v2
+      - name: Build and test actual current MINIX.so Common V2 DEFRAG MAP
+        run: |
+          set -euo pipefail
+          cmake -S ci-minix-v2 -B /tmp/minix-v2 -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          cmake --build /tmp/minix-v2 --parallel 2
+          ctest --test-dir /tmp/minix-v2 --output-on-failure
+          nm -D /tmp/minix-v2/MINIX.so | grep -F 'infiltrator_filesystem_api_v2'
+      - name: Verify real Common V2 MINIX read-only extent map and no-write refusal
+        run: |
+          set -euo pipefail
+          cd defragger
+          cmake --build build --target defragmenter-operation-engine-v2-test --parallel 2
+          export IFS_TEST_MODULE_PARENT="$PWD/build/modules"
+          install -m 0644 /tmp/minix-v2/MINIX.so build/modules/Filesystems/MINIX.so
+          engine="$PWD/build/defragmenter-operation-engine-v2-test"
+          image="$PWD/build/minix-test-media.img"
+          before="$(sha256sum "$image" | cut -d ' ' -f1)"
+          "$engine" --list-installed-modules > build/minix-v2-inventory.json
+          grep -Fq '"format_id":"minix"' build/minix-v2-inventory.json
+          grep -Fq '"abi":2,"group_mask":76,"capabilities":1,"defrag_group":true' build/minix-v2-inventory.json
+          "$engine" map "$image" --filesystem minix --path=/F000000.BIN > build/minix-v2-map.txt
+          grep -Fq 'Common V2 provider operation verified' build/minix-v2-map.txt
+          if "$engine" map "$image" --filesystem minix --path=/; then
+            echo "ERROR: V2 Minix mapped a directory as a file" >&2
+            exit 1
+          fi
+          if "$engine" defrag "$image" --filesystem minix --path=/F000000.BIN               --write --confirm "$image"; then
+            echo "ERROR: MINIX advertised unqualified V2 relocation" >&2
+            exit 1
+          fi
+          test "$before" = "$(sha256sum "$image" | cut -d ' ' -f1)"
+          mkdir -p build/minix-missing-v2/Filesystems
+          if IFS_TEST_MODULE_PARENT="$PWD/build/minix-missing-v2"               "$engine" map "$image" --filesystem minix --path=/F000000.BIN; then
+            echo "ERROR: Missing MINIX.so accepted a V2 extent map" >&2
+            exit 1
+          fi
+          test "$before" = "$(sha256sum "$image" | cut -d ' ' -f1)"
+          echo "MINIX strict Common V2 per-file extent mapping verified without mutation"
       - name: Fail closed if independent module is absent
         run: |
           set -euo pipefail
