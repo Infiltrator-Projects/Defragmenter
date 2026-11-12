@@ -76,6 +76,26 @@ int main(int argc, char **argv)
         fputs("Specify the UFS target device or image\n", stderr);
         return 2;
     }
+    /* Current UFS1.so/UFS2.so own their read-only Common V2 mount,
+     * extent map and volume query. The installed worker must use that
+     * provider ABI, never quietly fall back to legacy UFS V1 for these
+     * operations. Both candidates are probed using the standard hosted
+     * V2 CORE probe, with no UFS magic or geometry decoded here.
+     * Legacy transactional writers are retained until independent V2
+     * PLAN/EXECUTE/VERIFY/RECOVER qualification exists. */
+    if (strcmp(argv[1], "map") == 0 ||
+        strcmp(argv[1], "volume-info") == 0) {
+        char format[16] = {0};
+        char filename[64] = {0};
+        if (ifs_filesystem_module_detect_ufs_v2(
+                request.target, format, sizeof(format),
+                filename, sizeof(filename)) != 0) {
+            fputs("No unique trusted UFS Common V2 provider recognises the target\n",
+                  stderr);
+            return 1;
+        }
+        return ifs_filesystem_module_run(format, filename, argc, argv);
+    }
     /* Always probe read-only before allowing either engine to mutate media.
      * Probe failures never trigger a filesystem-specific local fallback.
      */

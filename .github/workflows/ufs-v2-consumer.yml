@@ -11,6 +11,7 @@ on:
       - 'defragger/native/filesystem_module_host.c'
       - 'defragger/native/filesystem_module_host.h'
       - 'defragger/native/operation_engine.cpp'
+      - 'defragger/native/ufs_module_loader.c'
       - 'defragger/cmake/project.cmake'
       - '.github/workflows/ufs-v2-consumer.yml'
   workflow_dispatch:
@@ -80,6 +81,7 @@ jobs:
             -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build/module-test"
           cmake --build build --parallel 2 --target \
             defragmenter-operation-engine-v2-test \
+            defragmenter-ufs-test-worker \
             defragmenter-test-media-mkfs-ufs-test
       - name: Create real UFS2 image with historical native fixture generator
         run: |
@@ -106,6 +108,18 @@ jobs:
           "$consumer" --list-installed-modules > build/ufs-v2-inventory.json
           jq -e '.modules | any(.format_id == "ufs1" and .abi == 2)' build/ufs-v2-inventory.json
           jq -e '.modules | any(.format_id == "ufs2" and .abi == 2)' build/ufs-v2-inventory.json
+          # The actual installed UFS worker must use the same current V2
+          # provider, even when the historical V1 SO entry points are absent.
+          worker=build/defragmenter-ufs-test-worker
+          "$worker" volume-info "$image" > build/ufs2-worker-volume.json
+          jq -e '.filesystem == "ufs2" and .abi == 2 and .source == "Common V2 VOLUME_QUERY"' \
+            build/ufs2-worker-volume.json
+          "$worker" map "$image" --path /file000 > build/ufs2-worker-map.log
+          grep -Fq 'Common V2 provider operation verified' build/ufs2-worker-map.log
+          if "$worker" map "$image" --path /missing-file; then
+            echo "ERROR: installed UFS worker invented a missing file via V2" >&2
+            exit 1
+          fi
           "$consumer" volume-info "$image" --filesystem ufs2 > build/ufs2-volume.json
           jq -e '.filesystem == "ufs2" and .abi == 2 and .variant == 3
                  and .block_bytes == 65536 and .total_bytes > 0
@@ -178,6 +192,13 @@ jobs:
           fi
           test "$original" = "$(sha256sum "$image" | cut -d' ' -f1)"
           mkdir -p build/empty-v2-root/Filesystems
+          # Missing V2 providers may never trigger a V1 ABI fallback.
+          if IFS_TEST_MODULE_PARENT="$PWD/build/empty-v2-root" \
+            "$worker" map "$image" --path /file000; then
+            echo "ERROR: UFS worker fell back when native V2 SO was absent" >&2
+            exit 1
+          fi
+
           if IFS_TEST_MODULE_PARENT="$PWD/build/empty-v2-root" \
             "$consumer" volume-info "$image" --filesystem ufs2; then
             echo "ERROR: provider-less query reported success" >&2; exit 1
