@@ -63,6 +63,12 @@ The 21-slot native C creator exercises disposable media through first-party form
 
 See [Design](DESIGN.md), [References](REFERENCES.md) and [UI vision](UI_VISION.md) for specialist requirements.
 
-## FAT12 single-module pilot (9 November 2026)
+## Filesystem module dispatch
 
-The authoritative installed FAT12 engine is `/System/Filesystems/FAT12.so`. The FAT12 owner has begun the Common/Libraries `infiltrator_filesystem_api_v1` adapter with probe and guarded reformat, while its **existing** `infiltrator_filesystem_defrag_v1` remains the separately versioned defrag ABI. Common V1 explicitly reserves generic defrag capability bits until that contract is specified, so it does **not** advertise FAT12 analysis/relocation under the new ABI. Defragmenter must continue using its verified FAT12 SO defrag host, with independent device/identity/mount/journal checks, until a generic adopted ABI is proven. Do not add another FAT12 relocation implementation inside Defragmenter and do not silently fall back to private format code.
+The installed provider under `/System/Filesystems` owns filesystem
+operations. Volume queries and explicit per-file maps use Common V2 where
+the provider advertises the required capabilities. FAT12 Test Media uses
+`FAT12.so` through Common V2 for formatting, file operations and validation.
+The format-specific relocation and journal recovery adapters remain in
+service until equivalent Common V2 operations pass disposable-media and
+recovery tests. See [Audit Status](AUDIT_STATUS.md) for the qualified scope.
