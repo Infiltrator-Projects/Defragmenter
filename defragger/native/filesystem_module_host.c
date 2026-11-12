@@ -524,9 +524,9 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
         (const IfsFsCoreOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_CORE);
     const IfsFsDefragOpsV2 *defrag=
         (const IfsFsDefragOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_DEFRAG);
-    if(!core || !(core->header.capabilities & IFS_FS_CORE_MOUNT) ||
-       !core->mount || !core->unmount) {
-        fputs("V2 provider lacks a mounted CORE lifecycle\n",stderr);
+    if(!core || !(core->header.capabilities & IFS_FS_CORE_PROBE) ||
+       !core->probe) {
+        fputs("V2 provider lacks a native CORE probe\n",stderr);
         return 1;
     }
     if(command->argc<3 || !command->argv[1] || !command->argv[2])return 2;
@@ -534,9 +534,14 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
     int explicit_path=0;
     uint32_t requested_sector=0u;
     int explicit_write=0;
+    /* Internal, silent read-only identification. The universal dispatcher
+     * uses provider-owned CORE.PROBE to select UFS1 or UFS2; never parse
+     * filesystem magic or call retired V1 entry points in Defragmenter. */
+    const int probing=!strcmp(operation,"probe-only");
+    if(probing && command->argc!=3)return 2;
     const int reporting=!strcmp(operation,"volume-info");
     const int recovering=!strcmp(operation,"recover");
-    const int analysing=reporting || !strcmp(operation,"analyse") ||
+    const int analysing=probing || reporting || !strcmp(operation,"analyse") ||
         !strcmp(operation,"analyse-json") || !strcmp(operation,"map");
     const int defragging=!strcmp(operation,"defrag");
     const int growing=!strcmp(operation,"growth-defrag");
@@ -551,7 +556,7 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
             fputs("V2 provider does not support a real volume query\n",stderr);
             return 2;
         }
-    } else if(!defrag) {
+    } else if(!probing && !defrag) {
         fputs("V2 provider lacks the required DEFRAG group\n",stderr);
         return 2;
     }
@@ -602,7 +607,7 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
     const uint64_t required=recovering?IFS_FS_DEFRAG_RECOVER:
         analysing?IFS_FS_DEFRAG_MAP:
         IFS_FS_DEFRAG_PLAN|IFS_FS_DEFRAG_EXECUTE|IFS_FS_DEFRAG_VERIFY;
-    if(!reporting &&
+    if(!probing && !reporting &&
        (defrag->header.capabilities & required)!=required) {
         fputs("Provider does not qualify the requested strict V2 operation\n",stderr);
         return 2;
@@ -652,7 +657,17 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
     if(!ifs_fs_host_v2_valid(&h))goto cleanup_target;
     uint32_t variant=0u;
     if(core->probe(&h,&variant)!=IFS_FS_OK) {
-        fputs("V2 provider rejected the target's filesystem geometry\n",stderr);
+        if(!probing)
+            fputs("V2 provider rejected the target's filesystem geometry\n",stderr);
+        goto cleanup_target;
+    }
+    if(probing) {
+        result=0;
+        goto cleanup_target;
+    }
+    if(!(core->header.capabilities & IFS_FS_CORE_MOUNT) ||
+       !core->mount || !core->unmount) {
+        fputs("V2 provider lacks a mounted CORE lifecycle\n",stderr);
         goto cleanup_target;
     }
     IfsFsVolumeInfoV2 info={0};
@@ -804,3 +819,42 @@ int ifs_filesystem_module_run_ofs_native(int argc, char **argv) {
     return ifs_filesystem_module_call("ofs", "OFS.so",
         "infiltrator_filesystem_defrag_v2", run_ofs_native, &command);
 }
+
+/* The generic UFS alias is resolved by the authoritative independent
+ * providers themselves. Require one and only one successful native V2 probe;
+ * no host-side UFS magic offsets, legacy codec or writable probing. */
+int ifs_filesystem_module_detect_ufs_v2(
+    const char *target, char *format, size_t format_capacity,
+    char *filename, size_t filename_capacity)
+{
+    static const char *const candidates[]={"ufs1","ufs2"};
+    char match_format[16]={0};
+    char match_file[64]={0};
+    unsigned matches=0u;
+    if(!target || !target[0] || !format || !filename ||
+       format_capacity<5u || filename_capacity<sizeof(match_file))
+        return -1;
+    format[0]=filename[0]='\0';
+    for(size_t i=0;i<sizeof(candidates)/sizeof(candidates[0]);++i) {
+        char found[64]={0};
+        if(ifs_filesystem_module_find_readonly_v2(
+            candidates[i],found,sizeof(found))!=0)
+            continue;
+        char *const argv[]={
+            (char *)"defragmenter-ufs-native-v2-probe",
+            (char *)"probe-only",(char *)target,NULL
+        };
+        if(ifs_filesystem_module_run(candidates[i],found,3,argv)!=0)
+            continue;
+        if(++matches!=1u)
+            return -1;
+        memcpy(match_format,candidates[i],strlen(candidates[i])+1u);
+        memcpy(match_file,found,strlen(found)+1u);
+    }
+    if(matches!=1u || strlen(match_file)+1u>filename_capacity)
+        return -1;
+    memcpy(format,match_format,strlen(match_format)+1u);
+    memcpy(filename,match_file,strlen(match_file)+1u);
+    return 0;
+}
+
