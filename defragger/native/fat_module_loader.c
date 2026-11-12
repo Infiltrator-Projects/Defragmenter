@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 /* Child-process host for the FAT engine exported by Filesystems' FAT*.so. */
 #include "fat_defrag_abi.h"
+#include "filesystem_module_host.h"
 #include "version.h"
 
 #include <dlfcn.h>
@@ -63,7 +64,41 @@ static ssize_t test_pwrite_full(int fd, const void *buffer, size_t length,
 }
 #endif
 
+/* The FAT defragmentation journal and relocation engine remains in its
+ * canonical module. Explicit read-only V2 volume queries use independent
+ * FAT12/16/32 SO probes, never legacy `infiltrator_filesystem_defrag_v1`
+ * and never disk parsing inside Defragmenter. */
+static int v2_volume_info(int argc,char **argv)
+{
+    static const char *const formats[]={"fat12","fat16","fat32"};
+    char selected_format[16]={0},selected_file[64]={0};
+    unsigned matches=0u;
+    if(argc<3 || !argv[2])return 2;
+    for(size_t i=0u;i<sizeof(formats)/sizeof(formats[0]);++i){
+        char candidate[64]={0};
+        char *probe[]={argv[0],(char *)"probe-only",argv[2],NULL};
+        if(ifs_filesystem_module_find_readonly_v2(
+                formats[i],candidate,sizeof(candidate))!=0)
+            continue;
+        if(ifs_filesystem_module_run(formats[i],candidate,3,probe)!=0)
+            continue;
+        if(++matches!=1u){
+            fputs("Ambiguous FAT Common V2 volume identity\n",stderr);
+            return 1;
+        }
+        memcpy(selected_format,formats[i],strlen(formats[i])+1u);
+        memcpy(selected_file,candidate,strlen(candidate)+1u);
+    }
+    if(matches!=1u){
+        fputs("No trusted FAT12/16/32 Common V2 module matches target\n",stderr);
+        return 1;
+    }
+    return ifs_filesystem_module_run(selected_format,selected_file,argc,argv);
+}
+
 int main(int argc, char **argv) {
+    if(argc>=3 && argv[1] && strcmp(argv[1],"volume-info")==0)
+        return v2_volume_info(argc,argv);
     if (argc == 2 && strcmp(argv[1], "--version") == 0) {
         printf("defragmenter-fat-worker %s\n", LD_VERSION);
         return 0;

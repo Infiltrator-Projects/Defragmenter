@@ -313,7 +313,8 @@ target_include_directories(defragmenter-fat-worker PRIVATE
 target_compile_options(defragmenter-fat-worker PRIVATE ${LD_WARNING_FLAGS})
 target_compile_definitions(defragmenter-fat-worker PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(defragmenter-fat-worker PRIVATE
-    defragmenter-core Threads::Threads ${CMAKE_DL_LIBS})
+    defragmenter-core defragmenter-filesystem-module-host
+    Threads::Threads ${CMAKE_DL_LIBS})
 
 # Test-only overrides are compiled into a separate binary, never the installed host.
 set(FAT_DEFRAG_SOURCE_DIR "" CACHE PATH "Filesystems FAT defrag source for unit tests")
@@ -328,8 +329,17 @@ if(BUILD_TESTING AND FAT_DEFRAG_TEST_MODULE_PARENT)
     target_compile_definitions(defragmenter-fat-test-worker PRIVATE
         _FILE_OFFSET_BITS=64 _GNU_SOURCE IFS_FAT_TESTING
         "IFS_FAT_MODULE_PARENT=\"${FAT_DEFRAG_TEST_MODULE_PARENT}\"")
-    target_link_libraries(defragmenter-fat-test-worker PRIVATE
-        defragmenter-core Threads::Threads ${CMAKE_DL_LIBS})
+    # Where the isolated host exists, FAT V2 reads use the same trusted
+    # disposable module root as the other Common V2 test workers.
+    if(BUILD_TESTING AND OFS_DEFRAG_TEST_MODULE_PARENT)
+        target_link_libraries(defragmenter-fat-test-worker PRIVATE
+            defragmenter-core defragmenter-filesystem-module-test-host
+            Threads::Threads ${CMAKE_DL_LIBS})
+    else()
+        target_link_libraries(defragmenter-fat-test-worker PRIVATE
+            defragmenter-core defragmenter-filesystem-module-host
+            Threads::Threads ${CMAKE_DL_LIBS})
+    endif()
     set(FAT_WORKER_FOR_TESTS "$<TARGET_FILE:defragmenter-fat-test-worker>")
 endif()
 
