@@ -4,10 +4,20 @@
 
 Status: **complete**
 
-Audited source commit: 4c231b2695625d04c1006b3f6691f616dc2364fb
-Audited release-governance commit: 72f3ef6a9d8153d07806bfe6e761e072893cc8b6
+Audited source commit: eac4101937de972ec95634b9fb14fc610cf51dca
+Audited release-governance commit: eac4101937de972ec95634b9fb14fc610cf51dca
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Installed Amiga worker strict Common V2 per-file identification — reviewed 2026-11-13
+
+**Exact reviewed candidate:** `eac4101937de972ec95634b9fb14fc610cf51dca`, one linear source commit after the earlier `1.8.0-300` candidate `da70426291bdb7a0e200dc8748e9ea2ea27cc9e1`. Its only changes were `defragger/native/affs_module_loader.c` and `.github/workflows/ffs-v2-consumer.yml`. Against previous audited source `4c231b2695625d04c1006b3f6691f616dc2364fb`, the only new compiled Defragmenter code is this Amiga worker routing; against audited governance `72f3ef6a9d8153d07806bfe6e761e072893cc8b6`, the new FFS V2 consumer test was extended. No source-owned FFS/OFS disk parser, journal, block writer, device I/O lease, release script, installer, or private legacy ABI implementation changed.
+
+**Explicit V2 path:** `volume-info` and `map --path PATH` now ask each installed, trusted source-owned OFS.so/FFS.so Common V2 provider to probe the offline target. Both probes run through the existing host-bounded CORE profile, with no boot-sector signature interpreted inside the new V2 selection. There must be exactly one matching provider; unknown, missing or ambiguous matches are refused. A successful matching provider then handles the operation through strict Common V2 and its advertised capabilities; if it does not offer a qualified DEFRAG_MAP, there is no V1 fallback. This is additive, read-only dispatch. Legacy `map --cells N` is a different whole-volume operation, and legacy native defragmentation/growth/recovery still use their existing independently owned engines and recovery journals. This migration makes no claim that all V1 code is gone.
+
+**Regression:** Updated mandatory `ffs-v2-consumer.yml` builds the actual installed `defragmenter-affs-test-worker` against the current independent FFS 1.0.9 candidate, tests native `volume-info` and per-file `map`, and fails when a V2 provider is missing instead of trying to use the V1 worker. The independent FFS source-owned real-media and native consumer regression already passed at `43311560587` before this worker extension. Fresh exact-head consumer, the old FFS/OFS/Amiga workflows, native quality gate and sanitizer must pass on this new candidate. All tests are disposable-image tests, not actual user-machine or powered-off hardware verification.
+
+**Version / release discipline:** Defragmenter remains `1.8.0-300` pending green exact-head qualification and publication. Audited source and governance markers are advanced to `eac4101937de972ec95634b9fb14fc610cf51dca`; immutable `v1.8.0-299` remains untouched. The gate still checks exact tracked source/governance diffs. This review neither waives failing CI nor certifies physical-media recovery or APT propagation.
 
 ## Real FFS Common V2 MAP as mandatory independent release gate — reviewed 2026-11-13
 
