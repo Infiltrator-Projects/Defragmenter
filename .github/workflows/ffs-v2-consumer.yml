@@ -11,6 +11,7 @@ on:
       - 'defragger/native/filesystem_module_host.c'
       - 'defragger/native/filesystem_module_host.h'
       - 'defragger/native/operation_engine.cpp'
+      - 'defragger/native/affs_module_loader.c'
       - 'defragger/cmake/project.cmake'
   workflow_dispatch:
 permissions:
@@ -51,7 +52,8 @@ jobs:
             -DLD_ENABLE_WERROR=ON \
             -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/defragger/build/v2-modules"
           cmake --build defragger/build --parallel 2 \
-            --target defragmenter-operation-engine-v2-test
+            --target defragmenter-operation-engine-v2-test \
+            defragmenter-affs-test-worker
       - name: Validate actual source-owned FFS mapping and strict no-writer refusal
         run: |
           set -euo pipefail
@@ -73,6 +75,15 @@ jobs:
                  .source=="Common V2 VOLUME_QUERY"' defragger/build/ffs-v2-volume.json
           "$consumer" map "$image" --filesystem ffs --path="$file" \
             > defragger/build/ffs-v2-map.log
+          # The actual Amiga worker must select FFS.so by its provider-owned
+          # Common V2 CORE probe, not by interpreting DOS boot magic.
+          worker="$PWD/defragger/build/defragmenter-affs-test-worker"
+          "$worker" volume-info "$image" > defragger/build/ffs-v2-worker-volume.json
+          jq -e '.filesystem=="ffs" and .abi==2 and .total_bytes>0' \
+            defragger/build/ffs-v2-worker-volume.json
+          "$worker" map "$image" --path="$file" > defragger/build/ffs-v2-worker-map.log
+          grep -Fq 'Common V2 provider operation verified' \
+            defragger/build/ffs-v2-worker-map.log
           grep -Fq 'Common V2 provider operation verified' defragger/build/ffs-v2-map.log
           if "$consumer" map "$image" --filesystem ffs --path=/; then
             echo "ERROR: FFS V2 mapped a directory as an allocated file" >&2; exit 1
@@ -86,6 +97,10 @@ jobs:
           fi
           test "$old" = "$(sha256sum "$image" | cut -d' ' -f1)"
           mkdir -p defragger/build/empty-ffs-root/Filesystems
+          if IFS_TEST_MODULE_PARENT="$PWD/defragger/build/empty-ffs-root" \
+              "$worker" map "$image" --path="$file"; then
+            echo "ERROR: installed AFFS worker used V1 after missing Common V2 provider" >&2; exit 1
+          fi
           if IFS_TEST_MODULE_PARENT="$PWD/defragger/build/empty-ffs-root" \
               "$consumer" map "$image" --filesystem ffs --path="$file"; then
             echo "ERROR: missing FFS.so used internal fallback" >&2; exit 1

@@ -35,6 +35,49 @@ int main(int argc,char **argv) {
     const char *journal=NULL;
     for(int i=3;i+1<argc;i++)
         if(strcmp(argv[i],"--journal")==0)journal=argv[i+1];
+    /* Native strict Common V2 identification for read-only requests.
+     * An explicit per-file --path map is NOT the legacy --cells allocation
+     * grid; do not parse the Amiga DOS boot bytes to select that provider.
+     * Both independent SOs perform their own checked CORE probe. Reject
+     * absence or ambiguous matches without calling any V1 fallback. */
+    int file_map=0;
+    if(!strcmp(argv[1],"map")) {
+        for(int i=3;i<argc;++i) {
+            if(!argv[i])return 2;
+            if(!strcmp(argv[i],"--path") ||
+               !strncmp(argv[i],"--path=",7u)) {
+                file_map=1;
+                break;
+            }
+        }
+    }
+    if(file_map || !strcmp(argv[1],"volume-info")) {
+        const char *const formats[]={"ofs","ffs"};
+        char selected_format[16]={0};
+        char selected_name[64]={0};
+        unsigned matches=0u;
+        for(unsigned i=0u;i<2u;++i) {
+            char candidate[64]={0};
+            if(ifs_filesystem_module_find_readonly_v2(
+                    formats[i],candidate,sizeof(candidate))!=0)
+                continue;
+            char *probe[]={(char *)argv[0],(char *)"probe-only",argv[2],NULL};
+            if(ifs_filesystem_module_run(formats[i],candidate,3,probe)!=0)
+                continue;
+            if(++matches!=1u) {
+                fputs("Multiple trusted Amiga Common V2 providers matched the target\n",stderr);
+                return 1;
+            }
+            memcpy(selected_format,formats[i],strlen(formats[i])+1u);
+            memcpy(selected_name,candidate,strlen(candidate)+1u);
+        }
+        if(matches!=1u) {
+            fputs("No trusted Amiga Common V2 provider recognised the target\n",stderr);
+            return 1;
+        }
+        return ifs_filesystem_module_run(selected_format,selected_name,
+                                         argc,argv);
+    }
     /* A recovery journal takes precedence over a possibly damaged boot
      * signature. All remaining FFS identity checks occur inside FFS.so. */
     if(recover && ifs_filesystem_journal_matches(journal,"ofs"))
