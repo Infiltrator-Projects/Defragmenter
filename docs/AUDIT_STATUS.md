@@ -4,10 +4,18 @@
 
 Status: **complete**
 
-Audited source commit: 66e0e626242957924b1f82fcc88c03aa3807a261
-Audited release-governance commit: 66e0e626242957924b1f82fcc88c03aa3807a261
+Audited source commit: 901a953dad77fca106be3a0d54b9515fc024192e
+Audited release-governance commit: 901a953dad77fca106be3a0d54b9515fc024192e
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Installed UFS worker read-only Common V2 routing — reviewed 2026-11-13
+
+**Exact reviewed source and governance candidate:** `901a953dad77fca106be3a0d54b9515fc024192e`, one linear, zero-behind source commit after the published v1.8.0-299 audited `main` `66e0e626242957924b1f82fcc88c03aa3807a261`. GitHub comparison lists exactly three paths: `defragger/native/ufs_module_loader.c`, `.github/workflows/ufs-v2-consumer.yml` and this audit update. The live worker's `map` and `volume-info` requests now require a unique hosted native Common V2 UFS1/UFS2 provider using each provider's CORE probe. It passes the existing unmodified request through the trusted, target-identity-bound Common V2 host, with no new disk parser and no implicit return to the V1 private worker. A missing, duplicate, invalid, unqualified or wrong-format provider fails closed before any write. Mutating legacy operations and the historical fixture generator are intentionally retained, as strict V2 PLAN/EXECUTE/VERIFY/RECOVER and V2 FORMAT are **not yet implemented** in the independent UFS providers.
+
+**Regression and governance:** `.github/workflows/ufs-v2-consumer.yml` now also builds the actual installed V2-bound UFS worker under `-Werror` and, after replacing the historical fixture generator with current UFS1/UFS2 Common V2 providers, requires UFS2 volume-info JSON, real file mapping, missing-file rejection and missing-provider fail-closed refusal through this actual worker. It preserves the current independent Common V2 provider and no-writer SHA-256 checks; the old V1 integration gate remains separate, not evidence of V2 mutation readiness. The workflow is included in both exact-commit release governance and the project quality gate. Neither its success nor real physical-media qualification is presumed from this audit: **exact-head tests and publication must still pass independently**.
+
+**Limits:** V1 mutators and old filesystem fixture interfaces remain; this change removes the UFS V1 dependency for only the covered read-only operations, not for UFS transactional writes/recovery. No journal, image writer, disk-layout algorithm, package installer or destructive consent policy was changed. Audited source and governance markers are advanced to the exact reviewed candidate `901a953dad77fca106be3a0d54b9515fc024192e` without waiving CI tests.
 
 ## MINIX worker per-file V2 routing and UFS MAP integration review — 2026-11-12
 
