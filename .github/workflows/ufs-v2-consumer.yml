@@ -4,6 +4,7 @@
 # V1 fixture; that green result MUST NOT count as V2 consumer qualification.
 name: Verify current UFS V2 universal consumer
 on:
+  workflow_call:
   push:
     branches: [main]
     paths:
@@ -21,7 +22,7 @@ jobs:
     timeout-minutes: 25
     steps:
       - name: Check out universal Defragmenter and its pinned Common
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           submodules: recursive
       - name: Install native build dependencies
@@ -30,13 +31,13 @@ jobs:
           sudo apt-get install -y build-essential cmake pkg-config jq \
             libgtk-3-dev libssl-dev libsqlite3-dev libext2fs-dev
       - name: Check out current authoritative UFS1.so
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: Infiltrator-Projects/Filesystem-UFS1
           ref: 1f2d64b63ed4952285e6b7f57621b1856c0dc4c3
           path: ci-ufs1-current
       - name: Check out current authoritative UFS2.so
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: Infiltrator-Projects/Filesystem-UFS2
           ref: bb4e33a786d5b6a22b9a2f5c33bf2222cae86fd0
@@ -45,7 +46,7 @@ jobs:
       # currently published UFS2 Common V2 API does not advertise formatting.
       # It is never installed as the provider under test.
       - name: Check out historical, qualified UFS2 fixture generator
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: Infiltrator-Projects/Filesystem-UFS2
           ref: 8f3514883827d2a72e65c2f45580e937571e0372

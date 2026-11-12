@@ -24,6 +24,14 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # The strict Common V2 UFS regression is an actual release dependency.
+  # It has read-only GitHub permissions and uses only disposable test images.
+  ufs-v2-consumer:
+    name: Qualify independent UFS1/UFS2 V2 consumer
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ufs-v2-consumer.yml
+
   quality-gate:
     name: Self-hosted project quality gate
     runs-on: [self-hosted, Linux, X64, linux-native, bigbedroom]
@@ -1084,7 +1092,7 @@ jobs:
 
   publish-release:
     name: Publish qualified release
-    needs: [quality-gate, sanitizers]
+    needs: [quality-gate, sanitizers, ufs-v2-consumer]
     if: needs.quality-gate.outputs.release_intent == 'true'
     permissions:
       contents: write
