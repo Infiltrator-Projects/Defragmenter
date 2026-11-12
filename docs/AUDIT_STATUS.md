@@ -4,10 +4,20 @@
 
 Status: **complete**
 
-Audited source commit: 21a4f1e95f675a240d4f9347817616bbbe180e4d
-Audited release-governance commit: f1eb42fb220a6193a59d04056aaed190612f62ab
+Audited source commit: 66e0e626242957924b1f82fcc88c03aa3807a261
+Audited release-governance commit: 66e0e626242957924b1f82fcc88c03aa3807a261
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## MINIX worker per-file V2 routing and UFS MAP integration review — 2026-11-12
+
+**Exact reviewed source and governance commit:** `66e0e626242957924b1f82fcc88c03aa3807a261`. GitHub comparison against the previous qualified governance baseline `f1eb42fb220a6193a59d04056aaed190612f62ab` shows four linear commits and exactly four paths: `defragger/native/minix_module_loader.c`, `.github/workflows/minix-integration.yml`, `.github/workflows/ufs-v2-consumer.yml` and this audit. Source changes are restricted to an additive explicit per-file `map` path in the Minix worker. This invokes the existing trusted, identity-bound Common V2 provider host, which itself demands the real V2 `DEFRAG_MAP` capability. If unavailable, a map request **refuses**; it does not fall back to the V1 engine. The legacy whole-volume analyser and transactional writer are unchanged until genuine V2 PLAN/EXECUTE/VERIFY/RECOVER equivalents are proved. No application disk parser, filesystem mutation code, install hook, journal algorithm or release-script control has changed.
+
+**Native MINIX consumer evidence:** The independent MINIX.so Common V2 MAP-only provider at `f74177f0b7d785acecda72b7102f38e3ff5ff672` passed its independent build and source-owned extent-map tests. Defragmenter's preceding CI run `43151820582` also passed the universal V2 consumer's on-disk file mapping, directory refusal, non-mutating write rejection and full-image SHA-256 verification. The updated MINIX workflow now additionally calls the **installed Minix worker's per-file map command**, ensuring it takes the standard V2 path rather than a V1 private ABI; it must pass the new exact-head CI run before release.
+
+**UFS governance review:** The UFS V2 consumer workflow pins independently owned UFS1 `660e2e15f0ffad16bb4a6c5c616de7f0ead075e0` and UFS2 `6c0f9697de1704614887019c6a61fa82f8fc6917`. It grows a disposable fixture, exercises actual root and per-file V2 extent paging including the `ufs` alias, rejects an absent file and cross-format UFS1/UFS2 maps, and ensures a MAP-only provider cannot report successful relocation. These added tests do not change production dispatch or weaken the release gate. The source implementation of those libraries remains independently owned.
+
+**Explicit limits:** This is *not* a universal V2-only Defragmenter. Other V1 adapters remain, including Minix's older transactional writer. V2 MAP does not imply V2 mutation/recovery or physical-machine qualification. A fresh exact-head project quality gate, sanitizer and release/publish workflow must pass. No test failure may be waived by advancing the baseline.
 
 ## MINIX Common V2 MAP consumer qualification — reviewed 2026-11-12
 
