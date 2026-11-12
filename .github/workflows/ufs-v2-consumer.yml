@@ -40,7 +40,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: Infiltrator-Projects/Filesystem-UFS2
-          ref: bb4e33a786d5b6a22b9a2f5c33bf2222cae86fd0
+          ref: 6c0f9697de1704614887019c6a61fa82f8fc6917
           path: ci-ufs2-current
       # Retain only this pinned old SO as a fixture *generator*, since the
       # currently published UFS2 Common V2 API does not advertise formatting.
@@ -87,7 +87,7 @@ jobs:
           cd defragger
           mkdir -p build/module-test/Filesystems build/test-source
           install -m 0644 /tmp/ufs2-fixture/UFS2.so build/module-test/Filesystems/UFS2.so
-          dd if=/dev/zero of=build/test-source/source.bin bs=1024 count=256 status=none
+          dd if=/dev/zero of=build/test-source/source.bin bs=1M count=10 status=none
           export IFS_TEST_MODULE_PARENT="$PWD/build/module-test"
           build/defragmenter-test-media-mkfs-ufs-test \
             -t ffs -B little -s 64m \
@@ -120,6 +120,23 @@ jobs:
           "$consumer" volume-info "$image" --filesystem ufs2 \
             --sector-bytes=4096 > build/ufs2-4kn.json
           jq -e '.filesystem == "ufs2" and .total_bytes > 0' build/ufs2-4kn.json
+          # The UFS2 V2 provider owns actual directory, inode and indirect
+          # block decoding. This >32-extent file exercises host pagination.
+          "$consumer" map "$image" --filesystem ufs2 --path / > build/ufs2-root-map.log
+          "$consumer" map "$image" --filesystem ufs2 --path /file000 > build/ufs2-file-map.log
+          "$consumer" map "$image" --filesystem ufs --path /file000 > build/ufs2-alias-map.log
+          for record in build/ufs2-root-map.log build/ufs2-file-map.log build/ufs2-alias-map.log; do
+            grep -F 'Common V2 provider operation verified' "$record"
+          done
+          if "$consumer" map "$image" --filesystem ufs2 --path /does-not-exist; then
+            echo "ERROR: native UFS2 map invented an absent file" >&2
+            exit 1
+          fi
+          if "$consumer" defrag "$image" --filesystem ufs2 --path /file000 \
+              --write --confirm "$image"; then
+            echo "ERROR: MAP-only UFS2.so qualified an unimplemented writer" >&2
+            exit 1
+          fi
           original="$(sha256sum "$image" | cut -d' ' -f1)"
           # Damage a genuine cylinder-group header without touching the
           # original fixture. The new V2 query must detect it, even though
