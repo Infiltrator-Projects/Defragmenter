@@ -190,6 +190,7 @@ def main() -> None:
         "minix-integration.yml", "ntfs-integration.yml",
         "pfs3-integration.yml", "sfs-integration.yml",
         "swap-integration.yml", "ufs-integration.yml",
+        "ufs-v2-consumer.yml",
         "xfs-integration.yml", "zfs-integration.yml",
     }
     branch_hygiene = "prune-integrated-branches.yml"
