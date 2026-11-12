@@ -16,5 +16,8 @@ int ifs_filesystem_module_list_v2(void);
 int ifs_filesystem_module_find_v2(const char *, char *, size_t);
 /* CORE + VOLUME readers are discoverable before DEFRAG is qualified. */
 int ifs_filesystem_module_find_readonly_v2(const char *, char *, size_t);
+/* Resolve 'ufs' via UFS1.so/UFS2.so native Common V2 CORE probes only. */
+int ifs_filesystem_module_detect_ufs_v2(const char *, char *, size_t,
+                                        char *, size_t);
 int ifs_filesystem_journal_matches(const char *, const char *);
 #endif
