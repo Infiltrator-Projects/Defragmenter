@@ -5,9 +5,19 @@
 Status: **complete**
 
 Audited source commit: 4c231b2695625d04c1006b3f6691f616dc2364fb
-Audited release-governance commit: 901a953dad77fca106be3a0d54b9515fc024192e
+Audited release-governance commit: 72f3ef6a9d8153d07806bfe6e761e072893cc8b6
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Real FFS Common V2 MAP as mandatory independent release gate — reviewed 2026-11-13
+
+**Governance candidate reviewed:** `72f3ef6a9d8153d07806bfe6e761e072893cc8b6`, exactly two linear, zero-behind commits after the source-reviewed UFS fix `4c231b2695625d04c1006b3f6691f616dc2364fb`, with only `.github/workflows/ffs-v2-consumer.yml`, `.github/workflows/quality-gate.yml` and this audit record changed. The source baseline remains `4c231b2695625d04c1006b3f6691f616dc2364fb`, since no Defragmenter runtime, device, journal, module-host source, package/install input or test code changed after that audit. Release-governance baseline advances from `901a953dad77fca106be3a0d54b9515fc024192e` to `72f3ef6a9d8153d07806bfe6e761e072893cc8b6`; a new `ffs-v2-consumer` required job was added to `publish-release.needs`. This **tightens** release qualification; it cannot be bypassed by a successful historical FFS V1 test.
+
+**Independent FFS source reviewed:** `Filesystem-FFS` commit `7e6d052d7bc08743fdb5399419f2fbbc5b4d5fd3` added read-only Common V2 `DEFRAG_MAP`, using the exact FFS.so checksum/extension-pointer/data-block walker already used by the independent FFS read engine. It rejects corrupt or duplicate extents in a page and never claims PLAN, EXECUTE, VERIFY or RECOVER. Its existing native fixture and extended real-file map/C11 ABI regression passed in the independent FFS shared-object qualification workflow `43311175169`. Independently versioned provider candidate `d5e694df1f6a7aad036307c1a5d1fb3fd83e4885` is pinned by the new consumer workflow.
+
+**Consumer qualification:** Defragmenter's new `ffs-v2-consumer.yml` workflow requires a current FFS.so build and native C tests, generates a disposable real 16 MiB FFS fixture using the filesystem-owned test formatter, installs ONLY the just-built FFS.so under its isolated trusted test root, and calls the universal Common V2 consumer for inventory, volume query and per-file extent mapping. It rejects directories, nonexistent files, unqualified DEFRAG mutation and missing providers, and checks the image SHA-256 is unchanged. The exact dedicated workflow run `43311560587` completed successfully on `72f3ef6a9d8153d07806bfe6e761e072893cc8b6`. All other required whole-project integration, sanitizer, quality and publication checks still must pass on the release candidate. There is no evidence here of physical device qualification, or that the older transactional FFS V1 interface has been retired.
+
+**Version and release discipline:** Next Defragmenter candidate is `1.8.0-300`. The previous `v1.8.0-299` tag is immutable. `VERSION` and this maintained audit prose are excluded from the strict source/governance diff by the unchanged release script; no weakening of tests or source/governance comparison occurs. Do not assert APT indexing or installed-machine testing merely because CI publishes the GitHub release.
 
 ## Preserve UFS whole-volume grid while migrating per-file maps — reviewed 2026-11-13
 
