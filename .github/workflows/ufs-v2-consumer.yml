@@ -110,6 +110,12 @@ jobs:
                  and .block_bytes == 65536 and .total_bytes > 0
                  and .free_bytes > 0 and .free_bytes < .total_bytes
                  and .source == "Common V2 VOLUME_QUERY"' build/ufs2-volume.json
+          # Existing user-facing UFS aliases must select the actual format
+          # through provider-owned Common V2 probes, not host disk decoding.
+          "$consumer" volume-info "$image" --filesystem ufs > build/ufs2-auto.json
+          "$consumer" volume-info "$image" --filesystem 4.2bsd > build/ufs2-bsd-alias.json
+          jq -e '.filesystem == "ufs2" and .abi == 2 and .total_bytes > 0' build/ufs2-auto.json
+          jq -e '.filesystem == "ufs2" and .abi == 2 and .total_bytes > 0' build/ufs2-bsd-alias.json
           "$consumer" volume-info "$image" --filesystem ufs2 \
             --sector-bytes=4096 > build/ufs2-4kn.json
           jq -e '.filesystem == "ufs2" and .total_bytes > 0' build/ufs2-4kn.json
@@ -136,6 +142,10 @@ jobs:
           fi
           if "$consumer" volume-info "$image" --filesystem ufs1; then
             echo "ERROR: UFS1 accepted a real UFS2 volume" >&2; exit 1
+          fi
+          if "$consumer" volume-info "$image" --filesystem ufs --write; then
+            echo "ERROR: auto-detected UFS accepted read-only --write" >&2
+            exit 1
           fi
           if "$consumer" volume-info "$image" --filesystem ufs2 --write; then
             echo "ERROR: read-only volume-info accepted --write" >&2; exit 1
