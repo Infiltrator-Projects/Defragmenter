@@ -5,9 +5,19 @@
 Status: **complete**
 
 Audited source commit: 21a4f1e95f675a240d4f9347817616bbbe180e4d
-Audited release-governance commit: 21a4f1e95f675a240d4f9347817616bbbe180e4d
+Audited release-governance commit: f1eb42fb220a6193a59d04056aaed190612f62ab
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## MINIX Common V2 MAP consumer qualification — reviewed 2026-11-12
+
+**Exact governance baseline:** `f1eb42fb220a6193a59d04056aaed190612f62ab`, two linear, zero-behind commits after the prior exact audited source/governance baseline `21a4f1e95f675a240d4f9347817616bbbe180e4d`. The only differences are this audit record and `.github/workflows/minix-integration.yml` (48 additive lines); the application C/C++ source, native workers, package/install files and release scripts have not changed. Preserve the source baseline `21a4f1e95f675a240d4f9347817616bbbe180e4d` and advance only the reviewed release-governance baseline to `f1eb42fb220a6193a59d04056aaed190612f62ab`.
+
+**Source and ownership:** Independent `Filesystem-Minix` commit `f74177f0b7d785acecda72b7102f38e3ff5ff672` adds strictly read-only Common V2 `IFS_FS_GROUP_DEFRAG/IFS_FS_DEFRAG_MAP`. Its mapping obtains physical zone positions through the existing, bitmap-checked, source-owned Minix inode/indirect zone walker. The filesystem `.so` owns format interpretation, bounds checking and extent formation. Unsupported holes and invalid paths fail closed; DEFRAG PLAN/EXECUTE/VERIFY/RECOVER capabilities are **not** advertised. The source-owned module build and original synthetic V1/V2/V3 Common V2 regressions passed at its reviewed commit. This does not claim complete format defragmentation or legacy V1 elimination.
+
+**Integration test:** The established pinned legacy MINIX.so defrag/fixture integration remains distinct and must continue passing. A new isolated final block checks out the exact current independent Minix Common V2 provider commit, runs its own CMake/CTest, compiles the universal Defragmenter V2 operation engine, substitutes only that tested provider in the disposable module root, then requires: correct V2 inventory group/capability mask (CORE+VOLUME+DEFRAG_MAP, mask 76 with DEFRAG capabilities 1), successful file extent-map traversal, refusal of directory mapping, fail-closed refusal of unqualified V2 mutation and missing provider, and unchanged SHA-256 of the disposable medium. Neither the legacy worker nor the test harness is allowed to forge extent data. No real block device or privileged mutation is involved.
+
+**Release policy:** This added workflow is an integration check, not proof of physical hardware qualification. The full exact-head self-hosted quality gate, ASan/UBSan, other independent integrations and release publication still must succeed. Replacing the other V1 interfaces will require their independent producers to implement the missing standard Common V2 operations; removing them now would silently discard tested functionality.
 
 ## Strict UFS Common V2 alias and mandatory release integration — audited candidate 2026-11-12
 
