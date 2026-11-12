@@ -4,10 +4,20 @@
 
 Status: **complete**
 
-Audited source commit: eac4101937de972ec95634b9fb14fc610cf51dca
+Audited source commit: 1fc58e94c09b58a6e1b9160e253a6a1070edc55f
 Audited release-governance commit: eac4101937de972ec95634b9fb14fc610cf51dca
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Common V2 volume-info worker routing — source audit 2026-11-13
+
+**Exact reviewed candidate:** `1fc58e94c09b58a6e1b9160e253a6a1070edc55f`, five linear commits after the previous source/governance audit baseline `eac4101937de972ec95634b9fb14fc610cf51dca`, zero commits behind. GitHub's exact comparison showed only **14 implementation/build paths**: `defragger/cmake/project.cmake` and 13 `defragger/native/*_module_loader.c` files. There were **no** release workflow, install script, format decoder, filesystem journal, on-disk transaction writer, recovery engine, privilege-helper or generic V2 host changes. Preserve the previous governance baseline `eac4101937de972ec95634b9fb14fc610cf51dca` (no governance changes to approve).
+
+**Source review:** Existing format-specific analysis and mutation commands are unchanged. The code adds an explicit `volume-info DEVICE` conditional before each legacy callback dispatch. Each route calls the already established trusted Common V2 host; its provider must advertise a real CORE probe, mount and VOLUME query, and a failed lookup or rejected geometry **never falls back** to an old ABI. The EXT/FAT/SFS worker selectors query each independently owned format provider's V2 `CORE.PROBE` and require one unique match without reading disk layout in Defragmenter. XFS, Btrfs, APFS, NTFS, classic HFS, HFS+, Minix, OFS, PFS3 and exFAT use exact-format V2 lookup. The FAT CMake change links the existing generic V2 host to the installed and disposable test worker; it does not replace the original FAT transactional defrag/journal host and preserves its atexit cleanup. Standalone OFS analysis/recovery remains dispatched through the established Amiga worker; the `ofs_module_loader.c` volume-info branch is a source path, not an additional installed worker target.
+
+**Independent build/real image evidence:** [Native worker qualification #43314637966](https://github.com/Infiltrator-Projects/Filesystems/actions/runs/43314637966) succeeded building all **13 actual production worker targets** (FAT, EXT, XFS, Btrfs, Minix, APFS, NTFS, HFS, HFS+, PFS3, SFS, exFAT and AFFS) with `-DLD_ENABLE_WERROR=ON` and checking their source V2 volume-info routing, without relaxing warning settings or removing the V1 writer. The separate [four-format real-media V2 test #43312877572](https://github.com/Infiltrator-Projects/Filesystems/actions/runs/43312877572) passed for EXT3, EXT4, Btrfs and XFS and directly exercised the native EXT and XFS V2 worker routes with disposable images, checksum/format/geometry rejection and original-image SHA256 no-mutation checks. These tests establish production compilation and actual read-only EXT/XFS operation; they do **not** imply real-media V2 validation of all other workers or all DEFRAG functions.
+
+**Qualification boundary:** `DEFRAG.PLAN/EXECUTE/VERIFY/RECOVER` for every remaining provider are still separately unqualified. Source-owned V1 analyser/writer/recovery implementations remain intact until genuine Common V2 parity, destructive fixture coverage and power-loss replay exist. The complete self-hosted quality gate and sanitizers against this exact source revision are separate publication requirements; a reviewed audit record is not a release pass. No user disks or installed SO files were modified by these source commits.
 
 ## Installed Amiga worker strict Common V2 per-file identification — reviewed 2026-11-13
 
