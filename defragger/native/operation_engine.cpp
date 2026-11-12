@@ -75,7 +75,12 @@ int main(int argc, char** argv) {
     // must never select the retired format-specific worker executables.
     const defragger::BackendInfo* backend =
         defragger::backend_by_fstype(filesystem);
-    if (backend && backend->id != "affs" && backend->id != "ufs") {
+    if (backend && backend->id == "ufs") {
+        // Explicit UFS1/UFS2 stay exact. Other UFS aliases ask both
+        // independent providers to probe the medium with Common V2.
+        if (filesystem != "ufs1" && filesystem != "ufs2")
+            filesystem = "ufs";
+    } else if (backend && backend->id != "affs") {
         filesystem = backend->id;
     }
     if (operation != "defrag" && operation != "growth-defrag" &&
@@ -96,21 +101,6 @@ int main(int argc, char** argv) {
             return 2;
         }
     }
-    char module_file[64] = {};
-    const bool readonly_volume_query = operation == "volume-info";
-    const int lookup_result = readonly_volume_query
-        ? ifs_filesystem_module_find_readonly_v2(
-              filesystem.c_str(), module_file, sizeof(module_file))
-        : ifs_filesystem_module_find_v2(
-              filesystem.c_str(), module_file, sizeof(module_file));
-    if (lookup_result != 0) {
-        std::fprintf(stderr,
-                     "defragmenter-operation-engine: no installed trusted "
-                     "Common V2 SO qualifies for %s\n", filesystem.c_str());
-        return 2;
-    }
-    const std::string generic_filename(module_file);
-
     struct stat status {};
     if (stat(device.c_str(), &status) != 0) {
         std::fprintf(stderr,
@@ -150,6 +140,32 @@ int main(int argc, char** argv) {
             return 2;
         }
     }
+
+    char module_file[64] = {};
+    if (filesystem == "ufs") {
+        char discovered[16] = {};
+        if (ifs_filesystem_module_detect_ufs_v2(
+                device.c_str(), discovered, sizeof(discovered),
+                module_file, sizeof(module_file)) != 0) {
+            std::fputs("defragmenter-operation-engine: unable to identify "
+                       "a unique trusted UFS1/UFS2 Common V2 provider\n", stderr);
+            return 2;
+        }
+        filesystem = discovered;
+    }
+    const bool readonly_volume_query = operation == "volume-info";
+    const int lookup_result = readonly_volume_query
+        ? ifs_filesystem_module_find_readonly_v2(
+              filesystem.c_str(), module_file, sizeof(module_file))
+        : ifs_filesystem_module_find_v2(
+              filesystem.c_str(), module_file, sizeof(module_file));
+    if (lookup_result != 0) {
+        std::fprintf(stderr,
+                     "defragmenter-operation-engine: no installed trusted "
+                     "Common V2 SO qualifies for %s\n", filesystem.c_str());
+        return 2;
+    }
+    const std::string generic_filename(module_file);
 
     std::vector<std::string> command;
     command.reserve(3U + forwarded.size());
