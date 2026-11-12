@@ -4,10 +4,16 @@
 
 Status: **complete**
 
-Audited source commit: 901a953dad77fca106be3a0d54b9515fc024192e
+Audited source commit: 4c231b2695625d04c1006b3f6691f616dc2364fb
 Audited release-governance commit: 901a953dad77fca106be3a0d54b9515fc024192e
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Preserve UFS whole-volume grid while migrating per-file maps — reviewed 2026-11-13
+
+**Exact source reviewed:** `4c231b2695625d04c1006b3f6691f616dc2364fb`; one linear, zero-behind, single-path `defragger/native/ufs_module_loader.c` correction after the previous `901a953dad77fca106be3a0d54b9515fc024192e` audited candidate. The existing UFS integration run `43310273977` failed because its historical, pinned V1-only UFS provider and whole-volume `map --cells N` operation were wrongly redirected to Common V2 DEFRAG_MAP. That older map describes a grid of allocation blocks; the strict V2 DEFRAG_MAP specifies per-file physical extents. The two interfaces are NOT interchangeable. The corrected worker dispatches to Common V2 only for `volume-info` and `map` requests that **explicitly** contain `--path` or `--path=...`. Its previous whole-volume grid and transactional write/recovery operations remain with the independent legacy SO until a fully compatible Common V2 provider operation is implemented. Once the user asks for explicit per-file mapping, unavailable V2 modules fail closed without V1 fallback.
+
+**Independent qualification:** The strict Common V2 UFS consumer run `43310274418` completed successfully against the preceding candidate, including the actual installed-worker volume query and per-file map, no-writer and missing-module refusal. The historical UFS integration is required to turn green again after the scope correction, as are the exact-head full quality gate and publication. This audited source change modifies no V1 format engine, filesystem parser, transaction recovery, host lease, release workflow, package installer or destructive consent control. Since no release-governance path changed, its reviewed prior baseline stays `901a953dad77fca106be3a0d54b9515fc024192e`. This is not a declaration that old V1 whole-volume mapping has been removed.
 
 ## Installed UFS worker read-only Common V2 routing — reviewed 2026-11-13
 
