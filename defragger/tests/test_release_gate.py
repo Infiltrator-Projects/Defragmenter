@@ -303,6 +303,7 @@ def main() -> None:
     for governance_path in (
         ".github/workflows",
         "defragger/ci/preflight.sh",
+        "defragger/ci/ntfs-build-tools.sh",
         "defragger/ci/release.sh",
         "defragger/tests/test_release_gate.py",
     ):
