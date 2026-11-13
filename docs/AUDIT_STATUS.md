@@ -4,10 +4,16 @@
 
 Status: **complete**
 
-Audited source commit: 87b1f0af462227b3edf11934c3651d7a50063dce
-Audited release-governance commit: 9b86b8c23edebbc2ae320021d2ead1edcc816eb3
+Audited source commit: 33f0e9bb994bb6c9d1435c97431a10b9eb87998f
+Audited release-governance commit: 33f0e9bb994bb6c9d1435c97431a10b9eb87998f
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## NTFS per-file extent mapping — reviewed 2026-11-13
+
+The source delta from the previous audited source is one branch in the installed NTFS worker. An explicit `map DEVICE --path PATH` goes directly to the authenticated Common V2 loader and requires `DEFRAG_MAP`. The generic loader opens the target read-only and forwards the path and pagination to the installed `NTFS.so`. A missing provider, missing capability, or failed map terminates that request. Whole-volume analysis, relocation, journal replay and their CLI contracts still use the existing NTFS engine interface.
+
+The sole governance change updates the independent NTFS integration workflow to an exact provider commit. The workflow builds the production and test workers with warnings treated as errors, runs the existing module and test-media checks, and adds a real-image map with missing-file and missing-provider cases plus an unchanged image checksum. The [independent NTFS workflow](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/43359845291) passed on the source above. The full project gate and sanitizers must still pass on the tagged package candidate.
 
 ## Native external-filesystem-tool prohibition regression — reviewed 2026-11-13
 
