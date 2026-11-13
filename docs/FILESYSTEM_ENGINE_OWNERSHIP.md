@@ -13,7 +13,8 @@ Required modules load only from trusted paths with checked ABI, filesystem ident
 ## Established migrations
 
 - **FAT12/FAT16/FAT32:** the required standalone modules implement production defrag/recovery and the Test Media V4 formatter/V3 file interface. Test Media retains an independent **read-only** FAT payload checker, not a competing formatter. Its readiness and privileged preparation validate modules before destructive disk changes.
-- **OFS:** Test Media calls OFS.so through Common V2 for DOS0 formatting, integrity checks and read-only corpus verification. Its disposable bulk population still uses the OFS fixture interface with a final integrity check and durable flush. The separate OFS relocation and recovery interface owns Defrag and Growth Defrag. The host supplies bounded I/O, target checks, Stop and durable-file services.
+- **OFS:** Test Media on `main` calls OFS.so through Common V2 for DOS0 formatting, corpus population and verification. The writable session uses an exclusive target, verifies the resulting filesystem and flushes it before reporting success. The separate OFS relocation and recovery interface still owns Defrag and Growth Defrag.
+- **NTFS:** Defragmenter 1.8.0-301 uses Common V2 for volume information and per-file physical extent mapping. Whole-volume analysis, relocation and recovery still call the existing NTFS engine interface.
 - **FFS:** FFS.so owns production defragmentation and Test Media fixture creation/verification. Old native FFS source can be used as an independent test oracle when built from the Filesystem-FFS repository, not linked into production.
 - **exFAT:** the independent exFAT.so owns its defragmentation engine and the separate V5 Test Media file/format interface. The installed Defragmenter worker is a checked module host.
 - **UFS1/UFS2:** separate filesystem distributions and checked read-only probes prevent a guess from a damaged superblock. UFS2 Test Media creation and payload inspection delegate to UFS2.so; UFS1 fixture creation requires its own qualification.
@@ -48,17 +49,12 @@ Defrag nor Growth Defrag can be reported as qualified.
 
 ## Universal discovery transition (November 2026)
 
-The native operation engine now has an additive **generic Defrag V2 path**:
-`--list-installed-modules` enumerates root-owned, non-writable-by-others
-`/System/Filesystems/*.so` objects with the common
-`infiltrator_filesystem_defrag_v2` interface. It obtains `format_id` and
-operation capability bits **from each loaded module**, not a filesystem table
-or guessed filename. For an unknown filesystem ID, the engine resolves the
-matching installed SO and dispatches supported offline Defrag/Growth/Recover
-through the same trusted host, after its ordinary target safety checks.
-Conflicting identities, absent modules, mismatched ABIs and missing required
-operation capabilities fail closed. Defrag and Growth also require recovery
-capability.
+The native operation engine uses `--list-installed-modules` to enumerate
+trusted `/System/Filesystems/*.so` objects. It obtains the format identity,
+operation groups and defragmentation capabilities from each Common V2
+descriptor. The generic operation path checks for the advertised operation
+before opening the offline target. Missing modules, conflicting identities,
+incompatible descriptors and absent capabilities terminate the request.
 
 This is **not yet universal GUI integration**. The existing desktop backend
 registry, legacy format worker adapters, and the fixed 21-format Test Media
