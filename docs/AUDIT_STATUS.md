@@ -4,10 +4,18 @@
 
 Status: **complete**
 
-Audited source commit: 9b86b8c23edebbc2ae320021d2ead1edcc816eb3
+Audited source commit: 87b1f0af462227b3edf11934c3651d7a50063dce
 Audited release-governance commit: 9b86b8c23edebbc2ae320021d2ead1edcc816eb3
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Native external-filesystem-tool prohibition regression — reviewed 2026-11-13
+
+**Exact source reviewed:** `87b1f0af462227b3edf11934c3651d7a50063dce`, one fast-forward source commit after the independently recorded `9b86b8c23edebbc2ae320021d2ead1edcc816eb3` source and governance baseline. The exact GitHub comparison is **two linear commits, zero behind**, comprising the prior audit-only record plus this substitution. The sole source changes are `defragger/tests/run_tests.sh`, replacement `defragger/tests/test_no_external_fs_tools.cpp` and deletion of `defragger/tests/test_no_external_fs_tools.py`. There are no changes to filesystem engines, format-specific writers, recovery journals, worker loaders, ABI bindings, installed code, package instructions or release workflows. The release-governance baseline remains `9b86b8c23edebbc2ae320021d2ead1edcc816eb3` and is not being advanced.
+
+**Reviewed contract preservation:** The C++17 guard enumerates the same four production directories and the two top-level build/install inputs as the Python predecessor. It retains tool-name token boundary checks and the explicit argv/mount/zpool/zfs/Btrfs shell invocation patterns, detects forbidden native dependence on external filesystem mutation commands, and fails closed on missing inputs or forbidden calls. The test runner compiles this checker under `-Wall -Wextra -Wpedantic -Werror` and executes it before filesystem fixture tests. No production filesystem operation or protocol was modified.
+
+**Independent qualification:** The exact-head GitHub [quality-gate run 43349914263](https://github.com/Infiltrator-Projects/Defragmenter/actions/runs/43349914263) built the independent filesystem modules, passed **46 CTest checks**, passed **16 more native/install tests**, and completed its sanitizer job successfully. The original release-invariant step refused the commit solely because this reviewed test-source change postdated the previous audit marker. The newly audited source marker permits the same release gate to evaluate the exact reviewed code; it does **not** waive that gate, certify a physical disk, or attest that all Defragmenter filesystem write/recovery operations are complete.
 
 ## OFS Test Media Common V2 format and verification
 
