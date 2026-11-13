@@ -63,11 +63,17 @@ the requested operation as not supported; never count a skip as a pass.
 
 ## Implemented today (do not overclaim)
 
-- The independent `Filesystem-*` Git repositories and shared objects exist;
-  their ABIs and operation ownership are **not standardized yet**.
-- Defragmenter can discover compatible generic Defrag V2 modules via
-  `--list-installed-modules`, but the GUI and Test Media still use older static
-  format lists and many per-format worker executables.
+- Libraries defines the Common V2 filesystem ABI. The independent
+  `Filesystem-*` repositories own their format engines and advertise the
+  capabilities each shared object implements.
+- Defragmenter discovers Common V2 modules through `--list-installed-modules`.
+  Dedicated workers use Common V2 for volume information and supported
+  per-file extent maps, including NTFS. The GUI still uses a format registry
+  and routes remaining whole-volume analysis, mutation and recovery through
+  the format workers.
+- On current `main`, OFS Test Media formats, populates and verifies its corpus
+  through `OFS.so` using Common V2. OFS relocation and recovery still use the
+  filesystem-specific transaction interface.
 - The **plan-only** core includes `ld_generic_layout_plan` for a certified
   contiguous region and `ld_generic_layout_plan_file_extents` for one file
   across disjoint, sorted provider-certified free runs, preferring a single
