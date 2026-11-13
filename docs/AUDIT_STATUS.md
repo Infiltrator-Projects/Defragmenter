@@ -4,10 +4,16 @@
 
 Status: **complete**
 
-Audited source commit: 33f0e9bb994bb6c9d1435c97431a10b9eb87998f
+Audited source commit: 2ffd6c3d0b9abb078c8e5d91d4fb3f147e28c84d
 Audited release-governance commit: 33f0e9bb994bb6c9d1435c97431a10b9eb87998f
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## Common V2 OFS Test Media population — reviewed 2026-11-13
+
+The source delta consists of the OFS Test Media population worker and its architecture test. The worker requests the necessary Common V2 CORE and VOLUME capabilities, obtains the existing exclusive target lease and validates the mounted DOS0 geometry before creating the corpus. It retains the deterministic payload, directory operations and cancellation checks. Success requires the provider's integrity check, volume sync, unmount and a durable target flush. The architecture test requires the Common V2 export for the complete format, population and verification sequence. The release-governance baseline stays at the previously reviewed commit.
+
+The existing Test Media suite passed with warnings treated as errors and under AddressSanitizer and UndefinedBehaviorSanitizer. A separate disposable 2 GiB image test created and verified the complete 30-round corpus using an OFS module with only the Common V2 export. The worker rejected a module offering only the former fixture entry point. Full project CI remains required before a package includes this source.
 
 ## NTFS per-file extent mapping — reviewed 2026-11-13
 
