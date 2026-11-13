@@ -4,10 +4,18 @@
 
 Status: **complete**
 
-Audited source commit: 1fc58e94c09b58a6e1b9160e253a6a1070edc55f
-Audited release-governance commit: eac4101937de972ec95634b9fb14fc610cf51dca
+Audited source commit: 9b86b8c23edebbc2ae320021d2ead1edcc816eb3
+Audited release-governance commit: 9b86b8c23edebbc2ae320021d2ead1edcc816eb3
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## OFS Test Media Common V2 format and verification
+
+Source review of `9b86b8c23edebbc2ae320021d2ead1edcc816eb3` covers the shared target runtime, OFS Test Media operations, its provider pin, and the associated tests. Formatting requires the trusted hosted Common V2 VOLUME formatter, an exclusive target and durable barriers. Corpus verification uses a read-only Common V2 mount, verifies DOS0 geometry and volume integrity, and checks the expected directory entries and file bytes. The worker checks the required 512-byte logical sector size before unmounting or replacing the partition table. Disposable bulk population retains its existing OFS-specific writer, integrity check and final flush.
+
+The native Test Media suite passed against the published OFS 0.1.16 module and the existing pinned companion providers. It exercised an independent Amiga parser, corruption detection, post-relocation verification and exclusive-open refusal on a 2 GiB sparse image. The same suite passed under AddressSanitizer and UndefinedBehaviorSanitizer with leak detection disabled in the local environment. A separate disposable-image run proved format and verification with only the Common V2 export. The locked-image and missing-Common-V2 tests preserved the image hash.
+
+The governance delta brings the release invariant test into agreement with the existing mandatory FFS and UFS consumer workflows. The workflow files and publication checks are the same as at the previous governance baseline. Full GitHub qualification and physical-device verification are separate from this source review.
 
 ## Common V2 volume-info worker routing — source audit 2026-11-13
 
