@@ -465,10 +465,6 @@ int ifs_filesystem_module_find_readonly_v2(const char *format, char *filename,
 /* Strict Common V2 provider execution. No format-specific worker, private
  * filesystem ABI, or automatic compatibility fallback is permitted here.
  * This bridge reuses the already exclusive, identity-bound native Target. */
-typedef struct {
-    const IfsDefragHostV2 *services;
-    IfsDefragTarget target;
-} CommonV2Host;
 typedef struct { int argc; char **argv; const char *format; } Command;
 static void *v2_allocate(void *opaque,size_t bytes) {
     (void)opaque;
@@ -479,20 +475,59 @@ static void v2_release(void *opaque,void *p) {
     free(p);
 }
 static int v2_read_at(void *opaque,uint64_t at,void *out,uint32_t bytes) {
-    CommonV2Host *b=opaque;
+    IfsFilesystemTargetV2 *b=opaque;
     return b->services->read_at(b->services->context,&b->target,at,out,bytes);
 }
 static int v2_write_at(void *opaque,uint64_t at,const void *source,uint32_t bytes) {
-    CommonV2Host *b=opaque;
+    IfsFilesystemTargetV2 *b=opaque;
     return b->services->write_at(b->services->context,&b->target,at,source,bytes);
 }
 static int v2_sync(void *opaque) {
-    CommonV2Host *b=opaque;
+    IfsFilesystemTargetV2 *b=opaque;
     return b->services->sync_target(b->services->context,&b->target);
 }
 static int v2_cancelled(void *opaque) {
-    CommonV2Host *b=opaque;
+    IfsFilesystemTargetV2 *b=opaque;
     return b->services->stop_requested(b->services->context);
+}
+int ifs_filesystem_target_runtime_v2(IfsFilesystemTargetV2 *binding,
+                                     int writable, uint32_t requested_sector,
+                                     IfsFsHostRuntimeV2 *runtime) {
+    Target *t=binding->target.handle;
+    if(!t || (writable && !t->device.writable))return -1;
+    uint32_t logical=512u,physical=512u;
+    if(t->device.is_block) {
+        int logical_kernel=0,physical_kernel=0;
+        if(ioctl(t->device.fd,BLKSSZGET,&logical_kernel)!=0 ||
+           logical_kernel<512 || logical_kernel>65536 ||
+           (logical_kernel & (logical_kernel-1)) ||
+           (requested_sector && requested_sector!=(uint32_t)logical_kernel))
+            return -1;
+        logical=(uint32_t)logical_kernel;
+        if(ioctl(t->device.fd,BLKPBSZGET,&physical_kernel)==0 &&
+           physical_kernel>=logical_kernel && physical_kernel<=65536 &&
+           !(physical_kernel & (physical_kernel-1)))
+            physical=(uint32_t)physical_kernel;
+        else physical=logical;
+    } else if(requested_sector) logical=physical=requested_sector;
+    *runtime=(IfsFsHostRuntimeV2){
+        .abi_version=IFS_FS_HOST_ABI_V2,
+        .structure_bytes=sizeof(*runtime),
+        .capabilities=(writable ? IFS_FS_HOST_EXCLUSIVE|IFS_FS_HOST_DURABLE :
+                                  IFS_FS_HOST_READ_ONLY)|IFS_FS_HOST_CANCEL,
+        .volume_bytes=binding->target.bytes,
+        .logical_sector_bytes=logical,
+        .physical_sector_bytes=physical,
+        .maximum_transfer_bytes=65536u,
+        .context=binding,
+        .read_at=v2_read_at,
+        .write_at=writable?v2_write_at:NULL,
+        .flush=writable?v2_sync:NULL,
+        .allocate=v2_allocate,
+        .release=v2_release,
+        .cancelled=v2_cancelled
+    };
+    return ifs_fs_host_v2_valid(runtime)?0:-1;
 }
 static int v2_path_valid(const char *path) {
     if (!path || path[0]!='/') return 0;
@@ -613,48 +648,16 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
         return 2;
     }
     const int writable=!analysing;
-    CommonV2Host b={0};
-    b.services=services;
+    IfsFilesystemTargetV2 b={.services=services};
     if(services->open_target(services->context,command->argv[2],writable,
                              NULL,0u,&b.target)) {
         fputs("Cannot obtain trusted exclusive V2 storage lease\n",stderr);
         return 1;
     }
     int result=1;
-    Target *t=b.target.handle;
-    uint32_t logical=512u,physical=512u;
-    if(t && t->device.is_block) {
-        int logical_kernel=0,physical_kernel=0;
-        if(ioctl(t->device.fd,BLKSSZGET,&logical_kernel)!=0 ||
-           logical_kernel<512 || logical_kernel>65536 ||
-           (logical_kernel & (logical_kernel-1)) ||
-           (requested_sector && requested_sector!=(uint32_t)logical_kernel))
-            goto cleanup_target;
-        logical=(uint32_t)logical_kernel;
-        if(ioctl(t->device.fd,BLKPBSZGET,&physical_kernel)==0 &&
-           physical_kernel>=logical_kernel && physical_kernel<=65536 &&
-           !(physical_kernel & (physical_kernel-1)))
-            physical=(uint32_t)physical_kernel;
-        else physical=logical;
-    } else if(requested_sector) logical=physical=requested_sector;
-    IfsFsHostRuntimeV2 h={0};
-    h.abi_version=IFS_FS_HOST_ABI_V2;
-    h.structure_bytes=sizeof(h);
-    h.capabilities=(writable?
-         IFS_FS_HOST_EXCLUSIVE|IFS_FS_HOST_DURABLE:
-         IFS_FS_HOST_READ_ONLY)|IFS_FS_HOST_CANCEL;
-    h.volume_bytes=b.target.bytes;
-    h.logical_sector_bytes=logical;
-    h.physical_sector_bytes=physical;
-    h.maximum_transfer_bytes=65536u;
-    h.context=&b;
-    h.read_at=v2_read_at;
-    h.write_at=writable?v2_write_at:NULL;
-    h.flush=writable?v2_sync:NULL;
-    h.allocate=v2_allocate;
-    h.release=v2_release;
-    h.cancelled=v2_cancelled;
-    if(!ifs_fs_host_v2_valid(&h))goto cleanup_target;
+    IfsFsHostRuntimeV2 h;
+    if(ifs_filesystem_target_runtime_v2(&b,writable,requested_sector,&h))
+        goto cleanup_target;
     uint32_t variant=0u;
     if(core->probe(&h,&variant)!=IFS_FS_OK) {
         if(!probing)

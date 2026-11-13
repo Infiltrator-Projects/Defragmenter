@@ -190,7 +190,7 @@ def main() -> None:
         "minix-integration.yml", "ntfs-integration.yml",
         "pfs3-integration.yml", "sfs-integration.yml",
         "swap-integration.yml", "ufs-integration.yml",
-        "ufs-v2-consumer.yml",
+        "ffs-v2-consumer.yml", "ufs-v2-consumer.yml",
         "xfs-integration.yml", "zfs-integration.yml",
     }
     branch_hygiene = "prune-integrated-branches.yml"
@@ -211,9 +211,8 @@ def main() -> None:
         assert "workflow_dispatch:" in source and "  push:" in source, workflow
         assert "    branches: [main]" in source, workflow
         assert "contents: write" not in source, workflow
-        if workflow == "ufs-v2-consumer.yml":
-            # This single read-only integration workflow is reusable so
-            # releases cannot bypass the cross-repository Common V2 test.
+        if workflow in {"ffs-v2-consumer.yml", "ufs-v2-consumer.yml"}:
+            # Publication requires both reusable Common V2 consumer checks.
             assert "workflow_call:" in source, workflow
             assert "uses: actions/checkout@v4" not in source, workflow
         else:
@@ -257,9 +256,11 @@ def main() -> None:
     build_release = _step_containing(gate, "packaging/build-deb.sh")
     assert "if: steps.release_intent.outputs.release == 'true'" in build_release
     assert "if: steps.release_intent.outputs.release == 'true'" in preserve_release
-    assert "needs: [quality-gate, sanitizers, ufs-v2-consumer]" in gate
+    assert "needs: [quality-gate, sanitizers, ufs-v2-consumer, ffs-v2-consumer]" in gate
     assert "  ufs-v2-consumer:" in gate
     assert "uses: ./.github/workflows/ufs-v2-consumer.yml" in gate
+    assert "  ffs-v2-consumer:" in gate
+    assert "uses: ./.github/workflows/ffs-v2-consumer.yml" in gate
     assert "if: needs.quality-gate.outputs.release_intent == 'true'" in gate
     assert "uses: ./.github/workflows/release.yml" in gate
     assert "expected_sha: ${{ github.sha }}" in gate

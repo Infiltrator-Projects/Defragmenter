@@ -74,6 +74,8 @@ int ldtm_resolve_program(const char *program, char *output, size_t output_capaci
 int ldtm_program_available(const char *program);
 int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
                                 char *detail, size_t detail_capacity);
+/* The deterministic OFS corpus uses DOS0 with 512-byte blocks. */
+#define LDTM_OFS_BLOCK_BYTES 512u
 int ldtm_format_amiga_volume(const char *path, uint8_t dostype, const char *label);
 int ldtm_validate_amiga_volume(const char *path, uint8_t expected_dostype);
 int ldtm_populate_amiga_volume(const char *path, const char *format_id,

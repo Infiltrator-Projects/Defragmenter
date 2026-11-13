@@ -19,6 +19,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <linux/fs.h>
 #include <openssl/evp.h>
 #include <poll.h>
 #include <signal.h>
@@ -27,6 +28,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/mount.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
@@ -1894,6 +1896,21 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device,
     }
     if (ldtm_device_safety_check(canonical, 0, safety, sizeof(safety)) != 0) {
         fprintf(stderr, "%s\n", safety);
+        return 2;
+    }
+    /* The complete Test Media layout includes the fixed-block OFS corpus.
+     * Check this before unmounting or writing the new partition table. */
+    LdDevice target;
+    if (ld_device_try_open(canonical, false, &target) != 0) {
+        perror("Could not open the confirmed Test Media disk for geometry checks");
+        return 2;
+    }
+    int logical_sector = 0;
+    int geometry = ioctl(target.fd, BLKSSZGET, &logical_sector);
+    ld_device_close(&target);
+    if (geometry != 0 || logical_sector != (int)LDTM_OFS_BLOCK_BYTES) {
+        fprintf(stderr, "The OFS Test Media corpus requires %u-byte logical sectors.\n",
+                LDTM_OFS_BLOCK_BYTES);
         return 2;
     }
     printf("Safety check: %s\n", safety);

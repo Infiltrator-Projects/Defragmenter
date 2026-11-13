@@ -2,11 +2,21 @@
 #ifndef DEFRAGMENTER_FILESYSTEM_MODULE_HOST_H
 #define DEFRAGMENTER_FILESYSTEM_MODULE_HOST_H
 #include "filesystem_defrag_abi.h"
+#include "infiltratr/filesystem_module_v2.h"
 typedef int (*IfsFilesystemCall)(const IfsDefragHostV2 *, void *, void *);
 /* A non-Defrag callback must validate its requested ABI, complete structure,
  * format identity and required methods before opening a writable target. */
 int ifs_filesystem_module_call(const char *, const char *, const char *,
                                IfsFilesystemCall, void *);
+/* Bind Common V2 to an already-open native target. Keep the binding and
+ * target alive until the provider finishes using the runtime. */
+typedef struct {
+    const IfsDefragHostV2 *services;
+    IfsDefragTarget target;
+} IfsFilesystemTargetV2;
+int ifs_filesystem_target_runtime_v2(IfsFilesystemTargetV2 *binding,
+                                     int writable, uint32_t requested_sector,
+                                     IfsFsHostRuntimeV2 *runtime);
 int ifs_filesystem_module_run(const char *, const char *, int, char **);
 /* Dedicated, existing OFS native worker only; never a Common V2 fallback. */
 int ifs_filesystem_module_run_ofs_native(int, char **);
