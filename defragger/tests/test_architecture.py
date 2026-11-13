@@ -224,21 +224,25 @@ def test_module_host_uses_bounded_hardware_identity_refresh() -> None:
 
 def test_ofs_disposable_media_requires_final_integrity_and_sync() -> None:
     media = _read(ROOT / "test_media" / "test_media_ofs_module.c")
-    abi = _read(ROOT / "native" / "ofs_module_abi.h")
-    assert "#define IFS_OFS_EPHEMERAL_FIXTURE 4u" in abi
-    assert "#define IFS_OFS_ORDERED_WRITEBACK 8u" in abi
+    assert "ofs_module_abi.h" not in media
+    assert "infiltrator_filesystem_module_v3" not in media
     population = media.split("static int populate_fixture(", 1)[1].split(
-        "static int fixture_available(", 1
+        "int ldtm_ofs_module_available(", 1
     )[0]
-    assert "IFS_OFS_EPHEMERAL_FIXTURE" in population
-    assert "api->verify(&check)" in population
-    assert "check.errors || check.bitmap_mismatches" in population
-    assert "api->unmount()" in population
+    assert "volume->check(session, 0u, &errors)" in population
+    assert "errors != 0u" in population
+    assert "volume->sync(session)" in population
+    assert "core->unmount(session)" in population
+    assert "io.flush(io.context)" in population
     formatter = media.split("int ldtm_format_ofs_module(", 1)[1].split(
         "int ldtm_populate_ofs_module(", 1
     )[0]
+    writer = media.split("int ldtm_populate_ofs_module(", 1)[1].split(
+        "/* Independently check", 1
+    )[0]
     verifier = media.split("int ldtm_validate_ofs_module(", 1)[1]
     assert formatter.count("IFS_FS_COMMON_EXPORT_V2") == 1
+    assert writer.count("IFS_FS_COMMON_EXPORT_V2") == 1
     assert verifier.count("IFS_FS_COMMON_EXPORT_V2") == 2
     assert "infiltrator_filesystem_module_v3" not in formatter + verifier
     assert "OFS fixture: fragmented corpus round" in media

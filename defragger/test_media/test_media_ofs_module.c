@@ -1,10 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
  * The dataset belongs to Test Media; filesystem creation/allocation belongs to
- * OFS.so. The retained AFFS verifier is an independent disposable-image oracle.
+ * OFS.so. Test Media calls Common V2 for formatting, writing and verification.
  */
 #include "test_media.h"
 #include "filesystem_module_host.h"
-#include "ofs_module_abi.h"
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
@@ -12,27 +11,7 @@
 typedef struct {
     const char *path;
     const LdtmFragmentProfile *profile;
-    const IfsDefragHostV2 *host;
-    IfsDefragTarget target;
 } Fixture;
-static int read_io(void *opaque, uint64_t at, void *p, uint32_t n) {
-    Fixture *f = opaque; return f->host->read_at(f->host->context, &f->target, at, p, n);
-}
-static int write_io(void *opaque, uint64_t at, const void *p, uint32_t n) {
-    Fixture *f = opaque; return f->host->write_at(f->host->context, &f->target, at, p, n);
-}
-static int flush_io(void *opaque) {
-    Fixture *f = opaque; return f->host->sync_target(f->host->context, &f->target);
-}
-static void *allocate_io(void *opaque, size_t n) {
-    Fixture *f = opaque; return f->host->allocate(n);
-}
-static void release_io(void *opaque, void *p) {
-    Fixture *f = opaque; f->host->release(p);
-}
-static int clock_io(void *opaque, IfsOfsDate *out) {
-    (void)opaque; *out = (IfsOfsDate){0, 0, 0}; return 0;
-}
 static void payload(unsigned char *buffer, size_t length, uint32_t file, uint32_t block) {
     uint64_t state = UINT64_C(0x6a09e667f3bcc909) ^ ((uint64_t)file << 40) ^
                      ((uint64_t)block * UINT64_C(0x9e3779b97f4a7c15));
@@ -41,17 +20,20 @@ static void payload(unsigned char *buffer, size_t length, uint32_t file, uint32_
         state *= UINT64_C(0x2545f4914f6cdd1d); buffer[i] = (unsigned char)(state >> 56);
     }
 }
-static int populate(const IfsOfsModuleV3 *api, Fixture *f) {
-    const LdtmFragmentProfile *p = f->profile;
+static int populate(const IfsFsCoreOpsV2 *core, void *session,
+                    const IfsFsHostRuntimeV2 *io, const LdtmFragmentProfile *p) {
     if (!p || !p->files || p->files > 8 || !p->chunks || !p->chunk_kib) return -1;
     const char *base = "/Defragmenter-TestData";
     const char *directory = "/Defragmenter-TestData/fragmented-directory";
     const char *files = "/Defragmenter-TestData/fragmented-files";
-    if (api->mkdir(base) || api->mkdir(files) || api->mkdir(directory)) return -1;
+    if (core->create(session, base, IFS_FS_ENTRY_DIRECTORY) ||
+        core->create(session, files, IFS_FS_ENTRY_DIRECTORY) ||
+        core->create(session, directory, IFS_FS_ENTRY_DIRECTORY)) return -1;
     char path[160];
     for (uint32_t i = 0; i < p->directory_initial; ++i) {
         (void)snprintf(path, sizeof(path), "%s/entry-%05u.txt", directory, i);
-        if (api->create(path)) return -1;
+        if (io->cancelled(io->context) || core->create(session, path, IFS_FS_ENTRY_FILE))
+            return -1;
         if ((i+1u)%512u==0u || i+1u==p->directory_initial) {
             (void)printf("OFS fixture: created %u/%u initial directory entries\n",
                          i+1u,p->directory_initial);
@@ -60,7 +42,7 @@ static int populate(const IfsOfsModuleV3 *api, Fixture *f) {
     }
     for (uint32_t i = 0; i < p->directory_initial; i += 2) {
         (void)snprintf(path, sizeof(path), "%s/entry-%05u.txt", directory, i);
-        if (api->unlink(path)) return -1;
+        if (io->cancelled(io->context) || core->remove(session, path)) return -1;
         if ((i/2u+1u)%512u==0u || i+2u>=p->directory_initial) {
             (void)printf("OFS fixture: deleted %u/%u temporary entries\n",
                          i/2u+1u,(p->directory_initial+1u)/2u);
@@ -69,7 +51,8 @@ static int populate(const IfsOfsModuleV3 *api, Fixture *f) {
     }
     for (uint32_t i = 0; i < p->directory_second; ++i) {
         (void)snprintf(path, sizeof(path), "%s/entry-%05u.txt", directory, p->directory_initial + i);
-        if (api->create(path)) return -1;
+        if (io->cancelled(io->context) || core->create(session, path, IFS_FS_ENTRY_FILE))
+            return -1;
         if ((i+1u)%512u==0u || i+1u==p->directory_second) {
             (void)printf("OFS fixture: created %u/%u second-wave entries\n",
                          i+1u,p->directory_second);
@@ -79,9 +62,9 @@ static int populate(const IfsOfsModuleV3 *api, Fixture *f) {
     uint32_t done[8] = {0};
     for (uint32_t i = 0; i < p->files; ++i) {
         (void)snprintf(path, sizeof(path), "%s/fragmented-%02u.bin", files, i);
-        if (api->create(path)) return -1;
+        if (core->create(session, path, IFS_FS_ENTRY_FILE)) return -1;
     }
-    unsigned char *buffer = f->host->allocate(488U * 2048U);
+    unsigned char *buffer = io->allocate(io->context, 488U * 2048U);
     if (!buffer) return -1;
     int result = 0;
     for (uint32_t chunk = 0; !result && chunk < p->chunks; ++chunk) {
@@ -103,24 +86,14 @@ static int populate(const IfsOfsModuleV3 *api, Fixture *f) {
                     uint32_t take = bytes - at < 488U ? (uint32_t)(bytes - at) : 488U;
                     payload(buffer + n, take, i, done[i] + j); n += take;
                 }
-                result = api->write(path, done[i] * 488U, buffer, n);
+                result = core->write(session, path, done[i] * UINT64_C(488), buffer, n);
                 done[i] += count; run -= count;
-                if (f->host->stop_requested(f->host->context)) result = -1;
+                if (io->cancelled(io->context)) result = -1;
             }
         }
     }
-    f->host->release(buffer); return result;
-}
-static const IfsOfsModuleV3 *fixture_api(void *symbol) {
-    const IfsOfsModuleV3 *(*entry)(void) = NULL;
-    _Static_assert(sizeof(entry) == sizeof(symbol), "module symbol width");
-    memcpy(&entry, &symbol, sizeof(entry));
-    const IfsOfsModuleV3 *api = entry ? entry() : NULL;
-    if (!api || api->abi_version != IFS_OFS_ABI_V3 || api->structure_bytes < sizeof(*api) ||
-        !api->format_id || strcmp(api->format_id, "ofs") ||
-        !api->mount || !api->unmount || !api->mkdir || !api->create ||
-        !api->unlink || !api->write || !api->verify) return NULL;
-    return api;
+    io->release(io->context, buffer);
+    return result;
 }
 static int open_writable(const IfsDefragHostV2 *host, const char *path,
                          const char *operation, IfsDefragTarget *target) {
@@ -136,38 +109,6 @@ static int open_writable(const IfsDefragHostV2 *host, const char *path,
     }
     return 0;
 }
-static int populate_fixture(const IfsDefragHostV2 *host, void *symbol, void *opaque) {
-    Fixture *f = opaque;
-    const IfsOfsModuleV3 *api = fixture_api(symbol);
-    if (!api) return -1;
-    f->host = host;
-    int r = open_writable(host, f->path, "populate", &f->target);
-    if (r) return r;
-    /* Disposable corpus population can defer intermediate barriers.
-     * Verify ownership and flush the complete fixture before success. */
-    IfsOfsIoV3 io = {sizeof(io), IFS_OFS_EPHEMERAL_FIXTURE, f, f->target.bytes,
-                     read_io, write_io, flush_io, allocate_io, release_io, clock_io};
-    r = api->mount(&io, NULL);
-    if (!r) {
-        r = populate(api, f);
-        if (!r) {
-            IfsOfsCheckV3 check = {.structure_bytes = sizeof(check)};
-            r = api->verify(&check);
-            if (!r && (check.errors || check.bitmap_mismatches)) r = -1;
-        }
-        int unmounted = api->unmount();
-        if (!r) r = unmounted;
-    }
-    if (r)
-        fprintf(stderr, "OFS Test Media populate: OFS.so returned status %d on %s.\n",
-                r, f->path);
-    host->close_target(host->context, &f->target);
-    return r;
-}
-static int fixture_available(const IfsDefragHostV2 *host, void *symbol, void *opaque) {
-    (void)host; (void)opaque;
-    return fixture_api(symbol) ? 0 : -1;
-}
 static const IfsFsModuleApiV2 *common_api(void *symbol) {
     IfsFsModuleApiEntryV2 entry = NULL;
     _Static_assert(sizeof(entry) == sizeof(symbol), "module symbol width");
@@ -176,24 +117,66 @@ static const IfsFsModuleApiV2 *common_api(void *symbol) {
     return ifs_fs_api_v2_valid(api, "ofs") &&
            (api->runtime_profiles & IFS_FS_PROFILE_HOSTED) ? api : NULL;
 }
-static int common_available(const IfsDefragHostV2 *host, void *symbol, void *opaque) {
-    (void)host; (void)opaque;
-    const IfsFsModuleApiV2 *api = common_api(symbol);
-    if (!api) return -1;
+static int fixture_capabilities(const IfsFsModuleApiV2 *api) {
+    if (!api) return 0;
     const IfsFsCoreOpsV2 *core =
         (const IfsFsCoreOpsV2 *)ifs_fs_group_v2(api, IFS_FS_GROUP_CORE);
     const IfsFsVolumeOpsV2 *volume =
         (const IfsFsVolumeOpsV2 *)ifs_fs_group_v2(api, IFS_FS_GROUP_VOLUME);
-    const uint64_t required_core = IFS_FS_CORE_MOUNT | IFS_FS_CORE_STAT | IFS_FS_CORE_READ;
-    const uint64_t required_volume = IFS_FS_VOLUME_FORMAT | IFS_FS_VOLUME_CHECK;
+    const uint64_t required_core = IFS_FS_CORE_MOUNT | IFS_FS_CORE_STAT | IFS_FS_CORE_READ |
+        IFS_FS_CORE_CREATE | IFS_FS_CORE_REMOVE | IFS_FS_CORE_WRITE;
+    const uint64_t required_volume = IFS_FS_VOLUME_FORMAT | IFS_FS_VOLUME_CHECK |
+        IFS_FS_VOLUME_SYNC;
     return core && (core->header.capabilities & required_core) == required_core &&
-           volume && (volume->header.capabilities & required_volume) == required_volume ? 0 : -1;
+           volume && (volume->header.capabilities & required_volume) == required_volume;
+}
+static int common_available(const IfsDefragHostV2 *host, void *symbol, void *opaque) {
+    (void)host; (void)opaque;
+    return fixture_capabilities(common_api(symbol)) ? 0 : -1;
+}
+static int populate_fixture(const IfsDefragHostV2 *host, void *symbol, void *opaque) {
+    const Fixture *f = opaque;
+    const IfsFsModuleApiV2 *api = common_api(symbol);
+    if (!fixture_capabilities(api)) return -1;
+    const IfsFsCoreOpsV2 *core =
+        (const IfsFsCoreOpsV2 *)ifs_fs_group_v2(api, IFS_FS_GROUP_CORE);
+    const IfsFsVolumeOpsV2 *volume =
+        (const IfsFsVolumeOpsV2 *)ifs_fs_group_v2(api, IFS_FS_GROUP_VOLUME);
+    IfsFilesystemTargetV2 binding = {.services = host};
+    int r = open_writable(host, f->path, "populate", &binding.target);
+    if (r) return r;
+
+    IfsFsHostRuntimeV2 io;
+    IfsFsVolumeInfoV2 info = {.structure_bytes = sizeof(info)};
+    void *session = NULL;
+    r = IFS_FS_INVALID;
+    if (!ifs_filesystem_target_runtime_v2(&binding, 1, LDTM_OFS_BLOCK_BYTES, &io) &&
+        !io.cancelled(io.context)) {
+        r = core->mount(&io, &session, &info);
+        if (r == IFS_FS_OK && session) {
+            r = info.variant == 0u && info.block_bytes == LDTM_OFS_BLOCK_BYTES ?
+                populate(core, session, &io, f->profile) : IFS_FS_UNSUPPORTED;
+            uint64_t errors = UINT64_MAX;
+            if (r == IFS_FS_OK &&
+                (volume->check(session, 0u, &errors) != IFS_FS_OK || errors != 0u))
+                r = IFS_FS_CORRUPT;
+            if (r == IFS_FS_OK) r = volume->sync(session);
+            const int closed = core->unmount(session);
+            if (r == IFS_FS_OK) r = closed;
+            if (r == IFS_FS_OK && io.flush(io.context)) r = IFS_FS_IO_ERROR;
+        } else if (r == IFS_FS_OK) {
+            r = IFS_FS_INVALID;
+        }
+    }
+    if (r)
+        fprintf(stderr, "OFS Test Media populate: Common V2 returned status %d on %s.\n",
+                r, f->path);
+    host->close_target(host->context, &binding.target);
+    return r;
 }
 int ldtm_ofs_module_available(void) {
     return ifs_filesystem_module_call("ofs", "OFS.so", IFS_FS_COMMON_EXPORT_V2,
-                                      common_available, NULL) == 0 &&
-           ifs_filesystem_module_call("ofs", "OFS.so", "infiltrator_filesystem_module_v3",
-                                      fixture_available, NULL) == 0;
+                                      common_available, NULL) == 0;
 }
 typedef struct { const char *path, *label; } OfsFormatRequest;
 static int format_ofs(const IfsDefragHostV2 *host, void *symbol, void *opaque) {
@@ -230,7 +213,7 @@ int ldtm_format_ofs_module(const char *path, const char *label) {
 int ldtm_populate_ofs_module(const char *path, const LdtmFragmentProfile *profile) {
     if (!path || !profile) return -1;
     Fixture f = {.path = path, .profile = profile};
-    return ifs_filesystem_module_call("ofs", "OFS.so", "infiltrator_filesystem_module_v3",
+    return ifs_filesystem_module_call("ofs", "OFS.so", IFS_FS_COMMON_EXPORT_V2,
                                       populate_fixture, &f);
 }
 
