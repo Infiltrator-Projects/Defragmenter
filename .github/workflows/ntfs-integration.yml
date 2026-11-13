@@ -60,6 +60,7 @@ jobs:
           ntfscp "$image" build/ntfs-v2-data /mapping.bin
           sha256sum "$image" > build/ntfs-v2-map.sha256
           worker=build/defragmenter-ntfs-test-worker
+          "$worker" identify "$image" | grep -Fx '{"filesystem":"ntfs"}'
           "$worker" volume-info "$image" | grep -F '"abi":2'
           "$worker" map "$image" --path /mapping.bin
           if "$worker" map "$image" --path /missing.bin; then
@@ -72,6 +73,11 @@ jobs:
           set -euo pipefail
           cd defragger
           mkdir -p build/without-driver/Filesystems
+          if IFS_TEST_MODULE_PARENT="$PWD/build/without-driver" \
+             build/defragmenter-ntfs-test-worker identify build/ntfs-v2-map.img; then
+             echo 'NTFS identification succeeded without its Common V2 provider' >&2
+             exit 1
+          fi
           if IFS_TEST_MODULE_PARENT="$PWD/build/without-driver" \
              build/defragmenter-ntfs-test-worker map build/ntfs-v2-map.img --path /mapping.bin; then
              echo "NTFS worker used an internal fallback without NTFS.so" >&2

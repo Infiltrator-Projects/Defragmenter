@@ -21,8 +21,15 @@ static int invoke(const IfsDefragHostV2 *host,void *symbol,void *opaque) {
  return api->run(r->argc,r->argv,ifs_defrag_services_v1());
 }
 int main(int argc,char **argv) {
- /* Volume metadata and explicit extent maps are owned by the installed
-  * Common V2 module. A failed V2 request ends here. */
+ /* Keep identification on the same Common V2 CORE probe used by the
+  * other read-only entry points. The mapper expects this JSON record. */
+ if(argc>=2 && strcmp(argv[1],"identify")==0) {
+     if(argc!=3) return 2;
+     char *probe[]={argv[0],"probe-only",argv[2],NULL};
+     int result=ifs_filesystem_module_run("ntfs","NTFS.so",3,probe);
+     if(result==0) puts("{\"filesystem\":\"ntfs\"}");
+     return result;
+ }
  if(argc>=3 && argv[1] &&
     (strcmp(argv[1],"volume-info")==0 || strcmp(argv[1],"map")==0))
      return ifs_filesystem_module_run("ntfs","NTFS.so",argc,argv);

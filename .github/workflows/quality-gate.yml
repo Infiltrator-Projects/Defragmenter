@@ -369,7 +369,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: Infiltrator-Projects/Filesystem-NTFS
-          ref: c9cc724351f35c2f6a821239c9381be4f80de8c2
+          ref: f1c8850a8294df9b256f1ad7cb2d90d3e7da0b13
           path: ci-ntfs
 
       - name: Build and qualify canonical NTFS.so
@@ -957,7 +957,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: Infiltrator-Projects/Filesystem-NTFS
-          ref: c9cc724351f35c2f6a821239c9381be4f80de8c2
+          ref: f1c8850a8294df9b256f1ad7cb2d90d3e7da0b13
           path: ci-ntfs
 
       - name: Instrument native NTFS.so and preserve regression tests
