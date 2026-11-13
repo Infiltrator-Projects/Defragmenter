@@ -4,10 +4,16 @@
 
 Status: **complete**
 
-Audited source commit: 2ffd6c3d0b9abb078c8e5d91d4fb3f147e28c84d
-Audited release-governance commit: 33f0e9bb994bb6c9d1435c97431a10b9eb87998f
+Audited source commit: 494f67fcdd78364ea1dd4d71c7105075a1d71aa0
+Audited release-governance commit: 494f67fcdd78364ea1dd4d71c7105075a1d71aa0
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
+
+## NTFS identification and runner dependencies — reviewed 2026-11-13
+
+The NTFS worker routes `identify` through the Common V2 CORE probe and returns the existing JSON shape on success. The read-only probe rejects a missing provider, invalid arguments and media without the NTFS signature. Local tests exercised an independently formatted NTFS image, volume information and per-file mapping with an unchanged image checksum. The hosted NTFS integration also passed for the worker change.
+
+The two self-hosted jobs pin the same NTFS provider as the dedicated integration. They extract APT's NTFS headers, library and check utilities into their runner workspace. The release script and invariant test both include that helper in the audited governance inputs. Local tests built the provider using the extracted dependencies and passed all five provider tests. The mandatory native and sanitizer release tests still apply to this exact source.
 
 ## Common V2 OFS Test Media population — reviewed 2026-11-13
 
