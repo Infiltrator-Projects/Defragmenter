@@ -37,7 +37,9 @@ version=$($FAT_WORKER --version)
     fail "unexpected FAT worker version: $version"
 
 "$ROOT/tests/test_release_artifacts.sh"
-python3 "$ROOT/tests/test_no_external_fs_tools.py"
+c++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror \
+    "$ROOT/tests/test_no_external_fs_tools.cpp" -o "$WORK/no-external-fs-tools"
+"$WORK/no-external-fs-tools" "$ROOT"
 python3 "$ROOT/tests/test_architecture.py"
 python3 "$ROOT/tests/test_registry_mapper.py"
 # Build once and exercise the production worker launch protocol without Python.
