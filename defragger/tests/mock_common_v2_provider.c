@@ -18,7 +18,11 @@ static int probe(const IfsFsHostRuntimeV2 *h,uint32_t *variant) {
 }
 static int mount(const IfsFsHostRuntimeV2 *h,void **out,IfsFsVolumeInfoV2 *info) {
     uint32_t variant=0u;
-    if(!out||!info||info->structure_bytes<sizeof(*info) ||
+    unsigned char entropy[16];
+    if(!h||!out||!info||info->structure_bytes<sizeof(*info) ||
+       !(h->capabilities & IFS_FS_HOST_CLOCK) || !h->monotonic_ns || !h->realtime_ns ||
+       !h->monotonic_ns(h->context) || !h->realtime_ns(h->context) ||
+       ifs_fs_host_random_bytes_v2(h,entropy,sizeof(entropy))!=IFS_FS_OK ||
        probe(h,&variant)!=IFS_FS_OK)return IFS_FS_INVALID;
     MockVolume *v=h->allocate(h->context,sizeof(*v));
     if(!v)return IFS_FS_NO_SPACE;

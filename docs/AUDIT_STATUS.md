@@ -9,6 +9,10 @@ Audited release-governance commit: 494f67fcdd78364ea1dd4d71c7105075a1d71aa0
 
 These exact lines are an **executable release-gate contract** used by `defragger/ci/release.sh` and `defragger/tests/test_release_gate.py`. Do not remove, re-label or advance them without the corresponding independently reviewed source/governance audit. The code gate separately checks ancestry and the exact tracked source and governance diff.
 
+The later Common V2 host clock and entropy changes are not covered by those
+baselines. Release remains blocked until the changed source and tests have
+received independent review and full qualification.
+
 ## NTFS identification and runner dependencies — reviewed 2026-11-13
 
 The NTFS worker routes `identify` through the Common V2 CORE probe and returns the existing JSON shape on success. The read-only probe rejects a missing provider, invalid arguments and media without the NTFS signature. Local tests exercised an independently formatted NTFS image, volume information and per-file mapping with an unchanged image checksum. The hosted NTFS integration also passed for the worker change.

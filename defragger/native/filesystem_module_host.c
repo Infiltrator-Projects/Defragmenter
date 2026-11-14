@@ -26,8 +26,10 @@
 #include <string.h>
 #include <sys/file.h>
 #include <sys/ioctl.h>
+#include <sys/random.h>
 #include <linux/fs.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 /* The exclusive, preflight-qualified open pins the actual kernel object.
@@ -490,11 +492,43 @@ static int v2_cancelled(void *opaque) {
     IfsFilesystemTargetV2 *b=opaque;
     return b->services->stop_requested(b->services->context);
 }
+static uint64_t v2_clock_ns(clockid_t clock) {
+    struct timespec t;
+    if(clock_gettime(clock,&t)!=0 || t.tv_sec<0 || t.tv_nsec<0 ||
+       t.tv_nsec>=1000000000 || (uint64_t)t.tv_sec>UINT64_MAX/UINT64_C(1000000000))
+        return 0u;
+    uint64_t seconds=(uint64_t)t.tv_sec*UINT64_C(1000000000);
+    if((uint64_t)t.tv_nsec>UINT64_MAX-seconds)return 0u;
+    return seconds+(uint64_t)t.tv_nsec;
+}
+static uint64_t v2_monotonic(void *opaque) {
+    (void)opaque;
+    return v2_clock_ns(CLOCK_MONOTONIC);
+}
+static uint64_t v2_realtime(void *opaque) {
+    (void)opaque;
+    return v2_clock_ns(CLOCK_REALTIME);
+}
+static int v2_random(void *opaque,void *destination,uint32_t bytes) {
+    unsigned char *out=destination;
+    (void)opaque;
+    if(!out && bytes)return -1;
+    while(bytes) {
+        ssize_t count=getrandom(out,bytes,0);
+        if(count<0 && errno==EINTR)continue;
+        if(count<=0)return -1;
+        out+=(size_t)count;
+        bytes-=(uint32_t)count;
+    }
+    return 0;
+}
 int ifs_filesystem_target_runtime_v2(IfsFilesystemTargetV2 *binding,
                                      int writable, uint32_t requested_sector,
                                      IfsFsHostRuntimeV2 *runtime) {
     Target *t=binding->target.handle;
     if(!t || (writable && !t->device.writable))return -1;
+    /* Do not advertise clock services when their initial samples fail. */
+    if(!v2_clock_ns(CLOCK_MONOTONIC) || !v2_clock_ns(CLOCK_REALTIME))return -1;
     uint32_t logical=512u,physical=512u;
     if(t->device.is_block) {
         int logical_kernel=0,physical_kernel=0;
@@ -514,7 +548,7 @@ int ifs_filesystem_target_runtime_v2(IfsFilesystemTargetV2 *binding,
         .abi_version=IFS_FS_HOST_ABI_V2,
         .structure_bytes=sizeof(*runtime),
         .capabilities=(writable ? IFS_FS_HOST_EXCLUSIVE|IFS_FS_HOST_DURABLE :
-                                  IFS_FS_HOST_READ_ONLY)|IFS_FS_HOST_CANCEL,
+                                  IFS_FS_HOST_READ_ONLY)|IFS_FS_HOST_CANCEL|IFS_FS_HOST_CLOCK,
         .volume_bytes=binding->target.bytes,
         .logical_sector_bytes=logical,
         .physical_sector_bytes=physical,
@@ -525,7 +559,10 @@ int ifs_filesystem_target_runtime_v2(IfsFilesystemTargetV2 *binding,
         .flush=writable?v2_sync:NULL,
         .allocate=v2_allocate,
         .release=v2_release,
-        .cancelled=v2_cancelled
+        .cancelled=v2_cancelled,
+        .monotonic_ns=v2_monotonic,
+        .realtime_ns=v2_realtime,
+        .random_bytes=v2_random
     };
     return ifs_fs_host_v2_valid(runtime)?0:-1;
 }
