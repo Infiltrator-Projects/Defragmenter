@@ -54,12 +54,7 @@ static const IfsFatfsModuleV4 *interface(void *symbol, const LdtmFilesystemSpec 
              (IFS_EXFAT_CAP_READ64 | IFS_EXFAT_CAP_STAT64))
             return NULL;
         api = v5->compat_v4;
-    } else {
-        const IfsFatfsModuleV4 *(*entry)(void) = NULL;
-        _Static_assert(sizeof(entry) == sizeof(symbol), "module symbol width");
-        memcpy(&entry, &symbol, sizeof(entry));
-        api = entry ? entry() : NULL;
-    }
+    } else return NULL;
     const uint64_t required = IFS_FATFS_CAP_FORMAT;
     if (!api || api->abi_version != IFS_FATFS_MODULE_ABI_V4 ||
         api->structure_bytes < sizeof(*api) || !api->format_id ||
@@ -136,26 +131,19 @@ done:
     return result;
 }
 static int call_module(FatFixture *f, IfsFilesystemCall call) {
-    if (f->spec->creator == LDTM_CREATOR_EXFAT)
-        return ifs_filesystem_module_call("exfat", "exFAT.so",
-            "infiltrator_filesystem_module_v5", call, f);
-    const unsigned bits = f->spec->creator == LDTM_CREATOR_FAT16 ? 16U :
-                          f->spec->creator == LDTM_CREATOR_FAT32 ? 32U : 0U;
-    if (!bits) return -1;
-    char module[16];
-    (void)snprintf(module, sizeof(module), "FAT%u.so", bits);
-    return ifs_filesystem_module_call(f->spec->key, module,
-        "infiltrator_filesystem_module_v4", call, f);
+    return f->spec && f->spec->creator == LDTM_CREATOR_EXFAT ?
+        ifs_filesystem_module_call("exfat", "exFAT.so",
+            "infiltrator_filesystem_module_v5", call, f) : -1;
 }
 int ldtm_fat_module_available(const LdtmFilesystemSpec *spec) {
-    if (spec && spec->creator == LDTM_CREATOR_FAT12)
-        return ldtm_fat12_common_available(spec) == 0;
+    if (spec && spec->creator != LDTM_CREATOR_EXFAT)
+        return ldtm_fat_common_available(spec) == 0;
     FatFixture f = {.spec = spec};
     return spec && call_module(&f, available) == 0;
 }
 int ldtm_fat_module_create(const LdtmFilesystemSpec *spec, const char *path) {
-    if (spec && spec->creator == LDTM_CREATOR_FAT12)
-        return ldtm_fat12_common_create(spec, path);
+    if (spec && spec->creator != LDTM_CREATOR_EXFAT)
+        return ldtm_fat_common_create(spec, path);
     FatFixture f = {.spec = spec, .path = path};
     return spec && path ? call_module(&f, create_fixture) : -1;
 }
@@ -226,9 +214,9 @@ done:
 }
 int ldtm_raw_fat(const LdtmFilesystemSpec *spec, const char *path, bool create) {
     if (!spec || !path) return -1;
-    if (spec->creator == LDTM_CREATOR_FAT12)
-        return create ? ldtm_fat12_common_create(spec, path) :
-                        ldtm_fat12_common_verify(spec, path);
+    if (spec->creator != LDTM_CREATOR_EXFAT)
+        return create ? ldtm_fat_common_create(spec, path) :
+                        ldtm_fat_common_verify(spec, path);
     if (create) return ldtm_fat_module_create(spec, path);
     FatFixture f = { .spec = spec, .path = path };
     return call_module(&f, verify_fixture);
