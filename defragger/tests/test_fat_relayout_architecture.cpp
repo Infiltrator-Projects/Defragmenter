@@ -28,9 +28,14 @@ int main(int argc,char** argv) {
               "Private FAT engine must not return to Defragmenter GUI");
         const auto loader=read(root/"native/fat_module_loader.c");
         for(const char* token:{
-            "infiltrator_filesystem_defrag_v1",
-            "FAT12.so","FAT16.so","FAT32.so","O_NOFOLLOW","trusted_module"
-        })contains(loader,token,"Trusted filesystem module loader");
+            "ifs_filesystem_module_find_readonly_v2",
+            "ifs_filesystem_module_run",
+            "probe-only","fat12","fat16","fat32"
+        })contains(loader,token,"Trusted Common V2 FAT dispatcher");
+        check(loader.find("infiltrator_filesystem_defrag_v1")==std::string::npos,
+              "Retired FAT defrag V1 loader reintroduced");
+        check(!fs::exists(root/"native/fat_defrag_abi.h"),
+              "Retired FAT defrag V1 host interface still present");
         const auto runtime=read(root/"native/runtime.cpp");
         for(const char* token:{
             "for (const int bits : {12, 16, 32})",
@@ -39,7 +44,7 @@ int main(int argc,char** argv) {
         })contains(runtime,token,"Versioned native FAT operations");
         check(!fs::exists(root/"tests/test_fat_relayout_architecture.py"),
               "Retired Python FAT ownership checker still exists");
-        std::cout<<"FAT operations use a versioned Filesystems module\n";
+        std::cout<<"FAT operations use only independently trusted Common V2 SO modules\n";
         return 0;
     }catch(const std::exception& error){
         std::cerr<<"FAT ownership contract failed: "<<error.what()<<'\n';
