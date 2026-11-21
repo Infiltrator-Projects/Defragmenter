@@ -929,40 +929,8 @@ if(BUILD_TESTING)
     target_link_libraries(defragmenter-mounted-image-identity-test PRIVATE defragmenter-core)
     add_test(NAME defragmenter-mounted-image-identity
         COMMAND defragmenter-mounted-image-identity-test)
-    # Keep the existing filesystem unit tests, compiling their source from
-    # Filesystems instead of retaining a second engine inside Defragmenter.
-    if(FAT_DEFRAG_SOURCE_DIR)
-        if(NOT EXISTS "${FAT_DEFRAG_SOURCE_DIR}/fat_volume.c")
-            message(FATAL_ERROR "FAT_DEFRAG_SOURCE_DIR must name the Filesystems defrag source")
-        endif()
-        function(ld_fat_module_unit_test target test_source)
-            add_executable(${target} "${test_source}"
-                tests/fat_module_unit_host.c ${ARGN})
-            target_include_directories(${target} PRIVATE
-                "${CMAKE_CURRENT_SOURCE_DIR}/native"
-                "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-                "${FAT_DEFRAG_SOURCE_DIR}" "${FAT_DEFRAG_SOURCE_DIR}/host"
-                "${LD_GENERATED_DIR}")
-            target_compile_options(${target} PRIVATE ${LD_WARNING_FLAGS})
-            target_compile_definitions(${target} PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
-            target_link_libraries(${target} PRIVATE defragmenter-core Threads::Threads)
-        endfunction()
-        ld_fat_module_unit_test(defragmenter-fat-volume-test tests/test_fat_volume.c
-            "${FAT_DEFRAG_SOURCE_DIR}/fat_io.c" "${FAT_DEFRAG_SOURCE_DIR}/fat_volume.c")
-        ld_fat_module_unit_test(defragmenter-fat-directory-test tests/test_fat_directory.c
-            "${FAT_DEFRAG_SOURCE_DIR}/fat_directory.c" "${FAT_DEFRAG_SOURCE_DIR}/fat_volume.c")
-        ld_fat_module_unit_test(defragmenter-fat-journal-test tests/test_fat_journal.c
-            "${FAT_DEFRAG_SOURCE_DIR}/fat_journal.c" "${FAT_DEFRAG_SOURCE_DIR}/fat_volume.c")
-        ld_fat_module_unit_test(defragmenter-fat-relayout-model-test tests/test_fat_relayout.c
-            "${FAT_DEFRAG_SOURCE_DIR}/fat_directory.c" "${FAT_DEFRAG_SOURCE_DIR}/fat_relayout.c"
-            "${FAT_DEFRAG_SOURCE_DIR}/fat_volume.c")
-        add_test(NAME defragmenter-fat-volume COMMAND defragmenter-fat-volume-test)
-        add_test(NAME defragmenter-fat-directory COMMAND defragmenter-fat-directory-test)
-        add_test(NAME defragmenter-fat-journal COMMAND defragmenter-fat-journal-test)
-        add_test(NAME defragmenter-fat-relayout-model COMMAND defragmenter-fat-relayout-model-test)
-    else()
-        message(STATUS "FAT source unit tests require FAT_DEFRAG_SOURCE_DIR")
-    endif()
+    # Filesystem-owned FAT Common V2 tests compile with their independent SOs.
+    # Defragmenter never embeds the obsolete FAT V1 process-host worker.
     add_executable(defragmenter-fat12-small-workspace-fixture
         tests/fat12_small_workspace_fixture.c)
     target_compile_options(defragmenter-fat12-small-workspace-fixture PRIVATE
@@ -975,18 +943,7 @@ if(BUILD_TESTING)
                      ${FAT_WORKER_FOR_TESTS})
     set_tests_properties(defragmenter-tests PROPERTIES
         ENVIRONMENT "DEFRAGMENTER_FAT_WORKER=${FAT_WORKER_FOR_TESTS}")
-    if(TARGET defragmenter-fat-test-worker)
-        add_test(NAME defragmenter-fat-module-recovery
-            COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_fat_module_recovery.sh"
-                ${FAT_WORKER_FOR_TESTS})
-        set(FAT_BOUNDARY_FIXTURE "")
-        if(FAT_DEFRAG_SOURCE_DIR)
-            get_filename_component(FAT_BOUNDARY_FIXTURE
-                "${FAT_DEFRAG_SOURCE_DIR}/../../../../tests/fat_boundary_fixture.py" ABSOLUTE)
-        endif()
-        add_test(NAME defragmenter-fat-module-safety
-            COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_fat_module_safety.sh"
-                ${FAT_WORKER_FOR_TESTS} "${FAT_DEFRAG_TEST_MODULE_PARENT}/Filesystems"
-                "${FAT_BOUNDARY_FIXTURE}")
-    endif()
+    # Legacy crash-journal tests depend on the retired process-host ABI.
+    # Provider-owned V2 recovery tests must run before any FAT SO advertises
+    # DEFRAG.RECOVER; the current reader has only the verified MAP capability.
 endif()
