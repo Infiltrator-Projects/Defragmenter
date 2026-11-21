@@ -99,8 +99,9 @@ static int call(Fat12Fixture *f,IfsFilesystemCall action)
 }
 static int available(const IfsDefragHostV2 *host,void *symbol,void *opaque)
 {
-    (void)host;(void)opaque;
-    return canonical(symbol,f->spec)?0:-1;
+    (void)host;
+    Fat12Fixture *f=opaque;
+    return f && canonical(symbol,f->spec)?0:-1;
 }
 int ldtm_fat_common_available(const LdtmFilesystemSpec *spec)
 {
