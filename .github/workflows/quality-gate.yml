@@ -63,56 +63,41 @@ jobs:
       - name: Verify self-hosted runner contract
         run: ./ci/preflight.sh quality
 
-      - name: Read the Filesystems test revision
-        id: filesystems_revision
-        run: echo "sha=$(tr -d '\r\n' < shared/filesystems-fat-revision)" >> "$GITHUB_OUTPUT"
-
-      - name: Check out the qualified Filesystems source
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          repository: Infiltrator-Projects/Filesystems
-          ref: ${{ steps.filesystems_revision.outputs.sha }}
-          path: ci-filesystems
-          submodules: true
-
-      - name: Pin independent FAT12 source
-        id: fat12_source
-        shell: bash
-        run: echo "sha=$(tr -d '\r\n' < shared/fat12-module-revision)" >> "$GITHUB_OUTPUT"
-      - name: Checkout independent FAT12 source
+      - name: Checkout independent FAT12 Common V2
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: Infiltrator-Projects/Filesystem-FAT12
-          ref: ${{ steps.fat12_source.outputs.sha }}
+          ref: main
           path: ci-fat12
-
-      - name: Check out the qualifying standalone FAT32 driver
+      - name: Checkout independent FAT16 Common V2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-FAT16
+          ref: main
+          path: ci-fat16
+      - name: Checkout independent FAT32 Common V2
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: Infiltrator-Projects/Filesystem-FAT32
-          ref: 939f6d0b5f024f98041e476b7f9d1d3b10adbba8
+          ref: main
           path: ci-fat32
 
-      - name: Build the FAT modules for isolated tests
+      - name: Compile isolated FAT12/16/32 Common V2 providers only
+        shell: bash
         run: |
           set -euo pipefail
-          fs="$GITHUB_WORKSPACE/ci-filesystems"
-          cmp native/fat_defrag_abi.h "$fs/native/filesystems/fat/defrag/fat_defrag_abi.h"
-          cmp native/fat_module_abi.h "$fs/native/filesystems/fat/portable/fatfs_module.h"
-          cmake -S "$fs" -B "$RUNNER_TEMP/filesystems-fat-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=OFF
-          cmake --build "$RUNNER_TEMP/filesystems-fat-$GITHUB_RUN_ID-$GITHUB_JOB" --target filesystems-fat16-module filesystems-fat32-module -j2
-          install -d -m 0755 "$PWD/build/fat-module-test/Filesystems"
-          install -m 0644 "$RUNNER_TEMP/filesystems-fat-$GITHUB_RUN_ID-$GITHUB_JOB"/FAT{16,32}.so "$PWD/build/fat-module-test/Filesystems/"
-          # The independent filesystem owns FAT12.so. Never build an old FAT12
-          # implementation from the Filesystems repository.
-          test "$(cat shared/fat12-module-revision)" = "93a67b9bac471b0e4a99ad112b0bca7ca1c63a93"
-          python3 "$GITHUB_WORKSPACE/ci-fat12/standalone/build.py" \
-            --profile portable --output "$PWD/build/fat-module-test/Filesystems/FAT12.so" --check
-          # New FAT32 Test Media must consume the independently owned FAT32.so,
-          # not an older FAT32 test module bundled into Filesystems.
-          cmp native/fat_defrag_abi.h "$GITHUB_WORKSPACE/ci-fat32/native/filesystems/fat/defrag/fat_defrag_abi.h"
-          python3 "$GITHUB_WORKSPACE/ci-fat32/standalone/build.py" \
-            --profile portable --output "$PWD/build/fat-module-test/Filesystems/FAT32.so" --check
+          dest="$PWD/build/fat-module-test/Filesystems"
+          install -d -m 0755 "$dest"
+          for bits in 12 16 32; do
+            source="$GITHUB_WORKSPACE/ci-fat$bits"
+            python3 "$source/standalone/build.py" --profile portable \
+              --output "$dest/FAT$bits.so" --check
+            nm -D --defined-only "$dest/FAT$bits.so" | grep -w infiltrator_filesystem_api_v2
+            if nm -D "$dest/FAT$bits.so" | grep -F infiltrator_filesystem_defrag_v1; then
+              echo "FAT$bits published forbidden V1 interface" >&2
+              exit 1
+            fi
+          done
 
       - name: Checkout canonical exFAT.so for Test Media qualification
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -490,7 +475,6 @@ jobs:
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DLD_ENABLE_WERROR=ON \
-            -DFAT_DEFRAG_SOURCE_DIR="$GITHUB_WORKSPACE/ci-filesystems/native/filesystems/fat/defrag" \
             -DFAT_DEFRAG_TEST_MODULE_PARENT="$PWD/build/fat-module-test" \
             -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build/fat-module-test" \
             -DMINIX_NATIVE_FIXTURE_PATH="$RUNNER_TEMP/minix-$GITHUB_RUN_ID-$GITHUB_JOB/minix-native-test" \
@@ -609,80 +593,56 @@ jobs:
       - name: Verify self-hosted sanitizer runner contract
         run: ./ci/preflight.sh sanitizers
 
-      - name: Read the Filesystems test revision
-        id: filesystems_revision
-        run: echo "sha=$(tr -d '\r\n' < shared/filesystems-fat-revision)" >> "$GITHUB_OUTPUT"
-
-      - name: Check out the qualified Filesystems source
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          repository: Infiltrator-Projects/Filesystems
-          ref: ${{ steps.filesystems_revision.outputs.sha }}
-          path: ci-filesystems
-          submodules: true
-
-      - name: Pin independent FAT12 source
-        id: fat12_source
-        shell: bash
-        run: echo "sha=$(tr -d '\r\n' < shared/fat12-module-revision)" >> "$GITHUB_OUTPUT"
-      - name: Checkout independent FAT12 source
+      - name: Checkout independent FAT12 Common V2
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: Infiltrator-Projects/Filesystem-FAT12
-          ref: ${{ steps.fat12_source.outputs.sha }}
+          ref: main
           path: ci-fat12
-
-      - name: Check out the qualifying standalone FAT32 driver
+      - name: Checkout independent FAT16 Common V2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Infiltrator-Projects/Filesystem-FAT16
+          ref: main
+          path: ci-fat16
+      - name: Checkout independent FAT32 Common V2
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: Infiltrator-Projects/Filesystem-FAT32
-          ref: 8b9e98c1ba20976f11ef674408671749c1bdc36d
+          ref: main
           path: ci-fat32
 
-      - name: Build the FAT modules for isolated tests
+      - name: Compile isolated sanitizer FAT12/16/32 Common V2 providers only
+        shell: bash
         run: |
           set -euo pipefail
-          fs="$GITHUB_WORKSPACE/ci-filesystems"
-          cmp native/fat_defrag_abi.h "$fs/native/filesystems/fat/defrag/fat_defrag_abi.h"
-          cmp native/fat_module_abi.h "$fs/native/filesystems/fat/portable/fatfs_module.h"
-          cmake -S "$fs" -B "$RUNNER_TEMP/filesystems-fat-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=OFF \
-            -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
-            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
-          cmake --build "$RUNNER_TEMP/filesystems-fat-$GITHUB_RUN_ID-$GITHUB_JOB" --target filesystems-fat16-module filesystems-fat32-module -j2
-          install -d -m 0755 "$PWD/build-sanitize/fat-module-test/Filesystems"
-          install -m 0644 "$RUNNER_TEMP/filesystems-fat-$GITHUB_RUN_ID-$GITHUB_JOB"/FAT{16,32}.so "$PWD/build-sanitize/fat-module-test/Filesystems/"
-          # Independently compile FAT12.so with sanitizers, retaining the
-          # authoritative native engine and Common ABI.
-          test "$(cat shared/fat12-module-revision)" = "93a67b9bac471b0e4a99ad112b0bca7ca1c63a93"
-          IFS_FAT12_SOURCE="$GITHUB_WORKSPACE/ci-fat12" python3 - <<'PY'
-          import os,sys
+          dest="$PWD/build-sanitize/fat-module-test/Filesystems"
+          install -d -m 0755 "$dest"
+          for bits in 12 16 32; do
+            IFS_FAT_SOURCE="$GITHUB_WORKSPACE/ci-fat$bits" IFS_FAT_BITS="$bits" \
+              IFS_FAT_DEST="$dest/FAT$bits.so" python3 - <<'PY'
+          import os, sys
           from pathlib import Path
-          sys.path.insert(0,os.environ["IFS_FAT12_SOURCE"]+"/standalone")
+          source=os.environ["IFS_FAT_SOURCE"]
+          width=int(os.environ["IFS_FAT_BITS"])
+          sys.path.insert(0,source+"/standalone")
           import build
-          out=Path("build-sanitize/fat-module-test/Filesystems/FAT12.so").resolve()
           flags=["-std=c11","-O1","-g","-fPIC","-mno-red-zone",
                  "-fno-stack-protector","-fno-builtin",
                  "-fno-tree-loop-distribute-patterns","-ffreestanding",
                  "-fvisibility=hidden","-D_GNU_SOURCE","-D_FILE_OFFSET_BITS=64",
-                 "-DIFS_FATFS_ONLY=12","-DIFS_FAT_DEFRAG_BITS=12",
-                 "-DIFS_CLASSIC_FAT_BITS=12","-fsanitize=address,undefined",
+                 f"-DIFS_FATFS_ONLY={width}","-fsanitize=address,undefined",
                  "-fno-omit-frame-pointer"]
-          build.compile_module(out,flags,training=True)
+          if width==12: flags+=["-DIFS_CLASSIC_FAT_BITS=12"]
+          if width==32: flags+=["-DIFS_FAT32_INDEPENDENT=1"]
+          build.compile_module(Path(os.environ["IFS_FAT_DEST"]).resolve(),flags,training=True)
           PY
-          # Instrument the exact standalone FAT32 implementation under test.
-          cmp native/fat_defrag_abi.h "$GITHUB_WORKSPACE/ci-fat32/native/filesystems/fat/defrag/fat_defrag_abi.h"
-          IFS_FAT32_SOURCE="$GITHUB_WORKSPACE/ci-fat32" python3 - <<'PY'
-          import os, sys
-          from pathlib import Path
-          sys.path.insert(0, os.environ['IFS_FAT32_SOURCE'] + '/standalone')
-          import build
-          build.compile_module(Path('build-sanitize/fat-module-test/Filesystems/FAT32.so').resolve(),
-              ['-std=c11', '-O1', '-g', '-fPIC', '-mno-red-zone',
-               '-fno-builtin', '-fno-tree-loop-distribute-patterns', '-ffreestanding',
-               '-D_GNU_SOURCE', '-D_FILE_OFFSET_BITS=64', '-DIFS_FATFS_ONLY=32',
-               '-DIFS_FAT32_INDEPENDENT=1', '-DIFS_FAT_DEFRAG_BITS=32',
-               '-fsanitize=address,undefined', '-fno-omit-frame-pointer'], training=True)
-          PY
+            nm -D --defined-only "$dest/FAT$bits.so" | grep -w infiltrator_filesystem_api_v2
+            if nm -D "$dest/FAT$bits.so" | grep -F infiltrator_filesystem_defrag_v1; then
+              echo "Sanitized FAT$bits module retained a V1 export" >&2
+              exit 1
+            fi
+          done
 
       - name: Checkout canonical exFAT.so for sanitizer host qualification
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -1060,7 +1020,6 @@ jobs:
             -DCMAKE_BUILD_TYPE=Debug \
             -DLD_ENABLE_WERROR=ON \
             -DLD_ENABLE_SANITIZERS=ON \
-            -DFAT_DEFRAG_SOURCE_DIR="$GITHUB_WORKSPACE/ci-filesystems/native/filesystems/fat/defrag" \
             -DFAT_DEFRAG_TEST_MODULE_PARENT="$PWD/build-sanitize/fat-module-test" \
             -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build-sanitize/fat-module-test" \
             -DMINIX_NATIVE_FIXTURE_PATH="$RUNNER_TEMP/minix-san-$GITHUB_RUN_ID-$GITHUB_JOB/minix-native-test" \
