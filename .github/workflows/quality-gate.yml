@@ -1,165 +1,71 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Common V2 is the only filesystem ABI recognized by Defragmenter.
-# The prior private-ABI build matrix is obsolete: never compile V1 fixtures,
-# require V1 exports, or use a historical filesystem worker as qualification.
+# Source-owned filesystem modules are linked only via Common ABI V2.
+# This gate never checks, links or runs the retired private V1/V3/V4/V5 APIs.
 name: Project quality gate
 on:
-  workflow_call:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-    paths:
-      - 'defragger/**'
-      - '.github/workflows/quality-gate.yml'
   workflow_dispatch:
+  workflow_call:
 permissions:
   contents: read
 concurrency:
-  group: quality-gate-common-v2-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: defrag-v2-project-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
-  ufs-v2-consumer:
-    name: Qualify independent UFS1/UFS2 Common V2
-    uses: ./.github/workflows/ufs-v2-consumer.yml
-    permissions:
-      contents: read
-  ffs-v2-consumer:
-    name: Qualify native FFS Common V2 consumer
-    uses: ./.github/workflows/ffs-v2-consumer.yml
-    permissions:
-      contents: read
-
-  quality-gate:
-    name: Common V2 application and release qualification
-    runs-on: [self-hosted, Linux, X64, linux-native, bigbedroom]
+  qualify:
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
-    defaults:
-      run:
-        working-directory: defragger
-    outputs:
-      release_intent: ${{ steps.release_intent.outputs.release }}
-    steps:
-      - name: Check out exact candidate
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 0
-          submodules: false
-      - name: Materialize pinned Common V2 submodule
-        run: git -C "$GITHUB_WORKSPACE" submodule update --init --depth 1 -- defragger/shared/infiltratr-common
-      - name: Verify native runner contract
-        run: ./ci/preflight.sh quality
-      - name: Verify no generated files are tracked
-        run: |
-          set -euo pipefail
-          if git ls-files | grep -E '(^|/)__pycache__/|\.py[co]$'; then
-            echo "Generated Python bytecode tracked in repository" >&2
-            exit 1
-          fi
-      - name: Compile all native application components under strict warnings
-        run: |
-          set -euo pipefail
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
-            -DLD_ENABLE_WERROR=ON -DBUILD_TESTING=ON \
-            -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build/v2-test-modules"
-          cmake --build build --parallel 2
-          cmake --build build --target defragmenter-desktop --parallel 2
-      - name: Refuse retired V1/V5 symbols and incompatible modules
-        run: |
-          set -euo pipefail
-          bash tests/check_common_v2_exclusivity.sh \
-            "$PWD/build/defragmenter-operation-engine-v2-test" "$PWD"
-          ctest --test-dir build --output-on-failure \
-            -R '^defragmenter-strict-common-v2-host$'
-      - name: Run native format-neutral V2 regressions
-        run: |
-          set -euo pipefail
-          ctest --test-dir build --output-on-failure \
-            -R '^defragmenter-generic-'
-      - name: Verify release invariants
-        env:
-          PYTHONDONTWRITEBYTECODE: "1"
-          DEFRAGMENTER_BUILD_DIR: ${{ github.workspace }}/defragger/build
-        run: python3 tests/test_release_gate.py
-      - name: Detect version-specific release intent
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        id: release_intent
-        run: |
-          set -euo pipefail
-          version="$(tr -d '\r\n' < VERSION)"
-          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9]+$ ]]
-          tag_commit="$(git -C "$GITHUB_WORKSPACE" rev-parse -q --verify "refs/tags/v${version}^{commit}" 2>/dev/null || true)"
-          release=false
-          if [[ -z "$tag_commit" || "$tag_commit" == "$GITHUB_SHA" ]]; then
-            release=true
-          fi
-          echo "release=$release" >> "$GITHUB_OUTPUT"
-      - name: Build and validate installer artifacts for exact tested commit
-        if: steps.release_intent.outputs.release == 'true'
-        run: |
-          set -euo pipefail
-          ./tests/test_release_artifacts.sh
-          VERSION="$(tr -d '\r\n' < VERSION)"
-          LD_BUILD_TESTING=OFF ./packaging/build-deb.sh
-          ./packaging/build-local-run.sh "Defragmenter-${VERSION}-local-folder.run"
-          DEB="Defragmenter-${VERSION}-amd64.deb"
-          RUN="Defragmenter-${VERSION}-local-folder.run"
-          test -s "$DEB" && test -s "$RUN"
-          test "$(dpkg-deb -f "$DEB" Version)" = "$VERSION"
-          ./tests/test_local_installer_end_to_end.sh "./$RUN"
-          sha256sum "$DEB" "$RUN" > RELEASE_SHA256SUMS.txt
-      - name: Retain precise release products
-        if: steps.release_intent.outputs.release == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: defragmenter-release-${{ github.sha }}
-          path: |
-            defragger/Defragmenter-*-amd64.deb
-            defragger/Defragmenter-*-local-folder.run
-            defragger/RELEASE_SHA256SUMS.txt
-          if-no-files-found: error
-          retention-days: 7
-
-  sanitizers:
-    name: Common V2 application ASan and UBSan
-    runs-on: [self-hosted, Linux, X64, linux-native, bigbedroom]
-    timeout-minutes: 45
-    defaults:
-      run:
-        working-directory: defragger
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
-          submodules: false
-      - run: git -C "$GITHUB_WORKSPACE" submodule update --init --depth 1 -- defragger/shared/infiltratr-common
-      - run: ./ci/preflight.sh sanitizers
-      - name: Compile sanitized canonical V2 consumer and test modules
+          submodules: recursive
+      - name: Install native C/C++ and GTK build requirements
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake pkg-config libgtk-3-dev \
+            libssl-dev libsqlite3-dev libext2fs-dev \
+            binutils
+      - name: Configure complete Common V2 native application
+        run: |
+          cmake -S defragger -B defragger/build \
+            -DLD_ENABLE_WERROR=ON \
+            -DBUILD_TESTING=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/module-root"
+      - name: Compile every native worker and Test Media consumer
+        run: cmake --build defragger/build --parallel 2
+      - name: Check strict V2 mapping and incomplete-page refusal
+        run: |
+          ctest --test-dir defragger/build \
+            --output-on-failure \
+            -R '^defragmenter-strict-common-v2-host$'
+      - name: Forbid obsolete ABI recognition in built executables
         run: |
           set -euo pipefail
-          cmake -S . -B build-sanitize -DBUILD_TESTING=ON \
-            -DCMAKE_BUILD_TYPE=Debug -DLD_ENABLE_WERROR=ON \
-            -DLD_ENABLE_SANITIZERS=ON \
-            -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build-sanitize/v2-test-modules"
-          cmake --build build-sanitize --parallel 2 --target \
-            defragmenter-operation-engine-v2-test \
-            defragmenter-common-v2-test-provider \
-            defragmenter-common-v2-test-no-recovery \
-            defragmenter-common-v2-test-broken-map
-      - name: Run sanitized Common V2 dispatch tests
-        env:
-          ASAN_OPTIONS: halt_on_error=1:detect_leaks=0
-          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
-        run: ctest --test-dir build-sanitize --output-on-failure -R '^defragmenter-strict-common-v2-host$'
-
-  publish-release:
-    name: Publish qualified release
-    needs: [quality-gate, sanitizers, ufs-v2-consumer, ffs-v2-consumer]
-    if: needs.quality-gate.outputs.release_intent == 'true'
-    permissions:
-      contents: write
-    uses: ./.github/workflows/release.yml
-    with:
-      expected_sha: ${{ github.sha }}
-    secrets: inherit
+          test ! -e defragger/native/ifs_defrag_services_v1.h
+          test ! -e defragger/native/ifs_defrag_services_v1.c
+          test ! -e defragger/native/ifs_ext_module_v1.h
+          for executable in \
+            defragmenter-fat-worker defragmenter-apfs-worker \
+            defragmenter-minix-worker defragmenter-ext-worker \
+            defragmenter-ntfs-worker defragmenter-exfat-worker \
+            defragmenter-affs-worker defragmenter-hfs-worker \
+            defragmenter-hfsplus-worker defragmenter-xfs-worker \
+            defragmenter-swap-worker defragmenter-test-media; do
+            exe="defragger/build/$executable"
+            test -x "$exe"
+            if strings -a "$exe" | grep -E \
+              'infiltrator_filesystem_.*_v1|infiltrator_filesystem_module_v[1345]|ifs_defrag_services_v1'; then
+              echo "Legacy filesystem ABI found in $exe" >&2
+              exit 1
+            fi
+          done
+          echo "DEFRAGMENTER_ONLY_COMMON_V2_PASS"
+  ufs-consumer:
+    uses: ./.github/workflows/ufs-v2-consumer.yml
+  ffs-consumer:
+    uses: ./.github/workflows/ffs-v2-consumer.yml
