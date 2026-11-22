@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Manual focused Common V2 qualification. The automatic 23-provider matrix
+# covers all these formats on every main push; no retired ABI is supported.
+name: Verify independent FAT12 FAT16 FAT32 exFAT Common V2
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  fat12:
+    uses: ./.github/workflows/common-v2-integration.yml
+    with:
+      repository: Infiltrator-Projects/Filesystem-FAT12
+      format_id: fat12
+      module_file: FAT12.so
+  fat16:
+    uses: ./.github/workflows/common-v2-integration.yml
+    with:
+      repository: Infiltrator-Projects/Filesystem-FAT16
+      format_id: fat16
+      module_file: FAT16.so
+  fat32:
+    uses: ./.github/workflows/common-v2-integration.yml
+    with:
+      repository: Infiltrator-Projects/Filesystem-FAT32
+      format_id: fat32
+      module_file: FAT32.so
+  exfat:
+    uses: ./.github/workflows/common-v2-integration.yml
+    with:
+      repository: Infiltrator-Projects/Filesystem-exFAT
+      format_id: exfat
+      module_file: exFAT.so

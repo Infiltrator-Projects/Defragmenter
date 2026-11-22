@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Manual focused Common V2 qualification. The automatic 23-provider matrix
+# covers all these formats on every main push; no retired ABI is supported.
+name: Verify independent XFS Common V2
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  xfs:
+    uses: ./.github/workflows/common-v2-integration.yml
+    with:
+      repository: Infiltrator-Projects/Filesystem-XFS
+      format_id: xfs
+      module_file: XFS.so

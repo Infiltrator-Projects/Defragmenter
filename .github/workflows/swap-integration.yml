@@ -1,111 +1,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Dedicated hosted cross-repository regression. The full release gate retains
-# its self-hosted runner; this guard compiles the real Defragmenter SWAP bridge.
-name: Verify independent SWAP integration
+# Manual focused Common V2 qualification. The automatic 23-provider matrix
+# covers all these formats on every main push; no retired ABI is supported.
+name: Verify independent SWAP Common V2
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  swap-integration:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - name: Checkout Defragmenter with pinned Common
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Install native build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake pkg-config \
-            libgtk-3-dev libssl-dev libsqlite3-dev libext2fs-dev
-      - name: Checkout qualified SWAP driver
-        uses: actions/checkout@v4
-        with:
-          repository: Infiltrator-Projects/Filesystem-Swap
-          ref: a1029dced02aeb496a04856c13d4db4a21f84cec
-          path: ci-swap
-      - name: Compile the real SWAP.so driver
-        run: |
-          cmake -S ci-swap -B /tmp/swap-so -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
-          cmake --build /tmp/swap-so --parallel 2
-          ctest --test-dir /tmp/swap-so --output-on-failure
-      - name: Compile real Defragmenter loader and Test Media
-        run: |
-          set -euo pipefail
-          cd defragger
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_TESTING=ON \
-            -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build/module-test" \
-            -DLD_ENABLE_WERROR=ON
-          cmake --build build --target \
-            defragmenter-swap-worker defragmenter-swap-test-worker \
-            defragmenter-test-media-raw-test defragmenter-mapper-cpp \
-            defragmenter-operation-engine-v2-test --parallel 2
-      - name: Verify trusted module dispatch and real SWAP test media
-        run: |
-          set -euo pipefail
-          cd defragger
-          mkdir -p build/module-test/Filesystems
-          install -m 0644 /tmp/swap-so/SWAP.so build/module-test/Filesystems/SWAP.so
-          nm -D /tmp/swap-so/SWAP.so | grep -F 'infiltrator_filesystem_api_v2'
-          if nm -D /tmp/swap-so/SWAP.so | grep -E 'infiltrator_filesystem_.*_v1'; then
-            echo "ERROR: SWAP.so still exposes retired V1 filesystem interfaces" >&2
-            exit 1
-          fi
-          export IFS_TEST_MODULE_PARENT="$PWD/build/module-test"
-          export DEFRAGMENTER_SWAP_WORKER="$PWD/build/defragmenter-swap-test-worker"
-          export DEFRAGMENTER_BUILD_DIR="$PWD/build"
-          build/defragmenter-swap-test-worker --version | grep -F "defragmenter-swap-worker"
-          # The full corpus contract also requires FAT12/16/32 and OFS drivers.
-          # This independent gate invokes the actual SWAP fixture directly.
-          build/defragmenter-test-media-raw-test create swap "$PWD/build/swap-test.img"
-          build/defragmenter-test-media-raw-test verify swap "$PWD/build/swap-test.img"
-          # A valid CORE/VOLUME-only Common V2 SO belongs in the inventory,
-          # but must not qualify for a defragmentation mutation.
-          build/defragmenter-operation-engine-v2-test --list-installed-modules > build/v2-inventory.json
-          grep -Fq '"authority_available":true' build/v2-inventory.json
-          # Shared Common V2: CORE is group 7 (bit 64), VOLUME group 3 (bit 4).
-          grep -Fq '"format_id":"swap","filename":"SWAP.so","abi":2,"group_mask":68,"capabilities":0,"defrag_group":false' build/v2-inventory.json
-          original_sha="$(sha256sum build/swap-test.img | cut -d ' ' -f1)"
-          if build/defragmenter-operation-engine-v2-test defrag "$PWD/build/swap-test.img" \
-              --filesystem swap --path=/TEST --write --confirm "$PWD/build/swap-test.img" > /dev/null 2>&1; then
-            echo "ERROR: CORE-only SWAP.so was accepted for V2 defrag" >&2
-            exit 1
-          fi
-          test "$original_sha" = "$(sha256sum build/swap-test.img | cut -d ' ' -f1)"
-
-          # The strict V2 SWAP provider currently exposes only CORE.PROBE
-          # and VOLUME.FORMAT. An unqualified mapper must refuse rather than
-          # generate a fabricated exact allocation map.
-          result=0
-          build/defragmenter-mapper "$PWD/build/swap-test.img" \
-              --fstype swap --cells 8 > build/swap-map.json 2> build/swap-map.err || result=$?
-          if [ "$result" -ne 2 ]; then
-            echo "ERROR: SWAP map must refuse unsupported allocation mapping with exit 2 (got $result)" >&2
-            exit 1
-          fi
-          grep -F 'allocation mapping is unavailable for this filesystem' build/swap-map.err
-          test ! -s build/swap-map.json
-          echo "SWAP.so V2 formatting/verification and fail-closed map gate passed"
-      - name: Verify module is mandatory rather than falling back to internal code
-        run: |
-          set -euo pipefail
-          cd defragger
-          mkdir -p build/empty-module-root/Filesystems
-          if IFS_TEST_MODULE_PARENT="$PWD/build/empty-module-root" \
-            build/defragmenter-swap-test-worker --version; then
-            echo "ERROR: SWAP worker ran without SWAP.so" >&2
-            exit 1
-          fi
-          # Refusal must occur before mutating an existing media image.
-          before="$(stat -c '%Y:%s' build/swap-test.img)"
-          if IFS_TEST_MODULE_PARENT="$PWD/build/empty-module-root" \
-            build/defragmenter-test-media-raw-test recreate swap build/swap-test.img; then
-            echo "ERROR: Test Media wrote without SWAP.so" >&2
-            exit 1
-          fi
-          test "$before" = "$(stat -c '%Y:%s' build/swap-test.img)"
+  swap:
+    uses: ./.github/workflows/common-v2-integration.yml
+    with:
+      repository: Infiltrator-Projects/Filesystem-Swap
+      format_id: swap
+      module_file: SWAP.so

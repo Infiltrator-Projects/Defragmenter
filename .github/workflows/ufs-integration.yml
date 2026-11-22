@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Manual focused Common V2 qualification. The automatic 23-provider matrix
+# covers all these formats on every main push; no retired ABI is supported.
+name: Verify independent UFS1 and UFS2 Common V2
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ufs1:
+    uses: ./.github/workflows/common-v2-integration.yml
+    with:
+      repository: Infiltrator-Projects/Filesystem-UFS1
+      format_id: ufs1
+      module_file: UFS1.so
+  ufs2:
+    uses: ./.github/workflows/common-v2-integration.yml
+    with:
+      repository: Infiltrator-Projects/Filesystem-UFS2
+      format_id: ufs2
+      module_file: UFS2.so

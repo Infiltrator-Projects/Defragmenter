@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Manual focused Common V2 qualification. The automatic 23-provider matrix
+# covers all these formats on every main push; no retired ABI is supported.
+name: Verify independent PFS3 Common V2
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  pfs3:
+    uses: ./.github/workflows/common-v2-integration.yml
+    with:
+      repository: Infiltrator-Projects/Filesystem-PFS3
+      format_id: pfs3
+      module_file: PFS3.so

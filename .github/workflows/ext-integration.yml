@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Manual focused Common V2 qualification. The automatic 23-provider matrix
+# covers all these formats on every main push; no retired ABI is supported.
+name: Verify independent EXT2 EXT3 EXT4 Common V2
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ext2:
+    uses: ./.github/workflows/common-v2-integration.yml
+    with:
+      repository: Infiltrator-Projects/Filesystem-EXT2
+      format_id: ext2
+      module_file: EXT2.so
+  ext3:
+    uses: ./.github/workflows/common-v2-integration.yml
+    with:
+      repository: Infiltrator-Projects/Filesystem-EXT3
+      format_id: ext3
+      module_file: EXT3.so
+  ext4:
+    uses: ./.github/workflows/common-v2-integration.yml
+    with:
+      repository: Infiltrator-Projects/Filesystem-EXT4
+      format_id: ext4
+      module_file: EXT4.so
