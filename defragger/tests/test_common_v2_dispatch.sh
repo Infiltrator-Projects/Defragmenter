@@ -5,6 +5,7 @@ set -euo pipefail
 engine=$1
 module=$2
 no_recovery_module=$3
+broken_map_module=$4
 root=$(mktemp -d /tmp/defrag-v2-dispatch-XXXXXXXX)
 trap 'rm -rf -- "$root"' EXIT
 chmod 700 "$root"
@@ -98,6 +99,18 @@ if "$engine" recover "$device" --filesystem testv2nr \
 fi
 test "$before_no_recover" = "$(sha256sum "$device" | cut -d' ' -f1)"
 rm -f "$root/Filesystems/TESTV2NORECOV.so"
+
+# A provider returning one short MAP page and then CORRUPT must fail.
+# Short successful batches are not IFS_FS_END. Keep image unchanged.
+cp -- "$broken_map_module" "$root/Filesystems/TESTV2BROKENMAP.so"
+chmod 700 "$root/Filesystems/TESTV2BROKENMAP.so"
+before_broken=$(sha256sum "$device" | cut -d' ' -f1)
+if "$engine" map "$device" --filesystem testv2bad > /dev/null 2>&1; then
+    echo "Incomplete Common V2 map was incorrectly reported as success" >&2
+    exit 1
+fi
+test "$before_broken" = "$(sha256sum "$device" | cut -d' ' -f1)"
+rm -f "$root/Filesystems/TESTV2BROKENMAP.so"
 
 # The image is not exFAT/FAT and only the V2 test provider recognises it.
 if "$engine" defrag "$device" --filesystem notinstalled --path=/FILE \
