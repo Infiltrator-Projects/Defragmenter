@@ -63,7 +63,7 @@ jobs:
             defragmenter-fat-worker defragmenter-apfs-worker \
             defragmenter-minix-worker defragmenter-ext-worker \
             defragmenter-ntfs-worker defragmenter-exfat-worker \
-            defragmenter-affs-worker defragmenter-hfs-worker \
+            defragmenter-affs-worker hfs_analyser \
             defragmenter-hfsplus-worker defragmenter-xfs-worker \
             defragmenter-swap-worker defragmenter-test-media; do
             path="defragger/build-v2-map/$program"
