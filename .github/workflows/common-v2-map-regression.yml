@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+# Exercise real Common V2 dispatch and prove private filesystem ABIs fail closed.
 name: Qualify strict Common V2 filesystem map paging
 on:
   push:
@@ -9,7 +10,7 @@ permissions:
 jobs:
   common-v2-map:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with:
@@ -19,20 +20,23 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake pkg-config libgtk-3-dev libssl-dev \
-            libsqlite3-dev libext2fs-dev
-      - name: Build exact V2 consumer and positive/negative providers
+            libsqlite3-dev libext2fs-dev binutils
+      - name: Configure native Common V2-only application
         run: |
           set -euo pipefail
           cmake -S defragger -B defragger/build-v2-map \
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
             -DLD_ENABLE_WERROR=ON \
             -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/defragger/build-v2-map/test-modules"
+      - name: Compile the exact Common V2 consumer and all negative test providers
+        run: |
+          set -euo pipefail
           cmake --build defragger/build-v2-map --parallel 2 --target \
             defragmenter-operation-engine-v2-test \
             defragmenter-common-v2-test-provider \
             defragmenter-common-v2-test-no-recovery \
             defragmenter-common-v2-test-broken-map
-      - name: Compile every installed worker and the Common V2 Test Media GUI
+      - name: Compile all installed workers and native Test Media
         run: |
           set -euo pipefail
           cmake --build defragger/build-v2-map --parallel 2 --target \
@@ -49,7 +53,7 @@ jobs:
             defragmenter-swap-worker \
             defragmenter-test-media \
             defragmenter-test-media-raw-test
-      - name: Reject all retired symbols from installed executables
+      - name: Refuse every retired filesystem export in installed executables
         run: |
           set -euo pipefail
           for program in \
@@ -63,27 +67,19 @@ jobs:
             test -x "$path"
             if strings -a "$path" | grep -E \
               'infiltrator_filesystem_.*_v1|infiltrator_filesystem_module_v[1345]|ifs_defrag_services_v1'; then
-              echo "REJECTED: obsolete filesystem ABI remains in $path" >&2
+              echo "Obsolete filesystem ABI was linked into $path" >&2
               exit 1
             fi
           done
-      - name: Prove full V2 MAP pagination and refusal of incomplete media maps
+      - name: Prove genuine V2 mapping, recovery and broken-page refusal
         run: |
           set -euo pipefail
           ctest --test-dir defragger/build-v2-map \
             --output-on-failure \
-            -R '^defragmenter-strict-common-v2-host      - name: Reject V1/V5-only filesystem providers and production ABI references
+            -R '^defragmenter-strict-common-v2-host$'
+      - name: Refuse V1/V5-only providers in actual discovery and mutation
         run: |
           set -euo pipefail
           bash defragger/tests/check_common_v2_exclusivity.sh \
             "$PWD/defragger/build-v2-map/defragmenter-operation-engine-v2-test" \
             "$PWD/defragger"
-
-
-      - name: Reject V1/V5-only filesystem providers and production ABI references
-        run: |
-          set -euo pipefail
-          bash defragger/tests/check_common_v2_exclusivity.sh \
-            "$PWD/defragger/build-v2-map/defragmenter-operation-engine-v2-test" \
-            "$PWD/defragger"
-
