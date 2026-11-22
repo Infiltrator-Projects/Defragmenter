@@ -163,11 +163,12 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
         mounted=1;
     }
     unsigned seen=0u;
+    int directory_complete=0;
     for(uint32_t index=0u;index<65536u;++index) {
         IfsFsEntryV2 e={.structure_bytes=sizeof(e),
                         .name=entry_name,.name_capacity=sizeof(entry_name)};
         int rc=core->directory_entry(session,"/",index,&e);
-        if(rc==IFS_FS_END)break;
+        if(rc==IFS_FS_END){directory_complete=1;break;}
         if(rc!=IFS_FS_OK)goto done;
         int number=ldtm_raw_name_index(entry_name);
         if(number<0)continue; /* legitimate provider metadata is not corpus */
@@ -177,7 +178,7 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
             goto done;
         seen|=1u<<(unsigned)number;
     }
-    if(seen!=((1u<<LDTM_RAW_FILES)-1u))goto done;
+    if(!directory_complete || seen!=((1u<<LDTM_RAW_FILES)-1u))goto done;
     for(unsigned file=0u;file<LDTM_RAW_FILES;++file) {
         if(make_path(file,path)!=0)goto done;
         IfsFsEntryV2 e={.structure_bytes=sizeof(e),.name=entry_name,
