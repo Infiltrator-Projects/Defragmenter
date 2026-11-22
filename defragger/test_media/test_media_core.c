@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "test_media_raw.h"
 #include "filesystem_module_host.h"
-#include "ifs_ufs_module_v1.h"
-#include "ifs_ufs_probe_v1.h"
-#include "ifs_ufs_volume_check_v1.h"
-#include "ifs_ufs_payload_verifier_v1.h"
 
 #include "infiltratr/core.h"
 #include "infiltratr/posix.h"
@@ -193,16 +189,11 @@ int ldtm_decode_hex_byte(char high, char low, unsigned char *value) {
     return 1;
 }
 
-const char *ldtm_creator_program(const LdtmFilesystemSpec *spec) {
-    if (spec == NULL) return NULL;
-    if (spec->creator == LDTM_CREATOR_UFS)
-        return "makefs";
-    if (spec->creator == LDTM_CREATOR_AFFS) {
-        if (strcmp(spec->key, "ofs") == 0)
-            return "/System/Commands/Defragmenter/test-media-mkfs-ofs";
-        if (strcmp(spec->key, "ffs") == 0)
-            return "/System/Commands/Defragmenter/test-media-mkfs-ffs";
-    }
+/* Test Media executes the exact Common V2 filesystem module in-process.
+ * No private package helper or external makefs is a substitute. */
+const char *ldtm_creator_program(const LdtmFilesystemSpec *spec)
+{
+    (void)spec;
     return NULL;
 }
 
@@ -236,17 +227,6 @@ int ldtm_resolve_program(const char *program, char *output,
         output == NULL || output_capacity == 0U)
         return -1;
 
-    /*
-     * UFS Test Media is intentionally self-contained.  Keep the historical
-     * argv[0] spelling used by the worker, but bind it exclusively to the
-     * package-owned creator so a host makefs installation can neither become
-     * a hidden dependency nor silently change the qualification geometry.
-     */
-    if (strcmp(program, "makefs") == 0)
-        return copy_resolved_program(
-            "/System/Commands/Defragmenter/test-media-mkfs-ufs",
-            output, output_capacity);
-
     if (strchr(program, '/') != NULL) {
         if (program[0] != '/')
             return -1;
@@ -270,224 +250,23 @@ int ldtm_program_available(const char *program) {
     return ldtm_resolve_program(program, resolved, sizeof(resolved)) == 0;
 }
 
-/*
- * UFS2's formatter is a separate package-owned executable, but the actual
- * format, volume checks, payload verification and defragmentation all require
- * the independent UFS2.so. Query the versioned interfaces read-only before
- * Test Media even considers modifying a partition table.
- */
-static int ldtm_ufs2_preflight_interface(const IfsDefragHostV2 *host,
-                                         void *symbol, void *opaque) {
-    (void)host;
-    if (!symbol || !opaque) return 1;
-    const char *interface = (const char *)opaque;
-    if (strcmp(interface, "infiltrator_filesystem_ufs_v1") == 0) {
-        const IfsUfsModuleV1 *(*entry)(void) = NULL;
-        _Static_assert(sizeof(entry) == sizeof(symbol), "UFS module pointer size");
-        memcpy(&entry, &symbol, sizeof(entry));
-        const IfsUfsModuleV1 *api = entry ? entry() : NULL;
-        return api && api->abi_version == IFS_UFS_MODULE_V1 &&
-               api->structure_bytes >= sizeof(*api) && api->format_id &&
-               strcmp(api->format_id, "ufs2") == 0 &&
-               (api->capabilities & (IFS_UFS_CAP_RUN | IFS_UFS_CAP_TEST_MEDIA)) ==
-                   (IFS_UFS_CAP_RUN | IFS_UFS_CAP_TEST_MEDIA) &&
-               api->run && api->format_test_media ? 0 : 1;
-    }
-    if (strcmp(interface, "infiltrator_filesystem_ufs_probe_v1") == 0) {
-        const IfsUfsProbeV1 *(*entry)(void) = NULL;
-        _Static_assert(sizeof(entry) == sizeof(symbol), "UFS probe pointer size");
-        memcpy(&entry, &symbol, sizeof(entry));
-        const IfsUfsProbeV1 *api = entry ? entry() : NULL;
-        return api && api->abi_version == IFS_UFS_PROBE_ABI_V1 &&
-               api->structure_bytes >= sizeof(*api) && api->format_id &&
-               strcmp(api->format_id, "ufs2") == 0 && api->accepts_volume ? 0 : 1;
-    }
-    if (strcmp(interface, "infiltrator_filesystem_ufs_volume_check_v1") == 0) {
-        const IfsUfsVolumeCheckV1 *(*entry)(void) = NULL;
-        _Static_assert(sizeof(entry) == sizeof(symbol), "UFS check pointer size");
-        memcpy(&entry, &symbol, sizeof(entry));
-        const IfsUfsVolumeCheckV1 *api = entry ? entry() : NULL;
-        return api && api->abi_version == IFS_UFS_VOLUME_CHECK_ABI_V1 &&
-               api->structure_bytes >= sizeof(*api) && api->format_id &&
-               strcmp(api->format_id, "ufs2") == 0 &&
-               api->is_ufs2_little_endian ? 0 : 1;
-    }
-    if (strcmp(interface, "infiltrator_filesystem_ufs_payload_verifier_v1") == 0) {
-        const IfsUfsPayloadVerifierV1 *(*entry)(void) = NULL;
-        _Static_assert(sizeof(entry) == sizeof(symbol), "UFS verifier pointer size");
-        memcpy(&entry, &symbol, sizeof(entry));
-        const IfsUfsPayloadVerifierV1 *api = entry ? entry() : NULL;
-        return api && api->abi_version == IFS_UFS_PAYLOAD_VERIFIER_ABI_V1 &&
-               api->structure_bytes >= sizeof(*api) && api->format_id &&
-               strcmp(api->format_id, "ufs2") == 0 && api->verify_payload ? 0 : 1;
-    }
-    return 1;
-}
-
-static int ldtm_ufs2_module_available(void) {
-    static const char *const interfaces[] = {
-        "infiltrator_filesystem_ufs_v1",
-        "infiltrator_filesystem_ufs_probe_v1",
-        "infiltrator_filesystem_ufs_volume_check_v1",
-        "infiltrator_filesystem_ufs_payload_verifier_v1"
-    };
-    for (size_t i = 0U; i < sizeof(interfaces) / sizeof(interfaces[0]); ++i) {
-        if (ifs_filesystem_module_call("ufs2", "UFS2.so", interfaces[i],
-                ldtm_ufs2_preflight_interface, (void *)interfaces[i]) != 0)
-            return 0;
-    }
-    return 1;
-}
-
+/* Only the canonical Common V2 provider capabilities grant Test Media
+ * availability. Read-only proof of FORMAT and writable CORE methods occurs
+ * before any image or physical medium can be altered. */
 int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
-                                char *detail, size_t detail_capacity) {
-    if (detail == NULL || detail_capacity == 0U || spec == NULL) return 0;
-    if (spec->creator == LDTM_CREATOR_FAT12 || spec->creator == LDTM_CREATOR_FAT16 ||
-        spec->creator == LDTM_CREATOR_FAT32) {
-        extern int ldtm_fat_module_available(const LdtmFilesystemSpec *);
-        const int ready = ldtm_fat_module_available(spec);
-        (void)snprintf(detail, detail_capacity, ready ?
-            "%s driver is ready to create and populate test media." :
-            "Install or update the %s filesystem driver before creating test media.", spec->key);
-        return ready;
-    }
-    if (spec->creator == LDTM_CREATOR_EXFAT) {
-        const int ready = ldtm_fat_module_available(spec);
-        (void)snprintf(detail, detail_capacity, "%s", ready ?
-            "exFAT.so V5 is ready to create and verify temporary media." :
-            "Install or update the exFAT.so V5 filesystem driver.");
-        return ready;
-    }
-    if (spec->creator == LDTM_CREATOR_EXT2 ||
-        spec->creator == LDTM_CREATOR_EXT3 ||
-        spec->creator == LDTM_CREATOR_EXT4) {
-        extern int ldtm_ext_module_available(const LdtmFilesystemSpec *);
-        const int ready = ldtm_ext_module_available(spec);
-        (void)snprintf(detail, detail_capacity, "%s", ready ?
-            "EXT.so driver is ready to create and verify disposable test media." :
-            "Install or update the matching EXT2.so, EXT3.so or EXT4.so driver.");
-        return ready;
-    }
-    if (spec->creator == LDTM_CREATOR_MINIX) {
-        extern int ldtm_minix_module_available(const LdtmFilesystemSpec *);
-        const int ready=ldtm_minix_module_available(spec);
-        (void)snprintf(detail,detail_capacity,"%s",ready ?
-            "MINIX.so is ready to format and verify test media." :
-            "Install or update MINIX.so.");
-        return ready;
-    }
-    if (spec->creator == LDTM_CREATOR_BTRFS) {
-        extern int ldtm_btrfs_module_available(const LdtmFilesystemSpec *);
-        const int ready=ldtm_btrfs_module_available(spec);
-        (void)snprintf(detail,detail_capacity,"%s",ready ?
-            "BTRFS.so is ready to format and verify test media." :
-            "Install or update BTRFS.so.");
-        return ready;
-    }
-    if (spec->creator == LDTM_CREATOR_HFS) {
-        extern int ldtm_hfs_module_available(const LdtmFilesystemSpec *);
-        const int ready=ldtm_hfs_module_available(spec);
-        (void)snprintf(detail,detail_capacity,"%s",ready ?
-            "HFS.so is ready to format and verify test media." :
-            "Install or update the HFS.so filesystem driver.");
-        return ready;
-    }
-    if (spec->creator == LDTM_CREATOR_HFSPLUS) {
-        extern int ldtm_hfsplus_module_available(const LdtmFilesystemSpec *);
-        const int ready = ldtm_hfsplus_module_available(spec);
-        (void)snprintf(detail,detail_capacity,"%s",ready ?
-            "HFSPLUS.so is ready to format and verify test media." :
-            "Install or update the HFSPLUS.so filesystem driver.");
-        return ready;
-    }
-    if (spec->creator == LDTM_CREATOR_XFS) {
-        extern int ldtm_xfs_module_available(const LdtmFilesystemSpec *);
-        const int ready = ldtm_xfs_module_available(spec);
-        (void)snprintf(detail, detail_capacity, "%s", ready ?
-            "XFS.so is ready to create and verify disposable test media." :
-            "Install or update XFS.so before preparing Test Media.");
-        return ready;
-    }
-    if (spec->creator == LDTM_CREATOR_NTFS) {
-        extern int ldtm_ntfs_module_available(const LdtmFilesystemSpec *);
-        const int ready = ldtm_ntfs_module_available(spec);
-        (void)snprintf(detail, detail_capacity, "%s", ready ?
-            "NTFS.so is ready to create and populate test media." :
-            "Install or update the NTFS filesystem driver before creating test media.");
-        return ready;
-    }
-    if (spec->creator == LDTM_CREATOR_SWAP) {
-        extern int ldtm_swap_module_available(const LdtmFilesystemSpec *);
-        const int ready = ldtm_swap_module_available(spec);
-        (void)snprintf(detail, detail_capacity, "%s", ready ?
-            "SWAP driver is ready to format disposable test media." :
-            "Install or update the SWAP filesystem driver before creating test media.");
-        return ready;
-    }
-    if (spec->creator == LDTM_CREATOR_ZFS) {
-        extern int ldtm_zfs_module_available(const LdtmFilesystemSpec *);
-        const int ready = ldtm_zfs_module_available(spec);
-        (void)snprintf(detail,detail_capacity,"%s",ready ?
-           "ZFS driver ready to create and verify test media." :
-           "Install or update the ZFS filesystem driver before creating test media.");
-        return ready;
-    }
-    if (spec->creator == LDTM_CREATOR_AFFS && strcmp(spec->key, "sfs") == 0) {
-        extern int ldtm_sfs_module_available(void);
-        const int ready = ldtm_sfs_module_available();
-        (void)snprintf(detail,detail_capacity,"%s",ready ?
-            "SFS driver ready to format and verify test media." :
-            "Install or update the SFS filesystem driver before creating test media.");
-        return ready;
-    }
-    if (spec->creator == LDTM_CREATOR_AFFS && strcmp(spec->key, "ofs") == 0) {
-        extern int ldtm_ofs_module_available(void);
-        const int ready = ldtm_ofs_module_available();
-        (void)snprintf(detail, detail_capacity, "%s", ready ?
-            "OFS driver is ready to create and populate test media." :
-            "Install or update the OFS filesystem driver before creating test media.");
-        return ready;
-    }
-    if (spec->creator == LDTM_CREATOR_AFFS && strcmp(spec->key, "ffs") == 0) {
-        extern int ldtm_ffs_module_available(void);
-        const int ready = ldtm_ffs_module_available();
-        (void)snprintf(detail, detail_capacity, "%s", ready ?
-            "FFS.so independently owns format, allocation, fragmented corpus and verification." :
-            "Install or update FFS.so; local filesystem creation is disabled.");
-        return ready;
-    }
-    if (spec->creator == LDTM_CREATOR_PFS3) {
-        extern int ldtm_pfs3_module_available(void);
-        const int ready=ldtm_pfs3_module_available();
-        (void)snprintf(detail,detail_capacity,"%s",ready ?
-            "PFS3 driver ready to format and verify test media." :
-            "Install or update the PFS3 filesystem driver before creating test media.");
-        return ready;
-    }
-    if (spec->creator == LDTM_CREATOR_UFS) {
-        const int ready = ldtm_program_available("makefs") &&
-                          ldtm_ufs2_module_available();
-        (void)snprintf(detail, detail_capacity, "%s", ready ?
-            "Package-owned UFS2 creator and all UFS2.so Test Media and defrag interfaces are available." :
-            "Install or update the package-owned UFS2 creator and matching UFS2.so driver.");
-        return ready;
-    }
-    if (spec->creator == LDTM_CREATOR_APFS) {
-        extern int ldtm_apfs_module_available(void);
-        const int ready=ldtm_apfs_module_available();
-        (void)snprintf(detail,detail_capacity,"%s",ready ?
-            "APFS.so ready to format and verify disposable media." :
-            "Install or update the APFS filesystem driver before creating test media.");
-        return ready;
-    }
-    if (spec->creator == LDTM_CREATOR_MANUAL) {
-        (void)snprintf(detail, detail_capacity, "Reserved: %s", spec->note);
+                                char *detail,size_t capacity)
+{
+    if(!spec || !detail || !capacity)return 0;
+    if(spec->creator==LDTM_CREATOR_MANUAL) {
+        (void)snprintf(detail,capacity,"Reserved: %s",spec->note);
         return 0;
     }
-    (void)snprintf(detail, detail_capacity,
-        "No qualified filesystem shared-object implementation is registered for %s",
+    const int ready=ldtm_common_v2_available(spec);
+    (void)snprintf(detail,capacity,
+        ready ? "%s has qualified Common V2 FORMAT/CORE operations." :
+                "%s lacks the required Common V2 FORMAT/CORE operations; operation refused.",
         spec->key);
-    return 0;
+    return ready;
 }
 
 int ldtm_required_modules_available(char *detail, size_t detail_capacity) {
