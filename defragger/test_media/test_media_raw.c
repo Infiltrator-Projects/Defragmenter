@@ -188,159 +188,33 @@ uint32_t ldtm_raw_crc32c(const void *data, size_t bytes)
     return ~crc;
 }
 
-int ldtm_raw_fixture(const LdtmFilesystemSpec *spec, const char *path, bool create, char *detail,
-                     size_t capacity)
+/* Every destructive operation is preceded by exact Common V2 capability
+ * discovery. The provider owns format, allocation and all on-disk records.
+ * Nothing is erased merely because a Test Media format was selected. */
+int ldtm_raw_fixture(const LdtmFilesystemSpec *spec,const char *path,
+                     bool create,char *detail,size_t capacity)
 {
-    if (detail != NULL && capacity != 0U)
-        detail[0] = '\0';
-    if (spec == NULL || path == NULL)
-        return -1;
-    /* A missing/wrong module must be rejected before stale signatures are
-     * erased. The privileged whole-disk worker also checks before partitioning. */
-    if (create && (spec->creator == LDTM_CREATOR_FAT12 ||
-                   spec->creator == LDTM_CREATOR_FAT16 ||
-                   spec->creator == LDTM_CREATOR_FAT32) &&
-        !ldtm_fat_module_available(spec)) {
-        if (detail != NULL && capacity != 0U)
-            (void)snprintf(detail, capacity, "Install or update the %s filesystem driver.", spec->key);
-        return -1;
-    }
-    /* Check the actual independent provider before the generic disposable
-     * fixture preparation clears signatures. Absent or ABI-incompatible
-     * drivers must not alter even a sacrificial image. */
-    if (create && spec->creator == LDTM_CREATOR_EXFAT &&
-        !ldtm_fat_module_available(spec)) {
-        if (detail && capacity)
-            (void)snprintf(detail, capacity,
-                "Install or update the exFAT.so filesystem driver.");
-        return -1;
-    }
-    if (create && (spec->creator == LDTM_CREATOR_EXT2 ||
-                   spec->creator == LDTM_CREATOR_EXT3 ||
-                   spec->creator == LDTM_CREATOR_EXT4) &&
-        !ldtm_ext_module_available(spec)) {
-        if (detail && capacity)
-            (void)snprintf(detail, capacity,
-                "Install or update the %s.so filesystem driver.", spec->key);
-        return -1;
-    }
-    if (create && spec->creator == LDTM_CREATOR_XFS &&
-        !ldtm_xfs_module_available(spec)) {
-        if (detail && capacity)
-            (void)snprintf(detail, capacity, "Install or update XFS.so.");
-        return -1;
-    }
-    if (create && spec->creator == LDTM_CREATOR_NTFS &&
-        !ldtm_ntfs_module_available(spec)) {
-        if (detail && capacity)
-            (void)snprintf(detail, capacity, "Install or update the NTFS filesystem driver.");
-        return -1;
-    }
-    /* SWAP has no local formatter: refuse missing, untrusted or ABI-invalid
-     * SWAP.so before opening any writable target or erasing signatures. */
-    if (create && spec->creator == LDTM_CREATOR_SWAP &&
-        !ldtm_swap_module_available(spec)) {
-        if (detail && capacity)
-            (void)snprintf(detail, capacity, "Install or update the swap filesystem driver.");
-        return -1;
-    }
-    /* Missing/mismatched/untrusted ZFS.so must never erase existing media. */
-    if (create && spec->creator == LDTM_CREATOR_ZFS &&
-        !ldtm_zfs_module_available(spec)) {
-        if (detail && capacity)
+    if(detail && capacity)detail[0]='\0';
+    if(!spec || !path || !*path)return -1;
+    int ready=ldtm_common_v2_available(spec);
+    if(!ready) {
+        if(detail && capacity)
             (void)snprintf(detail,capacity,
-              "Install or update the ZFS filesystem driver.");
+              "%s requires a complete Common V2 provider; no fallback",
+              spec->key);
         return -1;
     }
-    if (create && spec->creator == LDTM_CREATOR_HFSPLUS &&
-        !ldtm_hfsplus_module_available(spec)) {
-        if (detail && capacity)
-            (void)snprintf(detail,capacity,
-                "Install or update the HFSPLUS.so filesystem driver.");
-        return -1;
-    }
-    if (create && spec->creator == LDTM_CREATOR_HFS &&
-        !ldtm_hfs_module_available(spec)) {
-        if (detail && capacity)
-            (void)snprintf(detail,capacity,"Install or update HFS.so.");
-        return -1;
-    }
-    if (create && spec->creator == LDTM_CREATOR_BTRFS &&
-        !ldtm_btrfs_module_available(spec)) {
-        if (detail && capacity)
-            (void)snprintf(detail,capacity,"Install or update BTRFS.so.");
-        return -1;
-    }
-    if (create && spec->creator == LDTM_CREATOR_MINIX &&
-        !ldtm_minix_module_available(spec)) {
-        if (detail && capacity)
-            (void)snprintf(detail,capacity,"Install or update MINIX.so.");
-        return -1;
-    }
-    int (*codec)(const LdtmFilesystemSpec *, const char *, bool) = NULL;
-    switch (spec->creator) {
-    case LDTM_CREATOR_FAT12:
-    case LDTM_CREATOR_FAT16:
-    case LDTM_CREATOR_FAT32:
-        codec = ldtm_raw_fat;
-        break;
-    case LDTM_CREATOR_EXFAT:
-        codec = ldtm_raw_exfat;
-        break;
-    case LDTM_CREATOR_EXT2:
-    case LDTM_CREATOR_EXT3:
-    case LDTM_CREATOR_EXT4:
-        codec = ldtm_raw_ext;
-        break;
-    case LDTM_CREATOR_MINIX:
-        codec = ldtm_raw_minix;
-        break;
-    case LDTM_CREATOR_SWAP:
-        codec = ldtm_raw_swap;
-        break;
-    case LDTM_CREATOR_HFS:
-    case LDTM_CREATOR_HFSPLUS:
-        codec = ldtm_raw_mac;
-        break;
-    case LDTM_CREATOR_NTFS:
-        codec = ldtm_raw_ntfs;
-        break;
-    case LDTM_CREATOR_XFS:
-        codec = ldtm_raw_xfs;
-        break;
-    case LDTM_CREATOR_BTRFS:
-        codec = ldtm_raw_btrfs;
-        break;
-    case LDTM_CREATOR_ZFS:
-        codec = ldtm_raw_zfs;
-        break;
-    default:
-        break;
-    }
-    int result = -1;
-    if (codec != NULL) {
-        uint64_t bytes = 0U;
-        const int fd = ldtm_raw_open(path, create, &bytes);
-        if (fd >= 0) {
-            bool valid = bytes == (uint64_t)spec->size_mib * LDTM_MIB;
-            if (create && spec->creator != LDTM_CREATOR_FAT12 &&
-                spec->creator != LDTM_CREATOR_FAT16) {
-                uint8_t zero[65536] = {0};
-                /* Erase stale primary signatures and all four ZFS label rings
-                 * before reusing a sacrificial slot. No format driver runs. */
-                for (uint64_t offset = 0U; valid && offset < LDTM_MIB; offset += sizeof(zero))
-                    valid = ldtm_raw_write(fd, offset, zero, sizeof(zero)) == 0 &&
-                            ldtm_raw_write(fd, bytes - LDTM_MIB + offset, zero, sizeof(zero)) == 0;
-            }
-            if (close(fd) != 0)
-                valid = false;
-            if (valid)
-                result = codec(spec, path, create);
-        }
-    }
-    if (detail != NULL && capacity != 0U)
-        (void)snprintf(detail, capacity, "%s native %s %s", spec->key,
-                       create ? "fixture creation" : "complete corpus verification",
-                       result == 0 ? "passed" : "failed");
+    int result;
+    if(spec->creator==LDTM_CREATOR_FAT12 ||
+       spec->creator==LDTM_CREATOR_FAT16 ||
+       spec->creator==LDTM_CREATOR_FAT32)
+        result=create?ldtm_fat_common_create(spec,path):
+                      ldtm_fat_common_verify(spec,path);
+    else
+        result=ldtm_common_v2_fixture(spec,path,create);
+    if(detail && capacity)
+        (void)snprintf(detail,capacity,"%s Common V2 %s %s",
+            spec->key,create?"fixture creation":"corpus verification",
+            result==0?"passed":"failed");
     return result;
 }
