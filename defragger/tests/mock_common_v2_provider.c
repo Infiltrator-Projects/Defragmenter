@@ -43,6 +43,16 @@ static int map(void *m,const char *path,uint64_t first,IfsFsExtentV2 *out,
     if(!m || !path || (strcmp(path,"/FILE") && strcmp(path,"/")) ||
        !out || !cap || !written)
         return IFS_FS_INVALID;
+#ifdef IFS_TEST_BROKEN_MAP
+    /* Deliberately incomplete provider: one short successful page, then a
+     * corruption error. A V2 consumer must NOT treat that short page as EOF. */
+    if(!strcmp(path,"/")) {
+        if(first) { *written=0u; return IFS_FS_CORRUPT; }
+        out[0]=(IfsFsExtentV2){0u,64u,4u,0u,0u};
+        *written=1u;
+        return IFS_FS_OK;
+    }
+#endif
     if(!strcmp(path,"/")) {
         if(first>=33u) { *written=0u; return IFS_FS_END; }
         const uint32_t count=(uint32_t)((33u-first)<cap?(33u-first):cap);
@@ -126,7 +136,9 @@ static const IfsFsGroupHeaderV2 *query(uint32_t id,uint32_t min,uint32_t max) {
 static const IfsFsModuleApiV2 api={
     .abi_version=IFS_FS_COMMON_ABI_V2,
     .structure_bytes=sizeof(IfsFsModuleApiV2),
-#ifdef IFS_TEST_NO_RECOVERY
+#if defined(IFS_TEST_BROKEN_MAP)
+    .format_id="testv2bad",
+#elif defined(IFS_TEST_NO_RECOVERY)
     .format_id="testv2nr",
 #else
     .format_id="testv2",
