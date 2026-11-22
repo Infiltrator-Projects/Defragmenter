@@ -770,6 +770,19 @@ if(BUILD_TESTING)
     target_compile_options(defragmenter-common-v2-test-no-recovery PRIVATE
         -Wall -Wextra -Wpedantic -Werror -fPIC)
 
+    # Negative provider: one short MAP page followed by an explicit error.
+    # The operation consumer must never mark its incomplete extent map green.
+    add_library(defragmenter-common-v2-test-broken-map SHARED
+        tests/mock_common_v2_provider.c)
+    set_target_properties(defragmenter-common-v2-test-broken-map PROPERTIES
+        PREFIX "" OUTPUT_NAME "TESTV2BROKENMAP" SUFFIX ".so")
+    target_compile_definitions(defragmenter-common-v2-test-broken-map PRIVATE
+        IFS_TEST_BROKEN_MAP=1)
+    target_include_directories(defragmenter-common-v2-test-broken-map PRIVATE
+        "${INFILTRATR_COMMON_DIR}/include")
+    target_compile_options(defragmenter-common-v2-test-broken-map PRIVATE
+        -Wall -Wextra -Wpedantic -Werror -fPIC)
+
     add_library(defragmenter-common-v2-test-host STATIC
         native/filesystem_module_host.c)
     target_include_directories(defragmenter-common-v2-test-host PUBLIC
@@ -806,7 +819,8 @@ if(BUILD_TESTING)
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_common_v2_dispatch.sh"
             "$<TARGET_FILE:defragmenter-operation-engine-v2-test>"
             "$<TARGET_FILE:defragmenter-common-v2-test-provider>"
-            "$<TARGET_FILE:defragmenter-common-v2-test-no-recovery>")
+            "$<TARGET_FILE:defragmenter-common-v2-test-no-recovery>"
+            "$<TARGET_FILE:defragmenter-common-v2-test-broken-map>")
 
 
     # EXT bitmap-cache and descriptor-race regression now runs in Filesystem-EXT4 CI.
