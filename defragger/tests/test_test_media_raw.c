@@ -125,8 +125,6 @@ int main(int argc, char **argv)
 {
     if (argc == 1)
         return contracts();
-    if (argc == 3 && strcmp(argv[1], "ufs-source") == 0)
-        return generate_ufs_source(argv[2]) != 0;
     if (argc != 4)
         return 2;
     const LdtmFilesystemSpec *spec = ldtm_find_spec(argv[2]);
