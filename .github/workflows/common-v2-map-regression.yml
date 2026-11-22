@@ -7,6 +7,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: defrag-v2-map-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   common-v2-map:
     runs-on: ubuntu-24.04
