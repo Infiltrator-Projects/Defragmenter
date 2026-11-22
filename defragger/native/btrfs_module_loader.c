@@ -1,34 +1,10 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
- * Generic BTRFS.so loader. The module owns all filesystem-specific behavior.
+ * BTRFS worker: dispatch exclusively through the Common V2 module.
+ * There is no compatibility symbol resolution, private ABI or fallback.
  */
-#include "filesystem_module_host.h"
-#include "ifs_btrfs_module_v1.h"
-#include "ifs_defrag_host_services.h"
-#include <stdio.h>
-#include <string.h>
-typedef struct {int argc;char **argv;} Request;
-static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque) {
- (void)host;
- const IfsBtrfsModuleV1 *(*entry)(void)=NULL;
- _Static_assert(sizeof(entry)==sizeof(symbol),"function pointer size");
- memcpy(&entry,&symbol,sizeof(entry));
- const IfsBtrfsModuleV1 *api=entry?entry():NULL;
- if(!api || api->abi_version!=IFS_BTRFS_MODULE_V1 ||
-   api->structure_bytes<sizeof(*api) || !api->format_id ||
-   strcmp(api->format_id,"btrfs") ||
-   (api->capabilities&IFS_BTRFS_CAP_RUN)==0 || !api->run) {
-  fputs("BTRFS.so: missing or incompatible driver\n",stderr);return 1;
- }
- const Request *r=opaque;
- return api->run(r->argc,r->argv,ifs_defrag_services_v1());
-}
-int main(int argc,char **argv) {
- /* The installed independent BTRFS.so owns its validated Common V2 CORE
-  * and VOLUME operations. This explicit read-only operation must never
-  * fall back to the retired V1 analyser or transaction interface. */
- if(argc>=3 && argv[1] && strcmp(argv[1],"volume-info")==0)
-     return ifs_filesystem_module_run("btrfs","BTRFS.so",argc,argv);
- Request r={argc,argv};
- return ifs_filesystem_module_call("btrfs","BTRFS.so",
-   "infiltrator_filesystem_btrfs_v1",execute,&r);
+#include "common_v2_worker.h"
+int main(int argc,char **argv)
+{
+    static const char *const formats[]={"btrfs"};
+    return ifs_v2_worker_dispatch(argc,argv,formats,1u);
 }
