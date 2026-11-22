@@ -35,23 +35,14 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: Infiltrator-Projects/Filesystem-UFS1
-          ref: 660e2e15f0ffad16bb4a6c5c616de7f0ead075e0
+          ref: d54178d3873ad8b7eac3546d4cabca9a5dd71a01
           path: ci-ufs1-current
       - name: Check out current authoritative UFS2.so
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: Infiltrator-Projects/Filesystem-UFS2
-          ref: 6c0f9697de1704614887019c6a61fa82f8fc6917
+          ref: 254d354a18defe2f15a9e5bcb42a0e922e6d818f
           path: ci-ufs2-current
-      # Retain only this pinned old SO as a fixture *generator*, since the
-      # currently published UFS2 Common V2 API does not advertise formatting.
-      # It is never installed as the provider under test.
-      - name: Check out historical, qualified UFS2 fixture generator
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          repository: Infiltrator-Projects/Filesystem-UFS2
-          ref: 8f3514883827d2a72e65c2f45580e937571e0372
-          path: ci-ufs2-fixture
       - name: Compile current V2 providers and provider-owned tests
         run: |
           set -euo pipefail
@@ -68,10 +59,12 @@ jobs:
             fi
             echo "${format} current source: $(git -C "ci-${format}-current" rev-parse HEAD)"
           done
-      - name: Build historical UFS2 fixture provider
+      - name: Build native disposable UFS2 media creator from the independent UFS2 repository
         run: |
-          cmake -S ci-ufs2-fixture -B /tmp/ufs2-fixture -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
-          cmake --build /tmp/ufs2-fixture --target ufs-driver --parallel 2
+          set -euo pipefail
+          cc -std=c11 -O2 -D_GNU_SOURCE -Wall -Wextra -Wpedantic -Werror \
+            ci-ufs2-current/fixtures/ufs_mkfs.c -o /tmp/ufs2-native-media-creator
+          test -x /tmp/ufs2-native-media-creator
       - name: Compile isolated universal Defragmenter consumer
         run: |
           set -euo pipefail
@@ -81,17 +74,14 @@ jobs:
             -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build/module-test"
           cmake --build build --parallel 2 --target \
             defragmenter-operation-engine-v2-test \
-            defragmenter-ufs-test-worker \
-            defragmenter-test-media-mkfs-ufs-test
-      - name: Create real UFS2 image with historical native fixture generator
+            defragmenter-ufs-test-worker
+      - name: Create real UFS2 media from source-owned native fixture code, not an old filesystem SO
         run: |
           set -euo pipefail
           cd defragger
           mkdir -p build/module-test/Filesystems build/test-source
-          install -m 0644 /tmp/ufs2-fixture/UFS2.so build/module-test/Filesystems/UFS2.so
           dd if=/dev/zero of=build/test-source/source.bin bs=1M count=10 status=none
-          export IFS_TEST_MODULE_PARENT="$PWD/build/module-test"
-          build/defragmenter-test-media-mkfs-ufs-test \
+          /tmp/ufs2-native-media-creator \
             -t ffs -B little -s 64m \
             -o version=2,bsize=65536,fsize=8192,minfree=5 \
             "$PWD/build/ufs2-real.img" "$PWD/build/test-source"
