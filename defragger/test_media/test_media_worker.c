@@ -2,7 +2,6 @@
 #include "test_media.h"
 #include "test_media_raw.h"
 #include "filesystem_module_host.h"
-#include "ifs_ufs_payload_verifier_v1.h"
 #include "ld_device.h"
 #include "ld_io.h"
 
@@ -1190,68 +1189,6 @@ static const char *partition_for_label(const LdtmPartitionMap *map, const char *
     return NULL;
 }
 
-static int ensure_directory(const char *path, mode_t mode) {
-    if (mkdir(path, mode) == 0 || errno == EEXIST) return 0;
-    return -1;
-}
-
-static void deterministic_fill(unsigned char *buffer, size_t length, uint64_t seed) {
-    uint64_t state = seed | UINT64_C(1);
-    size_t index;
-    for (index = 0U; index < length; ++index) {
-        state ^= state << 13;
-        state ^= state >> 7;
-        state ^= state << 17;
-        buffer[index] = (unsigned char)(state & UINT64_C(0xff));
-    }
-}
-
-static int write_pattern_file(const char *path, uint64_t size, uint64_t seed) {
-    unsigned char buffer[65536];
-    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
-    uint64_t remaining = size;
-    uint64_t block = 0U;
-    if (fd < 0) return -1;
-    while (remaining > 0U) {
-        const size_t chunk = remaining < (uint64_t)sizeof(buffer) ? (size_t)remaining : sizeof(buffer);
-        deterministic_fill(buffer, chunk, seed ^ block);
-        if (infiltratr_write_full(fd, buffer, chunk) != 0) {
-            (void)close(fd);
-            return -1;
-        }
-        remaining -= (uint64_t)chunk;
-        ++block;
-    }
-    if (fsync(fd) != 0) {
-        (void)close(fd);
-        return -1;
-    }
-    return close(fd);
-}
-
-static uint64_t edge_case_seed(size_t index, uint32_t size) {
-    return UINT64_C(0x4544474500000000) ^
-           ((uint64_t)index << 32U) ^ (uint64_t)size;
-}
-
-static int generate_edge_case_data(const char *root) {
-    char directory[PATH_MAX];
-    size_t index;
-    if (!infiltratr_path_join(directory, sizeof(directory), root, "edge-cases") ||
-        ensure_directory(directory, 0755) != 0)
-        return -1;
-    for (index = 0U; index < LDTM_EDGE_CASE_COUNT; ++index) {
-        char path[PATH_MAX];
-        char name[64];
-        const uint32_t size = ldtm_edge_case_sizes[index];
-        (void)snprintf(name, sizeof(name), "edge-%02zu-%u.bin", index, size);
-        if (!infiltratr_path_join(path, sizeof(path), directory, name) ||
-            write_pattern_file(path, size, edge_case_seed(index, size)) != 0)
-            return -1;
-    }
-    return 0;
-}
-
 static void digest_to_hex(const unsigned char *digest, unsigned int length, char output[LDTM_HASH_HEX]) {
     unsigned int index;
     static const char hex[] = "0123456789abcdef";
@@ -1260,53 +1197,6 @@ static void digest_to_hex(const unsigned char *digest, unsigned int length, char
         output[index * 2U + 1U] = hex[digest[index] & 0x0fU];
     }
     output[64] = '\0';
-}
-
-/* The package-owned UFS2 creator consumes an ordinary source directory.
- * No UFS driver or mounted target is involved. Physical fragmentation is
- * manufactured by that creator, independently of the host source layout. */
-static int generate_ufs_source(const char *source)
-{
-    const LdtmFilesystemSpec *spec = ldtm_find_spec("ufs");
-    const LdtmFragmentProfile profile = ldtm_fragment_profile(spec);
-    char root[PATH_MAX], files[PATH_MAX], directory[PATH_MAX];
-    if (!infiltratr_path_join(root, sizeof(root), source, "Defragmenter-TestData") ||
-        !infiltratr_path_join(files, sizeof(files), root, "fragmented-files") ||
-        !infiltratr_path_join(directory, sizeof(directory), root, "fragmented-directory") ||
-        ensure_directory(root, 0755) != 0 || ensure_directory(files, 0755) != 0 ||
-        ensure_directory(directory, 0755) != 0)
-        return -1;
-    const size_t chunk_bytes = (size_t)profile.chunk_kib * 1024U;
-    uint8_t *buffer = malloc(chunk_bytes);
-    if (buffer == NULL)
-        return -1;
-    int result = 0;
-    for (unsigned file = 0U; file < LDTM_TARGET_FILE_COUNT && result == 0; ++file) {
-        char path[PATH_MAX], name[64];
-        (void)snprintf(name, sizeof(name), "fragmented-%02u.bin", file);
-        if (!infiltratr_path_join(path, sizeof(path), files, name)) {
-            result = -1;
-            break;
-        }
-        const int fd = open(path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
-        if (fd < 0) {
-            result = -1;
-            break;
-        }
-        for (uint32_t chunk = 0U; result == 0 && chunk < ldtm_profile_file_chunks(&profile, file);
-             ++chunk) {
-            const uint64_t seed =
-                ((uint64_t)file << 48U) ^ ((uint64_t)chunk << 16U) ^ UINT64_C(0x4c44544d);
-            deterministic_fill(buffer, chunk_bytes, seed);
-            result = infiltratr_write_full(fd, buffer, chunk_bytes);
-        }
-        if (fsync(fd) != 0)
-            result = -1;
-        if (close(fd) != 0)
-            result = -1;
-    }
-    free(buffer);
-    return result == 0 ? generate_edge_case_data(root) : -1;
 }
 
 static void sanitize_tsv(char *text) {
@@ -1523,261 +1413,22 @@ static int create_raw_and_populate(const LdtmFilesystemSpec *spec, const char *p
     return state_write_status(state, spec, "populated", message);
 }
 
-static int copy_image_to_partition(const char *image, const char *partition) {
-    int input = -1;
-    int output = -1;
-    unsigned char *buffer = NULL;
-    int result = -1;
-    input = open(image, O_RDONLY | O_CLOEXEC);
-    if (input < 0) goto cleanup;
-    output = open(partition, O_WRONLY | O_CLOEXEC);
-    if (output < 0) goto cleanup;
-    buffer = malloc(1024U * 1024U);
-    if (buffer == NULL) goto cleanup;
-    for (;;) {
-        ssize_t got = read(input, buffer, 1024U * 1024U);
-        if (got < 0) {
-            if (errno == EINTR) continue;
-            goto cleanup;
-        }
-        if (got == 0) break;
-        if (infiltratr_write_full(output, buffer, (size_t)got) != 0) goto cleanup;
-    }
-    if (fsync(output) != 0) goto cleanup;
-    result = 0;
-cleanup:
-    free(buffer);
-    if (output >= 0) (void)close(output);
-    if (input >= 0) (void)close(input);
-    return result;
-}
-
-static int ufs2_summary_ok(const char *path) {
-    /* The package-owned host resolves and checks UFS2.so; there is no
-     * Defragmenter-local UFS parser, formatter or fallback. */
-    const char *const argv[] = {"makefs", "--check-ufs2-le", path, NULL};
-    return path != NULL && run_process(argv, NULL, 1) == 0;
-}
-
-static int ufs_expected_targets(LdtmTargetRecord targets[LDTM_MAX_TARGET_FILES])
-{
-    const LdtmFragmentProfile profile = ldtm_fragment_profile(ldtm_find_spec("ufs"));
-    const size_t chunk_bytes = (size_t)profile.chunk_kib * 1024U;
-    uint8_t *buffer = malloc(chunk_bytes);
-    EVP_MD_CTX *context = EVP_MD_CTX_new();
-    if (buffer == NULL || context == NULL) {
-        free(buffer);
-        EVP_MD_CTX_free(context);
-        return -1;
-    }
-    int result = 0;
-    for (unsigned file = 0U; file < LDTM_RAW_FILES && result == 0; ++file) {
-        if (EVP_DigestInit_ex(context, EVP_sha256(), NULL) != 1) {
-            result = -1;
-            break;
-        }
-        if (file < LDTM_TARGET_FILE_COUNT) {
-            targets[file].size = ldtm_profile_file_bytes(&profile, file);
-            for (uint32_t chunk = 0U; chunk < ldtm_profile_file_chunks(&profile, file); ++chunk) {
-                deterministic_fill(buffer, chunk_bytes,
-                                   ((uint64_t)file << 48U) ^ ((uint64_t)chunk << 16U) ^
-                                       UINT64_C(0x4c44544d));
-                if (EVP_DigestUpdate(context, buffer, chunk_bytes) != 1) {
-                    result = -1;
-                    break;
-                }
-            }
-        } else {
-            const unsigned edge = file - LDTM_TARGET_FILE_COUNT;
-            const uint32_t bytes = ldtm_edge_case_sizes[edge];
-            targets[file].size = bytes;
-            deterministic_fill(buffer, bytes, edge_case_seed(edge, bytes));
-            if (EVP_DigestUpdate(context, buffer, bytes) != 1) {
-                result = -1;
-                break;
-            }
-        }
-        uint8_t digest[EVP_MAX_MD_SIZE];
-        unsigned length = 0U;
-        if (EVP_DigestFinal_ex(context, digest, &length) != 1 || length != 32U) {
-            result = -1;
-            break;
-        }
-        digest_to_hex(digest, length, targets[file].sha256);
-    }
-    EVP_MD_CTX_free(context);
-    free(buffer);
-    return result;
-}
-
-/* Versioned dispatch into the independent UFS2.so. The application only
- * computes expected corpus hashes; on-disk UFS interpretation is not local. */
-typedef struct {
-    const char *path;
-    const IfsUfsPayloadTarget *targets;
-    size_t count;
-    char *detail;
-    size_t detail_capacity;
-} LdtmUfsVerifyRequest;
-
-static int ufs_payload_verify_call(const IfsDefragHostV2 *host,
-                                   void *symbol, void *opaque)
-{
-    (void)host;
-    const IfsUfsPayloadVerifierV1 *(*entry)(void) = NULL;
-    _Static_assert(sizeof(entry) == sizeof(symbol), "UFS verifier ABI pointer");
-    memcpy(&entry, &symbol, sizeof(entry));
-    const IfsUfsPayloadVerifierV1 *api = entry ? entry() : NULL;
-    const LdtmUfsVerifyRequest *request = opaque;
-    if (!api || api->abi_version != IFS_UFS_PAYLOAD_VERIFIER_ABI_V1 ||
-        api->structure_bytes < sizeof(*api) || !api->format_id ||
-        strcmp(api->format_id, "ufs2") != 0 || !api->verify_payload ||
-        !request || !request->path)
-        return 1;
-    return api->verify_payload(request->path, request->targets,
-                               request->count, request->detail,
-                               request->detail_capacity) == 0 ? 0 : 1;
-}
-
+/* UFS2 uses the same qualified Common V2 source-owned media fixture
+ * contract as every other filesystem. No raw/host makefs program, private
+ * payload verifier, or UFS-specific metadata parser may substitute. */
 static int verify_ufs2_raw_payload(const char *path,
-                                   char *detail, size_t detail_capacity)
+                                   char *detail,size_t capacity)
 {
-    LdtmTargetRecord expected[LDTM_MAX_TARGET_FILES];
-    IfsUfsPayloadTarget targets[LDTM_MAX_TARGET_FILES];
-    if (detail && detail_capacity)
-        detail[0] = 0;
-    if (!path || LDTM_RAW_FILES > IFS_UFS_PAYLOAD_VERIFIER_MAX_TARGETS ||
-        LDTM_RAW_FILES > LDTM_MAX_TARGET_FILES ||
-        ufs_expected_targets(expected) != 0)
-        return -1;
-    for (size_t i = 0; i < LDTM_RAW_FILES; ++i) {
-        targets[i].size_bytes = expected[i].size;
-        memcpy(targets[i].sha256, expected[i].sha256,
-               sizeof(targets[i].sha256));
-    }
-    const LdtmUfsVerifyRequest request = {
-        path, targets, LDTM_RAW_FILES, detail, detail_capacity
-    };
-    const int result = ifs_filesystem_module_call(
-        "ufs2", "UFS2.so", "infiltrator_filesystem_ufs_payload_verifier_v1",
-        ufs_payload_verify_call, (void *)&request);
-    if (result != 0 && detail && detail_capacity && !detail[0])
-        (void)snprintf(detail, detail_capacity,
-                       "UFS2.so UFS2 raw payload verification failed");
-    return result == 0 ? 0 : -1;
+    const LdtmFilesystemSpec *spec=ldtm_find_spec("ufs");
+    return ldtm_raw_fixture(spec,path,false,detail,capacity);
 }
 
-static int create_ufs_and_populate(const LdtmFilesystemSpec *spec, const char *partition,
-                                   const char *work, FILE *state) {
-    char source[PATH_MAX];
-    char image[PATH_MAX];
-    const char *const wipe_argv[] = {"wipefs", "--all", "--force", partition, NULL};
-    const char *makefs_argv[12];
-    char image_size[32];
-    if (!ldtm_program_available("makefs")) {
-        emit_status(spec->key, "skipped", "bundled first-party UFS2 creator is missing");
-        (void)state_write_status(state, spec, "skipped",
-                                 "bundled first-party UFS2 creator is missing");
-        return 1;
-    }
-    if (run_process(wipe_argv, NULL, 0) != 0 ||
-        snprintf(source, sizeof(source), "%s/ufs-source", work) <= 0 ||
-        snprintf(image, sizeof(image), "%s/ufs.img", work) <= 0 ||
-        ensure_directory(source, 0755) != 0) {
-        emit_status(spec->key, "format-failed", "could not prepare UFS image workspace");
-        (void)state_write_status(state, spec, "format-failed", "UFS workspace preparation failed");
-        return 1;
-    }
-    if (generate_ufs_source(source) != 0) {
-        emit_status(spec->key, "format-failed", "could not build deterministic UFS source tree");
-        (void)state_write_status(state, spec, "format-failed", "UFS source tree generation failed");
-        return 1;
-    }
-    makefs_argv[0] = "makefs";
-    makefs_argv[1] = "-t";
-    makefs_argv[2] = "ffs";
-    makefs_argv[3] = "-B";
-    makefs_argv[4] = "little";
-    makefs_argv[5] = "-s";
-    /* Preserve the qualified 2047 MiB UFS2 geometry within the 2 GiB slot. */
-    const uint32_t ufs_image_mib =
-        spec->size_mib >= 2048U ? 2047U : spec->size_mib;
-    if (snprintf(image_size, sizeof(image_size), "%um",
-                 ufs_image_mib) <= 0)
-        return -1;
-    makefs_argv[6] = image_size;
-    makefs_argv[7] = "-o";
-    /* This argv contract resolves exclusively to the package-owned C helper. */
-    makefs_argv[8] =
-        "version=2,bsize=8192,fsize=1024,minfree=5";
-    makefs_argv[9] = image;
-    makefs_argv[10] = source;
-    makefs_argv[11] = NULL;
-    const int makefs_result = run_process(makefs_argv, NULL, 0);
-    if (makefs_result != 0) {
-        char detail[192];
-        (void)snprintf(
-            detail, sizeof(detail),
-            "makefs failed while building the bounded %u MiB UFS2 image",
-            ufs_image_mib);
-        emit_status(spec->key, "format-failed", detail);
-        (void)state_write_status(state, spec, "format-failed", detail);
-        return 1;
-    }
-    if (!ufs2_summary_ok(image)) {
-        emit_status(spec->key, "qualification-failed",
-                    "makefs completed but UFS2.so rejected its UFS2 image");
-        (void)state_write_status(
-            state, spec, "qualification-failed",
-            "makefs output failed UFS2.so UFS2 geometry validation");
-        return 1;
-    }
-    printf("+ copy verified UFS2 image %s -> %s\n", image, partition);
-    fflush(stdout);
-    if (copy_image_to_partition(image, partition) != 0) {
-        emit_status(
-            spec->key, "format-failed",
-            "UFS2 image copy failed");
-        (void)state_write_status(
-            state, spec, "format-failed",
-            "UFS2 image copy failed");
-        return 1;
-    }
-    if (!ufs2_summary_ok(partition)) {
-        emit_status(spec->key, "qualification-failed",
-                    "copied UFS2 image failed UFS2.so geometry validation");
-        (void)state_write_status(state, spec, "qualification-failed",
-                                 "UFS2 partition validation failed");
-        return 1;
-    }
-    {
-        char detail[512] = {0};
-        if (verify_ufs2_raw_payload(partition, detail, sizeof(detail)) != 0) {
-            emit_status(
-                spec->key, "qualification-failed", detail);
-            (void)state_write_status(
-                state, spec, "qualification-failed", detail);
-            return 1;
-        }
-    }
-    {
-        char detail[512];
-        if (require_fragmentation_state(
-                spec, partition, 1, detail, sizeof(detail)) != 0) {
-            emit_status(spec->key, "qualification-failed", detail);
-            (void)state_write_status(
-                state, spec, "qualification-failed", detail);
-            return 1;
-        }
-    }
-    if (state_write_status(state, spec, "populated",
-                           "first-party bounded UFS2 payload created and completely verified; "
-                           "production analyser proved fragmentation") != 0)
-        return -1;
-    emit_status(spec->key, "populated",
-                "first-party bounded UFS2 payload created and completely verified; production "
-                "analyser proved fragmentation");
-    return 0;
+static int create_ufs_and_populate(const LdtmFilesystemSpec *spec,
+                                   const char *partition,
+                                   const char *work,FILE *state)
+{
+    (void)work;
+    return create_raw_and_populate(spec,partition,state);
 }
 
 static int create_apfs_and_populate(const LdtmFilesystemSpec *spec,
