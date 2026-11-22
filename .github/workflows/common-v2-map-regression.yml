@@ -72,7 +72,14 @@ jobs:
           set -euo pipefail
           ctest --test-dir defragger/build-v2-map \
             --output-on-failure \
-            -R '^defragmenter-strict-common-v2-host
+            -R '^defragmenter-strict-common-v2-host      - name: Reject V1/V5-only filesystem providers and production ABI references
+        run: |
+          set -euo pipefail
+          bash defragger/tests/check_common_v2_exclusivity.sh \
+            "$PWD/defragger/build-v2-map/defragmenter-operation-engine-v2-test" \
+            "$PWD/defragger"
+
+
       - name: Reject V1/V5-only filesystem providers and production ABI references
         run: |
           set -euo pipefail
