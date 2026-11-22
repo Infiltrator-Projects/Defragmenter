@@ -125,15 +125,10 @@ def qualify(fs: str, parent: Path) -> None:
     with tempfile.TemporaryDirectory(prefix=f"{fs}-", dir=parent) as temporary:
         work = Path(temporary)
         image = work / "fixture.img"
-        if fs == "ufs":
-            source = work / "source"
-            source.mkdir()
-            run(FIXTURE, "ufs-source", source)
-            run(os.environ.get("DEFRAGMENTER_UFS_MKFS", str(BUILD / "test-media-mkfs-ufs")), "-t", "ffs", "-B", "little",
-                "-s", "2047m", "-o", "version=2,bsize=8192,fsize=1024,minfree=5",
-                image, source)
-        else:
-            run(FIXTURE, "create", fs, image)
+        # Every filesystem image, including UFS, must be created through
+        # its independent Common V2 module. The former UFS source-tree
+        # generator and host-specific mkfs route were not provider APIs.
+        run(FIXTURE, "create", fs, image)
         run(FIXTURE, "verify", fs, image)
         before = mapping(image, fs)
         accuracy = "exact-single-device" if fs == "btrfs" else "exact"
