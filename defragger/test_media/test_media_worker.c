@@ -36,23 +36,11 @@
 #include <time.h>
 #include <unistd.h>
 
-#define LDTM_MAX_TARGET_FILES LDTM_RAW_FILES
 #define LDTM_HASH_HEX 65U
 #define LDTM_LINE_MAX 4096U
 #define LDTM_CAPTURE_MAX (8U * 1024U * 1024U)
 #define LDTM_PROCESS_TIMEOUT_MS UINT64_C(600000)
 #define LDTM_PROCESS_POLL_MS 100
-
-static const uint32_t ldtm_edge_case_sizes[] = {
-    0U, 1U, 511U, 512U, 513U, 4095U, 4096U, 4097U
-};
-#define LDTM_EDGE_CASE_COUNT \
-    (sizeof(ldtm_edge_case_sizes) / sizeof(ldtm_edge_case_sizes[0]))
-
-typedef struct {
-    uint64_t size;
-    char sha256[LDTM_HASH_HEX];
-} LdtmTargetRecord;
 
 typedef struct {
     char path[PATH_MAX];
