@@ -746,11 +746,10 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
             }
             if(rc!=IFS_FS_OK || written==0u || written>32u ||
                first>UINT64_MAX-written) break;
+            /* A short successful page does not mean EOF. Only IFS_FS_END
+             * proves that the provider's extent cursor was exhausted.
+             * Continue from the exact logical extent index returned. */
             first+=written;
-            if(written<32u) {
-                operation_ok=1;
-                break;
-            }
         }
 
     } else {
