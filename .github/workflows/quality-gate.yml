@@ -1,567 +1,117 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+# Common V2 is the only filesystem ABI recognized by Defragmenter.
+# The prior private-ABI build matrix is obsolete: never compile V1 fixtures,
+# require V1 exports, or use a historical filesystem worker as qualification.
 name: Project quality gate
-
 on:
   workflow_call:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
     paths:
       - 'defragger/**'
       - '.github/workflows/quality-gate.yml'
   workflow_dispatch:
-
 permissions:
   contents: read
-
 concurrency:
-  group: quality-gate-v7-${{ github.ref }}
-  # A newer pull-request commit supersedes stale candidate builds.
-  # Main-branch release qualification is never cancelled.
+  group: quality-gate-common-v2-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
 jobs:
-  # The strict Common V2 UFS regression is an actual release dependency.
-  # It has read-only GitHub permissions and uses only disposable test images.
   ufs-v2-consumer:
-    name: Qualify independent UFS1/UFS2 V2 consumer
-    permissions:
-      contents: read
+    name: Qualify independent UFS1/UFS2 Common V2
     uses: ./.github/workflows/ufs-v2-consumer.yml
-
-  # Qualify actual source-owned FFS extent decoding as a release dependency.
-  ffs-v2-consumer:
-    name: Qualify independent FFS Common V2 map consumer
     permissions:
       contents: read
+  ffs-v2-consumer:
+    name: Qualify native FFS Common V2 consumer
     uses: ./.github/workflows/ffs-v2-consumer.yml
+    permissions:
+      contents: read
 
   quality-gate:
-    name: Self-hosted project quality gate
+    name: Common V2 application and release qualification
     runs-on: [self-hosted, Linux, X64, linux-native, bigbedroom]
     timeout-minutes: 45
-    outputs:
-      release_intent: ${{ steps.release_intent.outputs.release }}
     defaults:
       run:
         working-directory: defragger
+    outputs:
+      release_intent: ${{ steps.release_intent.outputs.release }}
     steps:
-      - name: Check out exact main candidate
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Check out exact candidate
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
           submodules: false
-
-      - name: Materialize pinned Libraries gitlink
-        shell: bash
+      - name: Materialize pinned Common V2 submodule
         run: git -C "$GITHUB_WORKSPACE" submodule update --init --depth 1 -- defragger/shared/infiltratr-common
-
-      - name: Verify self-hosted runner contract
+      - name: Verify native runner contract
         run: ./ci/preflight.sh quality
-
-      - name: Checkout independent FAT12 Common V2
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-FAT12
-          ref: main
-          path: ci-fat12
-      - name: Checkout independent FAT16 Common V2
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-FAT16
-          ref: main
-          path: ci-fat16
-      - name: Checkout independent FAT32 Common V2
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-FAT32
-          ref: main
-          path: ci-fat32
-
-      - name: Compile isolated FAT12/16/32 Common V2 providers only
-        shell: bash
+      - name: Verify no generated files are tracked
         run: |
           set -euo pipefail
-          dest="$PWD/build/fat-module-test/Filesystems"
-          install -d -m 0755 "$dest"
-          for bits in 12 16 32; do
-            source="$GITHUB_WORKSPACE/ci-fat$bits"
-            python3 "$source/standalone/build.py" --profile portable \
-              --output "$dest/FAT$bits.so" --check
-            nm -D --defined-only "$dest/FAT$bits.so" | grep -w infiltrator_filesystem_api_v2
-            if nm -D "$dest/FAT$bits.so" | grep -F infiltrator_filesystem_defrag_v1; then
-              echo "FAT$bits published forbidden V1 interface" >&2
-              exit 1
-            fi
-          done
-
-      - name: Checkout canonical exFAT.so for Test Media qualification
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-exFAT
-          ref: 874906164600309de184f9de734091c48ac5b23d
-          path: ci-exfat
-
-      - name: Build canonical exFAT.so and validate V5 module ABI
-        run: |
-          set -euo pipefail
-          src="$GITHUB_WORKSPACE/ci-exfat"
-          test "$(cat shared/exfat-module-revision)" = "874906164600309de184f9de734091c48ac5b23d"
-          sed 's|#include "../../fat/portable/fatfs_module.h"|#include "fat_module_abi.h"|' "$src/native/filesystems/exfat/module/exfat_api.h" |
-            cmp native/exfat_module_abi.h -
-          # Build the *unified* module, not the legacy V5-only Makefile target.
-          cmake -S "$src" -B "$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=OFF
-          cmake --build "$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB" --target exfat-unified -j2
-          nm -D "$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB/exFAT.so" | grep -F 'infiltrator_filesystem_module_v5'
-          nm -D "$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB/exFAT.so" | grep -F 'infiltrator_filesystem_exfat_defrag_v1'
-          install -m 0644 "$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB/exFAT.so" \
-            "$PWD/build/fat-module-test/Filesystems/exFAT.so"
-
-      - name: Check out canonical FFS.so native migration candidate
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-FFS
-          ref: 1aa54368ee44e465aaaf39a139b63bf5fa7c17db
-          path: ci-ffs
-
-      - name: Compile trusted FFS.so native engine and fixture ABI
-        run: |
-          set -euo pipefail
-          src="$GITHUB_WORKSPACE/ci-ffs"
-          cmake -S "$src" -B "$RUNNER_TEMP/ffs-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=ON
-          cmake --build "$RUNNER_TEMP/ffs-$GITHUB_RUN_ID-$GITHUB_JOB" --target ffs-unified ffs-fixture-test -j2
-          ctest --test-dir "$RUNNER_TEMP/ffs-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          nm -D "$RUNNER_TEMP/ffs-$GITHUB_RUN_ID-$GITHUB_JOB/FFS.so" | grep -F 'infiltrator_filesystem_ffs_defrag_v1'
-          nm -D "$RUNNER_TEMP/ffs-$GITHUB_RUN_ID-$GITHUB_JOB/FFS.so" | grep -F 'infiltrator_filesystem_ffs_fixture_v1'
-          install -d -m 0755 "$PWD/build/fat-module-test/Filesystems"
-          install -m 0644 "$RUNNER_TEMP/ffs-$GITHUB_RUN_ID-$GITHUB_JOB/FFS.so" "$PWD/build/fat-module-test/Filesystems/FFS.so"
-
-      - name: Read the OFS module test revision
-        id: ofs_revision
-        run: echo "sha=$(tr -d '\r\n' < shared/ofs-module-revision)" >> "$GITHUB_OUTPUT"
-
-      - name: Check out the exact OFS implementation
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-OFS
-          ref: ${{ steps.ofs_revision.outputs.sha }}
-          path: ci-ofs
-
-      - name: Build authoritative OFS.so for consumer and Test Media qualification
-        run: |
-          set -euo pipefail
-          ofs="$GITHUB_WORKSPACE/ci-ofs"
-          cmp native/filesystem_defrag_abi.h "$ofs/native/include/infiltratr/fs/defrag_module.h"
-          cmp native/ofs_module_abi.h "$ofs/native/filesystems/ofs/module/ofs_v3.h"
-          python3 "$ofs/standalone/build.py" --output "$PWD/build/fat-module-test/Filesystems/OFS.so"
-
-      - name: Check out qualified independent SWAP module
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-Swap
-          ref: a1029dced02aeb496a04856c13d4db4a21f84cec
-          path: ci-swap
-
-      - name: Build SWAP.so for isolated application and Test Media tests
-        run: |
-          set -euo pipefail
-          cmake -S "$GITHUB_WORKSPACE/ci-swap" -B "$RUNNER_TEMP/ifs-swap-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=OFF
-          cmake --build "$RUNNER_TEMP/ifs-swap-$GITHUB_RUN_ID-$GITHUB_JOB" --target swap-driver -j2
-          nm -D "$RUNNER_TEMP/ifs-swap-$GITHUB_RUN_ID-$GITHUB_JOB/SWAP.so" | grep -F 'infiltrator_filesystem_api_v2'
-          if nm -D "$RUNNER_TEMP/ifs-swap-$GITHUB_RUN_ID-$GITHUB_JOB/SWAP.so" | grep -E 'infiltrator_filesystem_.*_v1'; then
-            echo "ERROR: SWAP.so exposes retired V1 interfaces" >&2
+          if git ls-files | grep -E '(^|/)__pycache__/|\.py[co]$'; then
+            echo "Generated Python bytecode tracked in repository" >&2
             exit 1
           fi
-          install -m 0644 "$RUNNER_TEMP/ifs-swap-$GITHUB_RUN_ID-$GITHUB_JOB/SWAP.so" "$PWD/build/fat-module-test/Filesystems/SWAP.so"
-
-      - name: Check out independently qualified ZFS.so source
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-ZFS
-          ref: 38c520ad85fb061619ce7869f045e94fd5680359
-          path: ci-zfs
-
-      - name: Build ZFS.so and qualify its interface before Defragmenter
+      - name: Compile all native application components under strict warnings
         run: |
           set -euo pipefail
-          zfs="$GITHUB_WORKSPACE/ci-zfs"
-          cmake -S "$zfs" -B "$RUNNER_TEMP/zfs-native-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=ON
-          cmake --build "$RUNNER_TEMP/zfs-native-$GITHUB_RUN_ID-$GITHUB_JOB" --target zfs-driver zfs-native-test zfs-module-test -j2
-          ctest --test-dir "$RUNNER_TEMP/zfs-native-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          cmp native/ifs_zfs_module_v1.h "$zfs/include/ifs_zfs_module_v1.h"
-          cmp test_media/ifs_zfs_fixture_v1.h "$zfs/include/ifs_zfs_fixture_v1.h"
-          install -m 0644 "$RUNNER_TEMP/zfs-native-$GITHUB_RUN_ID-$GITHUB_JOB/ZFS.so" "$PWD/build/fat-module-test/Filesystems/ZFS.so"
-
-      - name: Checkout authoritative independent SFS driver
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-SFS
-          ref: c0c13362692d6660fa0b62e680f9c10d3c5b6181
-          path: ci-sfs
-
-      - name: Build qualified SFS.so and native source for test fixtures
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DLD_ENABLE_WERROR=ON -DBUILD_TESTING=ON \
+            -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build/v2-test-modules"
+          cmake --build build --parallel 2
+          cmake --build build --target defragmenter-desktop --parallel 2
+      - name: Refuse retired V1/V5 symbols and incompatible modules
         run: |
           set -euo pipefail
-          sfs="$GITHUB_WORKSPACE/ci-sfs"
-          cmake -S "$sfs" -B "$RUNNER_TEMP/sfs-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=ON
-          cmake --build "$RUNNER_TEMP/sfs-$GITHUB_RUN_ID-$GITHUB_JOB" --target sfs-driver sfs-module-test -j2
-          ctest --test-dir "$RUNNER_TEMP/sfs-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          bash tests/verify_legacy_fs_services_abi.sh "$sfs/include/ifs_defrag_services_v1.h"
-          cmp native/ifs_sfs_module_v1.h "$sfs/include/ifs_sfs_module_v1.h"
-          cmp test_media/ifs_sfs_fixture_host_v1.h "$sfs/include/ifs_sfs_fixture_host_v1.h"
-          install -m 0644 "$RUNNER_TEMP/sfs-$GITHUB_RUN_ID-$GITHUB_JOB/SFS.so" "$PWD/build/fat-module-test/Filesystems/SFS.so"
-
-      - name: Checkout authoritative independent PFS3 driver
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-PFS3
-          ref: 35a09a348bfe934aed75d1ac7eac18ce1a11fda5
-          path: ci-pfs3
-
-      - name: Build qualified PFS3.so and native source for test fixtures
+          bash tests/check_common_v2_exclusivity.sh \
+            "$PWD/build/defragmenter-operation-engine-v2-test" "$PWD"
+          ctest --test-dir build --output-on-failure \
+            -R '^defragmenter-strict-common-v2-host$'
+      - name: Run native format-neutral V2 regressions
         run: |
           set -euo pipefail
-          pfs3="$GITHUB_WORKSPACE/ci-pfs3"
-          cmake -S "$pfs3" -B "$RUNNER_TEMP/pfs3-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=ON
-          cmake --build "$RUNNER_TEMP/pfs3-$GITHUB_RUN_ID-$GITHUB_JOB" --target pfs3-driver pfs3-module-test -j2
-          ctest --test-dir "$RUNNER_TEMP/pfs3-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          bash tests/verify_legacy_fs_services_abi.sh "$pfs3/include/ifs_defrag_services_v1.h"
-          cmp native/ifs_pfs3_module_v1.h "$pfs3/include/ifs_pfs3_module_v1.h"
-          cmp test_media/ifs_pfs3_fixture_host_v1.h "$pfs3/include/ifs_pfs3_fixture_host_v1.h"
-          install -m 0644 "$RUNNER_TEMP/pfs3-$GITHUB_RUN_ID-$GITHUB_JOB/PFS3.so" "$PWD/build/fat-module-test/Filesystems/PFS3.so"
-
-      - name: Checkout authoritative independent APFS driver
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-APFS
-          ref: c3c30738d92d2cc2730ab1ef18846b0f4e1ffa6b
-          path: ci-apfs
-
-      - name: Build qualified APFS.so and native source for test fixtures
-        run: |
-          set -euo pipefail
-          apfs="$GITHUB_WORKSPACE/ci-apfs"
-          cmake -S "$apfs" -B "$RUNNER_TEMP/apfs-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=ON
-          cmake --build "$RUNNER_TEMP/apfs-$GITHUB_RUN_ID-$GITHUB_JOB" --target apfs-driver apfs-module-test apfs-original-native-test -j2
-          ctest --test-dir "$RUNNER_TEMP/apfs-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          bash tests/verify_legacy_fs_services_abi.sh "$apfs/include/ifs_defrag_services_v1.h"
-          cmp native/ifs_apfs_module_v1.h "$apfs/include/ifs_apfs_module_v1.h"
-          cmp test_media/ifs_apfs_fixture_host_v1.h "$apfs/include/ifs_apfs_fixture_host_v1.h"
-          install -m 0644 "$RUNNER_TEMP/apfs-$GITHUB_RUN_ID-$GITHUB_JOB/APFS.so" "$PWD/build/fat-module-test/Filesystems/APFS.so"
-
-      - name: Checkout authoritative independent PFS3 driver
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-PFS3
-          ref: 35a09a348bfe934aed75d1ac7eac18ce1a11fda5
-          path: ci-pfs3
-
-      - name: Build qualified PFS3.so and native source for test fixtures
-        run: |
-          set -euo pipefail
-          pfs3="$GITHUB_WORKSPACE/ci-pfs3"
-          cmake -S "$pfs3" -B "$RUNNER_TEMP/pfs3-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=ON
-          cmake --build "$RUNNER_TEMP/pfs3-$GITHUB_RUN_ID-$GITHUB_JOB" --target pfs3-driver pfs3-module-test -j2
-          ctest --test-dir "$RUNNER_TEMP/pfs3-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          bash tests/verify_legacy_fs_services_abi.sh "$pfs3/include/ifs_defrag_services_v1.h"
-          cmp native/ifs_pfs3_module_v1.h "$pfs3/include/ifs_pfs3_module_v1.h"
-          cmp test_media/ifs_pfs3_fixture_host_v1.h "$pfs3/include/ifs_pfs3_fixture_host_v1.h"
-          install -m 0644 "$RUNNER_TEMP/pfs3-$GITHUB_RUN_ID-$GITHUB_JOB/PFS3.so" "$PWD/build/fat-module-test/Filesystems/PFS3.so"
-
-      - name: Checkout authoritative HFS.so
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-HFS
-          ref: 2f6fb99f60b57227da5c21fc3d7dc1b44468f6a6
-          path: ci-hfs
-
-      - name: Build and qualify HFS.so
-        run: |
-          set -euo pipefail
-          src="$GITHUB_WORKSPACE/ci-hfs"
-          cmake -S "$src" -B "$RUNNER_TEMP/hfs-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=ON
-          cmake --build "$RUNNER_TEMP/hfs-$GITHUB_RUN_ID-$GITHUB_JOB" --target hfs-driver hfs-module-test -j2
-          ctest --test-dir "$RUNNER_TEMP/hfs-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
-          cmp native/ifs_hfs_module_v1.h "$src/include/ifs_hfs_module_v1.h"
-          cmp test_media/ifs_hfs_fixture_v1.h "$src/include/ifs_hfs_fixture_v1.h"
-          install -m 0644 "$RUNNER_TEMP/hfs-$GITHUB_RUN_ID-$GITHUB_JOB/HFS.so" "$PWD/build/fat-module-test/Filesystems/HFS.so"
-
-      - name: Checkout authoritative HFSPlus.so
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-HFSPlus
-          ref: eecd478d23426432c9de2dc034a3ed99ef44c4f8
-          path: ci-hfsplus
-
-      - name: Build and qualify HFSPlus.so
-        run: |
-          set -euo pipefail
-          src="$GITHUB_WORKSPACE/ci-hfsplus"
-          cmake -S "$src" -B "$RUNNER_TEMP/hfsplus-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=ON
-          cmake --build "$RUNNER_TEMP/hfsplus-$GITHUB_RUN_ID-$GITHUB_JOB" --target hfsplus-driver hfsplus-module-test -j2
-          ctest --test-dir "$RUNNER_TEMP/hfsplus-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
-          cmp native/ifs_hfsplus_module_v1.h "$src/include/ifs_hfsplus_module_v1.h"
-          cmp test_media/ifs_hfsplus_fixture_v1.h "$src/include/ifs_hfsplus_fixture_v1.h"
-          install -m 0644 "$RUNNER_TEMP/hfsplus-$GITHUB_RUN_ID-$GITHUB_JOB/HFSPLUS.so" "$PWD/build/fat-module-test/Filesystems/HFSPLUS.so"
-
-      - name: Check out independent BTRFS.so for qualification
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-Btrfs
-          ref: ba80a1c7d8a21476b550889091d93c28ebaa99ce
-          path: ci-btrfs
-
-      - name: Build qualified BTRFS.so
-        run: |
-          set -euo pipefail
-          src="$GITHUB_WORKSPACE/ci-btrfs"
-          cmake -S "$src" -B "$RUNNER_TEMP/btrfs-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=ON
-          cmake --build "$RUNNER_TEMP/btrfs-$GITHUB_RUN_ID-$GITHUB_JOB" --target btrfs-driver btrfs-module-test -j2
-          ctest --test-dir "$RUNNER_TEMP/btrfs-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
-          cmp native/ifs_btrfs_module_v1.h "$src/include/ifs_btrfs_module_v1.h"
-          cmp test_media/ifs_btrfs_fixture_v1.h "$src/include/ifs_btrfs_fixture_v1.h"
-          install -m 0644 "$RUNNER_TEMP/btrfs-$GITHUB_RUN_ID-$GITHUB_JOB/BTRFS.so" "$PWD/build/fat-module-test/Filesystems/BTRFS.so"
-
-      - name: Check out canonical MINIX.so
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-Minix
-          ref: d146cb736cf0e45d27e8bc0598d83bf40870d7d8
-          path: ci-minix
-
-      - name: Build MINIX.so and preserve the independent regression fixture
-        run: |
-          set -euo pipefail
-          src="$GITHUB_WORKSPACE/ci-minix"
-          cmake -S "$src" -B "$RUNNER_TEMP/minix-$GITHUB_RUN_ID-$GITHUB_JOB" \
-            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
-          cmake --build "$RUNNER_TEMP/minix-$GITHUB_RUN_ID-$GITHUB_JOB" \
-            --target minix-driver minix-native-test minix-defrag-test minix-v1-v2-module-test -j2
-          ctest --test-dir "$RUNNER_TEMP/minix-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
-          cmp native/ifs_minix_defrag_v1.h "$src/include/ifs_minix_defrag_v1.h"
-          cmp test_media/ifs_minix_fixture_v1.h "$src/include/ifs_minix_fixture_v1.h"
-          install -m 0644 "$RUNNER_TEMP/minix-$GITHUB_RUN_ID-$GITHUB_JOB/MINIX.so" "$PWD/build/fat-module-test/Filesystems/MINIX.so"
-
-      - name: Check out independently qualified NTFS.so
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-NTFS
-          ref: f1c8850a8294df9b256f1ad7cb2d90d3e7da0b13
-          path: ci-ntfs
-
-      - name: Build and qualify canonical NTFS.so
-        shell: bash
-        run: |
-          set -euo pipefail
-          src="$GITHUB_WORKSPACE/ci-ntfs"
-          bash tests/verify_ntfs_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
-          cmp native/ifs_ntfs_module_v1.h "$src/include/ifs_ntfs_module_v1.h"
-          source ci/ntfs-build-tools.sh
-          cmake -S "$src" -B "$RUNNER_TEMP/ntfs-$GITHUB_RUN_ID-$GITHUB_JOB" \
-            -DCMAKE_BUILD_TYPE=Release "${ntfs_cmake_args[@]}"
-          cmake --build "$RUNNER_TEMP/ntfs-$GITHUB_RUN_ID-$GITHUB_JOB" -j2
-          ctest --test-dir "$RUNNER_TEMP/ntfs-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          install -m 0644 "$RUNNER_TEMP/ntfs-$GITHUB_RUN_ID-$GITHUB_JOB/NTFS.so" "$PWD/build/fat-module-test/Filesystems/NTFS.so"
-
-      - name: Check out independently qualified XFS.so
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-XFS
-          ref: a00af79ad330282440d55c3b7327b9ffde5d5601
-          path: ci-xfs
-
-      - name: Build and qualify canonical XFS.so
-        run: |
-          set -euo pipefail
-          src="$GITHUB_WORKSPACE/ci-xfs"
-          cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
-          cmp native/ifs_xfs_module_v1.h "$src/include/ifs_xfs_module_v1.h"
-          cmake -S "$src" -B "$RUNNER_TEMP/xfs-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Release
-          cmake --build "$RUNNER_TEMP/xfs-$GITHUB_RUN_ID-$GITHUB_JOB" -j2
-          ctest --test-dir "$RUNNER_TEMP/xfs-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          install -m 0644 "$RUNNER_TEMP/xfs-$GITHUB_RUN_ID-$GITHUB_JOB/XFS.so" "$PWD/build/fat-module-test/Filesystems/XFS.so"
-
-      - name: Check out independently qualified EXT2/3/4 shared objects
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-EXT4
-          ref: 4ccb2d3b00a96a9b77bfe53dc8d58ab63dce3793
-          path: ci-ext4
-
-      - name: Build and qualify canonical EXT2.so EXT3.so EXT4.so
-        run: |
-          set -euo pipefail
-          src="$GITHUB_WORKSPACE/ci-ext4"
-          test "$(cat shared/ext-module-revision)" = "4ccb2d3b00a96a9b77bfe53dc8d58ab63dce3793"
-          cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
-          cmp native/ifs_ext_module_v1.h "$src/include/ifs_ext_module_v1.h"
-          cmp test_media/ifs_ext_fixture_v1.h "$src/include/ifs_ext_fixture_v1.h"
-          cmake -S "$src" -B "$RUNNER_TEMP/ext-so-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DIFS_EXT_BUILD_LEGACY_MULTIFORMAT_TEST_MODULES=ON
-          cmake --build "$RUNNER_TEMP/ext-so-$GITHUB_RUN_ID-$GITHUB_JOB" --parallel 2
-          ctest --test-dir "$RUNNER_TEMP/ext-so-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          install -m 0644 "$RUNNER_TEMP/ext-so-$GITHUB_RUN_ID-$GITHUB_JOB"/EXT{2,3,4}.so "$PWD/build/fat-module-test/Filesystems/"
-
-      - name: Check out independently qualified UFS2.so
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-UFS2
-          ref: 8f3514883827d2a72e65c2f45580e937571e0372
-          path: ci-ufs
-      - name: Check out independent UFS1.so
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-UFS1
-          ref: 6aff3c06c6bf2d1b94fb12bc690da841e37e76a2
-          path: ci-ufs1
-
-      - name: Build and qualify UFS2.so and the first-party formatter
-        run: |
-          set -euo pipefail
-          src="$GITHUB_WORKSPACE/ci-ufs"
-          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
-          cmp native/ifs_ufs_module_v1.h "$src/include/ifs_ufs_module_v1.h"
-          cmp native/ifs_ufs_probe_v1.h "$src/include/ifs_ufs_probe_v1.h"
-          cmp native/ifs_ufs_module_v1.h "$GITHUB_WORKSPACE/ci-ufs1/include/ifs_ufs_module_v1.h"
-          cmp native/ifs_ufs_probe_v1.h "$GITHUB_WORKSPACE/ci-ufs1/include/ifs_ufs_probe_v1.h"
-          cmp native/ifs_ufs_volume_check_v1.h "$src/include/ifs_ufs_volume_check_v1.h"
-          cmp native/ifs_ufs_payload_verifier_v1.h "$src/include/ifs_ufs_payload_verifier_v1.h"
-          cmake -S "$src" -B "$RUNNER_TEMP/ufs-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Release
-          cmake --build "$RUNNER_TEMP/ufs-$GITHUB_RUN_ID-$GITHUB_JOB" -j2
-          ctest --test-dir "$RUNNER_TEMP/ufs-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          install -m 0644 "$RUNNER_TEMP/ufs-$GITHUB_RUN_ID-$GITHUB_JOB/UFS2.so" "$PWD/build/fat-module-test/Filesystems/UFS2.so"
-          cmake -S "$GITHUB_WORKSPACE/ci-ufs1" -B "$RUNNER_TEMP/ufs1-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Release
-          cmake --build "$RUNNER_TEMP/ufs1-$GITHUB_RUN_ID-$GITHUB_JOB" -j2
-          ctest --test-dir "$RUNNER_TEMP/ufs1-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          install -m 0644 "$RUNNER_TEMP/ufs1-$GITHUB_RUN_ID-$GITHUB_JOB/UFS1.so" "$PWD/build/fat-module-test/Filesystems/UFS1.so"
-
-      - name: Detect explicit release intent
-        id: release_intent
+          ctest --test-dir build --output-on-failure \
+            -R '^defragmenter-generic-'
+      - name: Verify release invariants
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          DEFRAGMENTER_BUILD_DIR: ${{ github.workspace }}/defragger/build
+        run: python3 tests/test_release_gate.py
+      - name: Detect version-specific release intent
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        shell: bash
+        id: release_intent
         run: |
           set -euo pipefail
           version="$(tr -d '\r\n' < VERSION)"
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9]+$ ]]
           tag_commit="$(git -C "$GITHUB_WORKSPACE" rev-parse -q --verify "refs/tags/v${version}^{commit}" 2>/dev/null || true)"
           release=false
-          # An unpublished VERSION remains intent across corrective commits.
-          # An exact-commit rerun can resume a draft; an older public tag is fixed.
           if [[ -z "$tag_commit" || "$tag_commit" == "$GITHUB_SHA" ]]; then
             release=true
           fi
           echo "release=$release" >> "$GITHUB_OUTPUT"
-
-      - name: Reject tracked generated state
-        shell: bash
-        run: |
-          set -euo pipefail
-          tracked_generated=$(git ls-files | grep -E '(^|/)__pycache__/|\.py[co]$' || true)
-          if [ -n "$tracked_generated" ]; then
-            printf '%s\n' 'Tracked generated Python state is forbidden:' >&2
-            printf '%s\n' "$tracked_generated" >&2
-            exit 1
-          fi
-
-      - name: Build first-party C/C++ with warnings as errors
-        run: |
-          cmake -S . -B build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DLD_ENABLE_WERROR=ON \
-            -DFAT_DEFRAG_TEST_MODULE_PARENT="$PWD/build/fat-module-test" \
-            -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build/fat-module-test" \
-            -DMINIX_NATIVE_FIXTURE_PATH="$RUNNER_TEMP/minix-$GITHUB_RUN_ID-$GITHUB_JOB/minix-native-test" \
-            -DFFS_NATIVE_TEST_SOURCE_DIR="$GITHUB_WORKSPACE/ci-ffs/native/defrag" \
-            -DSFS_NATIVE_TEST_SOURCE_DIR="$GITHUB_WORKSPACE/ci-sfs" \
-            -DPFS3_NATIVE_TEST_SOURCE_DIR="$GITHUB_WORKSPACE/ci-pfs3" \
-            -DAPFS_NATIVE_TEST_SOURCE_DIR="$GITHUB_WORKSPACE/ci-apfs" \
-            -DBUILD_TESTING=ON
-          cmake --build build -j2
-          cmake --build build --target defragmenter-desktop -j2
-
-      - name: Smoke-test the shipped native GTK desktop under Xvfb
-        run: |
-          set +e
-          xvfb-run -a timeout --signal=TERM 5s ./build/defragmenter \
-            >native-desktop-smoke.log 2>&1
-          status=$?
-          set -e
-          if [ "$status" -ne 124 ] && [ "$status" -ne 143 ]; then
-            cat native-desktop-smoke.log >&2
-            printf 'Native GTK desktop exited unexpectedly with status %s\n' "$status" >&2
-            exit 1
-          fi
-
-      - name: Run complete native, filesystem, GUI and release test suite
-        env:
-          PYTHONDONTWRITEBYTECODE: "1"
-          PYTHONPATH: ${{ github.workspace }}/defragger/tests
-          DEFRAGMENTER_BUILD_DIR: ${{ github.workspace }}/defragger/build
-          DEFRAGMENTER_EXT_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-ext-test-worker
-          DEFRAGMENTER_EXT_METADATA_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-ext-metadata-test-worker
-          DEFRAGMENTER_NTFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-ntfs-test-worker
-          DEFRAGMENTER_EXFAT_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-exfat-test-worker
-          DEFRAGMENTER_XFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-xfs-test-worker
-          DEFRAGMENTER_FAT_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-fat-test-worker
-          DEFRAGMENTER_SWAP_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-swap-test-worker
-          DEFRAGMENTER_ZFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-zfs-test-worker
-          DEFRAGMENTER_SFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-sfs-test-worker
-          DEFRAGMENTER_PFS3_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-pfs3-test-worker
-          DEFRAGMENTER_APFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-apfs-test-worker
-          DEFRAGMENTER_HFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-hfs-test-worker
-          DEFRAGMENTER_HFS_ANALYSER: ${{ github.workspace }}/defragger/build/defragmenter-hfs-test-worker
-          DEFRAGMENTER_HFSPLUS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-hfsplus-test-worker
-          DEFRAGMENTER_BTRFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-btrfs-test-worker
-          DEFRAGMENTER_MINIX_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-minix-test-worker
-          DEFRAGMENTER_MINIX_FIXTURE: ${{ runner.temp }}/minix-${{ github.run_id }}-${{ github.job }}/minix-native-test
-          DEFRAGMENTER_UFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-ufs-test-worker
-          DEFRAGMENTER_UFS_MKFS: ${{ github.workspace }}/defragger/build/defragmenter-test-media-mkfs-ufs-test
-          IFS_TEST_MODULE_PARENT: ${{ github.workspace }}/defragger/build/fat-module-test
-          DEFRAGMENTER_AFFS_WORKER: ${{ github.workspace }}/defragger/build/defragmenter-affs-test-worker
-        run: |
-          ctest --test-dir build --output-on-failure \
-            -E '^defragmenter-test-media-native-'
-          ctest --test-dir build --output-on-failure --parallel 4 \
-            -R '^defragmenter-test-media-native-'
-
-      - name: Enforce release invariants
-        env:
-          PYTHONDONTWRITEBYTECODE: "1"
-          DEFRAGMENTER_BUILD_DIR: ${{ github.workspace }}/defragger/build
-        run: python3 tests/test_release_gate.py
-
-      - name: Build and verify release artefacts once
+      - name: Build and validate installer artifacts for exact tested commit
         if: steps.release_intent.outputs.release == 'true'
-        shell: bash
-        env:
-          # Release qualification must use the same isolated, independently
-          # compiled filesystem SOs as the preceding native test suite.
-          # Never fall back to /System/Filesystems on the runner.
-          IFS_TEST_MODULE_PARENT: ${{ github.workspace }}/defragger/build/fat-module-test
         run: |
           set -euo pipefail
           ./tests/test_release_artifacts.sh
-          VERSION=$(tr -d '\r\n' < VERSION)
+          VERSION="$(tr -d '\r\n' < VERSION)"
           LD_BUILD_TESTING=OFF ./packaging/build-deb.sh
           ./packaging/build-local-run.sh "Defragmenter-${VERSION}-local-folder.run"
           DEB="Defragmenter-${VERSION}-amd64.deb"
           RUN="Defragmenter-${VERSION}-local-folder.run"
-          test -f "$DEB"
-          test -f "$RUN"
+          test -s "$DEB" && test -s "$RUN"
           test "$(dpkg-deb -f "$DEB" Version)" = "$VERSION"
-          ./tests/test_local_installer_end_to_end.sh "./${RUN}"
+          ./tests/test_local_installer_end_to_end.sh "./$RUN"
           sha256sum "$DEB" "$RUN" > RELEASE_SHA256SUMS.txt
-
-      - name: Preserve exact tested release artefacts
+      - name: Retain precise release products
         if: steps.release_intent.outputs.release == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@v4
         with:
           name: defragmenter-release-${{ github.sha }}
           path: |
@@ -572,495 +122,36 @@ jobs:
           retention-days: 7
 
   sanitizers:
-    name: Self-hosted ASan / UBSan
+    name: Common V2 application ASan and UBSan
     runs-on: [self-hosted, Linux, X64, linux-native, bigbedroom]
     timeout-minutes: 45
     defaults:
       run:
         working-directory: defragger
     steps:
-      - name: Check out exact main candidate
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 0
           submodules: false
-
-      - name: Materialize pinned Libraries gitlink
-        shell: bash
-        run: git -C "$GITHUB_WORKSPACE" submodule update --init --depth 1 -- defragger/shared/infiltratr-common
-
-      - name: Verify self-hosted sanitizer runner contract
-        run: ./ci/preflight.sh sanitizers
-
-      - name: Checkout independent FAT12 Common V2
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-FAT12
-          ref: main
-          path: ci-fat12
-      - name: Checkout independent FAT16 Common V2
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-FAT16
-          ref: main
-          path: ci-fat16
-      - name: Checkout independent FAT32 Common V2
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-FAT32
-          ref: main
-          path: ci-fat32
-
-      - name: Compile isolated sanitizer FAT12/16/32 Common V2 providers only
-        shell: bash
+      - run: git -C "$GITHUB_WORKSPACE" submodule update --init --depth 1 -- defragger/shared/infiltratr-common
+      - run: ./ci/preflight.sh sanitizers
+      - name: Compile sanitized canonical V2 consumer and test modules
         run: |
           set -euo pipefail
-          dest="$PWD/build-sanitize/fat-module-test/Filesystems"
-          install -d -m 0755 "$dest"
-          for bits in 12 16 32; do
-            IFS_FAT_SOURCE="$GITHUB_WORKSPACE/ci-fat$bits" IFS_FAT_BITS="$bits" \
-              IFS_FAT_DEST="$dest/FAT$bits.so" python3 - <<'PY'
-          import os, sys
-          from pathlib import Path
-          source=os.environ["IFS_FAT_SOURCE"]
-          width=int(os.environ["IFS_FAT_BITS"])
-          sys.path.insert(0,source+"/standalone")
-          import build
-          flags=["-std=c11","-O1","-g","-fPIC","-mno-red-zone",
-                 "-fno-stack-protector","-fno-builtin",
-                 "-fno-tree-loop-distribute-patterns","-ffreestanding",
-                 "-fvisibility=hidden","-D_GNU_SOURCE","-D_FILE_OFFSET_BITS=64",
-                 f"-DIFS_FATFS_ONLY={width}","-fsanitize=address,undefined",
-                 "-fno-omit-frame-pointer"]
-          if width==12: flags+=["-DIFS_CLASSIC_FAT_BITS=12"]
-          if width==32: flags+=["-DIFS_FAT32_INDEPENDENT=1"]
-          build.compile_module(Path(os.environ["IFS_FAT_DEST"]).resolve(),flags,training=True)
-          PY
-            nm -D --defined-only "$dest/FAT$bits.so" | grep -w infiltrator_filesystem_api_v2
-            if nm -D "$dest/FAT$bits.so" | grep -F infiltrator_filesystem_defrag_v1; then
-              echo "Sanitized FAT$bits module retained a V1 export" >&2
-              exit 1
-            fi
-          done
-
-      - name: Checkout canonical exFAT.so for sanitizer host qualification
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-exFAT
-          ref: 874906164600309de184f9de734091c48ac5b23d
-          path: ci-exfat
-
-      - name: Build canonical exFAT.so and validate V5 module ABI (sanitizer host)
-        run: |
-          set -euo pipefail
-          src="$GITHUB_WORKSPACE/ci-exfat"
-          test "$(cat shared/exfat-module-revision)" = "874906164600309de184f9de734091c48ac5b23d"
-          sed 's|#include "../../fat/portable/fatfs_module.h"|#include "fat_module_abi.h"|' "$src/native/filesystems/exfat/module/exfat_api.h" |
-            cmp native/exfat_module_abi.h -
-          # Build the *unified* module, not the legacy V5-only Makefile target.
-          cmake -S "$src" -B "$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=OFF
-          cmake --build "$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB" --target exfat-unified -j2
-          nm -D "$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB/exFAT.so" | grep -F 'infiltrator_filesystem_module_v5'
-          nm -D "$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB/exFAT.so" | grep -F 'infiltrator_filesystem_exfat_defrag_v1'
-          install -m 0644 "$RUNNER_TEMP/exfat-$GITHUB_RUN_ID-$GITHUB_JOB/exFAT.so" \
-            "$PWD/build-sanitize/fat-module-test/Filesystems/exFAT.so"
-
-      - name: Check out canonical FFS.so for sanitizer host
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-FFS
-          ref: 1aa54368ee44e465aaaf39a139b63bf5fa7c17db
-          path: ci-ffs
-
-      - name: Compile trusted FFS.so for sanitizer-host qualification
-        run: |
-          set -euo pipefail
-          src="$GITHUB_WORKSPACE/ci-ffs"
-          cmake -S "$src" -B "$RUNNER_TEMP/ffs-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=ON
-          cmake --build "$RUNNER_TEMP/ffs-$GITHUB_RUN_ID-$GITHUB_JOB" --target ffs-unified ffs-fixture-test -j2
-          ctest --test-dir "$RUNNER_TEMP/ffs-$GITHUB_RUN_ID-$GITHUB_JOB" --output-on-failure
-          nm -D "$RUNNER_TEMP/ffs-$GITHUB_RUN_ID-$GITHUB_JOB/FFS.so" | grep -F 'infiltrator_filesystem_ffs_defrag_v1'
-          nm -D "$RUNNER_TEMP/ffs-$GITHUB_RUN_ID-$GITHUB_JOB/FFS.so" | grep -F 'infiltrator_filesystem_ffs_fixture_v1'
-          install -d -m 0755 "$PWD/build-sanitize/fat-module-test/Filesystems"
-          install -m 0644 "$RUNNER_TEMP/ffs-$GITHUB_RUN_ID-$GITHUB_JOB/FFS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/FFS.so"
-
-      - name: Read the OFS module test revision
-        id: ofs_revision
-        run: echo "sha=$(tr -d '\r\n' < shared/ofs-module-revision)" >> "$GITHUB_OUTPUT"
-
-      - name: Check out the exact OFS implementation
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-OFS
-          ref: ${{ steps.ofs_revision.outputs.sha }}
-          path: ci-ofs
-
-      - name: Instrument the authoritative OFS implementation
-        run: |
-          set -euo pipefail
-          ofs="$GITHUB_WORKSPACE/ci-ofs"
-          cmp native/filesystem_defrag_abi.h "$ofs/native/include/infiltratr/fs/defrag_module.h"
-          cmp native/ofs_module_abi.h "$ofs/native/filesystems/ofs/module/ofs_v3.h"
-          OFS_SOURCE="$ofs" python3 - <<'PY'
-          import os, sys
-          from pathlib import Path
-          sys.path.insert(0, os.environ['OFS_SOURCE'] + '/standalone')
-          import build
-          build.compile_module(Path('build-sanitize/fat-module-test/Filesystems/OFS.so').resolve(),
-              ['-std=c11', '-O1', '-g', '-fPIC', '-fvisibility=hidden', '-mno-red-zone',
-               '-fno-builtin', '-fno-tree-loop-distribute-patterns',
-               '-fsanitize=address,undefined', '-fno-omit-frame-pointer'], training=True)
-          PY
-
-      - name: Check out qualified independent SWAP module for sanitizers
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-Swap
-          ref: a1029dced02aeb496a04856c13d4db4a21f84cec
-          path: ci-swap
-
-      - name: Instrument SWAP.so for isolated sanitizer tests
-        run: |
-          set -euo pipefail
-          cmake -S "$GITHUB_WORKSPACE/ci-swap" -B "$RUNNER_TEMP/ifs-swap-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=OFF \
-            -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
-            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
-          cmake --build "$RUNNER_TEMP/ifs-swap-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target swap-driver -j2
-          nm -D "$RUNNER_TEMP/ifs-swap-san-$GITHUB_RUN_ID-$GITHUB_JOB/SWAP.so" | grep -F 'infiltrator_filesystem_api_v2'
-          if nm -D "$RUNNER_TEMP/ifs-swap-san-$GITHUB_RUN_ID-$GITHUB_JOB/SWAP.so" | grep -E 'infiltrator_filesystem_.*_v1'; then
-            echo "ERROR: SWAP.so exposes retired V1 interfaces" >&2
-            exit 1
-          fi
-          install -m 0644 "$RUNNER_TEMP/ifs-swap-san-$GITHUB_RUN_ID-$GITHUB_JOB/SWAP.so" "$PWD/build-sanitize/fat-module-test/Filesystems/SWAP.so"
-
-      - name: Check out exact ZFS.so driver for sanitizers
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-ZFS
-          ref: 38c520ad85fb061619ce7869f045e94fd5680359
-          path: ci-zfs
-
-      - name: Build instrumented native ZFS.so without external mkfs
-        run: |
-          set -euo pipefail
-          zfs="$GITHUB_WORKSPACE/ci-zfs"
-          cmake -S "$zfs" -B "$RUNNER_TEMP/zfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=OFF \
-            -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
-            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
-          cmake --build "$RUNNER_TEMP/zfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target zfs-driver -j2
-          cmp native/ifs_zfs_module_v1.h "$zfs/include/ifs_zfs_module_v1.h"
-          cmp test_media/ifs_zfs_fixture_v1.h "$zfs/include/ifs_zfs_fixture_v1.h"
-          install -m 0644 "$RUNNER_TEMP/zfs-san-$GITHUB_RUN_ID-$GITHUB_JOB/ZFS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/ZFS.so"
-
-      - name: Checkout SFS.so for sanitizer qualification
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-SFS
-          ref: c0c13362692d6660fa0b62e680f9c10d3c5b6181
-          path: ci-sfs
-
-      - name: Build instrumented authoritative SFS.so
-        run: |
-          set -euo pipefail
-          sfs="$GITHUB_WORKSPACE/ci-sfs"
-          cmake -S "$sfs" -B "$RUNNER_TEMP/sfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=OFF \
-            -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
-            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
-          cmake --build "$RUNNER_TEMP/sfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target sfs-driver -j2
-          bash tests/verify_legacy_fs_services_abi.sh "$sfs/include/ifs_defrag_services_v1.h"
-          cmp native/ifs_sfs_module_v1.h "$sfs/include/ifs_sfs_module_v1.h"
-          cmp test_media/ifs_sfs_fixture_host_v1.h "$sfs/include/ifs_sfs_fixture_host_v1.h"
-          install -m 0644 "$RUNNER_TEMP/sfs-san-$GITHUB_RUN_ID-$GITHUB_JOB/SFS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/SFS.so"
-
-      - name: Checkout PFS3.so for sanitizer qualification
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-PFS3
-          ref: 35a09a348bfe934aed75d1ac7eac18ce1a11fda5
-          path: ci-pfs3
-
-      - name: Build instrumented authoritative PFS3.so
-        run: |
-          set -euo pipefail
-          pfs3="$GITHUB_WORKSPACE/ci-pfs3"
-          cmake -S "$pfs3" -B "$RUNNER_TEMP/pfs3-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=OFF \
-            -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
-            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
-          cmake --build "$RUNNER_TEMP/pfs3-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target pfs3-driver -j2
-          bash tests/verify_legacy_fs_services_abi.sh "$pfs3/include/ifs_defrag_services_v1.h"
-          cmp native/ifs_pfs3_module_v1.h "$pfs3/include/ifs_pfs3_module_v1.h"
-          cmp test_media/ifs_pfs3_fixture_host_v1.h "$pfs3/include/ifs_pfs3_fixture_host_v1.h"
-          install -m 0644 "$RUNNER_TEMP/pfs3-san-$GITHUB_RUN_ID-$GITHUB_JOB/PFS3.so" "$PWD/build-sanitize/fat-module-test/Filesystems/PFS3.so"
-
-      - name: Checkout APFS.so for sanitizer qualification
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-APFS
-          ref: c3c30738d92d2cc2730ab1ef18846b0f4e1ffa6b
-          path: ci-apfs
-
-      - name: Build instrumented authoritative APFS.so
-        run: |
-          set -euo pipefail
-          apfs="$GITHUB_WORKSPACE/ci-apfs"
-          cmake -S "$apfs" -B "$RUNNER_TEMP/apfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=OFF \
-            -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
-            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
-          cmake --build "$RUNNER_TEMP/apfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target apfs-driver -j2
-          bash tests/verify_legacy_fs_services_abi.sh "$apfs/include/ifs_defrag_services_v1.h"
-          cmp native/ifs_apfs_module_v1.h "$apfs/include/ifs_apfs_module_v1.h"
-          cmp test_media/ifs_apfs_fixture_host_v1.h "$apfs/include/ifs_apfs_fixture_host_v1.h"
-          install -m 0644 "$RUNNER_TEMP/apfs-san-$GITHUB_RUN_ID-$GITHUB_JOB/APFS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/APFS.so"
-
-      - name: Checkout PFS3.so for sanitizer qualification
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-PFS3
-          ref: 35a09a348bfe934aed75d1ac7eac18ce1a11fda5
-          path: ci-pfs3
-
-      - name: Build instrumented authoritative PFS3.so
-        run: |
-          set -euo pipefail
-          pfs3="$GITHUB_WORKSPACE/ci-pfs3"
-          cmake -S "$pfs3" -B "$RUNNER_TEMP/pfs3-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=OFF \
-            -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
-            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
-          cmake --build "$RUNNER_TEMP/pfs3-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target pfs3-driver -j2
-          bash tests/verify_legacy_fs_services_abi.sh "$pfs3/include/ifs_defrag_services_v1.h"
-          cmp native/ifs_pfs3_module_v1.h "$pfs3/include/ifs_pfs3_module_v1.h"
-          cmp test_media/ifs_pfs3_fixture_host_v1.h "$pfs3/include/ifs_pfs3_fixture_host_v1.h"
-          install -m 0644 "$RUNNER_TEMP/pfs3-san-$GITHUB_RUN_ID-$GITHUB_JOB/PFS3.so" "$PWD/build-sanitize/fat-module-test/Filesystems/PFS3.so"
-
-      - name: Checkout authoritative HFS.so for sanitizers
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-HFS
-          ref: 2f6fb99f60b57227da5c21fc3d7dc1b44468f6a6
-          path: ci-hfs
-
-      - name: Build and qualify HFS.so with sanitizers
-        run: |
-          set -euo pipefail
-          src="$GITHUB_WORKSPACE/ci-hfs"
-          cmake -S "$src" -B "$RUNNER_TEMP/hfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=OFF \
-            -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
-            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
-          cmake --build "$RUNNER_TEMP/hfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target hfs-driver -j2
-          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
-          cmp native/ifs_hfs_module_v1.h "$src/include/ifs_hfs_module_v1.h"
-          cmp test_media/ifs_hfs_fixture_v1.h "$src/include/ifs_hfs_fixture_v1.h"
-          install -m 0644 "$RUNNER_TEMP/hfs-san-$GITHUB_RUN_ID-$GITHUB_JOB/HFS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/HFS.so"
-
-      - name: Checkout authoritative HFSPlus.so for sanitizers
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-HFSPlus
-          ref: eecd478d23426432c9de2dc034a3ed99ef44c4f8
-          path: ci-hfsplus
-
-      - name: Build and qualify HFSPlus.so with sanitizers
-        run: |
-          set -euo pipefail
-          src="$GITHUB_WORKSPACE/ci-hfsplus"
-          cmake -S "$src" -B "$RUNNER_TEMP/hfsplus-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=OFF \
-            -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
-            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
-          cmake --build "$RUNNER_TEMP/hfsplus-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target hfsplus-driver -j2
-          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
-          cmp native/ifs_hfsplus_module_v1.h "$src/include/ifs_hfsplus_module_v1.h"
-          cmp test_media/ifs_hfsplus_fixture_v1.h "$src/include/ifs_hfsplus_fixture_v1.h"
-          install -m 0644 "$RUNNER_TEMP/hfsplus-san-$GITHUB_RUN_ID-$GITHUB_JOB/HFSPLUS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/HFSPLUS.so"
-
-      - name: Check out independent BTRFS.so for sanitizer qualification
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-Btrfs
-          ref: ba80a1c7d8a21476b550889091d93c28ebaa99ce
-          path: ci-btrfs
-
-      - name: Build qualified BTRFS.so under ASan/UBSan
-        run: |
-          set -euo pipefail
-          src="$GITHUB_WORKSPACE/ci-btrfs"
-          cmake -S "$src" -B "$RUNNER_TEMP/btrfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DBUILD_TESTING=OFF \
-            -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
-            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
-          cmake --build "$RUNNER_TEMP/btrfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target btrfs-driver -j2
-          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
-          cmp native/ifs_btrfs_module_v1.h "$src/include/ifs_btrfs_module_v1.h"
-          cmp test_media/ifs_btrfs_fixture_v1.h "$src/include/ifs_btrfs_fixture_v1.h"
-          install -m 0644 "$RUNNER_TEMP/btrfs-san-$GITHUB_RUN_ID-$GITHUB_JOB/BTRFS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/BTRFS.so"
-
-      - name: Check out canonical MINIX.so for sanitizers
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-Minix
-          ref: d146cb736cf0e45d27e8bc0598d83bf40870d7d8
-          path: ci-minix
-
-      - name: Build MINIX.so and preserve the independent regression fixture under sanitizers
-        run: |
-          set -euo pipefail
-          src="$GITHUB_WORKSPACE/ci-minix"
-          cmake -S "$src" -B "$RUNNER_TEMP/minix-san-$GITHUB_RUN_ID-$GITHUB_JOB" \
-            -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON \
-            -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
-            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined' \
-            -DCMAKE_EXE_LINKER_FLAGS='-fsanitize=address,undefined'
-          cmake --build "$RUNNER_TEMP/minix-san-$GITHUB_RUN_ID-$GITHUB_JOB" \
-            --target minix-driver minix-native-test minix-defrag-test minix-v1-v2-module-test -j2
-          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
-          cmp native/ifs_minix_defrag_v1.h "$src/include/ifs_minix_defrag_v1.h"
-          cmp test_media/ifs_minix_fixture_v1.h "$src/include/ifs_minix_fixture_v1.h"
-          install -m 0644 "$RUNNER_TEMP/minix-san-$GITHUB_RUN_ID-$GITHUB_JOB/MINIX.so" "$PWD/build-sanitize/fat-module-test/Filesystems/MINIX.so"
-
-      - name: Check out canonical NTFS.so for sanitizers
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-NTFS
-          ref: f1c8850a8294df9b256f1ad7cb2d90d3e7da0b13
-          path: ci-ntfs
-
-      - name: Instrument native NTFS.so and preserve regression tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          src="$GITHUB_WORKSPACE/ci-ntfs"
-          bash tests/verify_ntfs_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
-          cmp native/ifs_ntfs_module_v1.h "$src/include/ifs_ntfs_module_v1.h"
-          source ci/ntfs-build-tools.sh
-          cmake -S "$src" -B "$RUNNER_TEMP/ntfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Debug \
-            "${ntfs_cmake_args[@]}" \
-            -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
-            -DCMAKE_CXX_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
-            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
-          cmake --build "$RUNNER_TEMP/ntfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target ntfs-driver -j2
-          install -m 0644 "$RUNNER_TEMP/ntfs-san-$GITHUB_RUN_ID-$GITHUB_JOB/NTFS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/NTFS.so"
-
-      - name: Check out canonical XFS.so for sanitizers
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-XFS
-          ref: a00af79ad330282440d55c3b7327b9ffde5d5601
-          path: ci-xfs
-
-      - name: Instrument native XFS.so for Defragmenter tests
-        run: |
-          set -euo pipefail
-          src="$GITHUB_WORKSPACE/ci-xfs"
-          cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
-          cmp native/ifs_xfs_module_v1.h "$src/include/ifs_xfs_module_v1.h"
-          cmake -S "$src" -B "$RUNNER_TEMP/xfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
-            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
-          cmake --build "$RUNNER_TEMP/xfs-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target xfs-driver -j2
-          install -m 0644 "$RUNNER_TEMP/xfs-san-$GITHUB_RUN_ID-$GITHUB_JOB/XFS.so" "$PWD/build-sanitize/fat-module-test/Filesystems/XFS.so"
-
-      - name: Check out EXT2/3/4 SO source for sanitizers
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-EXT4
-          ref: 4ccb2d3b00a96a9b77bfe53dc8d58ab63dce3793
-          path: ci-ext4
-
-      - name: Instrument all EXT2/3/4 filesystem shared objects
-        run: |
-          set -euo pipefail
-          src="$GITHUB_WORKSPACE/ci-ext4"
-          test "$(cat shared/ext-module-revision)" = "4ccb2d3b00a96a9b77bfe53dc8d58ab63dce3793"
-          cmp native/ifs_defrag_services_v1.h "$src/include/ifs_defrag_services_v1.h"
-          cmp native/ifs_ext_module_v1.h "$src/include/ifs_ext_module_v1.h"
-          cmp test_media/ifs_ext_fixture_v1.h "$src/include/ifs_ext_fixture_v1.h"
-          cmake -S "$src" -B "$RUNNER_TEMP/ext-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Debug -DIFS_EXT_BUILD_LEGACY_MULTIFORMAT_TEST_MODULES=ON \
-            -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
-            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
-          cmake --build "$RUNNER_TEMP/ext-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target ext-ext2-driver ext-ext3-driver ext-ext4-driver --parallel 2
-          install -m 0644 "$RUNNER_TEMP/ext-san-$GITHUB_RUN_ID-$GITHUB_JOB"/EXT{2,3,4}.so "$PWD/build-sanitize/fat-module-test/Filesystems/"
-
-      - name: Check out independent UFS2.so for sanitizer tests
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-UFS2
-          ref: 8f3514883827d2a72e65c2f45580e937571e0372
-          path: ci-ufs
-      - name: Check out independent UFS1.so
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: Infiltrator-Projects/Filesystem-UFS1
-          ref: 6aff3c06c6bf2d1b94fb12bc690da841e37e76a2
-          path: ci-ufs1
-
-      - name: Instrument first-party UFS2.so and formatting engine
-        run: |
-          set -euo pipefail
-          src="$GITHUB_WORKSPACE/ci-ufs"
-          bash tests/verify_legacy_fs_services_abi.sh "$src/include/ifs_defrag_services_v1.h"
-          cmp native/ifs_ufs_module_v1.h "$src/include/ifs_ufs_module_v1.h"
-          cmp native/ifs_ufs_probe_v1.h "$src/include/ifs_ufs_probe_v1.h"
-          cmp native/ifs_ufs_module_v1.h "$GITHUB_WORKSPACE/ci-ufs1/include/ifs_ufs_module_v1.h"
-          cmp native/ifs_ufs_probe_v1.h "$GITHUB_WORKSPACE/ci-ufs1/include/ifs_ufs_probe_v1.h"
-          cmp native/ifs_ufs_volume_check_v1.h "$src/include/ifs_ufs_volume_check_v1.h"
-          cmp native/ifs_ufs_payload_verifier_v1.h "$src/include/ifs_ufs_payload_verifier_v1.h"
-          cmake -S "$src" -B "$RUNNER_TEMP/ufs-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
-            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
-          cmake --build "$RUNNER_TEMP/ufs-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target ufs-driver -j2
-          install -m 0644 "$RUNNER_TEMP/ufs-san-$GITHUB_RUN_ID-$GITHUB_JOB/UFS2.so" "$PWD/build-sanitize/fat-module-test/Filesystems/UFS2.so"
-          cmake -S "$GITHUB_WORKSPACE/ci-ufs1" -B "$RUNNER_TEMP/ufs1-san-$GITHUB_RUN_ID-$GITHUB_JOB" -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
-            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address,undefined'
-          cmake --build "$RUNNER_TEMP/ufs1-san-$GITHUB_RUN_ID-$GITHUB_JOB" --target ufs1-driver -j2
-          install -m 0644 "$RUNNER_TEMP/ufs1-san-$GITHUB_RUN_ID-$GITHUB_JOB/UFS1.so" "$PWD/build-sanitize/fat-module-test/Filesystems/UFS1.so"
-
-      - name: Build with AddressSanitizer and UndefinedBehaviorSanitizer
-        run: |
-          cmake -S . -B build-sanitize \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DLD_ENABLE_WERROR=ON \
+          cmake -S . -B build-sanitize -DBUILD_TESTING=ON \
+            -DCMAKE_BUILD_TYPE=Debug -DLD_ENABLE_WERROR=ON \
             -DLD_ENABLE_SANITIZERS=ON \
-            -DFAT_DEFRAG_TEST_MODULE_PARENT="$PWD/build-sanitize/fat-module-test" \
-            -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build-sanitize/fat-module-test" \
-            -DMINIX_NATIVE_FIXTURE_PATH="$RUNNER_TEMP/minix-san-$GITHUB_RUN_ID-$GITHUB_JOB/minix-native-test" \
-            -DFFS_NATIVE_TEST_SOURCE_DIR="$GITHUB_WORKSPACE/ci-ffs/native/defrag" \
-            -DSFS_NATIVE_TEST_SOURCE_DIR="$GITHUB_WORKSPACE/ci-sfs" \
-            -DBUILD_TESTING=ON
-          cmake --build build-sanitize -j2
-
-      - name: Run sanitizer-safe native and filesystem tests
+            -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/build-sanitize/v2-test-modules"
+          cmake --build build-sanitize --parallel 2 --target \
+            defragmenter-operation-engine-v2-test \
+            defragmenter-common-v2-test-provider \
+            defragmenter-common-v2-test-no-recovery \
+            defragmenter-common-v2-test-broken-map
+      - name: Run sanitized Common V2 dispatch tests
         env:
           ASAN_OPTIONS: halt_on_error=1:detect_leaks=0
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
-          PYTHONDONTWRITEBYTECODE: "1"
-          PYTHONPATH: ${{ github.workspace }}/defragger/tests
-          DEFRAGMENTER_BUILD_DIR: ${{ github.workspace }}/defragger/build-sanitize
-          DEFRAGMENTER_EXT_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-ext-test-worker
-          DEFRAGMENTER_EXT_METADATA_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-ext-metadata-test-worker
-          DEFRAGMENTER_NTFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-ntfs-test-worker
-          DEFRAGMENTER_EXFAT_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-exfat-test-worker
-          DEFRAGMENTER_XFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-xfs-test-worker
-          DEFRAGMENTER_FAT_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-fat-test-worker
-          DEFRAGMENTER_UFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-ufs-test-worker
-          DEFRAGMENTER_UFS_MKFS: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-test-media-mkfs-ufs-test
-          DEFRAGMENTER_SWAP_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-swap-test-worker
-          DEFRAGMENTER_ZFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-zfs-test-worker
-          DEFRAGMENTER_SFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-sfs-test-worker
-          DEFRAGMENTER_PFS3_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-pfs3-test-worker
-          DEFRAGMENTER_APFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-apfs-test-worker
-          DEFRAGMENTER_HFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-hfs-test-worker
-          DEFRAGMENTER_HFS_ANALYSER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-hfs-test-worker
-          DEFRAGMENTER_HFSPLUS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-hfsplus-test-worker
-          DEFRAGMENTER_BTRFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-btrfs-test-worker
-          DEFRAGMENTER_MINIX_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-minix-test-worker
-          DEFRAGMENTER_MINIX_FIXTURE: ${{ runner.temp }}/minix-san-${{ github.run_id }}-${{ github.job }}/minix-native-test
-          IFS_TEST_MODULE_PARENT: ${{ github.workspace }}/defragger/build-sanitize/fat-module-test
-          DEFRAGMENTER_AFFS_WORKER: ${{ github.workspace }}/defragger/build-sanitize/defragmenter-affs-test-worker
-        run: |
-          ctest --test-dir build-sanitize --output-on-failure \
-            -E '^(defragmenter-tests|defragmenter-test-media-native-)'
-          ctest --test-dir build-sanitize --output-on-failure --parallel 4 \
-            -R '^defragmenter-test-media-native-'
+        run: ctest --test-dir build-sanitize --output-on-failure -R '^defragmenter-strict-common-v2-host$'
 
   publish-release:
     name: Publish qualified release
