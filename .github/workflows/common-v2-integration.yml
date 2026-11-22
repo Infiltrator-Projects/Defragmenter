@@ -1,0 +1,75 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Independently packaged filesystem providers are accepted by Defragmenter
+# only via the canonical hosted Common V2 descriptor. This is an ABI consumer
+# test; provider-specific real-media tests run in their owning repositories.
+name: Common V2 published filesystem acceptance
+on:
+  workflow_call:
+    inputs:
+      repository:
+        required: true
+        type: string
+      format_id:
+        required: true
+        type: string
+      module_file:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install native Common V2 consumer dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake pkg-config libgtk-3-dev \
+            libssl-dev libsqlite3-dev libext2fs-dev binutils
+      - name: Compile current native Common V2-only inventory consumer
+        run: |
+          set -euo pipefail
+          cmake -S defragger -B defragger/build-abi \
+            -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release \
+            -DLD_ENABLE_WERROR=ON \
+            -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/module-root"
+          cmake --build defragger/build-abi --target \
+            defragmenter-operation-engine-v2-test --parallel 2
+      - name: Extract and validate published independent filesystem SO
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FS_REPO: ${{ inputs.repository }}
+          FORMAT: ${{ inputs.format_id }}
+          MODULE: ${{ inputs.module_file }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist pkg module-root/Filesystems
+          gh release download -R "$FS_REPO" -p '*.deb' -D dist
+          test "$(find dist -maxdepth 1 -name '*.deb' | wc -l)" -eq 1
+          dpkg-deb -x dist/*.deb pkg
+          test -s "pkg/System/Filesystems/$MODULE"
+          nm -D --defined-only "pkg/System/Filesystems/$MODULE" |
+            grep -w infiltrator_filesystem_api_v2
+          install -m 0644 "pkg/System/Filesystems/$MODULE" \
+            "module-root/Filesystems/$MODULE"
+          export IFS_TEST_MODULE_PARENT="$PWD/module-root"
+          defragger/build-abi/defragmenter-operation-engine-v2-test \
+            --list-installed-modules > module-inventory.json
+          grep -Fq "\"format_id\":\"$FORMAT\"" module-inventory.json
+          grep -Fq '"abi":2' module-inventory.json
+          # The same directory must never recognise a library exporting
+          # only an obsolete interface, regardless of its filename.
+          cat > obsolete.c <<'EOF'
+          __attribute__((visibility("default")))
+          void *infiltrator_filesystem_old_abi(void) { return 0; }
+          EOF
+          cc -shared -fPIC -o module-root/Filesystems/OLD.so obsolete.c
+          defragger/build-abi/defragmenter-operation-engine-v2-test \
+            --list-installed-modules > inventory-with-old.json
+          cmp module-inventory.json inventory-with-old.json
+          echo "COMMON_V2_ONLY_PROVIDER_ACCEPTANCE_PASS $FS_REPO $FORMAT"
