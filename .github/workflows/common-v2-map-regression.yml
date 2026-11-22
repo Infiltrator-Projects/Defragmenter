@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Qualify strict Common V2 filesystem map paging
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  common-v2-map:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake pkg-config libgtk-3-dev libssl-dev \
+            libsqlite3-dev libext2fs-dev
+      - name: Build exact V2 consumer and positive/negative providers
+        run: |
+          set -euo pipefail
+          cmake -S defragger -B defragger/build-v2-map \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            -DLD_ENABLE_WERROR=ON \
+            -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/defragger/build-v2-map/test-modules"
+          cmake --build defragger/build-v2-map --parallel 2 --target \
+            defragmenter-operation-engine-v2-test \
+            defragmenter-common-v2-test-provider \
+            defragmenter-common-v2-test-no-recovery \
+            defragmenter-common-v2-test-broken-map
+      - name: Prove full V2 MAP pagination and refusal of incomplete media maps
+        run: |
+          set -euo pipefail
+          ctest --test-dir defragger/build-v2-map \
+            --output-on-failure \
+            -R '^defragmenter-strict-common-v2-host$'
