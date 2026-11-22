@@ -103,7 +103,19 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
        !ifs_fs_host_v2_valid(&runtime))
         goto done;
     if(m->create) {
-        if(host->stop_requested(host->context))goto done;
+        if(host->stop_requested(host->context) ||
+           runtime.volume_bytes<2u*LDTM_MIB)goto done;
+        /* This is a prequalified, exclusively leased Test Media image.
+         * Neutralise stale signatures only AFTER the Common V2 provider has
+         * authenticated and advertised its actual format capability. */
+        uint8_t empty[65536]={0};
+        for(uint64_t at=0u;at<LDTM_MIB;at+=sizeof(empty)) {
+            if(host->stop_requested(host->context) ||
+               runtime.write_at(runtime.context,at,empty,sizeof(empty))!=0 ||
+               runtime.write_at(runtime.context,
+                   runtime.volume_bytes-LDTM_MIB+at,empty,sizeof(empty))!=0)
+                goto done;
+        }
         if(volume->format(&runtime,0u,m->spec->label,0u)!=IFS_FS_OK)
             goto done;
     }
