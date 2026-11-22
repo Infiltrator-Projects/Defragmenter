@@ -32,9 +32,44 @@ jobs:
             defragmenter-common-v2-test-provider \
             defragmenter-common-v2-test-no-recovery \
             defragmenter-common-v2-test-broken-map
+      - name: Compile every installed worker and the Common V2 Test Media GUI
+        run: |
+          set -euo pipefail
+          cmake --build defragger/build-v2-map --parallel 2 --target \
+            defragmenter-fat-worker \
+            defragmenter-apfs-worker \
+            defragmenter-minix-worker \
+            defragmenter-ext-worker \
+            defragmenter-ntfs-worker \
+            defragmenter-exfat-worker \
+            defragmenter-affs-worker \
+            defragmenter-hfs-worker \
+            defragmenter-hfsplus-worker \
+            defragmenter-xfs-worker \
+            defragmenter-swap-worker \
+            defragmenter-test-media \
+            defragmenter-test-media-raw-test
+      - name: Reject all retired symbols from installed executables
+        run: |
+          set -euo pipefail
+          for program in \
+            defragmenter-fat-worker defragmenter-apfs-worker \
+            defragmenter-minix-worker defragmenter-ext-worker \
+            defragmenter-ntfs-worker defragmenter-exfat-worker \
+            defragmenter-affs-worker defragmenter-hfs-worker \
+            defragmenter-hfsplus-worker defragmenter-xfs-worker \
+            defragmenter-swap-worker defragmenter-test-media; do
+            path="defragger/build-v2-map/$program"
+            test -x "$path"
+            if strings -a "$path" | grep -E \
+              'infiltrator_filesystem_.*_v1|infiltrator_filesystem_module_v[1345]|ifs_defrag_services_v1'; then
+              echo "REJECTED: obsolete filesystem ABI remains in $path" >&2
+              exit 1
+            fi
+          done
       - name: Prove full V2 MAP pagination and refusal of incomplete media maps
         run: |
           set -euo pipefail
           ctest --test-dir defragger/build-v2-map \
             --output-on-failure \
-            -R '^defragmenter-strict-common-v2-host$'
+            -R '^defragmenter-strict-common-v2-host
