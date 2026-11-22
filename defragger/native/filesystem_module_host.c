@@ -257,7 +257,16 @@ int ifs_filesystem_module_call(const char *format, const char *filename, const c
     const char *override = getenv("IFS_TEST_MODULE_PARENT");
     if (override && *override) parent = override;
 #endif
-    if (!format || !filename || !*filename || !interface || !call || strchr(filename, '/') || strlen(format) > 15u) return 1;
+    if (!format || !filename || !*filename || !interface || !call ||
+        strchr(filename, '/') || strlen(format) > 15u) return 1;
+    /* A non-Common filesystem export cannot be selected, loaded or invoked,
+     * even by an older worker that still passes its historical symbol name.
+     * Keep this check before opening any target or calling dlopen(). */
+    if (strcmp(interface, IFS_FS_COMMON_EXPORT_V2) != 0) {
+        fputs("Refusing obsolete or private filesystem ABI: Common V2 only\n",
+              stderr);
+        return 2;
+    }
     int p = open(parent, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     if (p < 0 || !trusted(p, 1)) { if (p >= 0) close(p); goto missing; }
     int d = openat(p, "Filesystems", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC); close(p);
