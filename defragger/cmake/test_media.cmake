@@ -20,25 +20,13 @@ install(TARGETS defragmenter-desktop RUNTIME DESTINATION /Programs)
 add_library(defragmenter-test-media-core STATIC
     test_media/test_media_core.c
     test_media/test_media_raw.c
-    test_media/test_media_fat_module.c
+    test_media/test_media_common_v2.c
+    test_media/test_media_v2_wrappers.c
     test_media/test_media_fat12_common.c
-    test_media/test_media_ext_module.c
-    test_media/test_media_minix_module.c
     test_media/test_media_swap_module.c
-    test_media/test_media_hfs_module.c
-    test_media/test_media_hfsplus_module.c
-    test_media/test_media_ntfs_module.c
-    test_media/test_media_xfs_module.c
-    test_media/test_media_btrfs_module.c
-    test_media/test_media_raw_zfs.c
     test_media/test_media_worker.c
     test_media/test_media_reserved.c
-    test_media/test_media_ffs_module.c
-    test_media/test_media_amiga_dispatch.c
-    test_media/test_media_ofs_module.c
-    test_media/test_media_sfs.c
-    test_media/test_media_pfs3.c
-    test_media/test_media_apfs.c)
+    test_media/test_media_amiga_dispatch.c)
 target_include_directories(defragmenter-test-media-core PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/test_media"
     "${CMAKE_CURRENT_SOURCE_DIR}/native"
