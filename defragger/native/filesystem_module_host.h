@@ -18,8 +18,6 @@ int ifs_filesystem_target_runtime_v2(IfsFilesystemTargetV2 *binding,
                                      int writable, uint32_t requested_sector,
                                      IfsFsHostRuntimeV2 *runtime);
 int ifs_filesystem_module_run(const char *, const char *, int, char **);
-/* Dedicated, existing OFS native worker only; never a Common V2 fallback. */
-int ifs_filesystem_module_run_ofs_native(int, char **);
 /* Inventory trusted hosted Common V2 modules including those without DEFRAG. */
 int ifs_filesystem_module_list_v2(void);
 /* Resolve a trusted installed SO by its exported format_id, not filename. */
