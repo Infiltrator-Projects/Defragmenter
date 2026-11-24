@@ -590,6 +590,155 @@ static int v2_path_valid(const char *path) {
     }
     return 1;
 }
+/* A FAT provider's root DEFRAG.MAP describes allocated data runs. Its
+ * non-root maps describe file extents in logical order. The host transports
+ * these canonical ranges, never parses disk metadata or follows FAT chains.
+ * Keep all output private until the map and mounted lifecycle complete. */
+typedef struct {
+    const IfsFsCoreOpsV2 *core;
+    const IfsFsDefragOpsV2 *defrag;
+    void *volume;
+    FILE *out;
+    uint64_t unit, total, base, allocated, regular, fragmented, dirs, entries;
+    int have_base, comma;
+} V2FatMap;
+
+static int v2_fat_range(V2FatMap *m,uint64_t start,uint64_t end) {
+    if(start>=end || end>m->total)return -1;
+    if(fprintf(m->out,"%s[%llu,%llu]",m->comma?",":"",
+          (unsigned long long)start,(unsigned long long)end)<0)return -1;
+    m->comma=1;
+    return 0;
+}
+static int v2_fat_root(V2FatMap *m,uint64_t capacity) {
+    uint64_t first=0u,last=0u;
+    for(unsigned page=0u;page<131072u;++page) {
+        IfsFsExtentV2 ext[128]={{0}};
+        uint32_t n=0u;
+        int rc=m->defrag->map(m->volume,"/",first,ext,128u,&n);
+        if(rc==IFS_FS_END)return n==0u?0:-1;
+        if(rc!=IFS_FS_OK || !n || n>128u || first>UINT64_MAX-n)return -1;
+        for(uint32_t i=0u;i<n;++i) {
+            const IfsFsExtentV2 *e=&ext[i];
+            if(!e->length || e->logical_offset%m->unit ||
+               e->length%m->unit || e->physical_offset<e->logical_offset ||
+               e->physical_offset>capacity ||
+               e->length>capacity-e->physical_offset)return -1;
+            uint64_t base=e->physical_offset-e->logical_offset;
+            if(m->have_base && m->base!=base)return -1;
+            m->base=base;m->have_base=1;
+            uint64_t start=e->logical_offset/m->unit,count=e->length/m->unit;
+            if(start<last || start>=m->total || count>m->total-start ||
+               count>m->total-m->allocated)return -1;
+            last=start+count;m->allocated+=count;
+            if(v2_fat_range(m,start,last))return -1;
+        }
+        first+=n;
+    }
+    return -1;
+}
+static int v2_fat_file(V2FatMap *m,const char *path,uint64_t size) {
+    uint64_t first=0u,logical=0u,previous_end=0u;
+    int fragmented=0;
+    for(unsigned page=0u;page<131072u;++page) {
+        IfsFsExtentV2 ext[128]={{0}};
+        uint32_t n=0u;
+        int rc=m->defrag->map(m->volume,path,first,ext,128u,&n);
+        if(rc==IFS_FS_END) {
+            if(n || logical!=size)return -1;
+            ++m->regular;
+            if(fragmented)++m->fragmented;
+            return 0;
+        }
+        if(rc!=IFS_FS_OK || !n || n>128u || first>UINT64_MAX-n)return -1;
+        for(uint32_t i=0u;i<n;++i) {
+            const IfsFsExtentV2 *e=&ext[i];
+            if(!m->have_base || e->physical_offset<m->base ||
+               e->logical_offset!=logical || !e->length ||
+               logical>size || e->length>size-logical ||
+               (e->physical_offset-m->base)%m->unit ||
+               (e->length%m->unit && e->length!=size-logical) ||
+               e->physical_offset>UINT64_MAX-e->length)return -1;
+            uint64_t start=(e->physical_offset-m->base)/m->unit;
+            uint64_t count=e->length/m->unit+(e->length%m->unit!=0u);
+            if(start>=m->total || count>m->total-start)return -1;
+            /* Red cells represent only displaced extents, not the first run. */
+            if(logical && e->physical_offset!=previous_end) {
+                fragmented=1;
+                if(v2_fat_range(m,start,start+count))return -1;
+            }
+            previous_end=e->physical_offset+e->length;
+            logical+=e->length;
+        }
+        first+=n;
+    }
+    return -1;
+}
+static int v2_fat_directory(V2FatMap *m,const char *path,unsigned depth) {
+    if(depth>64u)return -1;
+    for(uint32_t index=0u;index<4194304u;++index) {
+        char name[4096]={0},child[4096];
+        IfsFsEntryV2 e={.structure_bytes=sizeof(e),.name=name,
+                       .name_capacity=sizeof(name)};
+        int rc=m->core->directory_entry(m->volume,path,index,&e);
+        if(rc==IFS_FS_END)return 0;
+        if(rc!=IFS_FS_OK || ++m->entries>4194304u ||
+           !e.name_bytes || e.name_bytes>=sizeof(name) ||
+           name[e.name_bytes] || strlen(name)!=e.name_bytes ||
+           strchr(name,'/') || strchr(name,'\\'))return -1;
+        if(!strcmp(name,".") || !strcmp(name,".."))continue;
+        int len=snprintf(child,sizeof(child),"%s%s%s",path,
+                         !strcmp(path,"/")?"":"/",name);
+        if(len<=0 || (size_t)len>=sizeof(child))return -1;
+        if(e.type==IFS_FS_ENTRY_DIRECTORY) {
+            ++m->dirs;
+            if(v2_fat_directory(m,child,depth+1u))return -1;
+        } else if(e.type==IFS_FS_ENTRY_FILE) {
+            if(v2_fat_file(m,child,e.size_bytes))return -1;
+        } else return -1;
+    }
+    return -1;
+}
+static int v2_fat_extent_json(FILE *out,const IfsFsModuleApiV2 *api,
+          const IfsFsCoreOpsV2 *core,const IfsFsDefragOpsV2 *defrag,
+          void *volume,const IfsFsVolumeInfoV2 *info,uint64_t capacity) {
+    if(!(core->header.capabilities&IFS_FS_CORE_LIST) || !core->directory_entry ||
+       !info->block_bytes || info->total_bytes>capacity ||
+       info->free_bytes>info->total_bytes ||
+       info->total_bytes%info->block_bytes ||
+       info->free_bytes%info->block_bytes)return -1;
+    V2FatMap m={.core=core,.defrag=defrag,.volume=volume,.out=out,
+       .unit=info->block_bytes,.total=info->total_bytes/info->block_bytes};
+    if(!m.total || fprintf(out,"{\"filesystem\":\"%s\",\"abi\":2,"
+       "\"unit_size\":%llu,\"total_units\":%llu,\"free_units\":%llu,"
+       "\"allocated_ranges\":[",api->format_id,(unsigned long long)m.unit,
+       (unsigned long long)m.total,
+       (unsigned long long)(info->free_bytes/m.unit))<0)return -1;
+    if(v2_fat_root(&m,capacity) ||
+       m.allocated!=m.total-info->free_bytes/m.unit ||
+       (m.have_base && (m.base>capacity || info->total_bytes>capacity-m.base)))
+        return -1;
+    if(fputs("],\"fragmented_ranges\":[",out)==EOF)return -1;
+    m.comma=0;
+    if(v2_fat_directory(&m,"/",0u))return -1;
+    if(fprintf(out,"],\"regular_files\":%llu,\"fragmented_files\":%llu,"
+       "\"directories\":%llu,\"directory_fragmentation_available\":%s,"
+       "\"physical_geometry_available\":%s,\"data_start_bytes\":%llu,"
+       "\"device_bytes\":%llu,\"defrag_qualified\":%s,\"growth_qualified\":%s",
+       (unsigned long long)m.regular,(unsigned long long)m.fragmented,
+       (unsigned long long)m.dirs,m.dirs?"false":"true",
+       m.have_base?"true":"false",(unsigned long long)m.base,
+       (unsigned long long)capacity,
+       (defrag->header.capabilities&(IFS_FS_DEFRAG_PLAN|IFS_FS_DEFRAG_EXECUTE|IFS_FS_DEFRAG_VERIFY))==
+       (IFS_FS_DEFRAG_PLAN|IFS_FS_DEFRAG_EXECUTE|IFS_FS_DEFRAG_VERIFY)?"true":"false",
+       (defrag->header.capabilities&(IFS_FS_DEFRAG_PLAN|IFS_FS_DEFRAG_EXECUTE|IFS_FS_DEFRAG_VERIFY))==
+       (IFS_FS_DEFRAG_PLAN|IFS_FS_DEFRAG_EXECUTE|IFS_FS_DEFRAG_VERIFY)?"true":"false")<0)return -1;
+    /* The current FAT DEFRAG contract maps regular files, not directories.
+     * Do not publish a fabricated zero for a volume containing subdirectories. */
+    if(!m.dirs && fputs(",\"fragmented_directories\":0",out)==EOF)return -1;
+    return fputs("}\n",out)==EOF || fflush(out)!=0?-1:0;
+}
+
 static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user) {
     const Command *command=user;
     IfsFsModuleApiEntryV2 entry=NULL;
@@ -622,7 +771,11 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
     if(probing && command->argc!=3)return 2;
     const int reporting=!strcmp(operation,"volume-info");
     const int recovering=!strcmp(operation,"recover");
-    const int analysing=probing || reporting || !strcmp(operation,"analyse") ||
+    const int extent_json=!strcmp(operation,"map-extents");
+    if(extent_json && (command->argc!=3 ||
+       (strcmp(api->format_id,"fat12") && strcmp(api->format_id,"fat16") &&
+        strcmp(api->format_id,"fat32"))))return 2;
+    const int analysing=probing || reporting || extent_json || !strcmp(operation,"analyse") ||
         !strcmp(operation,"analyse-json") || !strcmp(operation,"map");
     const int defragging=!strcmp(operation,"defrag");
     const int growing=!strcmp(operation,"growth-defrag");
@@ -727,6 +880,7 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
         goto cleanup_target;
     }
     int operation_ok=0;
+    FILE *extent_output=NULL;
     IfsFsVolumeInfoV2 reported={0};
     if(reporting) {
         reported.structure_bytes=sizeof(reported);
@@ -741,6 +895,11 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
         uint64_t repaired=0u;
         operation_ok=defrag->recover(volume,0u,&repaired)==IFS_FS_OK;
 
+    } else if(extent_json) {
+        extent_output=tmpfile();
+        operation_ok=extent_output &&
+            v2_fat_extent_json(extent_output,api,core,defrag,volume,&info,h.volume_bytes)==0;
+        if(!operation_ok)fputs("Common V2 FAT extent catalogue failed\n",stderr);
     } else if(analysing) {
         /* Exhaust the provider's paginated extent map. A first page of 32
          * is not evidence of a complete volume; prevent a false success. */
@@ -793,9 +952,17 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
                api->format_id,reported.variant,reported.block_bytes,
                (unsigned long long)reported.total_bytes,
                (unsigned long long)reported.free_bytes);
+    } else if(!result && extent_json) {
+        if(fseek(extent_output,0,SEEK_SET)!=0)result=1;
+        char buffer[16384];
+        size_t count;
+        while(!result && (count=fread(buffer,1,sizeof(buffer),extent_output))!=0u)
+            if(fwrite(buffer,1,count,stdout)!=count)result=1;
+        if(ferror(extent_output) || fflush(stdout)!=0)result=1;
     } else if(!result) {
         fputs("Common V2 provider operation verified and durably synced\n",stdout);
     }
+    if(extent_output)fclose(extent_output);
 cleanup_target:
     services->close_target(services->context,&b.target);
     return result;

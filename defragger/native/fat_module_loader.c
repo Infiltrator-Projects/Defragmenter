@@ -46,6 +46,11 @@ int main(int argc, char **argv)
               stderr);
         return 1;
     }
+    if(!strcmp(argv[1],"identify")) {
+        if(argc!=3)return 2;
+        printf("{\"filesystem\":\"%s\"}\n",selected_format);
+        return 0;
+    }
     /* Mutations are admitted only when the selected module advertises real
      * V2 DEFRAG PLAN/EXECUTE/VERIFY callbacks. No legacy ABI or fallback. */
     return ifs_filesystem_module_run(selected_format, selected_file, argc, argv);

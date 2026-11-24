@@ -379,157 +379,69 @@ Json map_ext(const BackendInfo& backend, const std::string& path,
 
 Json map_fat(const BackendInfo& backend, const std::string& path,
              std::size_t cells) {
-    Json payload = parse_worker_json(
-        worker(backend, "map", path,
-               {"--cells", std::to_string(std::max<std::size_t>(1U, cells))},
-               map_capture_limit(cells)),
-        "native FAT mapper");
-
-    const Json* filesystem = payload.find("filesystem");
-    if (filesystem == nullptr || !filesystem->is_string()) {
-        throw std::runtime_error(
-            "native FAT mapper omitted filesystem identity");
+    // The SO returns authoritative allocation and file extents. Pixel
+    // aggregation is a presentation operation; no BPB or FAT is read here.
+    const Json payload = parse_worker_json(
+        worker(backend, "map-extents", path, {}, map_capture_limit(cells)),
+        "Common V2 FAT extent catalogue");
+    if (payload.at("filesystem").string() != backend.id ||
+        required_u64(payload,"abi") != 2U)
+        throw std::runtime_error("FAT provider returned wrong identity or ABI");
+    const auto unit=required_u64(payload,"unit_size");
+    const auto total=required_u64(payload,"total_units");
+    const auto free=required_u64(payload,"free_units");
+    if (!unit || !total || free>total)
+        throw std::runtime_error("invalid Common V2 FAT geometry");
+    const auto occupied=merge_ranges(pair_ranges(payload,"allocated_ranges",total,true));
+    auto fragmented=merge_ranges(pair_ranges(payload,"fragmented_ranges",total,true));
+    std::uint64_t allocated=0;
+    for(const auto& r:occupied) allocated+=r.end-r.start;
+    if(allocated!=total-free)
+        throw std::runtime_error("FAT provider allocation and free-space totals disagree");
+    std::size_t cursor=0;
+    for(const auto& r:fragmented) {
+        while(cursor<occupied.size() && occupied[cursor].end<=r.start)++cursor;
+        if(cursor==occupied.size() || occupied[cursor].start>r.start ||
+           occupied[cursor].end<r.end)
+            throw std::runtime_error("FAT provider marked unallocated data as fragmented");
     }
-    const BackendInfo* resolved = backend_by_fstype(filesystem->string());
-    if (resolved == nullptr || resolved->id != backend.id) {
-        throw std::runtime_error(
-            "native FAT mapper returned wrong filesystem identity");
+    std::vector<StateRange> ranges;
+    for(const auto& r:occupied)ranges.push_back({r.start,r.end,1U});
+    for(const auto& r:complement_ranges(total,occupied))ranges.push_back({r.start,r.end,0U});
+    Json result=aggregate_ranges(total,cells,unit,backend.id,std::move(ranges),
+        backend.map_accuracy,{{"fragmentation_available",Json(true)},
+        {"fragmentation_basis",Json("Common V2 provider file extent catalogue")}});
+    overlay_ranges(result.at("cells").array(),std::move(fragmented),"fragmented");
+    for(const auto* field:{"regular_files","fragmented_files","directories",
+           "fragmented_directories","directory_fragmentation_available",
+           "defrag_qualified","growth_qualified"}) {
+        if(const Json* value=payload.find(field))set(result,field,*value);
     }
-
-    const std::uint64_t bytes_per_sector =
-        required_u64(payload, "bytes_per_sector");
-    const std::uint64_t sectors_per_cluster =
-        required_u64(payload, "sectors_per_cluster");
-    const std::uint64_t cluster_size = required_u64(payload, "cluster_size");
-    const std::uint64_t total_sectors =
-        required_u64(payload, "total_sectors");
-    const std::uint64_t data_start_sector =
-        required_u64(payload, "data_start_sector");
-    const std::uint64_t total = required_u64(payload, "data_clusters");
-    const std::uint64_t declared_free = required_u64(payload, "free_clusters");
-    const std::uint64_t cell_count = required_u64(payload, "cell_count");
-    const Json* raw_cells = payload.find("cells");
-    if (bytes_per_sector == 0U || sectors_per_cluster == 0U ||
-        cluster_size == 0U || total_sectors == 0U || total == 0U ||
-        declared_free > total ||
-        multiply_or_throw(bytes_per_sector, sectors_per_cluster,
-                          "FAT cluster geometry") != cluster_size ||
-        cell_count == 0U || raw_cells == nullptr || !raw_cells->is_array() ||
-        cell_count != raw_cells->array().size() ||
-        total > std::numeric_limits<std::uint64_t>::max() - 2U) {
-        throw std::runtime_error(
-            "native FAT mapper returned invalid map geometry");
+    const auto regular=required_u64(payload,"regular_files");
+    const auto split=required_u64(payload,"fragmented_files");
+    if(split>regular)throw std::runtime_error("invalid Common V2 fragmentation totals");
+    set(result,"fragmentation_percent",Json::real(regular?100.0*static_cast<double>(split)/static_cast<double>(regular):0.0));
+    set(result,"data_clusters",Json::unsigned_integer(total));
+    set(result,"free_clusters",Json::unsigned_integer(free));
+    set(result,"cluster_size",Json::unsigned_integer(unit));
+    set(result,"outside_bytes",Json::unsigned_integer(0U));
+    // Common V2 supplies physical byte offsets when a volume has allocations.
+    // An empty FAT12/16 data area has no physical extent from which to infer
+    // the prefix; omit rather than invent geometry in that case.
+    if(optional_bool(payload,"physical_geometry_available")) {
+        const auto prefix=required_u64(payload,"data_start_bytes");
+        const auto bytes=required_u64(payload,"device_bytes");
+        const auto data=multiply_or_throw(unit,total,"FAT capacity");
+        if(prefix>bytes || data>bytes-prefix)
+            throw std::runtime_error("invalid Common V2 physical extent geometry");
+        set(result,"display_unit_size",Json::unsigned_integer(1U));
+        set(result,"display_units_per_allocation_unit",Json::unsigned_integer(unit));
+        set(result,"display_prefix_units",Json::unsigned_integer(prefix));
+        set(result,"display_suffix_units",Json::unsigned_integer(bytes-prefix-data));
+        set(result,"display_total_units",Json::unsigned_integer(bytes));
+        set(result,"display_unit_name",Json("bytes"));
     }
-    const std::uint64_t data_sectors =
-        multiply_or_throw(total, sectors_per_cluster, "FAT data sectors");
-    if (data_start_sector > total_sectors ||
-        data_sectors > total_sectors - data_start_sector) {
-        throw std::runtime_error(
-            "native FAT mapper returned invalid physical sector geometry");
-    }
-    const std::uint64_t trailing_sectors =
-        total_sectors - data_start_sector - data_sectors;
-
-    std::uint64_t expected_start = 2U;
-    std::uint64_t free_total = 0U;
-    std::uint64_t used_total = 0U;
-    for (const auto& cell : raw_cells->array()) {
-        if (!cell.is_object()) {
-            throw std::runtime_error(
-                "native FAT mapper returned malformed allocation cell");
-        }
-        const std::uint64_t start = required_u64(cell, "start");
-        const std::uint64_t end = required_u64(cell, "end");
-        const std::uint64_t free = required_u64(cell, "free");
-        const std::uint64_t used = required_u64(cell, "used");
-        const std::uint64_t fragmented = required_u64(cell, "fragmented");
-        const std::uint64_t directory = required_u64(cell, "directory");
-        const std::uint64_t bad = required_u64(cell, "bad");
-        if (start != expected_start || end < start ||
-            end >= total + 2U) {
-            throw std::runtime_error(
-                "native FAT mapper returned discontinuous allocation cells");
-        }
-        const std::uint64_t span = end - start + 1U;
-        if (free > span || used > span || free + used != span ||
-            fragmented > used || directory > used || bad > used) {
-            throw std::runtime_error(
-                "native FAT mapper returned inconsistent allocation counts");
-        }
-        free_total += free;
-        used_total += used;
-        expected_start = end + 1U;
-    }
-    if (expected_start != total + 2U ||
-        free_total != declared_free ||
-        used_total != total - declared_free) {
-        throw std::runtime_error(
-            "native FAT mapper totals do not match filesystem geometry");
-    }
-
-    /*
-     * The FAT worker deliberately emits its native FAT-specific contract
-     * (cluster_size/data_clusters/free_clusters and cluster-number cell
-     * bounds starting at 2).  The C++ desktop consumes the common allocation
-     * map contract used by every other adapter.  Preserve all FAT-specific
-     * fields and cells, but add the common geometry/totals here so the GUI
-     * does not need a second FAT-only presenter.
-     */
-    set(payload, "schema", Json::unsigned_integer(1U));
-    set(payload, "backend", Json("read-only-domain"));
-    set(payload, "map_accuracy", Json(backend.map_accuracy));
-    set(payload, "unit_size", Json::unsigned_integer(cluster_size));
-    set(payload, "total_units", Json::unsigned_integer(total));
-    set(payload, "display_unit_size",
-        Json::unsigned_integer(bytes_per_sector));
-    set(payload, "display_units_per_allocation_unit",
-        Json::unsigned_integer(sectors_per_cluster));
-    set(payload, "display_prefix_units",
-        Json::unsigned_integer(data_start_sector));
-    set(payload, "display_suffix_units",
-        Json::unsigned_integer(trailing_sectors));
-    set(payload, "display_total_units",
-        Json::unsigned_integer(total_sectors));
-    set(payload, "display_unit_name", Json("sectors"));
-    set(payload, "total_bytes", Json::unsigned_integer(
-        multiply_or_throw(total, cluster_size, "FAT capacity")));
-    set(payload, "free_bytes", Json::unsigned_integer(
-        multiply_or_throw(declared_free, cluster_size, "FAT free space")));
-    set(payload, "used_bytes", Json::unsigned_integer(
-        multiply_or_throw(total - declared_free, cluster_size,
-                          "FAT used space")));
-    set(payload, "unknown_bytes", Json::unsigned_integer(0U));
-    set(payload, "outside_bytes", Json::unsigned_integer(0U));
-    set(payload, "filesystem_bytes", Json::unsigned_integer(
-        multiply_or_throw(total, cluster_size, "FAT filesystem size")));
-
-    const std::uint64_t regular_files =
-        optional_u64(payload, "regular_files");
-    const std::uint64_t fragmented_files =
-        optional_u64(payload, "fragmented_files");
-    set(payload, "fragmentation_percent", Json::real(
-        regular_files == 0U
-            ? 0.0
-            : 100.0 * static_cast<double>(fragmented_files) /
-                  static_cast<double>(regular_files)));
-
-    Json::Object details;
-    details["bytes_per_sector"] =
-        Json::unsigned_integer(bytes_per_sector);
-    details["sectors_per_cluster"] =
-        Json::unsigned_integer(sectors_per_cluster);
-    details["cluster_size"] = Json::unsigned_integer(cluster_size);
-    details["total_sectors"] = Json::unsigned_integer(total_sectors);
-    details["data_start_sector"] =
-        Json::unsigned_integer(data_start_sector);
-    details["data_clusters"] = Json::unsigned_integer(total);
-    details["free_clusters"] = Json::unsigned_integer(declared_free);
-    details["fragmentation_available"] = Json(true);
-    details["fragmentation_basis"] =
-        Json("native C FAT directory catalogue and cluster-chain scan");
-    set(payload, "details", Json(std::move(details)));
-
-    return payload;
+    return result;
 }
 
 Json map_hfsplus(const BackendInfo& backend, const std::string& path,
