@@ -8,11 +8,13 @@ modules=${2:?pass the directory containing the built FAT modules}
 boundary_fixture=${3:-}
 work=$(mktemp -d "${TMPDIR:-/tmp}/fat-module-safety.XXXXXX")
 trap 'rm -rf -- "$work"' EXIT
+"${CXX:-c++}" -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror \
+    "$root/tests/native_fat_fixture.cpp" -o "$work/native-fat-fixture"
 mkdir -m 0755 "$work/Filesystems"
 export IFS_TEST_MODULE_PARENT="$work" PYTHONDONTWRITEBYTECODE=1
 install -m 0644 "$modules"/FAT{12,16,32}.so "$work/Filesystems/"
-python3 "$root/tests/make_fat12_16_image.py" fat12 "$work/12.img" fragmented >/dev/null
-python3 "$root/tests/make_fat12_16_image.py" fat16 "$work/16.img" fragmented >/dev/null
+"$work/native-fat-fixture" fat12 "$work/12.img" fragmented >/dev/null
+"$work/native-fat-fixture" fat16 "$work/16.img" fragmented >/dev/null
 "$worker" identify "$work/12.img" | grep -q '"bits":12'
 "$worker" identify "$work/16.img" | grep -q '"bits":16'
 

@@ -7,7 +7,6 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
@@ -67,12 +66,13 @@ rejected_equals = subprocess.run(
 assert rejected_equals.returncode == 2
 
 with tempfile.TemporaryDirectory(prefix="defragger-fat-map-") as temp_dir:
+    fixture = Path(temp_dir) / "native-fat-fixture"
+    subprocess.run([os.environ.get("CXX", "c++"), "-std=c++17", "-O2", "-Wall", "-Wextra", "-Wpedantic", "-Werror", str(ROOT / "tests" / "native_fat_fixture.cpp"), "-o", str(fixture)], check=True)
     fat_image = Path(temp_dir) / "fat.img"
     for variant in ("fat12", "fat16"):
         subprocess.run(
             [
-                sys.executable,
-                str(ROOT / "tests" / "make_fat12_16_image.py"),
+                str(fixture),
                 variant,
                 str(fat_image),
                 "fragmented",
@@ -123,8 +123,8 @@ with tempfile.TemporaryDirectory(prefix="defragger-fat-map-") as temp_dir:
     large_image = Path(temp_dir) / "large-fat32.img"
     subprocess.run(
         [
-            sys.executable,
-            str(ROOT / "tests" / "make_fragmented_image.py"),
+            str(fixture),
+            "fat32",
             str(large_image),
             "2097152",
         ],

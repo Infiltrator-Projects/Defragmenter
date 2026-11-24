@@ -6,6 +6,8 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 worker=${1:?pass the test-only FAT module host}
 work=$(mktemp -d "${TMPDIR:-/tmp}/fat-module-recovery.XXXXXX")
 trap 'rm -rf -- "$work"' EXIT
+"${CXX:-c++}" -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror \
+    "$root/tests/native_fat_fixture.cpp" -o "$work/native-fat-fixture"
 export PYTHONDONTWRITEBYTECODE=1
 
 for kind in fat12 fat16 fat32; do
@@ -13,9 +15,9 @@ for kind in fat12 fat16 fat32; do
         image="$work/$kind-$stage.img"
         journal="$work/$kind-$stage.journal"
         if [[ $kind == fat32 ]]; then
-            python3 "$root/tests/make_fragmented_image.py" "$image" >/dev/null
+            "$work/native-fat-fixture" fat32 "$image" >/dev/null
         else
-            python3 "$root/tests/make_fat12_16_image.py" "$kind" "$image" fragmented >/dev/null
+            "$work/native-fat-fixture" "$kind" "$image" fragmented >/dev/null
         fi
         status=0
         IFS_TEST_CRASH_AFTER_JOURNAL=$stage "$worker" defrag "$image" \
@@ -61,10 +63,10 @@ for kind in fat12 fat16 fat32; do
         image="$work/$kind-write-$write.img"
         journal="$work/$kind-write-$write.journal"
         if [[ $kind == fat32 ]]; then
-            python3 "$root/tests/make_fragmented_image.py" "$image" >/dev/null
+            "$work/native-fat-fixture" fat32 "$image" >/dev/null
             cp "$image" "$work/fat32-before.img"
         else
-            python3 "$root/tests/make_fat12_16_image.py" "$kind" "$image" fragmented >/dev/null
+            "$work/native-fat-fixture" "$kind" "$image" fragmented >/dev/null
         fi
         status=0
         IFS_TEST_CRASH_AFTER_DEVICE_WRITE=$write "$worker" defrag "$image" \

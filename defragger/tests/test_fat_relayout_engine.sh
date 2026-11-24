@@ -8,14 +8,16 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 FAT_WORKER=${1:-"$ROOT/build/defragmenter-fat-worker"}
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/fat-common-v2.XXXXXX")
 trap 'rm -rf -- "$WORK"' EXIT
+"${CXX:-c++}" -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror \
+    "$ROOT/tests/native_fat_fixture.cpp" -o "$WORK/native-fat-fixture"
 export PYTHONDONTWRITEBYTECODE=1
 
 fail() { echo "FAT COMMON V2 TEST FAILURE: $*" >&2; exit 1; }
 [[ -x "$FAT_WORKER" ]] || fail "missing FAT Common V2 dispatcher"
 
-python3 "$ROOT/tests/make_fragmented_image.py" "$WORK/fat32.img" >/dev/null
+"$WORK/native-fat-fixture" fat32 "$WORK/fat32.img" >/dev/null
 for bits in 12 16; do
-    python3 "$ROOT/tests/make_fat12_16_image.py" "fat$bits" \
+    "$WORK/native-fat-fixture" "fat$bits" \
         "$WORK/fat$bits.img" fragmented >/dev/null
 done
 
