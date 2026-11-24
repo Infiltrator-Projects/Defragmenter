@@ -116,8 +116,28 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
                    runtime.volume_bytes-LDTM_MIB+at,empty,sizeof(empty))!=0)
                 goto done;
         }
-        if(volume->format(&runtime,0u,m->spec->label,0u)!=IFS_FS_OK)
+        /* Common V2 FORMAT variants and label support are provider-defined.
+         * These values select the provider's existing public contract; no
+         * filesystem data structures are interpreted here. */
+        uint32_t variant=0u;
+        const char *label=m->spec->label;
+        switch(m->spec->creator) {
+        case LDTM_CREATOR_EXFAT: variant=64u; label=NULL; break;
+        case LDTM_CREATOR_NTFS: variant=1u; break;
+        case LDTM_CREATOR_SWAP: variant=4096u; break;
+        default: break;
+        }
+        const int rc=volume->format(&runtime,variant,label,0u);
+        if(rc!=IFS_FS_OK) {
+            fprintf(stderr,"%s Common V2 FORMAT failed (variant %u, error %d)\n",
+                    provider(m->spec),(unsigned)variant,rc);
             goto done;
+        }
+        if(variant) {
+            uint32_t detected=0u;
+            if(core->probe(&runtime,&detected)!=IFS_FS_OK || detected!=variant)
+                goto done;
+        }
     }
     if(is_swap(m->spec)) {
         uint32_t variant=0u;
