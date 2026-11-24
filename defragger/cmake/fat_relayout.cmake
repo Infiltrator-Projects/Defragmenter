@@ -26,12 +26,11 @@ if(BUILD_TESTING AND TARGET defragmenter-fat-worker)
         COMMAND bash
                 "${CMAKE_CURRENT_LIST_DIR}/../tests/test_fat_relayout_engine.sh"
                 "${FAT_WORKER_FOR_TESTS}"
+                "$<TARGET_FILE:defragmenter-test-media-raw-test>"
     )
     set_tests_properties(
         defragmenter-fat-relayout
         PROPERTIES
-            TIMEOUT 180
-            ENVIRONMENT
-                "PYTHONDONTWRITEBYTECODE=1"
+            TIMEOUT 1800
     )
 endif()

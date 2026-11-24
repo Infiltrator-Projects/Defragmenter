@@ -9,7 +9,6 @@ HFS_ANALYSER=${DEFRAGMENTER_HFS_WORKER:-"$BUILD_DIR/hfs_analyser"}
 XFS_WORKER=${DEFRAGMENTER_XFS_WORKER:-"$BUILD_DIR/defragmenter-xfs-worker"}
 XFS_NATIVE_TEST="$BUILD_DIR/defragmenter-xfs-native-test"
 XFS_METADATA_TEST="$BUILD_DIR/defragmenter-xfs-metadata-test"
-FAT12_SMALL_WORKSPACE_FIXTURE="$BUILD_DIR/defragmenter-fat12-small-workspace-fixture"
 EXPECTED_VERSION=$(tr -d '\r\n' <"$ROOT/VERSION")
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/defragmenter-tests.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT
@@ -29,7 +28,6 @@ fail() {
 [[ -x "$FAT_WORKER" ]] || fail "FAT worker is not executable: $FAT_WORKER"
 [[ -x "$HFS_ANALYSER" ]] || fail "HFS analyser is not executable: $HFS_ANALYSER"
 [[ -x "$XFS_WORKER" ]] || fail "XFS worker is not executable: $XFS_WORKER"
-[[ -x "$FAT12_SMALL_WORKSPACE_FIXTURE" ]] || fail "FAT12 small-workspace fixture is not executable: $FAT12_SMALL_WORKSPACE_FIXTURE"
 export DEFRAGMENTER_XFS_WORKER="$XFS_WORKER"
 
 version=$($FAT_WORKER --version)
@@ -57,7 +55,7 @@ if [[ -x "$XFS_METADATA_TEST" ]]; then "$XFS_METADATA_TEST"; fi
 
 # FAT12, FAT16 and FAT32 must be dispatched through trusted Common V2
 # providers only. The filesystem repositories own allocation/mutation tests.
-bash "$ROOT/tests/test_fat_relayout_engine.sh" "$FAT_WORKER"
+bash "$ROOT/tests/test_fat_relayout_engine.sh" "$FAT_WORKER" "$BUILD_DIR/defragmenter-test-media-raw-test"
 
 # An invalid HFS target still fails closed.
 if "$HFS_ANALYSER" defrag /dev/null >"$WORK/hfs-write.log" 2>&1; then

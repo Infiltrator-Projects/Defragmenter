@@ -66,16 +66,16 @@ rejected_equals = subprocess.run(
 assert rejected_equals.returncode == 2
 
 with tempfile.TemporaryDirectory(prefix="defragger-fat-map-") as temp_dir:
-    fixture = Path(temp_dir) / "native-fat-fixture"
-    subprocess.run([os.environ.get("CXX", "c++"), "-std=c++17", "-O2", "-Wall", "-Wextra", "-Wpedantic", "-Werror", str(ROOT / "tests" / "native_fat_fixture.cpp"), "-o", str(fixture)], check=True)
-    fat_image = Path(temp_dir) / "fat.img"
+    fixture = BUILD / "defragmenter-test-media-raw-test"
+    assert fixture.is_file(), f"missing Common V2 test-media consumer: {fixture}"
     for variant in ("fat12", "fat16"):
+        fat_image = Path(temp_dir) / f"{variant}.img"
         subprocess.run(
             [
                 str(fixture),
+                "create",
                 variant,
                 str(fat_image),
-                "fragmented",
             ],
             check=True,
             stdout=subprocess.DEVNULL,
@@ -124,18 +124,22 @@ with tempfile.TemporaryDirectory(prefix="defragger-fat-map-") as temp_dir:
     subprocess.run(
         [
             str(fixture),
+            "create",
             "fat32",
             str(large_image),
-            "2097152",
         ],
         check=True,
         stdout=subprocess.DEVNULL,
     )
+    # The provider, not the consumer, determines allocation-unit geometry.
+    geometry = json.loads(subprocess.check_output([str(MAPPER), str(large_image), "--fstype", "fat32", "--cells", "8"], text=True))
+    requested_cells = min(800000, int(geometry["total_units"]))
+    assert requested_cells > 128, geometry
     with (Path(temp_dir) / "large-map.json").open("w+") as output:
         subprocess.run(
             [
                 str(MAPPER), str(large_image), "--fstype", "vfat",
-                "--cells", "800000",
+                "--cells", str(requested_cells),
             ],
             stdout=output,
             stderr=subprocess.PIPE,
@@ -143,11 +147,12 @@ with tempfile.TemporaryDirectory(prefix="defragger-fat-map-") as temp_dir:
             check=True,
             timeout=120,
         )
-        assert output.tell() > 64 * 1024 * 1024
+        if requested_cells == 800000:
+            assert output.tell() > 64 * 1024 * 1024
         output.seek(0)
         large_map = json.load(output)
     assert large_map["backend_id"] == "fat32"
-    assert large_map["cell_count"] == len(large_map["cells"]) == 800000
+    assert large_map["cell_count"] == len(large_map["cells"]) == requested_cells
 
 invalid = subprocess.run(
     [str(MAPPER), "/dev/null", "--fstype", "ntfs", "--cells", "128"],

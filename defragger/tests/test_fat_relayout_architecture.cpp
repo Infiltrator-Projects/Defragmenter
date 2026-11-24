@@ -26,6 +26,14 @@ int main(int argc,char** argv) {
         const fs::path root=argv[1];
         check(!fs::exists(root/"gui/filesystems/fat/native"),
               "Private FAT engine must not return to Defragmenter GUI");
+        // Test media must also delegate all filesystem operations to Common V2.
+        for(const char* retired:{"native_fat_fixture.cpp","fat12_small_workspace_fixture.c","make_fat16_dependency_blocker_image.py","make_fat16_workspace_image.py","make_fragmented_directory_image.py","make_gapped_contiguous_image.py","make_growth_defrag_image.py","verify_defragged_image.py","verify_directory_defrag.py","verify_fat16_dependency_blocker_image.py","verify_fat16_workspace_image.py","verify_gapped_contiguous.py","verify_growth_defrag.py","verify_growth_fat12_16.py","verify_fragment_map.py","test_fat_module_recovery.sh","test_fat_module_safety.sh","test_fat_relayout.c","test_fat_directory.c","test_fat_volume.c","test_fat_journal.c"})
+            check(!fs::exists(root/"tests"/retired),
+                  std::string("Private or retired FAT implementation reintroduced: ")+retired);
+        const auto fixture=read(root/"test_media/test_media_fat12_common.c");
+        for(const char* token:{"IFS_FS_COMMON_EXPORT_V2","volume->format",
+                               "core->create","core->write","core->read"})
+            contains(fixture,token,"Common V2 FAT test-media consumer");
         const auto loader=read(root/"native/fat_module_loader.c");
         for(const char* token:{
             "ifs_filesystem_module_find_readonly_v2",

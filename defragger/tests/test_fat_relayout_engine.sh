@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Strict Common V2 FAT module integration using disposable, source-independent
+# Strict Common V2 FAT module integration using disposable, provider-created
 # FAT12/16/32 images. No V1 worker, hidden native parser or legacy journal.
 set -euo pipefail
 
@@ -8,17 +8,15 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 FAT_WORKER=${1:-"$ROOT/build/defragmenter-fat-worker"}
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/fat-common-v2.XXXXXX")
 trap 'rm -rf -- "$WORK"' EXIT
-"${CXX:-c++}" -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror \
-    "$ROOT/tests/native_fat_fixture.cpp" -o "$WORK/native-fat-fixture"
-export PYTHONDONTWRITEBYTECODE=1
+FIXTURE=${2:-"$(dirname -- "$FAT_WORKER")/defragmenter-test-media-raw-test"}
 
 fail() { echo "FAT COMMON V2 TEST FAILURE: $*" >&2; exit 1; }
 [[ -x "$FAT_WORKER" ]] || fail "missing FAT Common V2 dispatcher"
 
-"$WORK/native-fat-fixture" fat32 "$WORK/fat32.img" >/dev/null
-for bits in 12 16; do
-    "$WORK/native-fat-fixture" "fat$bits" \
-        "$WORK/fat$bits.img" fragmented >/dev/null
+[[ -x "$FIXTURE" ]] || fail "missing Common V2 test-media consumer"
+for bits in 12 16 32; do
+    "$FIXTURE" create "fat$bits" "$WORK/fat$bits.img" || fail "FAT$bits provider could not create media"
+    "$FIXTURE" verify "fat$bits" "$WORK/fat$bits.img" || fail "FAT$bits provider payload verification failed"
 done
 
 for bits in 12 16 32; do
@@ -47,6 +45,7 @@ for bits in 12 16 32; do
     after=$(sha256sum "$image" | cut -d' ' -f1)
     [[ "$before" == "$after" ]] ||
         fail "FAT$bits Common V2 inspection or rejection modified media"
+    "$FIXTURE" verify "fat$bits" "$image" || fail "FAT$bits provider payload changed"
     echo "FAT$bits Common V2 VOLUME+MAP and mutation rejection passed"
 done
 

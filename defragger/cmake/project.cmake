@@ -940,12 +940,6 @@ if(BUILD_TESTING)
         COMMAND defragmenter-mounted-image-identity-test)
     # Filesystem-owned FAT Common V2 tests compile with their independent SOs.
     # Defragmenter never embeds the obsolete FAT V1 process-host worker.
-    add_executable(defragmenter-fat12-small-workspace-fixture
-        tests/fat12_small_workspace_fixture.c)
-    target_compile_options(defragmenter-fat12-small-workspace-fixture PRIVATE
-        ${LD_WARNING_FLAGS})
-    target_compile_definitions(defragmenter-fat12-small-workspace-fixture PRIVATE
-        _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 
     add_test(NAME defragmenter-tests
              COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_tests.sh
