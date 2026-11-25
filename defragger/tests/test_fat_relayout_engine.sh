@@ -81,6 +81,8 @@ for bits in 12 16 32; do
         fail "FAT$bits native recovery refused a clean checkpoint"
     "$FIXTURE" verify "fat$bits" "$growth" ||
         fail "FAT$bits recovery changed payloads"
+    "$FIXTURE" qualify-recovery "fat$bits" ||
+        fail "FAT$bits interrupted relocation and recovery failed"
     echo "FAT$bits Common V2 VOLUME+MAP, defrag, growth and clean recovery passed"
 done
 

@@ -216,6 +216,107 @@ static int verify_corruption(const LdtmFilesystemSpec *spec,const char *path)
     return 0;
 }
 
+/* FAT's Common V2 "/" map describes the actual allocated data runs.
+ * Independently derive each corpus file's cluster-rounded EOF and prove
+ * its immediately adjacent ceil(blocks/10) blocks are not allocated to
+ * ANY object. No raw FAT parser or provider VERIFY result is trusted for
+ * this cross-check. Other formats do not yet share this root-map contract. */
+typedef struct {const LdtmFilesystemSpec *spec;const char *path;} GrowthFixture;
+typedef struct {uint64_t start,end;} GrowthGap;
+static int verify_fat_growth_call(const IfsDefragHostV2 *host,void *symbol,void *opaque)
+{
+    const GrowthFixture *f=opaque;
+    IfsFsModuleApiEntryV2 entry=NULL;
+    _Static_assert(sizeof(entry)==sizeof(symbol),"Common V2 entry width");
+    memcpy(&entry,&symbol,sizeof(entry));
+    const IfsFsModuleApiV2 *api=entry?entry():NULL;
+    if(!api || !ifs_fs_api_v2_valid(api,f->spec->key))return -1;
+    const IfsFsCoreOpsV2 *core=(const void *)ifs_fs_group_v2(api,IFS_FS_GROUP_CORE);
+    const IfsFsDefragOpsV2 *map=(const void *)ifs_fs_group_v2(api,IFS_FS_GROUP_DEFRAG);
+    if(!core || !core->mount || !core->unmount || !map || !map->map)return -1;
+    IfsFilesystemTargetV2 binding={.services=host};
+    if(host->open_target(host->context,f->path,0,NULL,0u,&binding.target)!=0)return -1;
+    IfsFsHostRuntimeV2 runtime={0};
+    IfsFsVolumeInfoV2 info={.structure_bytes=sizeof(info)};
+    void *session=NULL;
+    int result=-1;
+    if(ifs_filesystem_target_runtime_v2(&binding,0,0u,&runtime)!=0 ||
+       core->mount(&runtime,&session,&info)!=IFS_FS_OK || !session ||
+       !info.block_bytes || info.total_bytes%info.block_bytes ||
+       info.free_bytes>info.total_bytes)goto done;
+    const uint64_t unit=info.block_bytes;
+    GrowthGap gaps[LDTM_RAW_FILES]={{0}};
+    for(unsigned i=0u;i<LDTM_RAW_FILES;++i) {
+        char short_name[16],path[32];
+        ldtm_raw_name(i,short_name);
+        int length=snprintf(path,sizeof(path),"/%s",short_name);
+        const uint64_t size=ldtm_raw_file_bytes(f->spec,i);
+        const uint64_t blocks=size/unit+(size%unit!=0u);
+        const uint64_t reserve=blocks/10u+(blocks%10u!=0u);
+        IfsFsExtentV2 extent={0};
+        uint32_t n=0u;
+        if(!blocks || length<=0 || (size_t)length>=sizeof(path) ||
+           map->map(session,path,0u,&extent,1u,&n)!=IFS_FS_OK || n!=1u ||
+           extent.flags || extent.reserved || extent.logical_offset ||
+           extent.length!=size ||
+           extent.physical_offset>runtime.volume_bytes ||
+           blocks>UINT64_MAX/unit || reserve>UINT64_MAX/unit ||
+           blocks*unit>runtime.volume_bytes-extent.physical_offset)
+            goto done;
+        const uint64_t start=extent.physical_offset+blocks*unit;
+        if(reserve*unit>runtime.volume_bytes-start)goto done;
+        gaps[i]=(GrowthGap){start,start+reserve*unit};
+        if(map->map(session,path,1u,&extent,1u,&n)!=IFS_FS_END || n)goto done;
+        for(unsigned j=0u;j<i;++j)
+            if(gaps[i].start<gaps[j].end && gaps[j].start<gaps[i].end)goto done;
+    }
+    uint64_t page_start=0u,allocated=0u,base=0u,last=0u;
+    int have_base=0,ended=0;
+    for(unsigned page=0u;page<131072u;++page) {
+        IfsFsExtentV2 ext[128]={{0}};
+        uint32_t n=0u;
+        int rc=map->map(session,"/",page_start,ext,128u,&n);
+        if(rc==IFS_FS_END){if(n)goto done;ended=1;break;}
+        if(rc!=IFS_FS_OK || !n || n>128u || page_start>UINT64_MAX-n)goto done;
+        for(uint32_t i=0u;i<n;++i) {
+            const IfsFsExtentV2 *e=&ext[i];
+            if(e->flags || e->reserved || !e->length || e->length%unit ||
+               e->logical_offset%unit || e->physical_offset<e->logical_offset ||
+               e->physical_offset>runtime.volume_bytes ||
+               e->length>runtime.volume_bytes-e->physical_offset ||
+               e->logical_offset<last || e->logical_offset>info.total_bytes ||
+               e->length>info.total_bytes-e->logical_offset ||
+               e->length>info.total_bytes-allocated)goto done;
+            const uint64_t candidate=e->physical_offset-e->logical_offset;
+            if(have_base && candidate!=base)goto done;
+            base=candidate;have_base=1;
+            last=e->logical_offset+e->length;allocated+=e->length;
+            const uint64_t end=e->physical_offset+e->length;
+            for(unsigned j=0u;j<LDTM_RAW_FILES;++j)
+                if(gaps[j].start<end && e->physical_offset<gaps[j].end)goto done;
+        }
+        page_start+=n;
+    }
+    if(!ended || !have_base || allocated!=info.total_bytes-info.free_bytes ||
+       base>runtime.volume_bytes || info.total_bytes>runtime.volume_bytes-base)goto done;
+    for(unsigned i=0u;i<LDTM_RAW_FILES;++i)
+        if(gaps[i].start<base || gaps[i].end>base+info.total_bytes ||
+           (gaps[i].start-base)%unit)goto done;
+    result=0;
+done:
+    if(session && core->unmount(session)!=IFS_FS_OK)result=-1;
+    host->close_target(host->context,&binding.target);
+    return result;
+}
+static int verify_fat_growth(const LdtmFilesystemSpec *spec,const char *path)
+{
+    char module[64]={0};
+    GrowthFixture f={spec,path};
+    if(ifs_filesystem_module_find_readonly_v2(spec->key,module,sizeof(module))!=0)return -1;
+    return ifs_filesystem_module_call(spec->key,module,IFS_FS_COMMON_EXPORT_V2,
+                                     verify_fat_growth_call,&f);
+}
+
 /* Exercise each mutation against an independently prepared, fragmented
  * regular image using the production Common V2 host. A packed image is not
  * evidence that Growth Defrag can relocate a fragmented corpus. */
@@ -229,6 +330,13 @@ static int qualify_image_operation(const LdtmFilesystemSpec *spec,
     CHECK(require_fragmentation_state(spec,path,1,detail,sizeof(detail))==0);
     CHECK(run_production_defrag(spec,path,operation)==0);
     CHECK(require_fragmentation_state(spec,path,0,detail,sizeof(detail))==0);
+    if(!strcmp(operation,"growth-defrag") &&
+       (spec->creator==LDTM_CREATOR_FAT12 ||
+        spec->creator==LDTM_CREATOR_FAT16 ||
+        spec->creator==LDTM_CREATOR_FAT32)){
+        CHECK(verify_fat_growth(spec,path)==0);
+        puts("Independent FAT allocation map proved every 10% growth gap is free");
+    }
     printf("%s: %s verified all corpus bytes and zero fragmented large files\n",
            spec->key,operation);
     return 0;
