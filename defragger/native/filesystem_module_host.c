@@ -430,13 +430,14 @@ static int ifs_filesystem_module_find_selected_v2(
     if (!entries) { close(directory); return -1; }
     char selected[64] = "";
     unsigned int matches = 0u;
+    uint64_t selected_capabilities = 0u;
     struct dirent *item;
     while ((item = readdir(entries)) != NULL) {
         char discovered[16];
         uint64_t capabilities = 0u, groups = 0u;
         if (ifs_probe_module_v2(directory, item->d_name,
                                 discovered, &capabilities, &groups,
-                                require_defrag) != 0 ||
+                                0) != 0 ||
             strcmp(discovered, format) != 0)
             continue;
         if (++matches != 1u) break;
@@ -449,11 +450,15 @@ static int ifs_filesystem_module_find_selected_v2(
             break;
         }
         memcpy(selected, item->d_name, name_length + 1u);
+        selected_capabilities = capabilities;
     }
     closedir(entries);
     const size_t selected_length = strlen(selected);
-    if (matches != 1u || selected_length == 0u ||
-        selected_length + 1u > capacity)
+    /* Count every trusted provider, including CORE/VOLUME-only modules.
+     * A second owner of the same format is ambiguous even if it lacks
+     * DEFRAG. Filtering it out first would silently choose a writer. */
+    if (matches != 1u || (require_defrag && !selected_capabilities) ||
+        selected_length == 0u || selected_length + 1u > capacity)
         return -1;
     memcpy(filename, selected, selected_length + 1u);
     return 0;
@@ -853,6 +858,46 @@ static int v2_catalogue_json(FILE *out,const IfsFsModuleApiV2 *api,
     return fputs("}\n",out)==EOF || fflush(out)!=0?-1:0;
 }
 
+/* Transport the actual provider-owned extent pages. This is not a complete
+ * allocation map: root semantics are provider-defined, and the host never
+ * infers free space from unreported ranges. Output is published only after
+ * the terminal END page and a successful read-only unmount. */
+static int v2_path_extent_json(FILE *out,const IfsFsModuleApiV2 *api,
+    const IfsFsDefragOpsV2 *defrag,void *volume,const IfsFsHostRuntimeV2 *runtime,
+    const char *path)
+{
+    uint64_t first=0u;
+    if(!out || fprintf(out,"{\"filesystem\":\"%s\",\"abi\":2,\"extents\":[",
+        api->format_id)<0)return -1;
+    for(unsigned page=0u;page<131072u;++page) {
+        IfsFsExtentV2 extents[32]={{0}};
+        uint32_t count=0u;
+        if(runtime->cancelled && runtime->cancelled(runtime->context))return -1;
+        const int rc=defrag->map(volume,path,first,extents,32u,&count);
+        if(rc==IFS_FS_END) {
+            if(count)return -1;
+            return fprintf(out,"],\"extent_count\":%llu}\n",
+                (unsigned long long)first)<0 || fflush(out)!=0?-1:0;
+        }
+        if(rc!=IFS_FS_OK || !count || count>32u || first>UINT64_MAX-count)
+            return -1;
+        for(uint32_t i=0u;i<count;++i) {
+            const IfsFsExtentV2 *e=&extents[i];
+            if(e->reserved || !e->length ||
+               e->logical_offset>UINT64_MAX-e->length ||
+               e->physical_offset>runtime->volume_bytes ||
+               e->length>runtime->volume_bytes-e->physical_offset)
+                return -1;
+            if(fprintf(out,"%s[%llu,%llu,%llu,%u]",(first || i)?",":"",
+                (unsigned long long)e->logical_offset,
+                (unsigned long long)e->physical_offset,
+                (unsigned long long)e->length,(unsigned)e->flags)<0)return -1;
+        }
+        first+=count;
+    }
+    return -1;
+}
+
 static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user) {
     const Command *command=user;
     IfsFsModuleApiEntryV2 entry=NULL;
@@ -885,14 +930,15 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
     if(probing && command->argc!=3)return 2;
     const int reporting=!strcmp(operation,"volume-info");
     const int recovering=!strcmp(operation,"recover");
-    const int extent_json=!strcmp(operation,"map-extents");
-    const int catalogue=!strcmp(operation,"map-catalogue");
+    const int fat=!strcmp(api->format_id,"fat12") ||
+        !strcmp(api->format_id,"fat16") || !strcmp(api->format_id,"fat32");
+    const int analysis_request=!strcmp(operation,"analyse") || !strcmp(operation,"analyse-json");
+    const int extent_json=!strcmp(operation,"map-extents") || (analysis_request && fat);
+    const int catalogue=!strcmp(operation,"map-catalogue") || (analysis_request && !fat);
+    const int path_map=!strcmp(operation,"map");
     if(catalogue && command->argc!=3)return 2;
-    if(extent_json && (command->argc!=3 ||
-       (strcmp(api->format_id,"fat12") && strcmp(api->format_id,"fat16") &&
-        strcmp(api->format_id,"fat32"))))return 2;
-    const int analysing=probing || reporting || extent_json || catalogue || !strcmp(operation,"analyse") ||
-        !strcmp(operation,"analyse-json") || !strcmp(operation,"map");
+    if(extent_json && (command->argc!=3 || !fat))return 2;
+    const int analysing=probing || reporting || extent_json || catalogue || path_map;
     const int defragging=!strcmp(operation,"defrag");
     const int growing=!strcmp(operation,"growth-defrag");
     if(!recovering && !analysing && !defragging && !growing)return 2;
@@ -1020,26 +1066,11 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
         operation_ok=extent_output &&
             v2_fat_extent_json(extent_output,api,core,defrag,volume,&info,h.volume_bytes)==0;
         if(!operation_ok)fputs("Common V2 FAT extent catalogue failed\n",stderr);
-    } else if(analysing) {
-        /* Exhaust the provider's paginated extent map. A first page of 32
-         * is not evidence of a complete volume; prevent a false success. */
-        uint64_t first=0u;
-        for(unsigned page=0u;page<131072u;++page) {
-            IfsFsExtentV2 extents[32]={{0}};
-            uint32_t written=0u;
-            const int rc=defrag->map(volume,path,first,extents,32u,&written);
-            if(rc==IFS_FS_END) {
-                operation_ok=written==0u;
-                break;
-            }
-            if(rc!=IFS_FS_OK || written==0u || written>32u ||
-               first>UINT64_MAX-written) break;
-            /* A short successful page does not mean EOF. Only IFS_FS_END
-             * proves that the provider's extent cursor was exhausted.
-             * Continue from the exact logical extent index returned. */
-            first+=written;
-        }
-
+    } else if(path_map) {
+        extent_output=tmpfile();
+        operation_ok=extent_output &&
+            v2_path_extent_json(extent_output,api,defrag,volume,&h,path)==0;
+        if(!operation_ok)fputs("Common V2 path extent map failed\n",stderr);
     } else {
         void *plan=NULL;
         const uint32_t policy=growing?10u:0u;
@@ -1072,7 +1103,7 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
                api->format_id,reported.variant,reported.block_bytes,
                (unsigned long long)reported.total_bytes,
                (unsigned long long)reported.free_bytes);
-    } else if(!result && (extent_json || catalogue)) {
+    } else if(!result && (extent_json || catalogue || path_map)) {
         if(command->capture) {
             *command->capture=extent_output;
             extent_output=NULL;

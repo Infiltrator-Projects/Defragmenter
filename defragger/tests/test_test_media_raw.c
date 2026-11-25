@@ -216,6 +216,24 @@ static int verify_corruption(const LdtmFilesystemSpec *spec,const char *path)
     return 0;
 }
 
+/* Exercise each mutation against an independently prepared, fragmented
+ * regular image using the production Common V2 host. A packed image is not
+ * evidence that Growth Defrag can relocate a fragmented corpus. */
+static int qualify_image_operation(const LdtmFilesystemSpec *spec,
+                                   const char *path,const char *operation)
+{
+    struct stat st;
+    char detail[512]={0};
+    CHECK(lstat(path,&st)==0 && S_ISREG(st.st_mode) && st.st_nlink==1);
+    CHECK(spec->creator!=LDTM_CREATOR_SWAP && spec->creator!=LDTM_CREATOR_ZFS);
+    CHECK(require_fragmentation_state(spec,path,1,detail,sizeof(detail))==0);
+    CHECK(run_production_defrag(spec,path,operation)==0);
+    CHECK(require_fragmentation_state(spec,path,0,detail,sizeof(detail))==0);
+    printf("%s: %s verified all corpus bytes and zero fragmented large files\n",
+           spec->key,operation);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     if (argc == 1)
@@ -243,6 +261,10 @@ int main(int argc, char **argv)
         return 2;
     if (strcmp(argv[1], "verify-corruption") == 0)
         return verify_corruption(spec, argv[3]);
+    if (strcmp(argv[1], "qualify-defrag") == 0)
+        return qualify_image_operation(spec, argv[3], "defrag");
+    if (strcmp(argv[1], "qualify-growth") == 0)
+        return qualify_image_operation(spec, argv[3], "growth-defrag");
     char detail[512] = {0};
     int result;
     {

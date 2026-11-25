@@ -7,15 +7,12 @@ filesystem creation and complete verification remain in the shipped C code.
 """
 from __future__ import annotations
 
-import json
-import mmap
 import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
-import zlib
 
 BUILD = Path(sys.argv[1]).resolve()
 FIXTURE = BUILD / "defragmenter-test-media-raw-test"
@@ -40,50 +37,6 @@ def run(*args: object, fails: bool = False,
     if (result.returncode != 0) != fails:
         raise AssertionError(f"{args}\n{result.stdout}\n{result.stderr}")
     return result
-
-
-def mapping(image: Path, fs: str) -> dict:
-    # Force the independently built EXT metadata host for isolated module tests.
-    environment = dict(os.environ)
-    if environment.get("IFS_TEST_MODULE_PARENT"):
-        metadata_worker = BUILD / "defragmenter-ext-metadata-test-worker"
-        if not metadata_worker.is_file() or not os.access(metadata_worker, os.X_OK):
-            raise AssertionError(f"missing trusted EXT metadata test worker: {metadata_worker}")
-        environment["DEFRAGMENTER_EXT_METADATA_WORKER"] = str(metadata_worker)
-    return json.loads(run(BUILD / "defragmenter-mapper", image,
-                          "--fstype", fs, "--cells", 8, env=environment).stdout)
-
-
-def opaque_marker(image: Path) -> bytes:
-    # Creation starts from a zero-filled sparse image. Incompressible pages
-    # identify opaque test payload without importing a filesystem layout or
-    # manufacturing a second expected-data implementation in this test.
-    with image.open("rb") as stream:
-        while chunk := stream.read(1024 * 1024):
-            for start in range(0, len(chunk), 65536):
-                page = chunk[start:start + 65536]
-                if len(page) == 65536 and len(zlib.compress(page)) > 65500:
-                    return page
-    raise AssertionError("no opaque payload page in newly created fixture")
-
-
-def reject_corruption(image: Path, fs: str, marker: bytes) -> None:
-    # Relocation can leave stale source copies. Damage every occurrence so
-    # that the test necessarily reaches the live file, then restore exactly.
-    with image.open("r+b") as stream, mmap.mmap(stream.fileno(), 0) as data:
-        positions = []
-        at = data.find(marker)
-        while at >= 0:
-            positions.append(at + 37)
-            at = data.find(marker, at + len(marker))
-        assert positions, fs
-        for at in positions:
-            data[at] ^= 0x40
-        data.flush()
-        run(FIXTURE, "verify", fs, image, fails=True)
-        for at in positions:
-            data[at] ^= 0x40
-        data.flush()
 
 
 def reject_unavailable_fat(fs: str, parent: Path) -> None:
@@ -125,52 +78,19 @@ def qualify(fs: str, parent: Path) -> None:
     with tempfile.TemporaryDirectory(prefix=f"{fs}-", dir=parent) as temporary:
         work = Path(temporary)
         image = work / "fixture.img"
-        # Every filesystem image, including UFS, must be created through
-        # its independent Common V2 module. The former UFS source-tree
-        # generator and host-specific mkfs route were not provider APIs.
-        run(FIXTURE, "create", fs, image)
-        run(FIXTURE, "verify", fs, image)
-        before = mapping(image, fs)
-        accuracy = "exact-single-device" if fs == "btrfs" else "exact"
-        assert before["map_accuracy"] == accuracy, before
-        assert before.get("unknown_bytes", 0) == 0, before
-        if fs == "swap":
-            print("swap: native header creation and exact page-map verification passed", flush=True)
-            return
-        marker = opaque_marker(image)
-        assert before["fragmented_files"] >= 8, before
-        if fs == "zfs":
-            reject_corruption(image, fs, marker)
-            print("zfs: native creation, exact analysis, every payload byte and corruption rejection passed", flush=True)
-            return  # ZFS mutation is not yet qualified; the fixture verifies analysis only.
-        assert before["defrag_qualified"] and before["growth_qualified"], before
-        # The CI workspace contains both production-only and test-only
-        # loaders. Select the exact same trusted SO code with the explicitly
-        # isolated module root, never fall back to a production loader.
-        if fs.startswith("fat"):
-            variable, default = "DEFRAGMENTER_FAT_WORKER", "defragmenter-fat-worker"
-        elif fs.startswith("ext"):
-            variable, default = "DEFRAGMENTER_EXT_WORKER", "defragmenter-ext-worker"
-        elif fs == "hfs":
-            variable, default = "DEFRAGMENTER_HFS_WORKER", "hfs_analyser"
-        else:
-            variable, default = f"DEFRAGMENTER_{fs.upper()}_WORKER", f"defragmenter-{fs}-worker"
-        worker = Path(os.environ.get(variable, BUILD / default))
-        assert worker.is_file() and os.access(worker, os.X_OK), worker
-        for operation in ("defrag", "growth-defrag"):
-            journal = work / f"{operation}.journal"
-            # These full-corpus writes retain the production durability barriers.
-            # Allow slower runner storage fifteen minutes per operation while
-            # keeping creation, analysis and verification on the shorter budget.
-            run(worker, operation, image, "--write", "--confirm", image,
-                "--journal", journal, timeout=900)
-            assert not journal.exists(), (fs, operation)
-            run(FIXTURE, "verify", fs, image)
-            after = mapping(image, fs)
-            assert after["fragmented_files"] == 0, after
-            assert after["fragmented_directories"] == 0, after
-        reject_corruption(image, fs, marker)
-        print(f"{fs}: native creation, both relocation modes, every payload byte and corruption rejection passed", flush=True)
+        # The production C host is the sole filesystem authority. Require
+        # complete extent and payload evidence, never an obsolete worker JSON
+        # schema or an exact map fabricated from an incomplete catalogue.
+        run(FIXTURE, "qualify-create", fs, image, timeout=900)
+        run(FIXTURE, "verify", fs, image, timeout=900)
+        if fs != "swap":
+            run(FIXTURE, "verify-corruption", fs, image, timeout=900)
+        if fs not in ("swap", "zfs"):
+            run(FIXTURE, "qualify-defrag", fs, image, timeout=900)
+            growth = work / "growth.img"
+            run(FIXTURE, "qualify-create", fs, growth, timeout=900)
+            run(FIXTURE, "qualify-growth", fs, growth, timeout=900)
+        print(f"{fs}: Common V2 corpus and applicable mutation qualification passed", flush=True)
 
 
 def main() -> None:

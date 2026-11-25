@@ -147,12 +147,18 @@ jobs:
           if [ "$FORMAT" = ufs2 ]; then FORMAT=ufs; fi
           work=$(mktemp -d)
           trap 'rm -rf "$work"' EXIT
-          export DEFRAGMENTER_MAPPER="$PWD/defragger/build-media/defragmenter-mapper"
-          defragger/build-media/defragmenter-test-media-raw-test preflight "$FORMAT"
-          defragger/build-media/defragmenter-test-media-raw-test preflight-corpus "$FORMAT"
-          defragger/build-media/defragmenter-test-media-raw-test qualify-create "$FORMAT" "$work/media.img"
-          defragger/build-media/defragmenter-test-media-raw-test verify "$FORMAT" "$work/media.img"
+          fixture=defragger/build-media/defragmenter-test-media-raw-test
+          "$fixture" preflight "$FORMAT"
+          "$fixture" preflight-corpus "$FORMAT"
+          "$fixture" qualify-create "$FORMAT" "$work/media.img"
+          "$fixture" verify "$FORMAT" "$work/media.img"
           if [ "$FORMAT" != swap ]; then
-            defragger/build-media/defragmenter-test-media-raw-test verify-corruption "$FORMAT" "$work/media.img"
+            "$fixture" verify-corruption "$FORMAT" "$work/media.img"
           fi
           echo "REAL_COMMON_V2_TEST_MEDIA_PASS $FORMAT"
+          if [ "$FORMAT" != swap ] && [ "$FORMAT" != zfs ]; then
+            "$fixture" qualify-defrag "$FORMAT" "$work/media.img"
+            "$fixture" qualify-create "$FORMAT" "$work/growth.img"
+            "$fixture" qualify-growth "$FORMAT" "$work/growth.img"
+            echo "REAL_COMMON_V2_BOTH_MUTATIONS_PASS $FORMAT"
+          fi

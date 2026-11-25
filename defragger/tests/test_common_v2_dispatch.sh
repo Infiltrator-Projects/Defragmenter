@@ -66,9 +66,16 @@ grep -Fq 'durably synced' "$root/output.txt"
 grep -Fq '"abi":2' "$root/catalogue.json"
 grep -Fq '"file_extents":[[64,68,0]]' "$root/catalogue.json"
 grep -Fq '"regular_files":1' "$root/catalogue.json"
-# Read-only V2 mapping must consume all 33 extents in two pages.
+# Both public analysis entry points must emit real V2 JSON, not a legacy
+# status string. The path map must retain all 33 extents across two pages.
+"$engine" analyse-json "$device" --filesystem testv2 > "$root/analysis.json"
+cmp "$root/catalogue.json" "$root/analysis.json"
 "$engine" map "$device" --filesystem testv2 > "$root/output.txt"
-grep -Fq 'durably synced' "$root/output.txt"
+grep -Fq '"extent_count":33' "$root/output.txt"
+grep -Fq '[128,192,4,0]' "$root/output.txt"
+"$engine" map "$device" --filesystem testv2 --path=/FILE > "$root/output.txt"
+grep -Fq '"extents":[[0,64,4,0]]' "$root/output.txt"
+grep -Fq '"extent_count":1' "$root/output.txt"
 after=$(sha256sum "$device" | cut -d' ' -f1)
 test "$before" = "$after"
 if "$engine" defrag "$device" --filesystem testv2 --path= \
@@ -96,7 +103,7 @@ grep -Fq '"format_id":"testv2nr"' "$root/list.json"
   --write --confirm "$device" > "$root/output.txt"
 grep -Fq 'durably synced' "$root/output.txt"
 "$engine" map "$device" --filesystem testv2nr > "$root/output.txt"
-grep -Fq 'durably synced' "$root/output.txt"
+grep -Fq '"extent_count":33' "$root/output.txt"
 before_no_recover=$(sha256sum "$device" | cut -d' ' -f1)
 if "$engine" recover "$device" --filesystem testv2nr \
    --write --confirm "$device" > /dev/null 2>&1; then
