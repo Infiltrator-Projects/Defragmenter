@@ -4,6 +4,7 @@
 #include "runtime.hpp"
 extern "C" {
 #include "ld_stop.h"
+#include "filesystem_module_host.h"
 }
 
 extern "C" {
@@ -45,6 +46,20 @@ bool parse_cell_count(std::string_view text, std::size_t& cells) {
     return true;
 }
 
+std::uint32_t provider_capabilities(const defragger::BackendInfo& backend,
+                                    const std::string& format) {
+    uint64_t flags=0;
+    if(ifs_filesystem_module_capabilities_v2(format.c_str(),&flags)!=0)
+        throw std::runtime_error("No unique installed Common V2 descriptor");
+    std::uint32_t caps=0;
+    if(flags&IFS_FS_DEFRAG_MAP)caps|=defragger::CAP_ANALYSE|defragger::CAP_MAP;
+    const uint64_t write=IFS_FS_DEFRAG_PLAN|IFS_FS_DEFRAG_EXECUTE|IFS_FS_DEFRAG_VERIFY;
+    if((flags&write)==write)caps|=defragger::CAP_DEFRAG|defragger::CAP_GROWTH_DEFRAG;
+    if(flags&IFS_FS_DEFRAG_RECOVER)caps|=defragger::CAP_RECOVER;
+    // Application policy can further restrict a provider, never extend it.
+    return caps & backend.capabilities;
+}
+
 defragger::Json probe_result(
     const defragger::BackendInfo& backend,
     std::string_view identified_filesystem) {
@@ -61,9 +76,18 @@ defragger::Json probe_result(
     Json::Object out;
     out["filesystem"] = Json(std::string(identified_filesystem));
     out["backend_id"] = Json(backend.id);
-    out["capabilities"] = Json::unsigned_integer(backend.capabilities);
-    out["map_accuracy"] = Json(backend.map_accuracy);
-    out["operations"] = std::move(operations);
+    const auto caps=provider_capabilities(backend,std::string(identified_filesystem));
+    out["capabilities"] = Json::unsigned_integer(caps);
+    out["map_accuracy"] = Json("unverified");
+    Json::Array supported;
+    for(const auto& item:operations.array()) {
+        const auto name=item.at("name").string_or();
+        if((name=="defrag" && (caps&defragger::CAP_DEFRAG)) ||
+           (name=="growth-defrag" && (caps&defragger::CAP_GROWTH_DEFRAG)) ||
+           (name=="recover" && (caps&defragger::CAP_RECOVER)))
+            supported.push_back(item);
+    }
+    out["operations"] = Json(std::move(supported));
     return Json(std::move(out));
 }
 
@@ -180,7 +204,8 @@ int main(int argc, char** argv) {
         }
         // SWAP.so provides Common V2 probing and formatting, but no
         // allocation map or DEFRAG group. Never advertise a fabricated map.
-        if ((backend->capabilities & defragger::CAP_MAP) == 0U) {
+        const auto caps=provider_capabilities(*backend,identified_filesystem);
+        if ((caps & defragger::CAP_MAP) == 0U) {
             std::fputs("Defragmenter mapper: allocation mapping is unavailable for this filesystem\n", stderr);
             return 2;
         }
@@ -189,7 +214,7 @@ int main(int argc, char** argv) {
         if (!result.is_object())
             throw std::runtime_error("allocation mapper produced non-object result");
         result.object()["capabilities"] =
-            defragger::Json::unsigned_integer(backend->capabilities);
+            defragger::Json::unsigned_integer(caps);
         result.object()["backend_id"] = defragger::Json(backend->id);
         std::puts(result.dump().c_str());
         return 0;

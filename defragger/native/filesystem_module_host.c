@@ -414,7 +414,8 @@ int ifs_filesystem_module_list_v2(void) {
  * filesystem registry. Duplicate providers fail closed. The dispatcher then
  * loads the returned trusted SO again and revalidates its ABI and identity. */
 static int ifs_filesystem_module_find_selected_v2(
-    const char *format, char *filename, size_t capacity, int require_defrag) {
+    const char *format, char *filename, size_t capacity, int require_defrag,
+    uint64_t *actual_capabilities) {
     if (!format || !filename || capacity == 0u) return -1;
     if(!ifs_fs_format_id_valid(format))return -1;
     int directory = ifs_open_module_directory();
@@ -455,6 +456,7 @@ static int ifs_filesystem_module_find_selected_v2(
         selected_length == 0u || selected_length + 1u > capacity)
         return -1;
     memcpy(filename, selected, selected_length + 1u);
+    if(actual_capabilities)*actual_capabilities=selected_capabilities;
     return 0;
 }
 /* Mutation operations demand a real DEFRAG group. Read-only volume queries
@@ -463,13 +465,24 @@ int ifs_filesystem_module_find_v2(const char *format, char *filename,
                                   size_t capacity)
 {
     return ifs_filesystem_module_find_selected_v2(
-        format, filename, capacity, 1);
+        format, filename, capacity, 1,NULL);
 }
 int ifs_filesystem_module_find_readonly_v2(const char *format, char *filename,
                                            size_t capacity)
 {
     return ifs_filesystem_module_find_selected_v2(
-        format, filename, capacity, 0);
+        format, filename, capacity, 0,NULL);
+}
+
+/* Capabilities are obtained from the same unique, authenticated provider
+ * descriptor that the operation engine uses; registry hints are not proof. */
+int ifs_filesystem_module_capabilities_v2(const char *format,uint64_t *capabilities)
+{
+    char filename[64];
+    if(!capabilities)return -1;
+    *capabilities=0u;
+    return ifs_filesystem_module_find_selected_v2(
+        format,filename,sizeof(filename),0,capabilities);
 }
 
 /* Strict Common V2 provider execution. No format-specific worker, private

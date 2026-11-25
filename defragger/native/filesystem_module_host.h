@@ -26,6 +26,8 @@ int ifs_filesystem_module_capture_map_v2(const char *format,const char *target,
 int ifs_filesystem_module_list_v2(void);
 /* Resolve a trusted installed SO by its exported format_id, not filename. */
 int ifs_filesystem_module_find_v2(const char *, char *, size_t);
+/* Obtain the actual DEFRAG capability mask of the unique provider. */
+int ifs_filesystem_module_capabilities_v2(const char *,uint64_t *);
 /* CORE + VOLUME readers are discoverable before DEFRAG is qualified. */
 int ifs_filesystem_module_find_readonly_v2(const char *, char *, size_t);
 /* Resolve exactly one format from a list using only Common V2 CORE.PROBE. */
