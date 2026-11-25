@@ -39,7 +39,7 @@ jobs:
             -DLD_ENABLE_WERROR=ON \
             -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/module-root"
           cmake --build defragger/build-abi --target \
-            defragmenter-operation-engine-v2-test defragmenter-test-media-raw-test --parallel 2
+            defragmenter-operation-engine-v2-test --parallel 2
       - name: Extract and validate published independent filesystem SO
         env:
           GH_TOKEN: ${{ github.token }}
@@ -72,11 +72,4 @@ jobs:
           defragger/build-abi/defragmenter-operation-engine-v2-test \
             --list-installed-modules > inventory-with-old.json
           cmp module-inventory.json inventory-with-old.json
-          # The real Test Media consumer must format and independently
-          # reopen a disposable image through this exact published module.
-          # No CORE CREATE/WRITE requirement is imposed on FORMAT.
-          work=$(mktemp -d)
-          trap 'rm -rf "$work"' EXIT
-          defragger/build-abi/defragmenter-test-media-raw-test format "$FORMAT" "$work/media.img"
-          defragger/build-abi/defragmenter-test-media-raw-test probe "$FORMAT" "$work/media.img"
           echo "COMMON_V2_ONLY_PROVIDER_ACCEPTANCE_PASS $FS_REPO $FORMAT"

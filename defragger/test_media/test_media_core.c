@@ -13,11 +13,10 @@
 #include <string.h>
 #include <unistd.h>
 
-/* Bounded geometry selects the public native formatter profile. Payload
- * targets remain a separate workload: a format-only provider must never
- * be asked to create a synthetic fragmentation corpus. */
 static const LdtmFilesystemSpec LDTM_SPECS[LDTM_SPEC_COUNT] = {
-    {"fat12", "LD_FAT12", 255U, 200U, LDTM_CREATOR_FAT12, "64 KiB clusters; native FAT12 workload."},
+    {"fat12", "LD_FAT12", 255U, 200U, LDTM_CREATOR_FAT12,
+     "First-party FAT12 fixture uses 64 KiB clusters below the 4085-cluster FAT16 threshold and "
+     "retains the full 200 MiB corpus plus boundary files."},
     {"fat16", "LD_FAT16", 2048U, 200U, LDTM_CREATOR_FAT16, ""},
     {"fat32", "LD_FAT32", 2048U, 200U, LDTM_CREATOR_FAT32, ""},
     {"exfat", "LD_EXFAT", 2048U, 200U, LDTM_CREATOR_EXFAT, ""},
@@ -25,22 +24,35 @@ static const LdtmFilesystemSpec LDTM_SPECS[LDTM_SPEC_COUNT] = {
     {"ext2", "LD_EXT2", 2048U, 200U, LDTM_CREATOR_EXT2, ""},
     {"ext3", "LD_EXT3", 2048U, 200U, LDTM_CREATOR_EXT3, ""},
     {"ext4", "LD_EXT4", 2048U, 200U, LDTM_CREATOR_EXT4, ""},
-    {"xfs", "LD_XFS", 2048U, 200U, LDTM_CREATOR_XFS, "Native v5 profile requires a power-of-two capacity."},
+    {"xfs", "LD_XFS", 2048U, 200U, LDTM_CREATOR_XFS, ""},
     {"btrfs", "LD_BTRFS", 2048U, 200U, LDTM_CREATOR_BTRFS, ""},
-    {"ofs", "LD_OFS", 2048U, 200U, LDTM_CREATOR_AFFS, "Native Amiga DOS0."},
-    {"ffs", "LD_FFS", 2048U, 200U, LDTM_CREATOR_AFFS, "Native Amiga DOS1."},
-    {"sfs", "LD_SFS", 2048U, 200U, LDTM_CREATOR_AFFS, "Native SFS0 v3."},
-    {"sfs2", "LD_SFS2", 2048U, 200U, LDTM_CREATOR_AFFS, "Independent SFS2 provider."},
-    {"pfs3", "LD_PFS3", 2048U, 200U, LDTM_CREATOR_PFS3, ""},
+    {"ofs", "LD_OFS", 2048U, 200U, LDTM_CREATOR_AFFS,
+     "Amiga Original File System DOS\\0; installed OFS driver uses the full 2 GiB qualification "
+     "cap."},
+    {"ffs", "LD_FFS", 2048U, 200U, LDTM_CREATOR_AFFS,
+     "Amiga Fast File System DOS\\1; first-party raw C creator uses the full 2 GiB qualification "
+     "cap."},
+    {"sfs", "LD_SFS", 2048U, 200U, LDTM_CREATOR_AFFS,
+     "Amiga Smart File System SFS0 v3; first-party raw C creator uses the standard 200 MiB "
+     "heterogeneous fragmented corpus."},
+    {"pfs3", "LD_PFS3", 2048U, 200U, LDTM_CREATOR_PFS3,
+     "Amiga Professional File System 3; first-party raw C creator uses the standard 200 MiB "
+     "heterogeneous fragmented corpus in the qualified small-disk subset."},
     {"hfs", "LD_HFS", 2048U, 200U, LDTM_CREATOR_HFS, ""},
     {"hfsplus", "LD_HFSPLUS", 2048U, 200U, LDTM_CREATOR_HFSPLUS, ""},
     {"minix", "LD_MINIX", 2048U, 200U, LDTM_CREATOR_MINIX, ""},
-    {"ufs1", "LD_UFS1", 128U, 0U, LDTM_CREATOR_UFS, "Initial native UFS1 formatter supports up to 128 MiB."},
-    {"ufs2", "LD_UFS2", 128U, 0U, LDTM_CREATOR_UFS, "Initial native UFS2 formatter supports up to 128 MiB."},
-    {"zfs", "LD_ZFS", 2048U, 200U, LDTM_CREATOR_ZFS, "Native legacy single-device pool."},
-    {"apfs", "LD_APFS", 256U, 0U, LDTM_CREATOR_APFS, "Initial unencrypted single-device formatter supports up to 256 MiB."},
-    {"swap", "LD_SWAP", 2048U, 0U, LDTM_CREATOR_SWAP, "Swap contains no files."}
-};
+    {"ufs", "LD_UFS", 2048U, 200U, LDTM_CREATOR_UFS,
+     "Built-in first-party bounded UFS2/FFS creator writes the qualification image directly and "
+     "requires exact allocation/fragmentation analysis before native mutation testing."},
+    {"zfs", "LD_ZFS", 2048U, 200U, LDTM_CREATOR_ZFS,
+     "First-party raw C creator writes a bounded legacy-version-28 single-disk ZFS fixture with "
+     "Fletcher-4 block checksums; the native exact analyser verifies allocation and fragmentation. "
+     "Analysis-only by design."},
+    {"apfs", "LD_APFS", 2048U, 200U, LDTM_CREATOR_APFS,
+     "Built-in first-party raw C creator manufactures a 2 GiB qualified bounded APFS "
+     "checkpoint/spaceman/flat-tree fixture with the standard 200 MiB heterogeneous fragmented "
+     "corpus."},
+    {"swap", "LD_SWAP", 2048U, 0U, LDTM_CREATOR_SWAP, "Swap contains no files."}};
 
 const LdtmFilesystemSpec *ldtm_specs(void) { return LDTM_SPECS; }
 size_t ldtm_spec_count(void) { return LDTM_SPEC_COUNT; }
@@ -48,8 +60,6 @@ size_t ldtm_spec_count(void) { return LDTM_SPEC_COUNT; }
 const LdtmFilesystemSpec *ldtm_find_spec(const char *key) {
     size_t index;
     if (key == NULL) return NULL;
-    /* Historical CLI spelling only; the actual provider and GPT label are UFS2. */
-    if (strcmp(key, "ufs") == 0) key = "ufs2";
     for (index = 0U; index < LDTM_SPEC_COUNT; ++index) {
         if (strcmp(LDTM_SPECS[index].key, key) == 0) return &LDTM_SPECS[index];
     }
@@ -251,12 +261,10 @@ int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
         (void)snprintf(detail,capacity,"Reserved: %s",spec->note);
         return 0;
     }
-    const int ready=ldtm_common_v2_format_available(spec);
+    const int ready=ldtm_common_v2_available(spec);
     (void)snprintf(detail,capacity,
-        ready ? (spec->payload_mib && ldtm_common_v2_available(spec) ?
-                    "%s: native FORMAT and writable corpus operations available." :
-                    "%s: native FORMAT available; file workload not available for this profile.") :
-                "%s lacks native Common V2 FORMAT/PROBE; operation refused.",
+        ready ? "%s has qualified Common V2 FORMAT/CORE operations." :
+                "%s lacks the required Common V2 FORMAT/CORE operations; operation refused.",
         spec->key);
     return ready;
 }
