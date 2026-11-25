@@ -612,6 +612,7 @@ typedef struct {
     void *volume;
     FILE *out;
     uint64_t unit, total, base, allocated, regular, fragmented, dirs, entries;
+    uint64_t fragmented_dirs;
     int have_base, comma;
 } V2FatMap;
 
@@ -632,7 +633,7 @@ static int v2_fat_root(V2FatMap *m,uint64_t capacity) {
         if(rc!=IFS_FS_OK || !n || n>128u || first>UINT64_MAX-n)return -1;
         for(uint32_t i=0u;i<n;++i) {
             const IfsFsExtentV2 *e=&ext[i];
-            if(!e->length || e->logical_offset%m->unit ||
+            if(e->flags || e->reserved || !e->length || e->logical_offset%m->unit ||
                e->length%m->unit || e->physical_offset<e->logical_offset ||
                e->physical_offset>capacity ||
                e->length>capacity-e->physical_offset)return -1;
@@ -665,7 +666,7 @@ static int v2_fat_file(V2FatMap *m,const char *path,uint64_t size) {
         if(rc!=IFS_FS_OK || !n || n>128u || first>UINT64_MAX-n)return -1;
         for(uint32_t i=0u;i<n;++i) {
             const IfsFsExtentV2 *e=&ext[i];
-            if(!m->have_base || e->physical_offset<m->base ||
+            if(e->flags || e->reserved || !m->have_base || e->physical_offset<m->base ||
                e->logical_offset!=logical || !e->length ||
                logical>size || e->length>size-logical ||
                (e->physical_offset-m->base)%m->unit ||
@@ -675,6 +676,46 @@ static int v2_fat_file(V2FatMap *m,const char *path,uint64_t size) {
             uint64_t count=e->length/m->unit+(e->length%m->unit!=0u);
             if(start>=m->total || count>m->total-start)return -1;
             /* Red cells represent only displaced extents, not the first run. */
+            if(logical && e->physical_offset!=previous_end) {
+                fragmented=1;
+                if(v2_fat_range(m,start,start+count))return -1;
+            }
+            previous_end=e->physical_offset+e->length;
+            logical+=e->length;
+        }
+        first+=n;
+    }
+    return -1;
+}
+/* Directory allocation has no portable size field in FAT STAT.
+ * Only the provider's complete non-root MAP supplies authoritative
+ * bounds. Count real discontinuities; never substitute a zero count
+ * when a directory cannot be mapped. */
+static int v2_fat_directory_extents(V2FatMap *m,const char *path) {
+    uint64_t first=0u,logical=0u,previous_end=0u;
+    int fragmented=0;
+    for(unsigned page=0u;page<131072u;++page) {
+        IfsFsExtentV2 ext[128]={{0}};
+        uint32_t n=0u;
+        int rc=m->defrag->map(m->volume,path,first,ext,128u,&n);
+        if(rc==IFS_FS_END) {
+            if(n || !logical)return -1;
+            if(fragmented)++m->fragmented_dirs;
+            return 0;
+        }
+        if(rc!=IFS_FS_OK || !n || n>128u || first>UINT64_MAX-n)return -1;
+        for(uint32_t i=0u;i<n;++i) {
+            const IfsFsExtentV2 *e=&ext[i];
+            if(e->flags || e->reserved || !m->have_base ||
+               e->physical_offset<m->base || e->logical_offset!=logical ||
+               !e->length || e->length%m->unit ||
+               (e->physical_offset-m->base)%m->unit ||
+               e->physical_offset>UINT64_MAX-e->length ||
+               logical>UINT64_MAX-e->length)return -1;
+            const uint64_t start=(e->physical_offset-m->base)/m->unit;
+            const uint64_t count=e->length/m->unit;
+            if(start>=m->total || count>m->total-start ||
+               logical/m->unit>m->total-count)return -1;
             if(logical && e->physical_offset!=previous_end) {
                 fragmented=1;
                 if(v2_fat_range(m,start,start+count))return -1;
@@ -704,7 +745,8 @@ static int v2_fat_directory(V2FatMap *m,const char *path,unsigned depth) {
         if(len<=0 || (size_t)len>=sizeof(child))return -1;
         if(e.type==IFS_FS_ENTRY_DIRECTORY) {
             ++m->dirs;
-            if(v2_fat_directory(m,child,depth+1u))return -1;
+            if(v2_fat_directory_extents(m,child) ||
+               v2_fat_directory(m,child,depth+1u))return -1;
         } else if(e.type==IFS_FS_ENTRY_FILE) {
             if(v2_fat_file(m,child,e.size_bytes))return -1;
         } else return -1;
@@ -735,20 +777,19 @@ static int v2_fat_extent_json(FILE *out,const IfsFsModuleApiV2 *api,
     m.comma=0;
     if(v2_fat_directory(&m,"/",0u))return -1;
     if(fprintf(out,"],\"regular_files\":%llu,\"fragmented_files\":%llu,"
-       "\"directories\":%llu,\"directory_fragmentation_available\":%s,"
+       "\"directories\":%llu,\"directory_fragmentation_available\":true,"
        "\"physical_geometry_available\":%s,\"data_start_bytes\":%llu,"
        "\"device_bytes\":%llu,\"defrag_qualified\":%s,\"growth_qualified\":%s",
        (unsigned long long)m.regular,(unsigned long long)m.fragmented,
-       (unsigned long long)m.dirs,m.dirs?"false":"true",
+       (unsigned long long)m.dirs,
        m.have_base?"true":"false",(unsigned long long)m.base,
        (unsigned long long)capacity,
        v2_readonly_plan(defrag,volume,0u)?"true":"false",
        v2_readonly_plan(defrag,volume,10u)?"true":"false")<0)return -1;
     if(fprintf(out,",\"recovery_qualified\":%s",
         (defrag->header.capabilities&IFS_FS_DEFRAG_RECOVER)?"true":"false")<0)return -1;
-    /* The current FAT DEFRAG contract maps regular files, not directories.
-     * Do not publish a fabricated zero for a volume containing subdirectories. */
-    if(!m.dirs && fputs(",\"fragmented_directories\":0",out)==EOF)return -1;
+    if(fprintf(out,",\"fragmented_directories\":%llu",
+        (unsigned long long)m.fragmented_dirs)<0)return -1;
     return fputs("}\n",out)==EOF || fflush(out)!=0?-1:0;
 }
 

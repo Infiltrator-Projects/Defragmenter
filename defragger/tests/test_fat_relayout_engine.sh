@@ -54,19 +54,34 @@ for bits in 12 16 32; do
         .cell_count == 128' "$WORK/fat$bits-detail.json" >/dev/null ||
         fail "FAT$bits map totals changed with display resolution"
 
-    # The old V1 engine is prohibited. A V2 reader with MAP only must reject
-    # write-side PLAN/EXECUTE/VERIFY/RECOVER instead of claiming it worked.
+    # Analyse and unconfirmed writes must never modify the source image.
     for operation in defrag growth-defrag recover; do
-        if "$FAT_WORKER" "$operation" "$image" --write --confirm "$image" \
-                >"$WORK/fat$bits-$operation.log" 2>&1; then
-            fail "FAT$bits advertised an unqualified Common V2 $operation"
+        if "$FAT_WORKER" "$operation" "$image" \
+                >"$WORK/fat$bits-$operation-readonly.log" 2>&1; then
+            fail "FAT$bits accepted an unconfirmed mutation: $operation"
         fi
     done
     after=$(sha256sum "$image" | cut -d' ' -f1)
     [[ "$before" == "$after" ]] ||
         fail "FAT$bits Common V2 inspection or rejection modified media"
     "$FIXTURE" verify "fat$bits" "$image" || fail "FAT$bits provider payload changed"
-    echo "FAT$bits Common V2 VOLUME+MAP and mutation rejection passed"
+
+    # Require genuine native relocation, not the historical MAP-only
+    # rejection. Ordinary and growth operations start from independent
+    # fragmented corpora; each must preserve all payloads and eliminate
+    # actual displaced extents. The provider's VERIFY checks growth gaps.
+    "$FIXTURE" qualify-defrag "fat$bits" "$image" ||
+        fail "FAT$bits native defrag failed"
+    growth="$WORK/fat$bits-growth.img"
+    "$FIXTURE" qualify-create "fat$bits" "$growth" ||
+        fail "FAT$bits independent growth corpus failed"
+    "$FIXTURE" qualify-growth "fat$bits" "$growth" ||
+        fail "FAT$bits native growth defrag failed"
+    "$FAT_WORKER" recover "$growth" --write --confirm "$growth" ||
+        fail "FAT$bits native recovery refused a clean checkpoint"
+    "$FIXTURE" verify "fat$bits" "$growth" ||
+        fail "FAT$bits recovery changed payloads"
+    echo "FAT$bits Common V2 VOLUME+MAP, defrag, growth and clean recovery passed"
 done
 
 echo 'FAT12/16/32 STRICT COMMON V2 PROVIDER INTEGRATION PASS'
