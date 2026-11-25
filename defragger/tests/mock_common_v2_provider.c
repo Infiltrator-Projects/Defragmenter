@@ -38,6 +38,18 @@ static int unmount(void *m) {
     v->host->release(v->host->context,v);
     return IFS_FS_OK;
 }
+static int stat_path(void *m,const char *path,IfsFsEntryV2 *e) {
+    if(!m || !path || !e || e->structure_bytes<sizeof(*e))return IFS_FS_INVALID;
+    if(strcmp(path,"/") && strcmp(path,"/FILE"))return IFS_FS_NOT_FOUND;
+    const char *name=!strcmp(path,"/")?"/":"FILE";
+    const size_t n=strlen(name);
+    if(!e->name || e->name_capacity<=n)return IFS_FS_INVALID;
+    memcpy(e->name,name,n+1u);
+    e->name_bytes=(uint32_t)n;
+    e->type=!strcmp(path,"/")?IFS_FS_ENTRY_DIRECTORY:IFS_FS_ENTRY_FILE;
+    e->size_bytes=e->type==IFS_FS_ENTRY_FILE?4u:0u;
+    return IFS_FS_OK;
+}
 static int directory_entry(void *m,const char *path,uint32_t index,IfsFsEntryV2 *e) {
     if(!m || !path || strcmp(path,"/") || !e || !e->name ||
        e->name_capacity<5u)return IFS_FS_INVALID;
@@ -117,8 +129,8 @@ static void release_plan(void *m,void *plan) {
 }
 static const IfsFsCoreOpsV2 core={
     .header={IFS_FS_GROUP_ABI_V2,sizeof(IfsFsCoreOpsV2),
-             IFS_FS_GROUP_CORE,0u,IFS_FS_CORE_PROBE|IFS_FS_CORE_MOUNT|IFS_FS_CORE_LIST},
-    .probe=probe,.mount=mount,.unmount=unmount,.directory_entry=directory_entry
+             IFS_FS_GROUP_CORE,0u,IFS_FS_CORE_PROBE|IFS_FS_CORE_MOUNT|IFS_FS_CORE_STAT|IFS_FS_CORE_LIST},
+    .probe=probe,.mount=mount,.unmount=unmount,.stat=stat_path,.directory_entry=directory_entry
 };
 static const IfsFsDefragOpsV2 defrag={
     .header={IFS_FS_GROUP_ABI_V2,sizeof(IfsFsDefragOpsV2),
