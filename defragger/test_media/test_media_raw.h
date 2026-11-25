@@ -47,6 +47,8 @@ uint32_t ldtm_raw_crc32c(const void *data, size_t bytes);
 
 /* Common V2 is the only accepted Test Media filesystem interface. */
 int ldtm_common_v2_available(const LdtmFilesystemSpec *);
+int ldtm_common_v2_format_available(const LdtmFilesystemSpec *);
+int ldtm_common_v2_format_only(const LdtmFilesystemSpec *,const char *,bool);
 int ldtm_common_v2_fixture(const LdtmFilesystemSpec *, const char *, bool);
 int ldtm_raw_fat(const LdtmFilesystemSpec *, const char *, bool);
 int ldtm_fat_common_available(const LdtmFilesystemSpec *);

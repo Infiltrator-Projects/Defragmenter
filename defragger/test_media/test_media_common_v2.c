@@ -1,8 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
- * The Test Media corpus is created and inspected only through real Common V2
- * filesystem groups. A provider that does not advertise FORMAT, CREATE,
- * WRITE or READ does not qualify for this destructive workload. No private
- * formatter, raw metadata parser, historical bridge or ABI fallback exists.
+ * Native formatting and full file-corpus qualification are separate Common
+ * V2 contracts. A formatter-only provider may create and identify media,
+ * but is never credited with file creation, writing or defragmentation.
  */
 #include "test_media_raw.h"
 #include "filesystem_module_host.h"
@@ -16,6 +15,7 @@ typedef struct {
     const LdtmFilesystemSpec *spec;
     const char *path;
     int create;
+    int format_only;
     const IfsDefragHostV2 *services;
     IfsFilesystemTargetV2 binding;
 } MediaV2;
@@ -41,10 +41,11 @@ static const IfsFsModuleApiV2 *qualify(void *symbol,const MediaV2 *m)
     const IfsFsVolumeOpsV2 *volume=
         (const IfsFsVolumeOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_VOLUME);
     if(!core || !(core->header.capabilities & IFS_FS_CORE_PROBE) ||
-       !core->probe || !volume)return NULL;
-    if(m->create && (!(volume->header.capabilities & IFS_FS_VOLUME_FORMAT) ||
+       !core->probe)return NULL;
+    if(m->create && (!volume || !(volume->header.capabilities & IFS_FS_VOLUME_FORMAT) ||
                      !volume->format))return NULL;
-    if(is_swap(m->spec))return api;
+    if(m->format_only || is_swap(m->spec))return api;
+    if(!volume)return NULL;
     uint64_t required=IFS_FS_CORE_MOUNT|IFS_FS_CORE_STAT|
                       IFS_FS_CORE_LIST|IFS_FS_CORE_READ;
     if(m->create)required|=IFS_FS_CORE_CREATE|IFS_FS_CORE_WRITE;
@@ -74,6 +75,51 @@ int ldtm_common_v2_available(const LdtmFilesystemSpec *s)
 {
     MediaV2 m={.spec=s,.create=1};
     return module_call(&m,available)==0;
+}
+int ldtm_common_v2_format_available(const LdtmFilesystemSpec *s)
+{
+    MediaV2 m={.spec=s,.create=1,.format_only=1};
+    return module_call(&m,available)==0;
+}
+/* Provider-defined format parameters, not filesystem implementations.
+ * A zero variant is meaningful (Amiga DOS0), not a generic default. */
+static int format_parameters(const LdtmFilesystemSpec *s,uint32_t *variant,
+                             const char **label)
+{
+    *label=s->label;
+    switch(s->creator) {
+    case LDTM_CREATOR_FAT12: *variant=12u; *label=NULL; break;
+    case LDTM_CREATOR_FAT16: *variant=16u; *label=NULL; break;
+    case LDTM_CREATOR_FAT32: *variant=32u; *label=NULL; break;
+    case LDTM_CREATOR_EXFAT: *variant=64u; *label=NULL; break;
+    case LDTM_CREATOR_NTFS: *variant=1u; break;
+    case LDTM_CREATOR_EXT2: *variant=2u; break;
+    case LDTM_CREATOR_EXT3: *variant=3u; break;
+    case LDTM_CREATOR_EXT4: *variant=4u; break;
+    case LDTM_CREATOR_XFS: *variant=5u; break;
+    case LDTM_CREATOR_BTRFS: *variant=1u; break;
+    case LDTM_CREATOR_AFFS:
+        if(!strcmp(s->key,"ofs"))*variant=0u;
+        else if(!strcmp(s->key,"ffs"))*variant=1u;
+        else if(!strcmp(s->key,"sfs"))*variant=3u;
+        else if(!strcmp(s->key,"sfs2"))*variant=4096u;
+        else return -1;
+        break;
+    case LDTM_CREATOR_PFS3: *variant=1u; break;
+    case LDTM_CREATOR_HFS: *variant=1u; break;
+    case LDTM_CREATOR_HFSPLUS: *variant=4u; break;
+    case LDTM_CREATOR_MINIX: *variant=3u; *label=NULL; break;
+    case LDTM_CREATOR_UFS:
+        if(!strcmp(s->key,"ufs1"))*variant=1u;
+        else if(!strcmp(s->key,"ufs2"))*variant=3u;
+        else return -1;
+        break;
+    case LDTM_CREATOR_ZFS: *variant=1u; break;
+    case LDTM_CREATOR_APFS: *variant=1u; break;
+    case LDTM_CREATOR_SWAP: *variant=4096u; break;
+    default: return -1;
+    }
+    return 0;
 }
 static int make_path(unsigned number,char name[32])
 {
@@ -116,32 +162,28 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
                    runtime.volume_bytes-LDTM_MIB+at,empty,sizeof(empty))!=0)
                 goto done;
         }
-        /* Common V2 FORMAT variants and label support are provider-defined.
-         * These values select the provider's existing public contract; no
-         * filesystem data structures are interpreted here. */
         uint32_t variant=0u;
-        const char *label=m->spec->label;
-        switch(m->spec->creator) {
-        case LDTM_CREATOR_EXFAT: variant=64u; label=NULL; break;
-        case LDTM_CREATOR_NTFS: variant=1u; break;
-        case LDTM_CREATOR_SWAP: variant=4096u; break;
-        default: break;
-        }
+        const char *label=NULL;
+        if(format_parameters(m->spec,&variant,&label)!=0)goto done;
         const int rc=volume->format(&runtime,variant,label,0u);
         if(rc!=IFS_FS_OK) {
             fprintf(stderr,"%s Common V2 FORMAT failed (variant %u, error %d)\n",
                     provider(m->spec),(unsigned)variant,rc);
             goto done;
         }
-        if(variant) {
-            uint32_t detected=0u;
-            if(core->probe(&runtime,&detected)!=IFS_FS_OK || detected!=variant)
-                goto done;
+        if(runtime.flush(runtime.context)!=0)goto done;
+        uint32_t detected=0u;
+        if(core->probe(&runtime,&detected)!=IFS_FS_OK || detected!=variant) {
+            fprintf(stderr,"%s Common V2 post-format probe mismatch (%u != %u)\n",
+                    provider(m->spec),(unsigned)detected,(unsigned)variant);
+            goto done;
         }
     }
-    if(is_swap(m->spec)) {
-        uint32_t variant=0u;
-        result=core->probe(&runtime,&variant)==IFS_FS_OK?0:-1;
+    if(m->format_only || is_swap(m->spec)) {
+        uint32_t variant=0u,expected=0u;
+        const char *label=NULL;
+        if(format_parameters(m->spec,&expected,&label)==0 &&
+           core->probe(&runtime,&variant)==IFS_FS_OK && variant==expected)result=0;
         goto done;
     }
     if(core->mount(&runtime,&session,&info)!=IFS_FS_OK)goto done;
@@ -231,5 +273,12 @@ int ldtm_common_v2_fixture(const LdtmFilesystemSpec *s,
 {
     if(!s || !path)return -1;
     MediaV2 m={.spec=s,.path=path,.create=create?1:0};
+    return module_call(&m,execute);
+}
+
+int ldtm_common_v2_format_only(const LdtmFilesystemSpec *s,const char *path,bool create)
+{
+    if(!s || !path)return -1;
+    MediaV2 m={.spec=s,.path=path,.create=create?1:0,.format_only=1};
     return module_call(&m,execute);
 }

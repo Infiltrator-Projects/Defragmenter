@@ -63,13 +63,13 @@ static int contracts(void)
         CHECK(ldtm_matches_device_number(179U, 4U, selected, 3U));
         CHECK(!ldtm_matches_device_number(8U, 1U, selected, 3U));
     }
-    const char *headers = "schema\t3\ncorpus\t1\ndevice\t/dev/"
+    const char *headers = "schema\t4\ncorpus\t1\ndevice\t/dev/"
                           "qualification\nfingerprint\t0123456789abcdef0123456789abcdef0123456789ab"
                           "cdef0123456789abcdef\n";
     CHECK(parse_case(headers, "", -1, -1) == 0);
     CHECK(parse_case(headers, "", 3, -1) != 0);
     CHECK(parse_case(headers, "", -1, 4) != 0);
-    CHECK(parse_case(headers, "schema\t3\n", -1, -1) != 0);
+    CHECK(parse_case(headers, "schema\t4\n", -1, -1) != 0);
     CHECK(parse_case(headers, "file\tbtrfs\tmissing.bin\t0\t00\n", -1, -1) != 0);
     CHECK(parse_case(headers, "dircount\tbtrfs\t0\n", -1, -1) != 0);
     CHECK(parse_case(headers, "fs\tunknown\tpopulated\tbad\n", -1, -1) != 0);
@@ -77,11 +77,11 @@ static int contracts(void)
     CHECK(parse_case("schema\t2\nfingerprint\t0123456789abcdef0123456789abcdef0123456789abcdef01234"
                      "56789abcdef\n",
                      "", -1, -1) != 0);
-    CHECK(parse_case("schema\t3\ncorpus\t1\ndevice\t/dev/"
+    CHECK(parse_case("schema\t4\ncorpus\t1\ndevice\t/dev/"
                      "different\nfingerprint\t0123456789abcdef0123456789abcdef0123456789abcdef01234"
                      "56789abcdef\n",
                      "", -1, -1) != 0);
-    CHECK(parse_case("schema\t3\ncorpus\t1\ndevice\t/dev/"
+    CHECK(parse_case("schema\t4\ncorpus\t1\ndevice\t/dev/"
                      "qualification\nfingerprint\tzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
                      "zzzzzzzzzzzzzzz\n",
                      "", -1, -1) != 0);
@@ -107,17 +107,17 @@ static int contracts(void)
         CHECK(ldtm_raw_check_finish(&check) != 0);
         check.seen ^= UINT32_C(1) << file;
     }
-    for (size_t n = 0U; n < LDTM_SPEC_COUNT; ++n) {
-        const LdtmFilesystemSpec *s = &ldtm_specs()[n];
-        char detail[256];
-        CHECK(strcmp(ldtm_creator_display_name(s), "Built-in native") == 0 ||
-              strcmp(ldtm_creator_display_name(s), "Filesystem driver") == 0);
-        if (s->creator != LDTM_CREATOR_UFS) {
-            const int ready = ldtm_spec_creator_available(s, detail, sizeof(detail));
-            if (!ready) fprintf(stderr, "%s: %s\n", s->key, detail);
-            CHECK(ready == 1);
+    CHECK(ldtm_spec_count()==23u);
+    CHECK(ldtm_find_spec("ufs1")!=NULL && ldtm_find_spec("ufs2")!=NULL);
+    CHECK(ldtm_find_spec("sfs2")!=NULL);
+    CHECK(ldtm_find_spec("ufs1")->size_mib==128u);
+    CHECK(ldtm_find_spec("ufs2")->size_mib==128u);
+    CHECK(ldtm_find_spec("apfs")->size_mib==256u);
+    for(size_t n=0;n<ldtm_spec_count();++n)
+        for(size_t k=0;k<n;++k) {
+            CHECK(strcmp(ldtm_specs()[n].key,ldtm_specs()[k].key)!=0);
+            CHECK(strcmp(ldtm_specs()[n].label,ldtm_specs()[k].label)!=0);
         }
-    }
     puts("strict state and complete native corpus contracts passed");
     return 0;
 }
@@ -132,9 +132,18 @@ int main(int argc, char **argv)
         return 2;
     char detail[512] = {0};
     int result;
-    if (strcmp(argv[1], "verify") == 0 && spec->creator == LDTM_CREATOR_UFS)
-        result = verify_ufs2_raw_payload(argv[3], detail, sizeof(detail));
-    else {
+    if(strcmp(argv[1],"format")==0 || strcmp(argv[1],"probe")==0) {
+        const bool create=strcmp(argv[1],"format")==0;
+        if(create) {
+            const int fd=open(argv[3],O_CREAT|O_EXCL|O_NOFOLLOW|O_RDWR|O_CLOEXEC,0600);
+            CHECK(fd>=0);
+            CHECK(ftruncate(fd,(off_t)((uint64_t)spec->size_mib*LDTM_MIB))==0);
+            CHECK(close(fd)==0);
+        }
+        result=ldtm_common_v2_format_only(spec,argv[3],create);
+        (void)snprintf(detail,sizeof(detail),"%s native %s %s",spec->key,
+                       create?"FORMAT":"PROBE",result==0?"passed":"failed");
+    } else {
         const bool fresh = strcmp(argv[1], "create") == 0;
         const bool create = fresh || strcmp(argv[1], "recreate") == 0;
         if (!create && strcmp(argv[1], "verify") != 0)

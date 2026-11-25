@@ -645,19 +645,7 @@ static int production_fragment_counts(const LdtmFilesystemSpec *spec,
     return 0;
 }
 
-static int production_map_accepts(const LdtmFilesystemSpec *spec,
-                                  const char *partition,
-                                  char *detail, size_t detail_capacity) {
-    char *output = NULL;
-    if (production_map_output(spec, partition, &output,
-                              detail, detail_capacity) != 0)
-        return -1;
-    free(output);
-    (void)snprintf(
-        detail, detail_capacity,
-        "production mapper accepted the complete filesystem geometry");
-    return 0;
-}
+
 
 static int require_fragmentation_state(const LdtmFilesystemSpec *spec,
                                        const char *partition,
@@ -1288,213 +1276,34 @@ static int state_write_status(FILE *state, const LdtmFilesystemSpec *spec,
     return state_flush(state);
 }
 
-static int create_amiga_and_populate(const LdtmFilesystemSpec *spec, const char *partition,
-                                     FILE *state) {
-    const char *const wipe_argv[] = {"wipefs", "--all", "--force", partition, NULL};
-    const uint8_t dostype = strcmp(spec->key, "ofs") == 0 ? (uint8_t)0 : (uint8_t)1;
-    const LdtmFragmentProfile profile = ldtm_fragment_profile(spec);
-    char detail[512];
-    if (run_process(wipe_argv, NULL, 0) != 0) {
-        emit_status(spec->key, "format-failed", "could not clear old filesystem signatures");
-        (void)state_write_status(state, spec, "format-failed", "wipefs failed");
-        return 1;
-    }
-    printf("+ independent %s.so formatter/populator %s\n", spec->key, partition);
-    fflush(stdout);
-    int format_result = -1;
-    /* On a freshly created GPT the desktop may automount the old OFS
-     * signature between the preflight and the module's exclusive open.
-     * The only retryable error is EBUSY from opening the *unmodified*
-     * partition: never repeat a format after any write/flush failure.
-     * Unmount only this selected, already-confirmed test partition.
-     * Keep the module's O_EXCL, inode and mounted-device guards intact. */
-    for (unsigned attempt = 0U; attempt < 6U; ++attempt) {
-        if (ld_path_is_mounted(partition)) {
-            printf("Test Media: unmounting automounted %s before formatter exclusive open.\n",
-                   partition);
-            fflush(stdout);
-            if (unmount_descendants(partition) != 0 ||
-                ld_path_is_mounted(partition)) {
-                format_result = -EBUSY;
-                break;
-            }
-        }
-        format_result = ldtm_format_amiga_volume(partition, dostype, spec->label);
-        if (format_result != -EBUSY)
-            break;
-        printf("Test Media: %s was busy at exclusive open (%u/6); checking "
-               "the selected test partition before retry.\n",
-               partition, attempt + 1U);
-        fflush(stdout);
-        if (unmount_descendants(partition) != 0)
-            break;
-        if (attempt + 1U < 6U)
-            usleep(200000U);
-    }
-    if (format_result != 0) {
-        char failure[192];
-        (void)snprintf(failure, sizeof(failure),
-                       "OFS/Amiga formatter refused partition (status %d%s)",
-                       format_result,
-                       format_result == -EBUSY ? ": mounted, locked or busy" : "");
-        emit_status(spec->key, "format-failed", failure);
-        (void)state_write_status(state, spec, "format-failed", failure);
-        return 1;
-    }
-    if (ldtm_populate_amiga_volume(partition, spec->key, &profile) != 0) {
-        emit_status(spec->key, "formatted-unpopulated", "raw C Amiga fragmentation payload generation failed");
-        (void)state_write_status(state, spec, "formatted-unpopulated", "raw C payload generation failed");
-        return 1;
-    }
-    detail[0] = '\0';
-    if (ldtm_verify_amiga_payload(partition, spec->key, &profile, detail, sizeof(detail)) != 0) {
-        emit_status(spec->key, "formatted-unpopulated",
-                    detail[0] != '\0' ? detail : "raw C Amiga payload self-check failed");
-        (void)state_write_status(state, spec, "formatted-unpopulated", "raw C payload self-check failed");
-        return 1;
-    }
-    {
-        char analyser_detail[512];
-        if (require_fragmentation_state(
-                spec, partition, 1,
-                analyser_detail, sizeof(analyser_detail)) != 0) {
-            emit_status(spec->key, "qualification-failed",
-                        analyser_detail);
-            (void)state_write_status(
-                state, spec, "qualification-failed",
-                analyser_detail);
-            return 1;
-        }
-    }
-    if (state_write_status(
-            state, spec, "populated",
-            "raw C deterministic payload created; independent raw verifier and production analyser both prove fragmentation") != 0)
-        return -1;
-    emit_status(
-        spec->key, "populated",
-        "raw C deterministic payload created; independent raw verifier and production analyser both prove fragmentation");
-    return 0;
-}
-
-static int create_raw_and_populate(const LdtmFilesystemSpec *spec, const char *partition,
-                                   FILE *state)
+/* The whole-disk builder never depends on unrelated writable operations
+ * to format a slot. Preserve full corpus qualification where supported;
+ * format-only slots receive a separate status, never a mutation pass. */
+static int create_raw_and_populate(const LdtmFilesystemSpec *spec,const char *partition,FILE *state)
 {
-    char detail[512] = {0};
-    if (ldtm_raw_fixture(spec, partition, true, detail, sizeof(detail)) != 0 ||
-        ldtm_raw_fixture(spec, partition, false, detail, sizeof(detail)) != 0) {
-        emit_status(spec->key, "qualification-failed", detail);
-        return state_write_status(state, spec, "qualification-failed", detail) == 0 ? 1 : -1;
-    }
-    const int accepted =
-        spec->creator == LDTM_CREATOR_SWAP
-            ? production_map_accepts(spec, partition, detail, sizeof(detail))
-            : require_fragmentation_state(spec, partition, 1, detail, sizeof(detail));
-    if (accepted != 0) {
-        emit_status(spec->key, "qualification-failed", detail);
-        return state_write_status(state, spec, "qualification-failed", detail) == 0 ? 1 : -1;
-    }
-    const char *message =
-        spec->creator == LDTM_CREATOR_SWAP
-            ? "first-party swap header and native page map verified"
-            : "first-party raw corpus fully verified; production analyser proved fragmentation";
-    emit_status(spec->key, "populated", message);
-    return state_write_status(state, spec, "populated", message);
-}
-
-/* UFS2 uses the same qualified Common V2 source-owned media fixture
- * contract as every other filesystem. No raw/host makefs program, private
- * payload verifier, or UFS-specific metadata parser may substitute. */
-static int verify_ufs2_raw_payload(const char *path,
-                                   char *detail,size_t capacity)
-{
-    const LdtmFilesystemSpec *spec=ldtm_find_spec("ufs");
-    return ldtm_raw_fixture(spec,path,false,detail,capacity);
-}
-
-static int create_ufs_and_populate(const LdtmFilesystemSpec *spec,
-                                   const char *partition,
-                                   const char *work,FILE *state)
-{
-    (void)work;
-    return create_raw_and_populate(spec,partition,state);
-}
-
-static int create_apfs_and_populate(const LdtmFilesystemSpec *spec,
-                                    const char *partition,
-                                    FILE *state)
-{
-    const char *const wipe_argv[] = {
-        "wipefs", "--all", "--force", partition, NULL
-    };
-    char detail[512] = {0};
-    if (run_process(wipe_argv, NULL, 0) != 0) {
-        emit_status(spec->key, "format-failed",
-                    "could not clear old filesystem signatures");
-        (void)state_write_status(
-            state, spec, "format-failed", "wipefs failed");
-        return 1;
-    }
-    printf("+ built-in raw C APFS fixture creator %s\n", partition);
-    fflush(stdout);
-    if (ldtm_format_apfs_volume(partition) != 0) {
-        emit_status(spec->key, "format-failed",
-                    "built-in C APFS creator failed");
-        (void)state_write_status(
-            state, spec, "format-failed",
-            "built-in C APFS creator failed");
-        return 1;
-    }
-    if (ldtm_verify_apfs_payload(
-            partition, detail, sizeof(detail)) != 0) {
-        emit_status(
-            spec->key, "formatted-unpopulated",
-            detail[0] != '\0'
-                ? detail : "APFS fixture self-check failed");
-        (void)state_write_status(
-            state, spec, "formatted-unpopulated",
-            "APFS fixture self-check failed");
-        return 1;
-    }
-    {
-        char analyser_detail[512];
-        if (require_fragmentation_state(
-                spec, partition, 1,
-                analyser_detail, sizeof(analyser_detail)) != 0) {
-            emit_status(spec->key, "qualification-failed",
-                        analyser_detail);
-            (void)state_write_status(
-                state, spec, "qualification-failed",
-                analyser_detail);
-            return 1;
+    char detail[512]={0};
+    if(!spec->payload_mib || !ldtm_common_v2_available(spec)) {
+        if(ldtm_common_v2_format_only(spec,partition,true)!=0 ||
+           ldtm_common_v2_format_only(spec,partition,false)!=0) {
+            const char *message="Native Common V2 FORMAT/PROBE failed";
+            emit_status(spec->key,"format-failed",message);
+            return state_write_status(state,spec,"format-failed",message)==0?1:-1;
         }
+        const char *message=spec->creator==LDTM_CREATOR_SWAP ?
+            "Native swap format and independent reopen/probe passed; no files" :
+            "Native format and independent reopen/probe passed; file workload not qualified";
+        emit_status(spec->key,"formatted",message);
+        return state_write_status(state,spec,"formatted",message);
     }
-    if (state_write_status(
-            state, spec, "populated",
-            "first-party raw C capped APFS fixture created; independent payload verifier and production analyser prove fragmentation") != 0)
-        return -1;
-    emit_status(
-        spec->key, "populated",
-        "first-party raw C capped APFS fixture created; independent payload verifier and production analyser prove fragmentation");
-    return 0;
-}
-
-static int recursive_remove(const char *path) {
-    DIR *directory = opendir(path);
-    struct dirent *entry;
-    if (directory == NULL) return rmdir(path);
-    while ((entry = readdir(directory)) != NULL) {
-        char child[PATH_MAX];
-        struct stat st;
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
-        if (!infiltratr_path_join(child, sizeof(child), path, entry->d_name)) {
-            (void)closedir(directory);
-            return -1;
-        }
-        if (lstat(child, &st) != 0) continue;
-        if (S_ISDIR(st.st_mode)) (void)recursive_remove(child); else (void)unlink(child);
+    if(ldtm_raw_fixture(spec,partition,true,detail,sizeof(detail))!=0 ||
+       ldtm_raw_fixture(spec,partition,false,detail,sizeof(detail))!=0 ||
+       require_fragmentation_state(spec,partition,1,detail,sizeof(detail))!=0) {
+        emit_status(spec->key,"qualification-failed",detail);
+        return state_write_status(state,spec,"qualification-failed",detail)==0?1:-1;
     }
-    (void)closedir(directory);
-    return rmdir(path);
+    const char *message="Native Common V2 corpus byte-verified; analyser proved fragmentation";
+    emit_status(spec->key,"populated",message);
+    return state_write_status(state,spec,"populated",message);
 }
 
 int ldtm_worker_prepare(const char *device, const char *confirmed_device,
@@ -1504,8 +1313,6 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device,
     char current_fingerprint[LDTM_HASH_HEX];
     char safety[512];
     char script[8192];
-    char work_template[] = "/tmp/defragmenter-test-media.XXXXXX";
-    char *work;
     char state_path[PATH_MAX];
     LdtmPartitionMap map;
     FILE *state = NULL;
@@ -1591,8 +1398,6 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device,
               stderr);
         return 2;
     }
-    work = mkdtemp(work_template);
-    if (work == NULL) return 2;
     if (state_path_for_device(canonical, state_path, sizeof(state_path)) != 0)
         goto cleanup;
     state = open_state_stream(state_path, 1);
@@ -1601,7 +1406,7 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device,
                 strerror(errno));
         goto cleanup;
     }
-    if (fprintf(state, "schema\t3\ncorpus\t1\ndevice\t%s\nfingerprint\t%s\n", canonical,
+    if (fprintf(state, "schema\t4\ncorpus\t1\ndevice\t%s\nfingerprint\t%s\n", canonical,
                 confirmed_fingerprint) < 0 ||
         state_flush(state) != 0)
         goto cleanup;
@@ -1651,20 +1456,7 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device,
                 failures++;
                 continue;
             }
-            if (spec->creator == LDTM_CREATOR_AFFS ||
-                spec->creator == LDTM_CREATOR_PFS3) {
-                filesystem_result =
-                    create_amiga_and_populate(spec, partition, state);
-            } else if (spec->creator == LDTM_CREATOR_APFS) {
-                filesystem_result =
-                    create_apfs_and_populate(spec, partition, state);
-            } else if (spec->creator == LDTM_CREATOR_UFS) {
-                filesystem_result =
-                    create_ufs_and_populate(
-                        spec, partition, work, state);
-            } else {
-                filesystem_result = create_raw_and_populate(spec, partition, state);
-            }
+            filesystem_result = create_raw_and_populate(spec, partition, state);
             if (filesystem_result < 0)
                 goto cleanup;
             if (filesystem_result > 0)
@@ -1679,7 +1471,6 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device,
 
 cleanup:
     if (state != NULL) (void)fclose(state);
-    (void)recursive_remove(work);
     return result;
 }
 
@@ -1761,7 +1552,7 @@ static int parse_verify_state(FILE *stream, const char *device,
             *tab = '\0';
             cursor = tab + 1U;
         } while (true);
-        if (count == 2U && strcmp(fields[0], "schema") == 0 && strcmp(fields[1], "3") == 0) {
+        if (count == 2U && strcmp(fields[0], "schema") == 0 && strcmp(fields[1], "4") == 0) {
             if ((headers & 1U) != 0U)
                 return -1;
             headers |= 1U;
@@ -1789,7 +1580,7 @@ static int parse_verify_state(FILE *stream, const char *device,
                 strlen(fields[2]) >= sizeof(state[index].build_status) ||
                 strlen(fields[3]) >= sizeof(state[index].build_detail))
                 return -1;
-            if (strcmp(fields[2], "populated") != 0 && strcmp(fields[2], "failed") != 0 &&
+            if (strcmp(fields[2], "populated") != 0 && strcmp(fields[2], "formatted") != 0 && strcmp(fields[2], "failed") != 0 &&
                 strcmp(fields[2], "format-failed") != 0 &&
                 strcmp(fields[2], "formatted-unpopulated") != 0 &&
                 strcmp(fields[2], "qualification-failed") != 0 && strcmp(fields[2], "skipped") != 0)
@@ -1849,6 +1640,16 @@ int ldtm_worker_verify(const char *device) {
     for (index = 0U; index < LDTM_SPEC_COUNT; ++index) {
         const LdtmFilesystemSpec *spec = &ldtm_specs()[index];
         const char *partition;
+        if (strcmp(expected[index].build_status,"formatted")==0) {
+            partition=partition_for_label(&map,spec->label);
+            if(!partition || ldtm_common_v2_format_only(spec,partition,false)!=0) {
+                emit_status(spec->key,"verify-failed","Native format identification failed");
+                ++failures;
+            } else {
+                emit_status(spec->key,"formatted","Native format re-probed; no corpus verification claimed");
+            }
+            continue;
+        }
         if (!expected[index].populated) {
             char detail[768];
             describe_unpopulated_filesystem(
@@ -1868,84 +1669,10 @@ int ldtm_worker_verify(const char *device) {
             continue;
         }
 
-        if (spec->creator == LDTM_CREATOR_APFS) {
-            char detail[512] = {0};
-            if (ldtm_verify_apfs_payload_after_defrag(
-                    partition, detail, sizeof(detail)) != 0 ||
-                require_fragmentation_state(
-                    spec, partition, 0,
-                    detail, sizeof(detail)) != 0) {
-                emit_status(
-                    spec->key, "verify-failed",
-                    detail[0] != '\0'
-                        ? detail
-                        : "raw C APFS post-defrag verification failed");
-                failures++;
-            } else {
-                emit_status(
-                    spec->key, "verified",
-                    "APFS payload is byte-identical and the production analyser reports zero fragmentation");
-            }
-            continue;
-        }
-
-        if (spec->creator == LDTM_CREATOR_AFFS ||
-            spec->creator == LDTM_CREATOR_PFS3) {
-            const LdtmFragmentProfile profile =
-                ldtm_fragment_profile(spec);
-            char detail[512] = {0};
-            if (ldtm_verify_amiga_payload_after_defrag(
-                    partition, spec->key, &profile,
-                    detail, sizeof(detail)) != 0 ||
-                require_fragmentation_state(
-                    spec, partition, 0,
-                    detail, sizeof(detail)) != 0) {
-                emit_status(
-                    spec->key, "verify-failed",
-                    detail[0] != '\0'
-                        ? detail
-                        : "raw C Amiga post-defrag verification failed");
-                failures++;
-            } else {
-                emit_status(
-                    spec->key, "verified",
-                    "Amiga payload is byte-identical and the production analyser reports zero file/directory fragmentation");
-            }
-            continue;
-        }
-
-        if (spec->creator == LDTM_CREATOR_SWAP) {
-            char detail[512] = {0};
-            if (ldtm_raw_fixture(spec, partition, false, detail, sizeof(detail)) != 0 ||
-                production_map_accepts(spec, partition, detail, sizeof(detail)) != 0) {
-                emit_status(spec->key, "verify-failed", detail);
-                failures++;
-            } else {
-                emit_status(
-                    spec->key, "verified",
-                    "swap header, reserved/bad-page geometry and inactive page map are accepted by the production analyser");
-            }
-            continue;
-        }
-
-        if (spec->creator == LDTM_CREATOR_UFS) {
-            char detail[512] = {0};
-            if (require_fragmentation_state(spec, partition, 0, detail, sizeof(detail)) != 0 ||
-                verify_ufs2_raw_payload(partition, detail, sizeof(detail)) != 0) {
-                emit_status(spec->key, "verify-failed", detail);
-                failures++;
-            } else {
-                emit_status(
-                    spec->key, "verified",
-                    "UFS2 production analyser reports zero fragmentation and the independent raw verifier matched all retained payload bytes");
-            }
-            continue;
-        }
-
         {
             char detail[512];
             if (require_fragmentation_state(spec, partition,
-                                            spec->creator == LDTM_CREATOR_ZFS ? 1 : 0, detail,
+                                            0, detail,
                                             sizeof(detail)) != 0) {
                 emit_status(spec->key, "verify-failed", detail);
                 failures++;
