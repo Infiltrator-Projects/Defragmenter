@@ -103,7 +103,7 @@ int main(int argc, char **argv)
     if (digest_file(image, before) != 0) goto done;
     const char *const formats[] = {"fat12", "fat16", "fat32", "exfat", "ntfs",
         "ext2", "ext3", "ext4", "xfs", "btrfs", "ofs", "ffs", "sfs",
-        "pfs3", "hfs", "hfsplus", "minix", "ufs", "zfs", "apfs", "swap"};
+        "pfs3", "hfs", "hfsplus", "minix", "ufs", "zfs", "apfs", "swap", "ufs1", "sfs2"};
     for (size_t n = 0U; n < sizeof(formats) / sizeof(formats[0]); ++n) {
         const off_t size = (off_t)((n == 0 ? 255ULL : 2048ULL) * 1024ULL * 1024ULL);
         int target = open(image, O_RDWR | O_CLOEXEC);

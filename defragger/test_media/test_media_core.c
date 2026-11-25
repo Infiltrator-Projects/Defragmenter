@@ -46,7 +46,11 @@ static const LdtmFilesystemSpec LDTM_SPECS[LDTM_SPEC_COUNT] = {
      "ZFS Common V2 provider must create and verify the corpus; defragmentation is analysis-only."},
     {"apfs", "LD_APFS", 2048U, 200U, LDTM_CREATOR_APFS,
      "APFS Common V2 provider must create and verify the full fragmented corpus."},
-    {"swap", "LD_SWAP", 2048U, 0U, LDTM_CREATOR_SWAP, "Swap contains no files."}};
+    {"swap", "LD_SWAP", 2048U, 0U, LDTM_CREATOR_SWAP, "Swap contains no files."},
+    {"ufs1", "LD_UFS1", 2048U, 200U, LDTM_CREATOR_UFS1,
+     "UFS1 must independently support the full corpus and exact fragmentation analysis."},
+    {"sfs2", "LD_SFS2", 2048U, 200U, LDTM_CREATOR_SFS2,
+     "SFS2 must independently support the full corpus and exact fragmentation analysis."}};
 
 const LdtmFilesystemSpec *ldtm_specs(void) { return LDTM_SPECS; }
 size_t ldtm_spec_count(void) { return LDTM_SPEC_COUNT; }

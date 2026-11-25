@@ -68,6 +68,12 @@ jobs:
           - repository: Infiltrator-Projects/Filesystem-Swap
             format_id: swap
             module_file: SWAP.so
+          - repository: Infiltrator-Projects/Filesystem-SFS2
+            format_id: sfs2
+            module_file: SFS2.so
+          - repository: Infiltrator-Projects/Filesystem-UFS1
+            format_id: ufs1
+            module_file: UFS1.so
           - repository: Infiltrator-Projects/Filesystem-UFS2
             format_id: ufs2
             module_file: UFS2.so
@@ -95,8 +101,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist pkg
+          gh release view -R "$FS_REPO" --json tagName,publishedAt,url
           gh release download -R "$FS_REPO" -p '*.deb' -D dist
           test "$(find dist -maxdepth 1 -name '*.deb' | wc -l)" -eq 1
+          sha256sum dist/*.deb
           dpkg-deb -x dist/*.deb pkg
           sudo install -d -m 0755 /System/Filesystems
           sudo install -m 0644 "pkg/System/Filesystems/$MODULE" "/System/Filesystems/$MODULE"

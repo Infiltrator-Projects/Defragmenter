@@ -654,9 +654,9 @@ int main(void) {
     size_t count = 0U;
     const char *cursor;
 
-    CHECK(ldtm_spec_count() == 21U);
-    CHECK(ldtm_allocated_capacity_bytes() == UINT64_C(41215) * LDTM_MIB);
-    CHECK(ldtm_required_capacity_bytes() == (UINT64_C(41215) * LDTM_MIB) + LDTM_GIB);
+    CHECK(ldtm_spec_count() == 23U);
+    CHECK(ldtm_allocated_capacity_bytes() == UINT64_C(45311) * LDTM_MIB);
+    CHECK(ldtm_required_capacity_bytes() == (UINT64_C(45311) * LDTM_MIB) + LDTM_GIB);
     CHECK(fat12 != NULL && fat16 != NULL && ofs != NULL && ffs != NULL && sfs != NULL && pfs3 != NULL);
     CHECK(xfs != NULL && btrfs != NULL && ufs != NULL && zfs != NULL && apfs != NULL);
 
@@ -774,11 +774,14 @@ int main(void) {
     CHECK(strstr(script, "name=\"LD_FFS\"") != NULL);
     CHECK(strstr(script, "name=\"LD_PFS3\"") != NULL);
     CHECK(strstr(script, "name=\"LD_UFS\"") != NULL);
+    CHECK(strstr(script, "name=\"LD_UFS1\"") != NULL);
+    CHECK(strstr(script, "name=\"LD_SFS2\"") != NULL);
+    CHECK(ldtm_find_spec("ufs1") != NULL && ldtm_find_spec("sfs2") != NULL);
     CHECK(strstr(script, "name=\"LD_ZFS\"") != NULL);
     CHECK(strstr(script, "type=swap, name=\"LD_SWAP\"") != NULL);
     cursor = script;
     while ((cursor = strstr(cursor, "name=\"LD_")) != NULL) { ++count; cursor += 6; }
-    CHECK(count == 21U);
+    CHECK(count == 23U);
 
     puts("test-media core tests passed");
     return 0;

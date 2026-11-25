@@ -170,6 +170,9 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
         switch(m->spec->creator) {
         case LDTM_CREATOR_EXFAT: variant=64u; label=NULL; break;
         case LDTM_CREATOR_NTFS: variant=1u; break;
+        case LDTM_CREATOR_UFS: variant=3u; break;
+        case LDTM_CREATOR_UFS1: variant=1u; break;
+        case LDTM_CREATOR_SFS2: variant=4096u; break;
         case LDTM_CREATOR_SWAP: variant=4096u; break;
         default: break;
         }

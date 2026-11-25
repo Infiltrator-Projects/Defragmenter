@@ -750,7 +750,7 @@ static void populate_devices(LdtmApp *app, const gchar *stdout_text)
             *wwn != '\0' ? wwn : "unknown",
             system_disk ? "Protected system storage — destructive work is disabled." :
             (!field_media ? "Not accepted as removable/USB/MMC field media." :
-             (!enough ? "Too small for the complete 21-partition qualification layout." :
+             (!enough ? "Too small for the complete test-media qualification layout." :
               (!stable_identity ? "No stable identity is available for destructive confirmation." :
                "Identity locked. The privileged worker re-verifies this exact disk before writing."))));
         gtk_list_store_append(app->device_store, &iter);
@@ -1261,10 +1261,13 @@ static void create_test_media_window(LdtmApp *app)
     GtkWidget *ready = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
     gtk_style_context_add_class(gtk_widget_get_style_context(ready), "ldtm-ready-badge");
     gtk_box_pack_start(GTK_BOX(ready), make_label("Creators ready", NULL), FALSE, FALSE, 0);
-    app->readiness_summary = make_label("0 / 21", "ldtm-ready-count");
+    char layout_copy[96];
+    snprintf(layout_copy, sizeof(layout_copy), "0 / %u", LDTM_SPEC_COUNT);
+    app->readiness_summary = make_label(layout_copy, "ldtm-ready-count");
     gtk_box_pack_end(GTK_BOX(ready), app->readiness_summary, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(facts), ready, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(facts), make_label("21 layouts  •  200 MiB per data slot", "ldtm-layout-facts"), FALSE, FALSE, 0);
+    snprintf(layout_copy, sizeof(layout_copy), "%u layouts  •  200 MiB per data slot", LDTM_SPEC_COUNT);
+    gtk_box_pack_start(GTK_BOX(facts), make_label(layout_copy, "ldtm-layout-facts"), FALSE, FALSE, 0);
     gtk_box_pack_end(GTK_BOX(banner), facts, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(shell), hero, FALSE, FALSE, 0);
 
@@ -1303,7 +1306,8 @@ static void create_test_media_window(LdtmApp *app)
     gtk_widget_set_size_request(workflow, 236, -1);
     gtk_container_set_border_width(GTK_CONTAINER(workflow), 10U);
     gtk_box_pack_start(GTK_BOX(workflow), make_label("Test workflow", "ldtm-section-title"), FALSE, FALSE, 0);
-    app->build_button = make_operation_button("edit-delete-symbolic", "1. Build test disk", "Erase disk and create 21 layouts", "ldtm-operation-red");
+    snprintf(layout_copy, sizeof(layout_copy), "Erase disk and create %u layouts", LDTM_SPEC_COUNT);
+    app->build_button = make_operation_button("edit-delete-symbolic", "1. Build test disk", layout_copy, "ldtm-operation-red");
     app->qualify_button = make_operation_button("applications-engineering-symbolic", "2. Qualify engines", "Defragment, Growth Defrag, verify", "ldtm-operation-cyan");
     app->verify_button = make_operation_button("emblem-ok-symbolic", "3. Verify files", "Read back retained test payloads", "ldtm-operation-purple");
     GtkWidget *buttons[] = { app->build_button, app->qualify_button, app->verify_button };
@@ -1328,7 +1332,8 @@ static void create_test_media_window(LdtmApp *app)
     gtk_container_set_border_width(GTK_CONTAINER(results), 10U);
     GtkWidget *results_header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     gtk_box_pack_start(GTK_BOX(results_header), make_label("Filesystem results", "ldtm-section-title"), FALSE, FALSE, 0);
-    app->result_summary = make_label("21 waiting", "ldtm-result-summary");
+    snprintf(layout_copy, sizeof(layout_copy), "%u waiting", LDTM_SPEC_COUNT);
+    app->result_summary = make_label(layout_copy, "ldtm-result-summary");
     gtk_label_set_ellipsize(GTK_LABEL(app->result_summary), PANGO_ELLIPSIZE_END);
     gtk_label_set_xalign(GTK_LABEL(app->result_summary), 1.0F);
     gtk_box_pack_end(GTK_BOX(results_header), app->result_summary, TRUE, TRUE, 0);

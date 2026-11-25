@@ -7,7 +7,7 @@
 
 #define LDTM_MIB UINT64_C(1048576)
 #define LDTM_GIB UINT64_C(1073741824)
-#define LDTM_SPEC_COUNT 21U
+#define LDTM_SPEC_COUNT 23U
 #define LDTM_TARGET_FILE_COUNT 8U
 #define LDTM_STATE_ROOT "/var/lib/defragmenter-test-media"
 
@@ -31,7 +31,9 @@ typedef enum {
     LDTM_CREATOR_ZFS,
     LDTM_CREATOR_APFS,
     LDTM_CREATOR_MANUAL,
-    LDTM_CREATOR_SWAP
+    LDTM_CREATOR_SWAP,
+    LDTM_CREATOR_UFS1,
+    LDTM_CREATOR_SFS2
 } LdtmCreator;
 
 typedef struct {
