@@ -231,5 +231,6 @@ jobs:
             "$fixture" qualify-create "$FORMAT" "$work/growth.img"
             "$fixture" qualify-growth "$FORMAT" "$work/growth.img"
             "$fixture" preflight-mutations "$FORMAT"
+            "$fixture" qualify-recovery "$FORMAT"
             echo "REAL_COMMON_V2_BOTH_MUTATIONS_PASS $FORMAT"
           fi
