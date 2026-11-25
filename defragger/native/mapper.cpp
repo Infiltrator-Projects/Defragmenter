@@ -12,6 +12,7 @@ extern "C" {
 
 #include <algorithm>
 #include <charconv>
+#include <cctype>
 #include <cstdio>
 #include <exception>
 #include <limits>
@@ -133,43 +134,28 @@ int main(int argc, char** argv) {
     try {
         const defragger::BackendInfo* backend = nullptr;
         std::string identified_filesystem;
-        if (filesystem == "vfat" || filesystem == "fat" || filesystem == "msdos") {
-            // Linux's generic FAT type does not encode the allocation width.
-            // Probe authoritative geometry rather than guessing FAT32.
-            for (const auto* id : {"fat12", "fat16", "fat32"}) {
-                const auto* candidate = defragger::backend_by_fstype(id);
-                if (candidate == nullptr) continue;
-                const std::string identified =
-                    defragger::backend_identified_filesystem(*candidate, path);
-                if (!identified.empty()) {
-                    backend = candidate;
-                    identified_filesystem = identified;
-                    break;
-                }
-            }
-        } else if (!filesystem.empty()) {
-            backend = defragger::backend_by_fstype(filesystem);
-            if (probe && backend != nullptr) {
-                identified_filesystem =
-                    defragger::backend_identified_filesystem(*backend, path);
-                if (identified_filesystem.empty()) backend = nullptr;
+        std::transform(filesystem.begin(),filesystem.end(),filesystem.begin(),
+            [](unsigned char c){return static_cast<char>(std::tolower(c));});
+        const auto accept=[&](const defragger::BackendInfo& candidate,std::string_view exact={}) {
+            const auto found=defragger::backend_identified_filesystem(candidate,path,exact);
+            if(found.empty())return;
+            if(backend)throw std::runtime_error("Multiple Common V2 providers recognise this target");
+            backend=&candidate;
+            identified_filesystem=found;
+        };
+        if(filesystem=="vfat" || filesystem=="fat" || filesystem=="msdos") {
+            for(const auto* id:{"fat12","fat16","fat32"})
+                if(const auto* candidate=defragger::backend_by_fstype(id))
+                    accept(*candidate,id);
+        } else if(!filesystem.empty()) {
+            if(const auto* candidate=defragger::backend_by_fstype(filesystem)) {
+                if(filesystem=="ofs" || filesystem=="ffs" || filesystem=="ufs1" ||
+                   filesystem=="ufs2" || filesystem=="sfs" || filesystem=="sfs0" || filesystem=="sfs2")
+                    accept(*candidate,filesystem=="sfs0"?"sfs":filesystem);
+                else accept(*candidate);
             }
         } else {
-            for (const auto& candidate : defragger::backend_registry()) {
-                const std::string identified =
-                    defragger::backend_identified_filesystem(candidate, path);
-                if (!identified.empty()) {
-                    backend = &candidate;
-                    identified_filesystem = identified;
-                    break;
-                }
-            }
-        }
-        if (backend != nullptr && (filesystem=="ofs" || filesystem=="ffs" ||
-            filesystem=="ufs1" || filesystem=="ufs2" || filesystem=="sfs2")) {
-            if(identified_filesystem.empty())
-                identified_filesystem=defragger::backend_identified_filesystem(*backend,path);
-            if(identified_filesystem!=filesystem)backend=nullptr;
+            for(const auto& candidate:defragger::backend_registry())accept(candidate);
         }
         if (backend == nullptr) {
             std::fputs(
@@ -199,7 +185,7 @@ int main(int argc, char** argv) {
             return 2;
         }
         defragger::Json result =
-            defragger::map_backend(*backend, path, std::max<std::size_t>(1U, cells));
+            defragger::map_backend(*backend, path, std::max<std::size_t>(1U, cells),identified_filesystem);
         if (!result.is_object())
             throw std::runtime_error("allocation mapper produced non-object result");
         result.object()["capabilities"] =

@@ -258,7 +258,7 @@ int ifs_filesystem_module_call(const char *format, const char *filename, const c
     if (override && *override) parent = override;
 #endif
     if (!format || !filename || !*filename || !interface || !call ||
-        strchr(filename, '/') || strlen(format) > 15u) return 1;
+        strchr(filename, '/') || !ifs_fs_format_id_valid(format)) return 1;
     /* A non-Common filesystem export cannot be selected, loaded or invoked,
      * even by an older worker that still passes its historical symbol name.
      * Keep this check before opening any target or calling dlopen(). */
@@ -334,7 +334,7 @@ static int ifs_safe_module_filename(const char *name) {
  * trust a filename as a format identity: that identity comes from the SO's
  * versioned interface. An incompatible module is not a generic provider. */
 static int ifs_probe_module_v2(int directory, const char *name,
-                               char format[16], uint64_t *capabilities,
+                               char format[IFS_FS_MAX_FORMAT_ID+1u], uint64_t *capabilities,
                                uint64_t *group_mask, int require_defrag) {
     if (!ifs_safe_module_filename(name) || !format || !capabilities || !group_mask)
         return -1;
@@ -361,8 +361,8 @@ static int ifs_probe_module_v2(int directory, const char *name,
             (const IfsFsDefragOpsV2 *)ifs_fs_group_v2(
                 api, IFS_FS_GROUP_DEFRAG);
         if (!require_defrag || (defrag && defrag->header.capabilities != 0u)) {
-            const size_t length = strnlen(api->format_id, 16u);
-            if (length > 0u && length <= 15u) {
+            const size_t length = strnlen(api->format_id, IFS_FS_MAX_FORMAT_ID+1u);
+            if (length > 0u && length <= IFS_FS_MAX_FORMAT_ID) {
                 memcpy(format, api->format_id, length + 1u);
                 *capabilities = defrag ? defrag->header.capabilities : 0u;
                 *group_mask = api->group_mask;
@@ -389,7 +389,7 @@ int ifs_filesystem_module_list_v2(void) {
     fputs("{\"schema\":1,\"authority_available\":true,\"modules\":[", stdout);
     struct dirent *item;
     while ((item = readdir(entries)) != NULL) {
-        char format[16];
+        char format[IFS_FS_MAX_FORMAT_ID+1u];
         uint64_t capabilities = 0u, groups = 0u;
         if (ifs_probe_module_v2(directory, item->d_name,
                                 format, &capabilities, &groups, 0) != 0)
@@ -416,14 +416,7 @@ int ifs_filesystem_module_list_v2(void) {
 static int ifs_filesystem_module_find_selected_v2(
     const char *format, char *filename, size_t capacity, int require_defrag) {
     if (!format || !filename || capacity == 0u) return -1;
-    const size_t length = strnlen(format, 16u);
-    if (length == 0u || length > 15u) return -1;
-    for (size_t n = 0u; n < length; ++n) {
-        const unsigned char ch = (unsigned char)format[n];
-        if (!((ch >= 'a' && ch <= 'z') ||
-              (ch >= '0' && ch <= '9') || ch == '_'))
-            return -1;
-    }
+    if(!ifs_fs_format_id_valid(format))return -1;
     int directory = ifs_open_module_directory();
     if (directory < 0) return -1;
     DIR *entries = fdopendir(directory);
@@ -433,7 +426,7 @@ static int ifs_filesystem_module_find_selected_v2(
     uint64_t selected_capabilities = 0u;
     struct dirent *item;
     while ((item = readdir(entries)) != NULL) {
-        char discovered[16];
+        char discovered[IFS_FS_MAX_FORMAT_ID+1u];
         uint64_t capabilities = 0u, groups = 0u;
         if (ifs_probe_module_v2(directory, item->d_name,
                                 discovered, &capabilities, &groups,
@@ -457,6 +450,7 @@ static int ifs_filesystem_module_find_selected_v2(
     /* Count every trusted provider, including CORE/VOLUME-only modules.
      * A second owner of the same format is ambiguous even if it lacks
      * DEFRAG. Filtering it out first would silently choose a writer. */
+    if(matches>1u)return -2; /* duplicate descriptor ownership */
     if (matches != 1u || (require_defrag && !selected_capabilities) ||
         selected_length == 0u || selected_length + 1u > capacity)
         return -1;
@@ -1202,41 +1196,42 @@ done:
     return result;
 }
 
-/* The generic UFS alias is resolved by the authoritative independent
- * providers themselves. Require one and only one successful native V2 probe;
- * no host-side UFS magic offsets, legacy codec or writable probing. */
-int ifs_filesystem_module_detect_ufs_v2(
-    const char *target, char *format, size_t format_capacity,
-    char *filename, size_t filename_capacity)
+/* Resolve aliases exclusively through trusted Common V2 CORE.PROBE.
+ * Refuse duplicate module ownership or multiple matching formats. */
+int ifs_filesystem_module_detect_v2(
+    const char *target,const char *const *candidates,size_t count,
+    char *format,size_t format_capacity,char *filename,size_t filename_capacity)
 {
-    static const char *const candidates[]={"ufs1","ufs2"};
-    char match_format[16]={0};
-    char match_file[64]={0};
+    char match_format[IFS_FS_MAX_FORMAT_ID+1u]={0},match_file[64]={0};
     unsigned matches=0u;
-    if(!target || !target[0] || !format || !filename ||
-       format_capacity<5u || filename_capacity<sizeof(match_file))
-        return -1;
+    if(!target || !*target || !candidates || !count || !format ||
+       !format_capacity || !filename || !filename_capacity)return -1;
     format[0]=filename[0]='\0';
-    for(size_t i=0;i<sizeof(candidates)/sizeof(candidates[0]);++i) {
+    for(size_t i=0;i<count;++i) {
         char found[64]={0};
-        if(ifs_filesystem_module_find_readonly_v2(
-            candidates[i],found,sizeof(found))!=0)
-            continue;
-        char *argv[]={
-            (char *)"defragmenter-ufs-native-v2-probe",
-            (char *)"probe-only",(char *)target,NULL
-        };
-        if(ifs_filesystem_module_run(candidates[i],found,3,argv)!=0)
-            continue;
-        if(++matches!=1u)
-            return -1;
+        if(!ifs_fs_format_id_valid(candidates[i]))return -1;
+        const int lookup=ifs_filesystem_module_find_readonly_v2(candidates[i],found,sizeof(found));
+        if(lookup==-2)return -2;
+        if(lookup!=0)continue;
+        char *argv[]={(char *)"defragmenter-v2-probe",(char *)"probe-only",(char *)target,NULL};
+        if(ifs_filesystem_module_run(candidates[i],found,3,argv)!=0)continue;
+        if(++matches!=1u)return -2;
         memcpy(match_format,candidates[i],strlen(candidates[i])+1u);
         memcpy(match_file,found,strlen(found)+1u);
     }
-    if(matches!=1u || strlen(match_file)+1u>filename_capacity)
-        return -1;
+    if(matches!=1u || strlen(match_file)+1u>filename_capacity ||
+       strlen(match_format)+1u>format_capacity)return -1;
     memcpy(format,match_format,strlen(match_format)+1u);
     memcpy(filename,match_file,strlen(match_file)+1u);
     return 0;
 }
 
+int ifs_filesystem_module_detect_ufs_v2(
+    const char *target,char *format,size_t format_capacity,
+    char *filename,size_t filename_capacity)
+{
+    static const char *const candidates[]={"ufs1","ufs2"};
+    return ifs_filesystem_module_detect_v2(target,candidates,
+        sizeof(candidates)/sizeof(candidates[0]),format,format_capacity,
+        filename,filename_capacity);
+}

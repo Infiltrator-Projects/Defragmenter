@@ -36,6 +36,14 @@ if "$engine" defrag "$device" --filesystem testv2 --path=/FILE \
 fi
 test "$original" = "$(sha256sum "$device" | cut -d ' ' -f1)"
 
+# Unavailable aliases must never fall back to an unrelated provider.
+for alias in fat vfat msdos affs amiga ufs 4.2bsd smartfilesystem; do
+    if "$engine" defrag "$device" --filesystem "$alias" --write --confirm "$device" >/dev/null 2>&1; then
+        echo "Unqualified generic alias accepted: $alias" >&2;exit 1
+    fi
+done
+test "$original" = "$(sha256sum "$device" | cut -d' ' -f1)"
+
 # A complete explicit lease/consent must invoke real V2 plan/execute/verify.
 "$engine" defrag "$device" --filesystem testv2 --path=/FILE \
    --write --confirm "$device" > "$root/output.txt"

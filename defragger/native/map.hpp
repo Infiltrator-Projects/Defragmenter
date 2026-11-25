@@ -48,12 +48,12 @@ std::uint64_t overlay_ranges(
 
 std::string backend_identified_filesystem(
     const BackendInfo& backend,
-    const std::string& path);
+    const std::string& path,std::string_view exact = {});
 bool backend_probe(const BackendInfo& backend, const std::string& path);
 Json map_v2_response(const BackendInfo& backend,const Json& payload,std::size_t cells);
 Json map_backend(
     const BackendInfo& backend,
     const std::string& path,
-    std::size_t cells);
+    std::size_t cells,std::string_view exact = {});
 
 } // namespace defragger

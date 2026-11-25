@@ -7,6 +7,8 @@ extern "C" {
 #include "version.h"
 }
 
+#include <algorithm>
+#include <cctype>
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
@@ -70,38 +72,31 @@ int main(int argc, char** argv) {
 
     if (operation.empty() || device.empty() || filesystem.empty()) return usage();
 
-    // Every filesystem, including built-in names, uses the one strict Common
-    // V2 module contract. Known aliases are naming conveniences only; they
-    // must never select the retired format-specific worker executables.
-    const defragger::BackendInfo* backend =
-        defragger::backend_by_fstype(filesystem);
-    if (backend && backend->id == "ufs") {
-        // Explicit UFS1/UFS2 stay exact. Other UFS aliases ask both
-        // independent providers to probe the medium with Common V2.
-        if (filesystem != "ufs1" && filesystem != "ufs2")
-            filesystem = "ufs";
-    } else if (backend && backend->id == "sfs") {
-        if(filesystem!="sfs2")filesystem="sfs";
-    } else if (backend && backend->id != "affs") {
-        filesystem = backend->id;
-    }
+    // Generic names never nominate a specific on-disk format.
+    std::transform(filesystem.begin(),filesystem.end(),filesystem.begin(),
+        [](unsigned char c){return static_cast<char>(std::tolower(c));});
+    std::vector<const char *> aliases;
+    const auto* backend=defragger::backend_by_fstype(filesystem);
+    if(filesystem=="fat" || filesystem=="vfat" || filesystem=="msdos")
+        aliases={"fat12","fat16","fat32"};
+    else if(backend && backend->id=="ufs" && filesystem!="ufs1" && filesystem!="ufs2")
+        aliases={"ufs1","ufs2"};
+    else if(backend && backend->id=="affs" && filesystem!="ofs" && filesystem!="ffs")
+        aliases={"ofs","ffs"};
+    else if(backend && backend->id=="sfs" && filesystem=="smartfilesystem")
+        aliases={"sfs","sfs2"};
+    else if(backend && filesystem!="ufs1" && filesystem!="ufs2" &&
+            filesystem!="ofs" && filesystem!="ffs" && filesystem!="sfs2")
+        filesystem=backend->id;
     if (operation != "defrag" && operation != "growth-defrag" &&
         operation != "recover" && operation != "analyse" &&
         operation != "analyse-json" && operation != "map" &&
         operation != "volume-info" && operation != "map-catalogue") {
         return usage();
     }
-    if (filesystem.empty() || filesystem.size() > 15U) {
-        std::fputs("invalid generic filesystem identifier\n", stderr);
+    if(aliases.empty() && !ifs_fs_format_id_valid(filesystem.c_str())) {
+        std::fputs("invalid Common V2 filesystem identifier\n",stderr);
         return 2;
-    }
-    for (unsigned char character : filesystem) {
-        if (!((character >= 'a' && character <= 'z') ||
-              (character >= '0' && character <= '9') ||
-              character == '_')) {
-            std::fputs("invalid generic filesystem identifier\n", stderr);
-            return 2;
-        }
     }
     struct stat status {};
     if (stat(device.c_str(), &status) != 0) {
@@ -144,16 +139,14 @@ int main(int argc, char** argv) {
     }
 
     char module_file[64] = {};
-    if (filesystem == "ufs") {
-        char discovered[16] = {};
-        if (ifs_filesystem_module_detect_ufs_v2(
-                device.c_str(), discovered, sizeof(discovered),
-                module_file, sizeof(module_file)) != 0) {
-            std::fputs("defragmenter-operation-engine: unable to identify "
-                       "a unique trusted UFS1/UFS2 Common V2 provider\n", stderr);
+    if(!aliases.empty()) {
+        char discovered[IFS_FS_MAX_FORMAT_ID+1u]={};
+        if(ifs_filesystem_module_detect_v2(device.c_str(),aliases.data(),
+            aliases.size(),discovered,sizeof(discovered),module_file,sizeof(module_file))!=0) {
+            std::fputs("No unique trusted Common V2 provider recognises this alias\n",stderr);
             return 2;
         }
-        filesystem = discovered;
+        filesystem=discovered;
     }
     const bool readonly_volume_query = operation == "volume-info";
     const int lookup_result = readonly_volume_query

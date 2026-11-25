@@ -404,26 +404,24 @@ std::uint64_t overlay_ranges(
 }
 
 std::string backend_identified_filesystem(
-    const BackendInfo& backend,const std::string& path) {
-    // The authoritative descriptor and CORE.PROBE, not a replaceable
-    // worker executable, select the real format. Refuse ambiguous probes.
-    std::vector<std::string> candidates{backend.id};
+    const BackendInfo& backend,const std::string& path,std::string_view exact) {
+    // Explicit variants cannot be silently substituted by sibling formats.
+    std::vector<const char *> candidates{backend.id.c_str()};
     if(backend.id=="affs")candidates={"ofs","ffs"};
     else if(backend.id=="ufs")candidates={"ufs1","ufs2"};
     else if(backend.id=="sfs")candidates={"sfs","sfs2"};
-    std::string match;
-    for(const auto& id:candidates) {
-        char module[64]={0};
-        if(ifs_filesystem_module_find_readonly_v2(id.c_str(),module,sizeof(module))!=0)
-            continue;
-        char program[]="defragmenter-mapper";
-        char probe[]="probe-only";
-        char *argv[]={program,probe,const_cast<char *>(path.c_str()),nullptr};
-        if(ifs_filesystem_module_run(id.c_str(),module,3,argv)!=0)continue;
-        if(!match.empty())return {};
-        match=id;
+    std::string selected(exact);
+    if(!selected.empty()) {
+        bool allowed=false;
+        for(const auto* id:candidates)if(selected==id)allowed=true;
+        if(!allowed)return {};
+        candidates={selected.c_str()};
     }
-    return match;
+    char format[IFS_FS_MAX_FORMAT_ID+1u]={0},module[64]={0};
+    const int result=ifs_filesystem_module_detect_v2(path.c_str(),
+        candidates.data(),candidates.size(),format,sizeof(format),module,sizeof(module));
+    if(result==-2)throw std::runtime_error("Ambiguous Common V2 provider identity");
+    return result==0?std::string(format):std::string{};
 }
 
 bool backend_probe(const BackendInfo& backend, const std::string& path) {
@@ -438,10 +436,10 @@ Json map_v2_response(const BackendInfo& backend,const Json& payload,std::size_t 
 }
 
 Json map_backend(const BackendInfo& backend, const std::string& path,
-                 std::size_t cells) {
+                 std::size_t cells,std::string_view exact) {
     (void)map_capture_limit(cells);
     analysis_phase("Scanning filesystem allocation and file metadata");
-    const auto format=backend_identified_filesystem(backend,path);
+    const auto format=backend_identified_filesystem(backend,path,exact);
     if(format.empty())throw std::runtime_error("No unique trusted Common V2 provider recognises this target");
     char *raw=nullptr;
     if(ifs_filesystem_module_capture_map_v2(format.c_str(),path.c_str(),
