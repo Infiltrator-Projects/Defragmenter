@@ -50,9 +50,12 @@ int main(int argc,char** argv) {
         const auto runtime=read(root/"native/runtime.cpp");
         for(const char* token:{
             "for (const int bits : {12, 16, 32})",
-            "write, \"exact\", \"fat-native\", MapAdapter::Fat",
-            "standard_write_ops(\"fat-native\")"
+            "write, \"exact\", \"operation-engine\", MapAdapter::Fat",
+            "standard_write_ops(\"operation-engine\")"
         })contains(runtime,token,"Versioned native FAT operations");
+        const auto engine=read(root/"native/operation_engine.cpp");
+        contains(engine,"ifs_filesystem_module_detect_v2","Generic FAT alias probing");
+        contains(engine,"ifs_filesystem_module_run","Common V2 operation dispatch");
         check(!fs::exists(root/"tests/test_fat_relayout_architecture.py"),
               "Retired Python FAT ownership checker still exists");
         std::cout<<"FAT operations use only independently trusted Common V2 SO modules\n";

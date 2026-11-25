@@ -711,6 +711,7 @@ static int v2_fat_directory(V2FatMap *m,const char *path,unsigned depth) {
     }
     return -1;
 }
+static int v2_readonly_plan(const IfsFsDefragOpsV2 *,void *,uint32_t);
 static int v2_fat_extent_json(FILE *out,const IfsFsModuleApiV2 *api,
           const IfsFsCoreOpsV2 *core,const IfsFsDefragOpsV2 *defrag,
           void *volume,const IfsFsVolumeInfoV2 *info,uint64_t capacity) {
@@ -741,10 +742,8 @@ static int v2_fat_extent_json(FILE *out,const IfsFsModuleApiV2 *api,
        (unsigned long long)m.dirs,m.dirs?"false":"true",
        m.have_base?"true":"false",(unsigned long long)m.base,
        (unsigned long long)capacity,
-       (defrag->header.capabilities&(IFS_FS_DEFRAG_PLAN|IFS_FS_DEFRAG_EXECUTE|IFS_FS_DEFRAG_VERIFY))==
-       (IFS_FS_DEFRAG_PLAN|IFS_FS_DEFRAG_EXECUTE|IFS_FS_DEFRAG_VERIFY)?"true":"false",
-       (defrag->header.capabilities&(IFS_FS_DEFRAG_PLAN|IFS_FS_DEFRAG_EXECUTE|IFS_FS_DEFRAG_VERIFY))==
-       (IFS_FS_DEFRAG_PLAN|IFS_FS_DEFRAG_EXECUTE|IFS_FS_DEFRAG_VERIFY)?"true":"false")<0)return -1;
+       v2_readonly_plan(defrag,volume,0u)?"true":"false",
+       v2_readonly_plan(defrag,volume,10u)?"true":"false")<0)return -1;
     if(fprintf(out,",\"recovery_qualified\":%s",
         (defrag->header.capabilities&IFS_FS_DEFRAG_RECOVER)?"true":"false")<0)return -1;
     /* The current FAT DEFRAG contract maps regular files, not directories.

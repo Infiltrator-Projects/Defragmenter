@@ -130,6 +130,10 @@ Json map_fat(const BackendInfo& backend,const Json& payload,std::size_t cells) {
            "defrag_qualified","growth_qualified","recovery_qualified"}) {
         if(const Json* value=payload.find(field))set(result,field,*value);
     }
+    if(!optional_bool(payload,"defrag_qualified"))
+        set(result,"defrag_reason",Json("Common V2 provider did not qualify a read-only Defragment plan"));
+    if(!optional_bool(payload,"growth_qualified"))
+        set(result,"growth_reason",Json("Common V2 provider did not qualify a read-only Growth Defrag plan"));
     const auto regular=required_u64(payload,"regular_files");
     const auto split=required_u64(payload,"fragmented_files");
     if(split>regular)throw std::runtime_error("invalid Common V2 fragmentation totals");
