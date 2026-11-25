@@ -1279,13 +1279,23 @@ static int create_raw_and_populate(const LdtmFilesystemSpec *spec, const char *p
                                    FILE *state)
 {
     char detail[512] = {0};
-    if (ldtm_raw_fixture(spec, partition, true, detail, sizeof(detail)) != 0 ||
+    if (!ldtm_spec_creator_available(spec, detail, sizeof(detail)) ||
+        ldtm_raw_fixture(spec, partition, true, detail, sizeof(detail)) != 0 ||
         ldtm_raw_fixture(spec, partition, false, detail, sizeof(detail)) != 0) {
         emit_status(spec->key, "qualification-failed", detail);
         return state_write_status(state, spec, "qualification-failed", detail) == 0 ? 1 : -1;
     }
-    const int accepted = spec->creator == LDTM_CREATOR_SWAP ? 0 :
-        require_fragmentation_state(spec, partition, 1, detail, sizeof(detail));
+    unsigned fragmented = 0U;
+    int accepted = 0;
+    if (spec->creator != LDTM_CREATOR_SWAP) {
+        accepted = ldtm_common_v2_verify_fragmentation(spec, partition, &fragmented);
+        if (accepted != 0 || fragmented != LDTM_TARGET_FILE_COUNT) {
+            accepted = -1;
+            (void)snprintf(detail, sizeof(detail),
+                "Common V2 corpus extent verification requires all %u large files fragmented; proved %u",
+                LDTM_TARGET_FILE_COUNT, fragmented);
+        }
+    }
     if (accepted != 0) {
         emit_status(spec->key, "qualification-failed", detail);
         return state_write_status(state, spec, "qualification-failed", detail) == 0 ? 1 : -1;
@@ -1293,7 +1303,7 @@ static int create_raw_and_populate(const LdtmFilesystemSpec *spec, const char *p
     const char *message =
         spec->creator == LDTM_CREATOR_SWAP
             ? "Common V2 SWAP header verified; file fragmentation does not apply"
-            : "Common V2 corpus fully verified; production analyser proved fragmentation";
+            : "Common V2 corpus fully verified; provider extent maps proved all eight large files fragmented";
     emit_status(spec->key, "populated", message);
     return state_write_status(state, spec, "populated", message);
 }
