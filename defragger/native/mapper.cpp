@@ -2,7 +2,9 @@
 #include "json.hpp"
 #include "map.hpp"
 #include "runtime.hpp"
-#include "process.hpp"
+extern "C" {
+#include "ld_stop.h"
+}
 
 extern "C" {
 #include "version.h"
@@ -10,7 +12,6 @@ extern "C" {
 
 #include <algorithm>
 #include <charconv>
-#include <csignal>
 #include <cstdio>
 #include <exception>
 #include <limits>
@@ -18,12 +19,6 @@ extern "C" {
 #include <string>
 
 namespace {
-
-volatile std::sig_atomic_t g_cancelled = 0;
-
-void cancel_mapper(int) {
-    g_cancelled = 1;
-}
 
 int usage() {
     std::fputs(
@@ -74,9 +69,8 @@ defragger::Json probe_result(
 } // namespace
 
 int main(int argc, char** argv) {
-    std::signal(SIGINT, cancel_mapper);
-    std::signal(SIGTERM, cancel_mapper);
-    defragger::set_run_capture_cancel_flag(&g_cancelled);
+    ld_stop_clear();
+    ld_stop_install_handlers();
     std::string path;
     std::string filesystem;
     std::size_t cells = 4096U;

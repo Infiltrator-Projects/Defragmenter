@@ -34,7 +34,7 @@ jobs:
       - name: Build production mapper and isolated Common V2 consumers
         run: |
           cmake -S defragger -B defragger/build-fat-media -DBUILD_TESTING=ON -DLD_ENABLE_WERROR=ON -DCMAKE_BUILD_TYPE=Release -DOFS_DEFRAG_TEST_MODULE_PARENT="$PWD/module-root" -DFAT_DEFRAG_TEST_MODULE_PARENT="$PWD/module-root"
-          cmake --build defragger/build-fat-media --parallel 2 --target defragmenter-fat-test-worker defragmenter-test-media-raw-test defragmenter-mapper-cpp defragmenter-fat-module-architecture-test
+          cmake --build defragger/build-fat-media --parallel 2 --target defragmenter-fat-test-worker defragmenter-test-media-raw-test defragmenter-mapper-cpp defragmenter-mapper-v2-test defragmenter-fat-module-architecture-test
       - name: Create, verify and analyse real fragmented FAT12 FAT16 FAT32 media
         run: |
           set -euo pipefail

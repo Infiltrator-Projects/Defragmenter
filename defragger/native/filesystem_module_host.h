@@ -18,6 +18,10 @@ int ifs_filesystem_target_runtime_v2(IfsFilesystemTargetV2 *binding,
                                      int writable, uint32_t requested_sector,
                                      IfsFsHostRuntimeV2 *runtime);
 int ifs_filesystem_module_run(const char *, const char *, int, char **);
+/* Direct read-only Common V2 catalogue. On success *json belongs to the
+ * caller (free); no executable override or subprocess participates. */
+int ifs_filesystem_module_capture_map_v2(const char *format,const char *target,
+                                         char **json,size_t maximum_bytes);
 /* Inventory trusted hosted Common V2 modules including those without DEFRAG. */
 int ifs_filesystem_module_list_v2(void);
 /* Resolve a trusted installed SO by its exported format_id, not filename. */

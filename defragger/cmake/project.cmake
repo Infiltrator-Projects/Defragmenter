@@ -478,6 +478,8 @@ target_link_libraries(defragmenter-filesystem-module-host PUBLIC
 # The universal operation dispatcher can discover and invoke any newly
 # installed root-owned filesystem SO implementing the common Defrag V2 ABI.
 # Existing format workers remain available until all old interfaces migrate.
+target_link_libraries(defragmenter-runtime-cpp PUBLIC
+    defragmenter-filesystem-module-host)
 target_link_libraries(defragmenter-operation-engine-cpp PRIVATE
     defragmenter-filesystem-module-host)
 
@@ -530,6 +532,14 @@ if(BUILD_TESTING AND OFS_DEFRAG_TEST_MODULE_PARENT)
     target_link_libraries(defragmenter-operation-engine-v2-test PRIVATE
         defragmenter-runtime-cpp defragmenter-core
         defragmenter-filesystem-module-test-host)
+
+    # Identical mapper source, with an isolated module root for tests only.
+    # Never install this target or compile its override into production.
+    add_executable(defragmenter-mapper-v2-test native/mapper.cpp)
+    target_compile_options(defragmenter-mapper-v2-test PRIVATE ${LD_WARNING_FLAGS})
+    target_compile_definitions(defragmenter-mapper-v2-test PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+    target_link_libraries(defragmenter-mapper-v2-test PRIVATE
+        defragmenter-runtime-cpp defragmenter-filesystem-module-test-host)
 
     # Test-only SO lookup is isolated from the installed /System/Filesystems.
     add_executable(defragmenter-exfat-test-worker native/exfat_module_loader.c)

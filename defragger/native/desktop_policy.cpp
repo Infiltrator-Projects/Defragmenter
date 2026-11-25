@@ -178,7 +178,7 @@ void desktop_verify_identity(DesktopVolume& v, std::string_view detected) {
      * as vfat are allowed to resolve to the exact FAT width proven by the
      * native analyser.
      */
-    v.filesystem = std::string(detected);
+    v.filesystem = lower_ascii(std::string(detected));
     // Identity verification alone never authorises a raw write. A fresh
     // exact allocation analysis must establish that separately.
     v.exact_analysis = false;

@@ -34,18 +34,17 @@ int main() {
     CHECK(!controls.growth_defrag);
     CHECK(!controls.recover);
 
-    // A restarted desktop must reach the native journal validator even when
-    // interrupted metadata cannot pass analysis. No journal grants no recovery.
-    controls = desktop_controls(&v, false, false, true);
-    CHECK(controls.recover && !controls.defrag && !controls.growth_defrag);
-    const auto recovery = desktop_mutation(
-        v, "recover", "/tmp/engine", desktop_journal(v, 1000), 512, true);
-    CHECK(recovery.at(1) == "recover");
+    // No external legacy journal grants authority to the V2 provider.
+    controls=desktop_controls(&v,false,false,true);
+    CHECK(!controls.recover && !controls.defrag && !controls.growth_defrag);
     try {
-        (void)desktop_mutation(
-            v, "recover", "/tmp/engine", desktop_journal(v, 1000), 512, false);
+        (void)desktop_mutation(v,"recover","/tmp/engine",desktop_journal(v,1000),512,true);
         CHECK(false);
-    } catch (const std::runtime_error&) {}
+    } catch(const std::runtime_error&) {}
+    try {
+        (void)desktop_mutation(v,"recover","/tmp/engine",desktop_journal(v,1000),512,false);
+        CHECK(false);
+    } catch(const std::runtime_error&) {}
     auto readonly = v;
     readonly.readonly = true;
     CHECK(!desktop_controls(&readonly, false, false, true).recover);
@@ -122,12 +121,12 @@ int main() {
 
     const auto args = desktop_mutation(v, "defrag", "/tmp/engine", journal, 512, false);
     CHECK(args.at(0) == "/tmp/engine" && args.at(1) == "defrag");
-    CHECK(args.at(7) == v.path && args.at(9) == journal);
+    CHECK(args.at(7) == v.path && args.size()==8U);
 
     controls = desktop_controls(&v, false, false, true);
-    CHECK(controls.defrag);
-    CHECK(controls.growth_defrag);
-    CHECK(controls.recover);
+    CHECK(!controls.defrag);
+    CHECK(!controls.growth_defrag);
+    CHECK(!controls.recover);
     try {
         (void)desktop_mutation(v, "defrag", "/tmp/engine", journal, 512, true);
         CHECK(false);

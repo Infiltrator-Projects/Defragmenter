@@ -476,7 +476,7 @@ int ifs_filesystem_module_find_readonly_v2(const char *format, char *filename,
 /* Strict Common V2 provider execution. No format-specific worker, private
  * filesystem ABI, or automatic compatibility fallback is permitted here.
  * This bridge reuses the already exclusive, identity-bound native Target. */
-typedef struct { int argc; char **argv; const char *format; } Command;
+typedef struct { int argc; char **argv; const char *format; FILE **capture; } Command;
 static void *v2_allocate(void *opaque,size_t bytes) {
     (void)opaque;
     return malloc(bytes);
@@ -1073,12 +1073,17 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
                (unsigned long long)reported.total_bytes,
                (unsigned long long)reported.free_bytes);
     } else if(!result && (extent_json || catalogue)) {
-        if(fseek(extent_output,0,SEEK_SET)!=0)result=1;
-        char buffer[16384];
-        size_t count;
-        while(!result && (count=fread(buffer,1,sizeof(buffer),extent_output))!=0u)
-            if(fwrite(buffer,1,count,stdout)!=count)result=1;
-        if(ferror(extent_output) || fflush(stdout)!=0)result=1;
+        if(command->capture) {
+            *command->capture=extent_output;
+            extent_output=NULL;
+        } else {
+            if(fseek(extent_output,0,SEEK_SET)!=0)result=1;
+            char buffer[16384];
+            size_t count;
+            while(!result && (count=fread(buffer,1,sizeof(buffer),extent_output))!=0u)
+                if(fwrite(buffer,1,count,stdout)!=count)result=1;
+            if(ferror(extent_output) || fflush(stdout)!=0)result=1;
+        }
     } else if(!result) {
         fputs("Common V2 provider operation verified and durably synced\n",stdout);
     }
@@ -1093,9 +1098,49 @@ int ifs_filesystem_module_run(const char *format, const char *filename,
        !strcmp(argv[1],"growth-defrag") || !strcmp(argv[1],"recover"))) {
         ld_stop_clear(); ld_stop_install_handlers(); ld_stop_report_ready();
     }
-    Command command={argc,argv,format};
+    Command command={argc,argv,format,NULL};
     return ifs_filesystem_module_call(format,filename,
         IFS_FS_COMMON_EXPORT_V2,run_common_v2,&command);
+}
+
+
+int ifs_filesystem_module_capture_map_v2(const char *format,const char *target,
+                                         char **json,size_t maximum_bytes)
+{
+    if(!json)return -1;
+    *json=NULL;
+    if(!format || !target || !maximum_bytes)return -1;
+    char filename[64]={0};
+    if(ifs_filesystem_module_find_v2(format,filename,sizeof(filename))!=0)
+        return -1;
+    const int fat=!strcmp(format,"fat12") || !strcmp(format,"fat16") ||
+                  !strcmp(format,"fat32");
+    char *argv[]={(char *)"defragmenter-mapper",
+                  (char *)(fat?"map-extents":"map-catalogue"),
+                  (char *)target,NULL};
+    FILE *capture=NULL;
+    Command command={3,argv,format,&capture};
+    const int rc=ifs_filesystem_module_call(format,filename,
+        IFS_FS_COMMON_EXPORT_V2,run_common_v2,&command);
+    int result=-1;
+    char *buffer=NULL;
+    if(rc || !capture)goto done;
+    if(fseek(capture,0,SEEK_END)!=0)goto done;
+    const long end=ftell(capture);
+    if(end<=0 || (uint64_t)end>=maximum_bytes ||
+       (uint64_t)end>SIZE_MAX-1u || fseek(capture,0,SEEK_SET)!=0)goto done;
+    const size_t bytes=(size_t)end;
+    buffer=malloc(bytes+1u);
+    if(!buffer || fread(buffer,1,bytes,capture)!=bytes ||
+       ferror(capture) || memchr(buffer,'\0',bytes))goto done;
+    buffer[bytes]='\0';
+    *json=buffer;
+    buffer=NULL;
+    result=0;
+done:
+    free(buffer);
+    if(capture)fclose(capture);
+    return result;
 }
 
 /* The generic UFS alias is resolved by the authoritative independent

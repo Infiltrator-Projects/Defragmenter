@@ -22,26 +22,6 @@ bool check(bool condition, const char* message) {
     return false;
 }
 
-std::string fake_map_worker(const char* payload, const char* tail = "") {
-    char path[] = "/tmp/defragger-map-worker.XXXXXX";
-    const int fd = mkstemp(path);
-    if (fd < 0) throw std::runtime_error("mkstemp failed");
-    FILE* stream = fdopen(fd, "w");
-    if (stream == nullptr) {
-        (void)close(fd);
-        (void)unlink(path);
-        throw std::runtime_error("fdopen failed");
-    }
-    const int written = std::fprintf(
-        stream, "#!/bin/sh\nprintf '%%s\\n' '%s'\n%s\n", payload, tail);
-    const int closed = std::fclose(stream);
-    if (written < 0 || closed != 0 || chmod(path, 0700) != 0) {
-        (void)unlink(path);
-        throw std::runtime_error("cannot create fake map worker");
-    }
-    return path;
-}
-
 } // namespace
 
 int main() {
@@ -142,22 +122,19 @@ int main() {
     const BackendInfo* fat12 = backend_by_fstype("fat12");
     ok = check(fat12 != nullptr, "FAT12 lookup") && ok;
     if(fat12) {
-        const std::string worker=fake_map_worker(
+        const Json payload=Json::parse(
             "{\"filesystem\":\"fat12\",\"abi\":2,\"unit_size\":512,"
             "\"total_units\":4,\"free_units\":2,\"allocated_ranges\":[[0,2]],"
             "\"fragmented_ranges\":[[1,2]],\"regular_files\":1,\"fragmented_files\":1,"
             "\"directories\":0,\"fragmented_directories\":0,\"defrag_qualified\":false,"
             "\"growth_qualified\":false,\"recovery_qualified\":false}");
-        (void)setenv("DEFRAGMENTER_FAT_WORKER",worker.c_str(),1);
         try {
-            const Json mapped=map_backend(*fat12,"/dev/null",2U);
+            const Json mapped=map_v2_response(*fat12,payload,2U);
             ok=check(mapped.at("unknown_bytes").unsigned_value()==0U &&
                      mapped.at("free_bytes").unsigned_value()==1024U &&
                      mapped.at("fragmented_files").unsigned_value()==1U,
                      "V2 FAT exact extent presentation") && ok;
         } catch (...) {ok=check(false,"V2 FAT map") && ok;}
-        (void)unlink(worker.c_str());
-        (void)unsetenv("DEFRAGMENTER_FAT_WORKER");
     }
 
     const std::vector<std::string> input{
@@ -230,17 +207,13 @@ int main() {
     ok=check(btrfs!=nullptr,"Btrfs lookup") && ok;
     if(btrfs) {
         const auto test_map=[&](const char* json,bool accepted) {
-            const std::string worker=fake_map_worker(json,"test \"$1\" = map-catalogue || exit 12");
-            (void)setenv("DEFRAGMENTER_BTRFS_WORKER",worker.c_str(),1);
             bool passed=false;
             try {
-                const Json map=map_backend(*btrfs,"/dev/null",1U);
+                const Json map=map_v2_response(*btrfs,Json::parse(json),1U);
                 passed=map.at("map_accuracy").string()=="summary" &&
                     map.at("unknown_bytes").unsigned_value()==3584U &&
                     !map.at("defrag_qualified").boolean();
             } catch (...) {}
-            (void)unlink(worker.c_str());
-            (void)unsetenv("DEFRAGMENTER_BTRFS_WORKER");
             return passed==accepted;
         };
         ok=check(test_map("{\"filesystem\":\"btrfs\",\"abi\":2,\"device_bytes\":4096,"

@@ -21,13 +21,17 @@ if(BUILD_TESTING AND TARGET defragmenter-fat-worker)
     add_test(NAME defragmenter-fat-module-architecture
         COMMAND $<TARGET_FILE:defragmenter-fat-module-architecture-test>
                 "${CMAKE_CURRENT_LIST_DIR}/..")
+    set(FAT_MAPPER_FOR_TESTS "$<TARGET_FILE:defragmenter-mapper-cpp>")
+    if(TARGET defragmenter-mapper-v2-test)
+        set(FAT_MAPPER_FOR_TESTS "$<TARGET_FILE:defragmenter-mapper-v2-test>")
+    endif()
     add_test(
         NAME defragmenter-fat-relayout
         COMMAND bash
                 "${CMAKE_CURRENT_LIST_DIR}/../tests/test_fat_relayout_engine.sh"
                 "${FAT_WORKER_FOR_TESTS}"
                 "$<TARGET_FILE:defragmenter-test-media-raw-test>"
-                "$<TARGET_FILE:defragmenter-mapper-cpp>"
+                "${FAT_MAPPER_FOR_TESTS}"
     )
     set_tests_properties(
         defragmenter-fat-relayout

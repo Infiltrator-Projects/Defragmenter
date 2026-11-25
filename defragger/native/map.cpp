@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "map.hpp"
-#include "process.hpp"
+extern "C" {
+#include "filesystem_module_host.h"
+}
 
 #include <infiltratr/arithmetic.h>
 
 #include <algorithm>
-#include <chrono>
 #include <cstdio>
+#include <cstdlib>
+#include <memory>
 #include <limits>
 #include <stdexcept>
 #include <utility>
@@ -47,61 +50,6 @@ bool optional_bool(const Json& object, std::string_view key,
                    bool fallback = false) {
     const Json* value = object.find(key);
     return value == nullptr ? fallback : value->boolean();
-}
-
-Json parse_worker_json(const CommandResult& result, const char* action) {
-    if (result.return_code != 0) {
-        const std::string detail = !result.standard_error.empty()
-            ? result.standard_error : result.standard_output;
-        throw std::runtime_error(
-            std::string(action) + " failed" +
-            (detail.empty() ? std::string{} : ": " + detail));
-    }
-    Json parsed = Json::parse(result.standard_output);
-    if (!parsed.is_object())
-        throw std::runtime_error(std::string(action) +
-                                 " returned a non-object JSON value");
-    return parsed;
-}
-
-CommandResult worker_program(
-    std::string_view program_id,
-    const std::string& mode,
-    const std::string& path,
-    const std::vector<std::string>& options = {},
-    std::size_t output_limit = 64U * 1024U * 1024U,
-    std::chrono::milliseconds timeout = std::chrono::milliseconds::zero()) {
-    std::vector<std::string> command{
-        resolve_program(program_id), mode, path};
-    command.insert(command.end(), options.begin(), options.end());
-    CommandResult result = run_capture(command, output_limit, timeout,
-        [](const std::string& line) {
-            if (line.rfind("@@ANALYSIS ", 0U) == 0U) {
-                std::fprintf(stderr, "%s\n", line.c_str());
-                std::fflush(stderr);
-            }
-        });
-    std::string diagnostics;
-    for (std::size_t begin = 0U; begin < result.standard_error.size();) {
-        const std::size_t newline = result.standard_error.find('\n', begin);
-        const std::size_t end = newline == std::string::npos ? result.standard_error.size() : newline + 1U;
-        if (result.standard_error.compare(begin, 11U, "@@ANALYSIS ") != 0)
-            diagnostics.append(result.standard_error, begin, end - begin);
-        begin = end;
-    }
-    result.standard_error = std::move(diagnostics);
-    return result;
-}
-
-CommandResult worker(
-    const BackendInfo& backend,
-    const std::string& mode,
-    const std::string& path,
-    const std::vector<std::string>& options = {},
-    std::size_t output_limit = 64U * 1024U * 1024U,
-    std::chrono::milliseconds timeout = std::chrono::milliseconds::zero()) {
-    return worker_program(
-        backend.worker, mode, path, options, output_limit, timeout);
 }
 
 void analysis_phase(const char* phase) {
@@ -146,13 +94,9 @@ void set(Json& object, std::string key, Json value) {
     object.object()[std::move(key)] = std::move(value);
 }
 
-Json map_fat(const BackendInfo& backend, const std::string& path,
-             std::size_t cells) {
+Json map_fat(const BackendInfo& backend,const Json& payload,std::size_t cells) {
     // The SO returns authoritative allocation and file extents. Pixel
     // aggregation is a presentation operation; no BPB or FAT is read here.
-    const Json payload = parse_worker_json(
-        worker(backend, "map-extents", path, {}, map_capture_limit(cells)),
-        "Common V2 FAT extent catalogue");
     if (payload.at("filesystem").string() != backend.id ||
         required_u64(payload,"abi") != 2U)
         throw std::runtime_error("FAT provider returned wrong identity or ABI");
@@ -217,14 +161,11 @@ Json map_fat(const BackendInfo& backend, const std::string& path,
  * The host has no authoritative free-space or directory allocation map;
  * unclassified physical bytes remain unknown, so a partial map cannot
  * authorize destructive operations in the desktop. */
-Json map_catalogue(const BackendInfo& backend,const std::string& path,
+Json map_catalogue(const BackendInfo& backend,const Json& payload,
                    std::size_t cells) {
-    const Json payload=parse_worker_json(
-        worker(backend,"map-catalogue",path,{},map_capture_limit(cells)),
-        "Common V2 file extent catalogue");
     const auto filesystem=std::string(payload.at("filesystem").string());
     const auto* actual=backend_by_fstype(filesystem);
-    if(!actual || actual->id!=backend.id || required_u64(payload,"abi")!=2U)
+    if((filesystem!=backend.id && (!actual || actual->id!=backend.id)) || required_u64(payload,"abi")!=2U)
         throw std::runtime_error("Common V2 catalogue has wrong identity or ABI");
     const auto total=required_u64(payload,"device_bytes");
     if(!total)throw std::runtime_error("Common V2 catalogue has no target geometry");
@@ -457,39 +398,51 @@ std::uint64_t overlay_ranges(
 }
 
 std::string backend_identified_filesystem(
-    const BackendInfo& backend,
-    const std::string& path) {
-    try {
-        const Json payload = parse_worker_json(
-            worker(
-                backend, "identify", path, {}, 1024U * 1024U,
-                std::chrono::seconds(30)),
-            "filesystem identifier");
-        const Json* filesystem = payload.find("filesystem");
-        if (filesystem == nullptr || !filesystem->is_string()) return {};
-        std::string identified(filesystem->string());
-        for (char& byte : identified) {
-            if (byte >= 'A' && byte <= 'Z')
-                byte = static_cast<char>(byte - 'A' + 'a');
-        }
-        const BackendInfo* resolved = backend_by_fstype(identified);
-        if (resolved == nullptr || resolved->id != backend.id) return {};
-        return identified;
-    } catch (...) {
-        return {};
+    const BackendInfo& backend,const std::string& path) {
+    // The authoritative descriptor and CORE.PROBE, not a replaceable
+    // worker executable, select the real format. Refuse ambiguous probes.
+    std::vector<std::string> candidates{backend.id};
+    if(backend.id=="affs")candidates={"ofs","ffs"};
+    else if(backend.id=="ufs")candidates={"ufs1","ufs2"};
+    else if(backend.id=="sfs")candidates={"sfs","sfs2"};
+    std::string match;
+    for(const auto& id:candidates) {
+        char module[64]={0};
+        if(ifs_filesystem_module_find_readonly_v2(id.c_str(),module,sizeof(module))!=0)
+            continue;
+        char program[]="defragmenter-mapper";
+        char probe[]="probe-only";
+        char *argv[]={program,probe,const_cast<char *>(path.c_str()),nullptr};
+        if(ifs_filesystem_module_run(id.c_str(),module,3,argv)!=0)continue;
+        if(!match.empty())return {};
+        match=id;
     }
+    return match;
 }
 
 bool backend_probe(const BackendInfo& backend, const std::string& path) {
     return !backend_identified_filesystem(backend, path).empty();
 }
 
+/* Pure presentation contract, also exercised by regression tests. */
+Json map_v2_response(const BackendInfo& backend,const Json& payload,std::size_t cells) {
+    (void)map_capture_limit(cells);
+    return backend.map_adapter==MapAdapter::Fat
+        ? map_fat(backend,payload,cells) : map_catalogue(backend,payload,cells);
+}
+
 Json map_backend(const BackendInfo& backend, const std::string& path,
                  std::size_t cells) {
     (void)map_capture_limit(cells);
     analysis_phase("Scanning filesystem allocation and file metadata");
-    Json result = backend.map_adapter == MapAdapter::Fat
-        ? map_fat(backend,path,cells) : map_catalogue(backend,path,cells);
+    const auto format=backend_identified_filesystem(backend,path);
+    if(format.empty())throw std::runtime_error("No unique trusted Common V2 provider recognises this target");
+    char *raw=nullptr;
+    if(ifs_filesystem_module_capture_map_v2(format.c_str(),path.c_str(),
+          &raw,map_capture_limit(cells))!=0 || !raw)
+        throw std::runtime_error("Common V2 provider could not supply a complete file extent catalogue");
+    std::unique_ptr<char,decltype(&std::free)> json(raw,&std::free);
+    Json result=map_v2_response(backend,Json::parse(json.get()),cells);
     analysis_phase("Preparing allocation map");
     return result;
 }
