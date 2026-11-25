@@ -1068,8 +1068,11 @@ static int create_raw_and_populate(const LdtmFilesystemSpec *spec, const char *p
  * are written exclusively by the provider, never by the application.
  * Failure (including insufficient scratch space) leaves the selected disk
  * untouched and its existing mounts intact. */
-static int preflight_corpus(const LdtmFilesystemSpec *spec,
-                            char *detail, size_t capacity)
+static int run_production_defrag(const LdtmFilesystemSpec *spec,
+    const char *partition, const char *operation);
+
+static int preflight_image(const LdtmFilesystemSpec *spec,
+                           const char *operation, char *detail, size_t capacity)
 {
     char directory[] = "/tmp/defragmenter-provider-check.XXXXXX";
     if (!mkdtemp(directory)) {
@@ -1096,6 +1099,18 @@ static int preflight_corpus(const LdtmFilesystemSpec *spec,
         (void)snprintf(detail, capacity, "Cannot size or close provider preflight image");
     } else {
         result = qualify_corpus(spec, image, detail, capacity);
+        /* A successful corpus is not evidence that the mutation engine works.
+         * Invoke the same strict host used on the actual disk, then reopen
+         * read-only and verify both allocation and every payload byte. */
+        if (result == 0 && operation != NULL) {
+            if (run_production_defrag(spec, image, operation) != 0) {
+                (void)snprintf(detail, capacity,
+                    "Disposable Common V2 %s failed", operation);
+                result = -1;
+            } else {
+                result = require_fragmentation_state(spec, image, 0, detail, capacity);
+            }
+        }
     }
     if (unlink(image) != 0) {
         (void)snprintf(detail, capacity, "Cannot remove provider preflight image: %s",
@@ -1109,6 +1124,26 @@ cleanup:
         result = -1;
     }
     return result;
+}
+
+/* Keep corpus-only qualification available for its dedicated regression.
+ * Physical preparation additionally requires both mutation paths on separate
+ * freshly formatted, independently fragmented disposable images. SWAP has
+ * no files and is qualified by its applicable corpus/header operations. */
+static int preflight_corpus(const LdtmFilesystemSpec *spec,
+                            char *detail, size_t capacity)
+{
+    return preflight_image(spec, NULL, detail, capacity);
+}
+
+static int preflight_mutations(const LdtmFilesystemSpec *spec,
+                               char *detail, size_t capacity)
+{
+    if (spec->creator == LDTM_CREATOR_SWAP)
+        return 0;
+    if (preflight_image(spec, "defrag", detail, capacity) != 0)
+        return -1;
+    return preflight_image(spec, "growth-defrag", detail, capacity);
 }
 
 static int recursive_remove(const char *path) {
@@ -1192,7 +1227,8 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device,
         printf("Preflight: qualifying %s on a disposable image before touching the selected disk\n",
                spec->key);
         fflush(stdout);
-        if (preflight_corpus(spec, safety, sizeof(safety)) != 0) {
+        if (preflight_corpus(spec, safety, sizeof(safety)) != 0 ||
+            preflight_mutations(spec, safety, sizeof(safety)) != 0) {
             emit_status(spec->key, "qualification-failed", safety);
             fprintf(stderr, "Provider preflight failed; selected disk has not been repartitioned or unmounted.\n");
             return 2;
