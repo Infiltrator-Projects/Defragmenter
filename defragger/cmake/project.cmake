@@ -477,7 +477,7 @@ target_link_libraries(defragmenter-filesystem-module-host PUBLIC
 
 # The universal operation dispatcher can discover and invoke any newly
 # installed root-owned filesystem SO implementing the common Defrag V2 ABI.
-# Existing format workers remain available until all old interfaces migrate.
+# Format-specific command wrappers are regression harnesses, not installed consumers.
 target_link_libraries(defragmenter-runtime-cpp PUBLIC
     defragmenter-filesystem-module-host)
 target_link_libraries(defragmenter-operation-engine-cpp PRIVATE
@@ -643,28 +643,6 @@ if(BUILD_TESTING AND OFS_DEFRAG_TEST_MODULE_PARENT)
   defragmenter-fs-host-services defragmenter-filesystem-module-test-host)
 endif()
 
-install(TARGETS defragmenter-affs-worker
-        RUNTIME DESTINATION /System/Commands/Defragmenter/affs)
-install(TARGETS defragmenter-fat-worker
-        RUNTIME DESTINATION /System/Commands/Defragmenter/fat)
-install(TARGETS defragmenter-apfs-worker
-        RUNTIME DESTINATION /System/Commands/Defragmenter/apfs)
-install(TARGETS defragmenter-minix-worker
-        RUNTIME DESTINATION /System/Commands/Defragmenter/minix)
-install(TARGETS defragmenter-swap-worker
-        RUNTIME DESTINATION /System/Commands/Defragmenter/swap)
-install(TARGETS defragmenter-xfs-worker
-        RUNTIME DESTINATION /System/Commands/Defragmenter/xfs)
-install(TARGETS defragmenter-ext-worker
-        RUNTIME DESTINATION /System/Commands/Defragmenter/ext4)
-install(TARGETS defragmenter-ntfs-worker
-        RUNTIME DESTINATION /System/Commands/Defragmenter/ntfs)
-install(TARGETS defragmenter-exfat-worker
-        RUNTIME DESTINATION /System/Commands/Defragmenter/exfat)
-install(TARGETS defragmenter-hfsplus-worker
-        RUNTIME DESTINATION /System/Commands/Defragmenter/hfsplus)
-install(TARGETS defragmenter-hfs-worker
-        RUNTIME DESTINATION /System/Commands/Defragmenter/hfs)
 
 # Native C++ application services are the only mapper, operation dispatcher
 # and privileged helper in both source and installed application.

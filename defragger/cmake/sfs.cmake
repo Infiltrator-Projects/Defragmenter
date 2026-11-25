@@ -9,8 +9,6 @@ target_compile_options(defragmenter-sfs-worker PRIVATE ${LD_WARNING_FLAGS})
 target_compile_definitions(defragmenter-sfs-worker PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(defragmenter-sfs-worker PRIVATE
     defragmenter-fs-host-services defragmenter-filesystem-module-host)
-install(TARGETS defragmenter-sfs-worker
-    RUNTIME DESTINATION /System/Commands/Defragmenter/sfs)
 if(BUILD_TESTING AND OFS_DEFRAG_TEST_MODULE_PARENT)
     add_executable(defragmenter-sfs-test-worker native/sfs_module_loader.c)
     target_include_directories(defragmenter-sfs-test-worker PRIVATE

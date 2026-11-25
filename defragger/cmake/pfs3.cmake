@@ -9,8 +9,6 @@ target_compile_options(defragmenter-pfs3-worker PRIVATE ${LD_WARNING_FLAGS})
 target_compile_definitions(defragmenter-pfs3-worker PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(defragmenter-pfs3-worker PRIVATE
     defragmenter-fs-host-services defragmenter-filesystem-module-host)
-install(TARGETS defragmenter-pfs3-worker
-    RUNTIME DESTINATION /System/Commands/Defragmenter/pfs3)
 if(BUILD_TESTING AND OFS_DEFRAG_TEST_MODULE_PARENT)
     add_executable(defragmenter-pfs3-test-worker native/pfs3_module_loader.c)
     target_include_directories(defragmenter-pfs3-test-worker PRIVATE

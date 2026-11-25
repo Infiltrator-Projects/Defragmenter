@@ -88,8 +88,8 @@ for old in usr/lib/defragmenter usr/share/doc/defragmenter; do
     }
 done
 for resource in \
-    System/Commands/Defragmenter/fat/defragmenter-fat-worker \
-    System/Commands/Defragmenter/ext4/ext-metadata-worker \
+    System/Commands/Defragmenter/defragmenter-mapper \
+    System/Commands/Defragmenter/defragmenter-operation-engine \
     System/Commands/Defragmenter/defragmenter-privileged-helper \
     System/Resources/Documentation/Defragmenter.pdf \
     System/Resources/Themes/Defragmenter/art/hero-landscape.jpg
@@ -99,6 +99,13 @@ do
         exit 1
     }
 done
+
+# Only the generic native consumers may be installed. A format-specific
+# command, including a legacy metadata worker, cannot ship in this package.
+if find "$STAGE/root/System/Commands/Defragmenter" -mindepth 2 -type f -print -quit | grep -q .; then
+    echo 'Filesystem-specific command escaped the test-only build' >&2
+    exit 1
+fi
 
 # Menu launchers must point to canonical native artwork. Nemo's icon for
 # an executable file is a separate per-user metadata concern.

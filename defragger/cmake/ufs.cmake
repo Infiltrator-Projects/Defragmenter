@@ -30,5 +30,3 @@ if(BUILD_TESTING AND OFS_DEFRAG_TEST_MODULE_PARENT)
     target_link_libraries(defragmenter-ufs-test-worker PRIVATE
         defragmenter-fs-host-services defragmenter-filesystem-module-test-host)
 endif()
-install(TARGETS defragmenter-ufs-worker
-    RUNTIME DESTINATION /System/Commands/Defragmenter/ufs)

@@ -17,3 +17,14 @@ include("${CMAKE_CURRENT_LIST_DIR}/cmake/sfs.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/pfs3.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/test_media.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/application_regressions.cmake")
+
+# Format-specific command wrappers are retained solely as isolated test
+# harnesses. Production builds neither build nor install them; all
+# filesystem semantics go through the generic Common V2 host.
+if(NOT BUILD_TESTING)
+    foreach(_format IN ITEMS affs apfs btrfs exfat ext fat hfs hfsplus minix ntfs pfs3 sfs swap ufs xfs zfs ext-metadata)
+        if(TARGET defragmenter-${_format}-worker)
+            set_target_properties(defragmenter-${_format}-worker PROPERTIES EXCLUDE_FROM_ALL TRUE)
+        endif()
+    endforeach()
+endif()

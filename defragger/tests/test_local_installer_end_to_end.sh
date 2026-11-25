@@ -39,8 +39,7 @@ if [ "${LD_INSTALLER_TEST_COMMAND:-0}" = 1 ]; then
                 : "${DESTDIR:?DESTDIR is required for the fake install}"
                 : "${LD_INSTALLER_TEST_SOURCE_ROOT:?source root is required for the fake install}"
                 mkdir -p \
-                    "$DESTDIR/System/Commands/Defragmenter/fat" \
-            "$DESTDIR/System/Commands/Defragmenter/ext4" \
+                    "$DESTDIR/System/Commands/Defragmenter" \
             "$DESTDIR/System/Resources/Icons" \
             "$DESTDIR/System/Resources/Documentation" \
             "$DESTDIR/System/Resources/Themes/Defragmenter/art" \
@@ -51,14 +50,10 @@ if [ "${LD_INSTALLER_TEST_COMMAND:-0}" = 1 ]; then
                     printf '#!/bin/sh\nexit 0\n' >"$DESTDIR/Programs/$program"
                     chmod 0755 "$DESTDIR/Programs/$program"
                 done
-                : >"$DESTDIR/System/Commands/Defragmenter/fat/defragmenter-fat-worker"
-                chmod 0755 "$DESTDIR/System/Commands/Defragmenter/fat/defragmenter-fat-worker"
                 for program in defragmenter-privileged-helper defragmenter-operation-engine defragmenter-mapper; do
             printf '#!/bin/sh\nexit 0\n' >"$DESTDIR/System/Commands/Defragmenter/$program"
             chmod 0755 "$DESTDIR/System/Commands/Defragmenter/$program"
         done
-        printf '#!/bin/sh\nexit 0\n' >"$DESTDIR/System/Commands/Defragmenter/ext4/ext-metadata-worker"
-        chmod 0755 "$DESTDIR/System/Commands/Defragmenter/ext4/ext-metadata-worker"
         cp "$LD_INSTALLER_TEST_SOURCE_ROOT/gui/ui/art/hero-landscape.jpg" "$DESTDIR/System/Resources/Themes/Defragmenter/art/hero-landscape.jpg"
         cp "$LD_INSTALLER_TEST_SOURCE_ROOT/packaging/io.github.defragmenter.png" \
                     "$DESTDIR/System/Resources/Icons/defragmenter.png"

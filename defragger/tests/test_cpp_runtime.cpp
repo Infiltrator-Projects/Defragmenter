@@ -83,7 +83,7 @@ int main() {
                        "EXT backend advertises qualified defrag") && ok;
             ok = check(operation_for(*ext, "growth-defrag") != nullptr,
                        "EXT growth-defrag operation") && ok;
-            ok = check(ext->worker == "ext-native",
+            ok = check(ext->worker == "operation-engine",
                        "EXT backend retains common ABI dispatch worker") && ok;
         }
     }

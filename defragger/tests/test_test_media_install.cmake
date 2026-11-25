@@ -20,7 +20,9 @@ endif()
 foreach(_path IN ITEMS
     "Programs/defragmenter-test-media"
     "Programs/defragmenter"
-    "System/Commands/Defragmenter/ext4/ext-metadata-worker"
+    "System/Commands/Defragmenter/defragmenter-mapper"
+    "System/Commands/Defragmenter/defragmenter-operation-engine"
+    "System/Commands/Defragmenter/defragmenter-privileged-helper"
     "System/Resources/Icons/defragmenter.png"
     "System/Resources/Themes/Defragmenter/art/hero-landscape.jpg"
     "usr/share/applications/io.github.defragmenter.TestMedia.desktop")
@@ -42,5 +44,12 @@ foreach(_legacy IN ITEMS ofs ffs ufs)
         message(FATAL_ERROR "legacy Test Media helper installed: ${_legacy}")
     endif()
 endforeach()
+file(GLOB_RECURSE _commands RELATIVE "${_root}/System/Commands/Defragmenter"
+    "${_root}/System/Commands/Defragmenter/*")
+foreach(_command IN LISTS _commands)
+    if(NOT _command MATCHES "^defragmenter-(mapper|operation-engine|privileged-helper)$")
+        message(FATAL_ERROR "Unexpected installed filesystem consumer: ${_command}")
+    endif()
+endforeach()
 file(REMOVE_RECURSE "${_root}")
-message(STATUS "Test Media staged install contains the Common V2 GUI")
+message(STATUS "Test Media staged install contains only generic Common V2 consumers")

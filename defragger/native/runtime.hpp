@@ -98,7 +98,7 @@ std::vector<std::string> without_options(
     const std::vector<std::string>& unsupported);
 
 std::string resolve_program(std::string_view program_id,
-                            bool allow_environment_override = true);
+                            bool allow_environment_override = false);
 std::string json_quote(std::string_view value);
 std::string registry_manifest_json(unsigned schema = 3U);
 

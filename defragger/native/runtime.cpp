@@ -84,57 +84,7 @@ struct ProgramSpec {
     const char* build_name;
 };
 
-constexpr std::array<ProgramSpec, 21> kPrograms{{
-    {"hfsplus-native", "DEFRAGMENTER_HFSPLUS_WORKER",
-     "/System/Commands/Defragmenter/hfsplus/defragmenter-hfsplus-worker",
-     "defragmenter-hfsplus-worker"},
-    {"hfs-native", "DEFRAGMENTER_HFS_ANALYSER",
-     "/System/Commands/Defragmenter/hfs/hfs_analyser", "hfs_analyser"},
-    {"affs-native", "DEFRAGMENTER_AFFS_WORKER",
-     "/System/Commands/Defragmenter/affs/defragmenter-affs-worker",
-     "defragmenter-affs-worker"},
-    {"btrfs-native", "DEFRAGMENTER_BTRFS_WORKER",
-     "/System/Commands/Defragmenter/btrfs/defragmenter-btrfs-worker",
-     "defragmenter-btrfs-worker"},
-    {"fat-native", "DEFRAGMENTER_FAT_WORKER",
-     "/System/Commands/Defragmenter/fat/defragmenter-fat-worker",
-     "defragmenter-fat-worker"},
-    {"exfat-native", "DEFRAGMENTER_EXFAT_WORKER",
-     "/System/Commands/Defragmenter/exfat/defragmenter-exfat-worker",
-     "defragmenter-exfat-worker"},
-    {"ntfs-native", "DEFRAGMENTER_NTFS_WORKER",
-     "/System/Commands/Defragmenter/ntfs/defragmenter-ntfs-worker",
-     "defragmenter-ntfs-worker"},
-    {"ext-native", "DEFRAGMENTER_EXT_WORKER",
-     "/System/Commands/Defragmenter/ext4/defragmenter-ext-worker",
-     "defragmenter-ext-worker"},
-    {"ext-metadata", "DEFRAGMENTER_EXT_METADATA_WORKER",
-     "/System/Commands/Defragmenter/ext4/ext-metadata-worker",
-     "ext-metadata-worker"},
-    {"xfs-native", "DEFRAGMENTER_XFS_WORKER",
-     "/System/Commands/Defragmenter/xfs/defragmenter-xfs-worker",
-     "defragmenter-xfs-worker"},
-    {"apfs-native", "DEFRAGMENTER_APFS_WORKER",
-     "/System/Commands/Defragmenter/apfs/defragmenter-apfs-worker",
-     "defragmenter-apfs-worker"},
-    {"minix-native", "DEFRAGMENTER_MINIX_WORKER",
-     "/System/Commands/Defragmenter/minix/defragmenter-minix-worker",
-     "defragmenter-minix-worker"},
-    {"sfs-native", "DEFRAGMENTER_SFS_WORKER",
-     "/System/Commands/Defragmenter/sfs/defragmenter-sfs-worker",
-     "defragmenter-sfs-worker"},
-    {"pfs3-native", "DEFRAGMENTER_PFS3_WORKER",
-     "/System/Commands/Defragmenter/pfs3/defragmenter-pfs3-worker",
-     "defragmenter-pfs3-worker"},
-    {"swap-native", "DEFRAGMENTER_SWAP_WORKER",
-     "/System/Commands/Defragmenter/swap/defragmenter-swap-worker",
-     "defragmenter-swap-worker"},
-    {"ufs-native", "DEFRAGMENTER_UFS_WORKER",
-     "/System/Commands/Defragmenter/ufs/defragmenter-ufs-worker",
-     "defragmenter-ufs-worker"},
-    {"zfs-native", "DEFRAGMENTER_ZFS_WORKER",
-     "/System/Commands/Defragmenter/zfs/defragmenter-zfs-worker",
-     "defragmenter-zfs-worker"},
+constexpr std::array<ProgramSpec, 4> kPrograms{{
     {"mapper", "DEFRAGMENTER_MAPPER",
      "/System/Commands/Defragmenter/defragmenter-mapper", "defragmenter-mapper"},
     {"operation-engine", "DEFRAGMENTER_OPERATION_ENGINE",
@@ -272,125 +222,125 @@ const std::vector<BackendInfo>& backend_registry() {
         result.push_back({
             "affs", "Amiga OFS/FFS",
             {"affs", "amiga", "ofs", "ffs", "dostype"}, write, "exact",
-            "affs-native", MapAdapter::Affs,
+            "operation-engine", MapAdapter::Affs,
             standard_write_ops(
-                "affs-native",
+                "operation-engine",
                 "Amiga OFS/FFS writing runs in the independently installed OFS.so or FFS.so; Defragmenter hosts the verified module only.",
                 "Amiga Growth Defrag runs in OFS.so or FFS.so and reserves 10% free blocks after each supported regular file.")});
         result.push_back({
             "apfs", "Apple APFS", {"apfs"}, write, "exact-bounded-spaceman",
-            "apfs-native", MapAdapter::NativeMap,
+            "operation-engine", MapAdapter::NativeMap,
             standard_write_ops(
-                "apfs-native",
+                "operation-engine",
                 "APFS writing is offline and fail-closed to the qualified one-CIB, unencrypted, snapshot-free flat-tree subset; validated older descriptor-ring checkpoint history is retained unchanged.",
                 "APFS Growth Defrag leaves an exact 10% free-block reserve after each supported regular-file data stream."),
             QualificationMode::WorkerPreflight});
         result.push_back({
             "btrfs", "Btrfs", {"btrfs"}, write, "exact",
-            "btrfs-native", MapAdapter::NativeMap,
+            "operation-engine", MapAdapter::NativeMap,
             standard_write_ops(
-                "btrfs-native",
+                "operation-engine",
                 "Btrfs writing is offline and fail-closed to the qualified single-device, CRC32C, level-0 mixed data/metadata subset, including relocation and verification of ordinary checksum-tree-protected regular-file extents.",
                 "Btrfs Growth Defrag leaves an exact 10% free-sector reserve after each supported regular file."),
             QualificationMode::WorkerPreflight, {}, {"exact-single-device"}});
         result.push_back({
             "exfat", "exFAT", {"exfat"}, write, "exact",
-            "exfat-native", MapAdapter::Exfat,
+            "operation-engine", MapAdapter::Exfat,
             standard_write_ops(
-                "exfat-native",
+                "operation-engine",
                 "exFAT writing is dispatched to the independently installed exFAT.so; the application has no private exFAT parser, allocator or journal.",
                 "exFAT Growth Defrag runs in exFAT.so and reserves 10% free clusters after each regular file.")});
         // Separate frontend identities mirror the separately loaded native SOs.
         // The format-neutral worker probes and dispatches to each module's ABI.
         result.push_back({
             "ext2", "EXT2", {"ext2"}, write, "exact",
-            "ext-native", MapAdapter::Ext, standard_write_ops("ext-native"),
+            "operation-engine", MapAdapter::Ext, standard_write_ops("operation-engine"),
             QualificationMode::None});
         result.push_back({
             "ext3", "EXT3", {"ext3"}, write, "exact",
-            "ext-native", MapAdapter::Ext, standard_write_ops("ext-native"),
+            "operation-engine", MapAdapter::Ext, standard_write_ops("operation-engine"),
             QualificationMode::None});
         result.push_back({
             "ext4", "EXT4", {"ext4"}, write, "exact",
-            "ext-native", MapAdapter::Ext, standard_write_ops("ext-native"),
+            "operation-engine", MapAdapter::Ext, standard_write_ops("operation-engine"),
             QualificationMode::None});
         for (const int bits : {12, 16, 32}) {
             const std::string id = "fat" + std::to_string(bits);
             result.push_back({
                 id, "FAT" + std::to_string(bits),
                 {id, bits == 32 ? "vfat" : "msdos" + std::to_string(bits)},
-                write, "exact", "fat-native", MapAdapter::Fat,
-                standard_write_ops("fat-native")});
+                write, "exact", "operation-engine", MapAdapter::Fat,
+                standard_write_ops("operation-engine")});
         }
         result.push_back({
             "hfs", "Apple HFS", {"hfs"}, write, "exact",
-            "hfs-native", MapAdapter::NativeMap,
+            "operation-engine", MapAdapter::NativeMap,
             standard_write_ops(
-                "hfs-native",
+                "operation-engine",
                 "Classic HFS writing runs in HFS.so and relocates supported regular-file forks while preserving validated B-tree topology.",
                 "Classic HFS Growth Defrag leaves a 10% free allocation-block reserve after each supported non-empty file fork."),
             QualificationMode::WorkerPreflight});
         result.push_back({
             "hfsplus", "Apple HFS+/HFSX", {"hfsplus", "hfs+", "hfsx"},
-            write, "exact", "hfsplus-native", MapAdapter::HfsPlus,
+            write, "exact", "operation-engine", MapAdapter::HfsPlus,
             standard_write_ops(
-                "hfsplus-native",
+                "operation-engine",
                 "HFS+/HFSX writing runs in the independently installed HFSPLUS.so module.",
                 "HFS+/HFSX Growth Defrag runs in HFSPLUS.so and reserves 10% free allocation blocks after each supported fork."),
             QualificationMode::WorkerPreflight});
         result.push_back({
             "minix", "Minix Filesystem", {"minix", "minix2", "minix3"},
-            write, "exact", "minix-native", MapAdapter::NativeMap,
+            write, "exact", "operation-engine", MapAdapter::NativeMap,
             standard_write_ops(
-                "minix-native",
+                "operation-engine",
                 "Minix filesystem writing runs in the independently installed MINIX.so module.",
                 "Minix Growth Defrag leaves an exact 10% free-zone reserve after every regular file.")});
         result.push_back({
             "ntfs", "NTFS", {"ntfs", "ntfs3"}, write, "exact",
-            "ntfs-native", MapAdapter::Ntfs,
+            "operation-engine", MapAdapter::Ntfs,
             standard_write_ops(
-                "ntfs-native",
+                "operation-engine",
                 "NTFS writing runs in NTFS.so using offline raw I/O. No kernel filesystem mount, filesystem ioctl or external repair utility is used.",
                 "NTFS Growth Defrag runs in NTFS.so and reserves 10% free clusters after each supported regular-file stream."),
             QualificationMode::MapOrWorkerPreflight});
         result.push_back({
             "pfs3", "Amiga PFS3", {"pfs3", "pfs", "professionalfilesystem"},
-            write, "exact-allocation", "pfs3-native", MapAdapter::NativeMap,
+            write, "exact-allocation", "operation-engine", MapAdapter::NativeMap,
             standard_write_ops(
-                "pfs3-native",
+                "operation-engine",
                 "Amiga PFS3 writing runs in PFS3.so, validates supported directories and links, and fails closed on unsupported entries or layouts.",
                 "PFS3 Growth Defrag leaves an exact 10% free-block reserve after every supported regular file.")});
         result.push_back({
             "sfs", "Amiga SFS", {"sfs", "sfs0", "sfs2", "smartfilesystem"},
-            write, "exact-allocation", "sfs-native", MapAdapter::NativeMap,
+            write, "exact-allocation", "operation-engine", MapAdapter::NativeMap,
             standard_write_ops(
-                "sfs-native",
+                "operation-engine",
                 "Amiga SFS0/SFS2 writing runs in the independently installed SFS.so module.",
                 "SFS0/SFS2 Growth Defrag leaves an exact 10% free-block reserve after every regular file.")});
         result.push_back({
             "swap", "Linux Swap", {"swap", "swapspace", "linux-swap"},
-            0U, "unavailable", "swap-native", MapAdapter::NativeMap, {},
+            0U, "unavailable", "operation-engine", MapAdapter::NativeMap, {},
             QualificationMode::None, {}, {"unavailable"}});
         result.push_back({
             "ufs", "Solaris/BSD UFS", {"ufs", "ufs1", "ufs2", "4.2bsd"},
-            write, "exact", "ufs-native", MapAdapter::NativeMap,
+            write, "exact", "operation-engine", MapAdapter::NativeMap,
             standard_write_ops(
-                "ufs-native",
+                "operation-engine",
                 "UFS1/UFS2 writing runs in its matching UFS1.so or UFS2.so and fails closed on unsupported filesystem states or allocation layouts.",
                 "UFS Growth Defrag runs in the selected UFS.so engine and reserves 10% free fragments after each supported regular file."),
             QualificationMode::WorkerPreflight, {},
             {"summary", "exact-allocation", "exact"}});
         result.push_back({
             "xfs", "XFS", {"xfs"}, write, "exact",
-            "xfs-native", MapAdapter::Xfs,
+            "operation-engine", MapAdapter::Xfs,
             standard_write_ops(
-                "xfs-native",
+                "operation-engine",
                 "XFS writing runs in XFS.so using offline raw I/O. No kernel filesystem mount, filesystem ioctl or external repair utility is used.",
                 "XFS Growth Defrag runs in XFS.so, requires staging space, and reserves 10% free extents after each supported regular file."),
             QualificationMode::WorkerPreflight});
         result.push_back({
             "zfs", "ZFS/OpenZFS Member", {"zfs", "zfs_member"},
-            read, "exact-bounded", "zfs-native", MapAdapter::NativeMap, {},
+            read, "exact-bounded", "operation-engine", MapAdapter::NativeMap, {},
             QualificationMode::None, {}, {"summary", "exact"}});
         // New formats share the universal Common V2 dispatcher. Registry
         // entries are routing hints, never evidence of provider capabilities.

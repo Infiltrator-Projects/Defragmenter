@@ -8,8 +8,6 @@ target_include_directories(defragmenter-zfs-worker PRIVATE
 target_compile_options(defragmenter-zfs-worker PRIVATE ${LD_WARNING_FLAGS})
 target_compile_definitions(defragmenter-zfs-worker PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(defragmenter-zfs-worker PRIVATE defragmenter-filesystem-module-host)
-install(TARGETS defragmenter-zfs-worker
-    RUNTIME DESTINATION /System/Commands/Defragmenter/zfs)
 
 # The isolated worker uses the existing test-only Common module host.
 if(BUILD_TESTING AND OFS_DEFRAG_TEST_MODULE_PARENT)

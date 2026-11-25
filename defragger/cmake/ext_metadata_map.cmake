@@ -46,8 +46,6 @@ if(BUILD_TESTING AND TARGET defragmenter-filesystem-module-test-host)
         "DEFRAGMENTER_EXT_METADATA_WORKER=${EXT_METADATA_WORKER_FOR_TESTS}")
 endif()
 
-install(TARGETS defragmenter-ext-metadata-worker
-        RUNTIME DESTINATION /System/Commands/Defragmenter/ext4)
 
 if(BUILD_TESTING)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)

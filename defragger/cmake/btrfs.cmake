@@ -17,7 +17,6 @@ if(BUILD_TESTING AND TARGET defragmenter-filesystem-module-test-host)
  target_link_libraries(defragmenter-btrfs-test-worker PRIVATE
   defragmenter-fs-host-services defragmenter-filesystem-module-test-host)
 endif()
-install(TARGETS defragmenter-btrfs-worker RUNTIME DESTINATION /System/Commands/Defragmenter/btrfs)
 if(BUILD_TESTING)
  find_package(Python3 REQUIRED COMPONENTS Interpreter)
  add_test(NAME defragmenter-btrfs-native-integration
