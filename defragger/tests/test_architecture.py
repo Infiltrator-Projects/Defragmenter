@@ -241,7 +241,7 @@ def test_media_uses_only_the_generic_common_v2_corpus_host() -> None:
 def test_common_is_a_versioned_dependency_not_copied_source() -> None:
     common = ROOT / "shared" / "infiltratr-common"
     assert common.is_dir()
-    assert _read(common / "VERSION").strip() == "1.19.86"
+    assert _read(common / "VERSION").strip() == "1.19.88"
 
     # One repository-level declaration owns the gitlink. Do not mirror
     # .gitmodules inside the application directory.
