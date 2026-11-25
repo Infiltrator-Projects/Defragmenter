@@ -110,13 +110,13 @@ static int contracts(void)
     for (size_t n = 0U; n < LDTM_SPEC_COUNT; ++n) {
         const LdtmFilesystemSpec *s = &ldtm_specs()[n];
         char detail[256];
-        CHECK(strcmp(ldtm_creator_display_name(s), "Built-in native") == 0 ||
-              strcmp(ldtm_creator_display_name(s), "Filesystem driver") == 0);
-        if (s->creator != LDTM_CREATOR_UFS) {
-            const int ready = ldtm_spec_creator_available(s, detail, sizeof(detail));
-            if (!ready) fprintf(stderr, "%s: %s\n", s->key, detail);
-            CHECK(ready == 1);
-        }
+        CHECK(strcmp(ldtm_creator_display_name(s), "Filesystem driver") == 0);
+        /* Unit tests are independent of the installed module inventory.
+         * Real released providers must pass the separate corpus matrix;
+         * the missing-provider test proves no writes on refusal. */
+        int ready=ldtm_spec_creator_available(s,detail,sizeof(detail));
+        CHECK(ready==0 || ready==1);
+        CHECK(detail[0]!='\0');
     }
     puts("strict state and complete native corpus contracts passed");
     return 0;

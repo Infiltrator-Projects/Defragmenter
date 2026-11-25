@@ -69,43 +69,14 @@ uint64_t ldtm_target_payload_bytes(const LdtmFilesystemSpec *spec);
 int ldtm_build_sfdisk_script(char *buffer, size_t capacity);
 int ldtm_transport_is_field_media(int removable, const char *transport);
 int ldtm_decode_hex_byte(char high, char low, unsigned char *value);
-const char *ldtm_creator_program(const LdtmFilesystemSpec *spec);
 const char *ldtm_creator_display_name(const LdtmFilesystemSpec *spec);
 int ldtm_required_modules_available(char *detail, size_t detail_capacity);
 int ldtm_resolve_program(const char *program, char *output, size_t output_capacity);
 int ldtm_program_available(const char *program);
 int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
                                 char *detail, size_t detail_capacity);
-/* The deterministic OFS corpus uses DOS0 with 512-byte blocks. */
-#define LDTM_OFS_BLOCK_BYTES 512u
-int ldtm_format_amiga_volume(const char *path, uint8_t dostype, const char *label);
-int ldtm_validate_amiga_volume(const char *path, uint8_t expected_dostype);
-int ldtm_populate_amiga_volume(const char *path, const char *format_id,
-                               const LdtmFragmentProfile *profile);
-int ldtm_verify_amiga_payload(const char *path, const char *format_id,
-                              const LdtmFragmentProfile *profile,
-                              char *detail, size_t detail_capacity);
-int ldtm_verify_amiga_payload_after_defrag(
-    const char *path, const char *format_id,
-    const LdtmFragmentProfile *profile,
-    char *detail, size_t detail_capacity);
-/* Versioned SFS.so-backed create, populate and integrity entrypoints. */
-int ldtm_sfs_module_available(void);
-int ldtm_format_sfs_volume(const char *path);
-int ldtm_populate_sfs_volume(const char *path,const LdtmFragmentProfile *profile);
-int ldtm_verify_sfs_payload(const char *path,const LdtmFragmentProfile *profile,char *detail,size_t capacity);
-int ldtm_verify_sfs_payload_after_defrag(const char *path,const LdtmFragmentProfile *profile,char *detail,size_t capacity);
-int ldtm_pfs3_module_available(void);
-int ldtm_format_pfs3_volume(const char *path);
-int ldtm_populate_pfs3_volume(const char *path,const LdtmFragmentProfile *profile);
-int ldtm_verify_pfs3_payload(const char *path,const LdtmFragmentProfile *profile,char *detail,size_t capacity);
-int ldtm_verify_pfs3_payload_after_defrag(const char *path,const LdtmFragmentProfile *profile,char *detail,size_t capacity);
-int ldtm_apfs_module_available(void);
-int ldtm_format_apfs_volume(const char *path);
-int ldtm_verify_apfs_payload(const char *path,
-                             char *detail, size_t detail_capacity);
-int ldtm_verify_apfs_payload_after_defrag(
-    const char *path, char *detail, size_t detail_capacity);
+/* Physical media layout policy: GPT creation currently requires 512-byte logical sectors. */
+#define LDTM_MEDIA_SECTOR_BYTES 512u
 int ldtm_canonicalize_device(const char *input, char *output, size_t output_capacity);
 int ldtm_is_whole_block_device(const char *device);
 int ldtm_is_system_disk(const char *device);

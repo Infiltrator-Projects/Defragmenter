@@ -114,40 +114,18 @@ if grep -Fq "printf 'Version: %s\\n' \"\$VERSION\"" \
 fi
 "$ROOT/tests/test_deb_package_versions.sh"
 
-# UFS Test Media is first-party.  Release validation must therefore build and
-# exercise the package-owned creator unconditionally rather than silently
-# skipping coverage when a host makefs utility is absent.
+# Validate UFS2 with the very same generic corpus host as every other
+# provider. No separate makefs command or private fixture API is built.
 UFS_BUILD="$WORK/ufs-build"
-# Keep the installed binaries genuinely production-only. On CI, additionally
-# compile exact source test-host variants that accept only the disposable,
-# pre-qualified IFS_TEST_MODULE_PARENT; never load real /System filesystems.
 UFS_MODULE_PARENT=${IFS_TEST_MODULE_PARENT:-}
-if [ -n "$UFS_MODULE_PARENT" ]; then
-    [ -d "$UFS_MODULE_PARENT/Filesystems" ] || {
-        printf '%s\n' "Missing isolated filesystem test root: $UFS_MODULE_PARENT" >&2
-        exit 1
-    }
-    cmake -S "$ROOT" -B "$UFS_BUILD" \
-        -DCMAKE_BUILD_TYPE=Release -DLD_ENABLE_WERROR=ON \
-        -DOFS_DEFRAG_TEST_MODULE_PARENT="$UFS_MODULE_PARENT" \
-        -DBUILD_TESTING=ON >/dev/null
-    cmake --build "$UFS_BUILD" --target \
-        defragmenter-test-media-mkfs-ufs \
-        defragmenter-ufs-worker \
-        defragmenter-test-media-mkfs-ufs-test \
-        defragmenter-ufs-test-worker -j2 >/dev/null
-    UFS_CREATOR="$UFS_BUILD/defragmenter-test-media-mkfs-ufs-test"
-    UFS_WORKER="$UFS_BUILD/defragmenter-ufs-test-worker"
-else
-    cmake -S "$ROOT" -B "$UFS_BUILD" \
-        -DCMAKE_BUILD_TYPE=Release -DLD_ENABLE_WERROR=ON \
-        -DBUILD_TESTING=OFF >/dev/null
-    cmake --build "$UFS_BUILD" --target \
-        defragmenter-test-media-mkfs-ufs defragmenter-ufs-worker -j2 >/dev/null
-    UFS_CREATOR="$UFS_BUILD/test-media-mkfs-ufs"
-    UFS_WORKER="$UFS_BUILD/defragmenter-ufs-worker"
-fi
-/bin/sh "$ROOT/tests/test_ufs_makefs.sh" "$UFS_CREATOR" "$UFS_WORKER"
+cmake -S "$ROOT" -B "$UFS_BUILD" \
+    -DCMAKE_BUILD_TYPE=Release -DLD_ENABLE_WERROR=ON \
+    -DOFS_DEFRAG_TEST_MODULE_PARENT="$UFS_MODULE_PARENT" \
+    -DBUILD_TESTING=ON >/dev/null
+cmake --build "$UFS_BUILD" --target defragmenter-test-media-raw-test -j2 >/dev/null
+"$UFS_BUILD/defragmenter-test-media-raw-test" qualify-create ufs "$WORK/ufs2.img"
+"$UFS_BUILD/defragmenter-test-media-raw-test" verify ufs "$WORK/ufs2.img"
+"$UFS_BUILD/defragmenter-test-media-raw-test" verify-corruption ufs "$WORK/ufs2.img"
 
 "$ROOT/tests/test_local_installer_end_to_end.sh" "$RUN"
 

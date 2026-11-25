@@ -15,7 +15,7 @@
 
 static const LdtmFilesystemSpec LDTM_SPECS[LDTM_SPEC_COUNT] = {
     {"fat12", "LD_FAT12", 255U, 200U, LDTM_CREATOR_FAT12,
-     "First-party FAT12 fixture uses 64 KiB clusters below the 4085-cluster FAT16 threshold and "
+     "FAT12 Common V2 profile uses 64 KiB clusters below the 4085-cluster FAT16 threshold and "
      "retains the full 200 MiB corpus plus boundary files."},
     {"fat16", "LD_FAT16", 2048U, 200U, LDTM_CREATOR_FAT16, ""},
     {"fat32", "LD_FAT32", 2048U, 200U, LDTM_CREATOR_FAT32, ""},
@@ -87,12 +87,8 @@ LdtmFragmentProfile ldtm_fragment_profile(const LdtmFilesystemSpec *spec)
         .directory_second = 0U,
         .file_chunks = {2U, 3U, 5U, 8U, 13U, 17U, 22U, 30U},
     };
-    /* Classic Amiga fixtures additionally stress directory chains. The other
-     * bounded creators manufacture fragmentation directly in their records. */
-    if (spec != NULL && (strcmp(spec->key, "ofs") == 0 || strcmp(spec->key, "ffs") == 0)) {
-        profile.directory_initial = 4096U;
-        profile.directory_second = 4096U;
-    }
+    /* The generic corpus uses the same file-growth workload for every provider. */
+    (void)spec;
     return profile;
 }
 
@@ -185,14 +181,6 @@ int ldtm_decode_hex_byte(char high, char low, unsigned char *value) {
         return 0;
     *value = (unsigned char)parsed;
     return 1;
-}
-
-/* Test Media executes the exact Common V2 filesystem module in-process.
- * No private package helper or external makefs is a substitute. */
-const char *ldtm_creator_program(const LdtmFilesystemSpec *spec)
-{
-    (void)spec;
-    return NULL;
 }
 
 const char *ldtm_creator_display_name(const LdtmFilesystemSpec *spec) {

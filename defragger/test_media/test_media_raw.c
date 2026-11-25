@@ -94,14 +94,7 @@ int ldtm_raw_fixture(const LdtmFilesystemSpec *spec,const char *path,
             return -1;
         }
     }
-    int result;
-    if(spec->creator==LDTM_CREATOR_FAT12 ||
-       spec->creator==LDTM_CREATOR_FAT16 ||
-       spec->creator==LDTM_CREATOR_FAT32)
-        result=create?ldtm_fat_common_create(spec,path):
-                      ldtm_fat_common_verify(spec,path);
-    else
-        result=ldtm_common_v2_fixture(spec,path,create);
+    const int result=ldtm_common_v2_fixture(spec,path,create);
     if(detail && capacity)
         (void)snprintf(detail,capacity,"%s Common V2 %s %s",
             spec->key,create?"fixture creation":"corpus verification",

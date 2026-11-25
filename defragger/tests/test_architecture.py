@@ -222,30 +222,20 @@ def test_module_host_uses_bounded_hardware_identity_refresh() -> None:
     assert 'infiltratr_string_starts_with(expected_identity,' in device
 
 
-def test_ofs_disposable_media_requires_final_integrity_and_sync() -> None:
-    media = _read(ROOT / "test_media" / "test_media_ofs_module.c")
-    assert "ofs_module_abi.h" not in media
-    assert "infiltrator_filesystem_module_v3" not in media
-    population = media.split("static int populate_fixture(", 1)[1].split(
-        "int ldtm_ofs_module_available(", 1
-    )[0]
-    assert "volume->check(session, 0u, &errors)" in population
-    assert "errors != 0u" in population
-    assert "volume->sync(session)" in population
-    assert "core->unmount(session)" in population
-    assert "io.flush(io.context)" in population
-    formatter = media.split("int ldtm_format_ofs_module(", 1)[1].split(
-        "int ldtm_populate_ofs_module(", 1
-    )[0]
-    writer = media.split("int ldtm_populate_ofs_module(", 1)[1].split(
-        "/* Independently check", 1
-    )[0]
-    verifier = media.split("int ldtm_validate_ofs_module(", 1)[1]
-    assert formatter.count("IFS_FS_COMMON_EXPORT_V2") == 1
-    assert writer.count("IFS_FS_COMMON_EXPORT_V2") == 1
-    assert verifier.count("IFS_FS_COMMON_EXPORT_V2") == 2
-    assert "infiltrator_filesystem_module_v3" not in formatter + verifier
-    assert "OFS fixture: fragmented corpus round" in media
+def test_media_uses_only_the_generic_common_v2_corpus_host() -> None:
+    media = _read(ROOT / "test_media" / "test_media_common_v2.c")
+    raw = _read(ROOT / "test_media" / "test_media_raw.c")
+    assert "IFS_FS_COMMON_EXPORT_V2" in media
+    assert "ifs_filesystem_target_runtime_v2" in media
+    assert "volume->format(" in media
+    assert "core->create(" in media and "core->write(" in media
+    assert "core->read(" in media and "map->map(" in media
+    assert "volume->check(" in media and "host->sync_target(" in media
+    assert "ldtm_common_v2_fixture(spec,path,create)" in raw
+    for retired in ("test_media_v2_wrappers.c", "test_media_fat12_common.c",
+                    "test_media_swap_module.c", "test_media_amiga_dispatch.c",
+                    "test_media_amiga_mkfs.c"):
+        assert not (ROOT / "test_media" / retired).exists()
 
 
 def test_common_is_a_versioned_dependency_not_copied_source() -> None:

@@ -32,6 +32,26 @@ static const char *provider(const LdtmFilesystemSpec *s)
 static int is_swap(const LdtmFilesystemSpec *s)
 { return s && s->creator==LDTM_CREATOR_SWAP; }
 
+/* These values are test-profile parameters, not filesystem algorithms.
+ * Format, allocation, extent decoding and integrity checking are performed
+ * only by the selected Common V2 provider. */
+static uint32_t profile_fat_width(const LdtmFilesystemSpec *s)
+{
+    if(s->creator==LDTM_CREATOR_FAT12)return 12u;
+    if(s->creator==LDTM_CREATOR_FAT16)return 16u;
+    if(s->creator==LDTM_CREATOR_FAT32)return 32u;
+    return 0u;
+}
+static int profile_geometry_valid(const LdtmFilesystemSpec *s,
+                                  const IfsFsVolumeInfoV2 *info)
+{
+    uint32_t width=profile_fat_width(s);
+    return info->block_bytes>=512u &&
+           !(info->block_bytes&(info->block_bytes-1u)) &&
+           (!width || info->variant==width) &&
+           (width!=12u || info->block_bytes==65536u);
+}
+
 /* Report every absent operation in the same qualification path used by
  * the destructive worker. Do not infer capabilities from a filename or
  * from the presence of an unadvertised function pointer. */
@@ -65,6 +85,9 @@ static const IfsFsModuleApiV2 *qualify(void *symbol,MediaV2 *m)
     if(m->create)
         NEED(volume && (volume->header.capabilities & IFS_FS_VOLUME_FORMAT) &&
              volume->format,"VOLUME.FORMAT");
+    if(profile_fat_width(m->spec)==12u)
+        NEED(volume && (volume->header.capabilities&IFS_FS_VOLUME_CHECK) &&
+             volume->check,"VOLUME.CHECK (FAT12 qualification)");
     if(!is_swap(m->spec)) {
         NEED(CORE(IFS_FS_CORE_MOUNT,mount) && core->unmount,"CORE.MOUNT/UNMOUNT");
         NEED(CORE(IFS_FS_CORE_STAT,stat),"CORE.STAT");
@@ -94,6 +117,15 @@ static int module_call(MediaV2 *m,IfsFilesystemCall callback)
         missing(m,"unique trusted hosted Common V2 provider");
         return -1;
     }
+    const uint32_t width=profile_fat_width(m->spec);
+    if(width) {
+        char expected[16];
+        if(snprintf(expected,sizeof(expected),"FAT%u.so",width)>=(int)sizeof(expected) ||
+           strcmp(filename,expected)!=0) {
+            missing(m,"canonical provider filename");
+            return -1;
+        }
+    }
     return ifs_filesystem_module_call(id,filename,
                                      IFS_FS_COMMON_EXPORT_V2,callback,m);
 }
@@ -101,11 +133,6 @@ static int available(const IfsDefragHostV2 *unused,void *symbol,void *arg)
 {
     (void)unused;
     return qualify(symbol,arg)?0:-1;
-}
-int ldtm_common_v2_available(const LdtmFilesystemSpec *s)
-{
-    MediaV2 m={.spec=s,.create=1};
-    return module_call(&m,available)==0;
 }
 /* Preflight the complete destructive-media workload, including the ability
  * to prove actual allocation fragmentation. ABI presence alone is not enough. */
@@ -118,15 +145,6 @@ int ldtm_common_v2_media_detail(const LdtmFilesystemSpec *s,
     if(module_call(&m,available)!=0) {
         if(detail && capacity && !detail[0])
             missing(&m,"trusted provider load");
-        return 0;
-    }
-    /* The FAT creator additionally requires canonical filename and, for
-     * FAT12, VOLUME.CHECK. Apply its exact contract before disk partitioning. */
-    if(s && (s->creator==LDTM_CREATOR_FAT12 ||
-             s->creator==LDTM_CREATOR_FAT16 ||
-             s->creator==LDTM_CREATOR_FAT32) &&
-       ldtm_fat_common_available(s)!=0) {
-        missing(&m,"canonical FAT creator contract (including FAT12 VOLUME.CHECK)");
         return 0;
     }
     return 1;
@@ -213,6 +231,9 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
         uint32_t variant=0u;
         const char *label=m->spec->label;
         switch(m->spec->creator) {
+        case LDTM_CREATOR_FAT12: variant=12u; label=NULL; break;
+        case LDTM_CREATOR_FAT16: variant=16u; label=NULL; break;
+        case LDTM_CREATOR_FAT32: variant=32u; label=NULL; break;
         case LDTM_CREATOR_EXFAT: variant=64u; label=NULL; break;
         case LDTM_CREATOR_NTFS: variant=1u; break;
         case LDTM_CREATOR_EXT3: variant=3u; break;
@@ -250,8 +271,7 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
     }
     if(core->mount(&runtime,&session,&info)!=IFS_FS_OK || !session)goto done;
     mounted=1;
-    if(info.block_bytes<512u || (info.block_bytes&(info.block_bytes-1u)))
-        goto done;
+    if(!profile_geometry_valid(m->spec,&info))goto done;
     uint8_t actual[65536],expected[65536];
     char path[32],entry_name[768];
     if(m->create) {
@@ -291,8 +311,7 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
         info=(IfsFsVolumeInfoV2){.structure_bytes=sizeof(info)};
         if(core->mount(&runtime,&session,&info)!=IFS_FS_OK || !session)goto done;
         mounted=1;
-        if(info.block_bytes<512u || (info.block_bytes&(info.block_bytes-1u)))
-            goto done;
+        if(!profile_geometry_valid(m->spec,&info))goto done;
     }
     unsigned seen=0u;
     int directory_complete=0;
@@ -304,7 +323,12 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
         if(rc==IFS_FS_END){directory_complete=1;break;}
         if(rc!=IFS_FS_OK || !memchr(entry_name,'\0',sizeof(entry_name)))goto done;
         int number=ldtm_raw_name_index(entry_name);
-        if(number<0)continue; /* legitimate provider metadata is not corpus */
+        if(number<0) {
+            /* FAT's corpus profile admits exactly its 16 files; other
+             * providers may expose genuine native metadata entries. */
+            if(profile_fat_width(m->spec))goto done;
+            continue;
+        }
         if((seen&(1u<<(unsigned)number)) ||
            e.type!=IFS_FS_ENTRY_FILE ||
            e.size_bytes!=ldtm_raw_file_bytes(m->spec,(unsigned)number))
@@ -342,6 +366,14 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
             if(memcmp(expected,actual,n)!=0)goto done;
             at+=n;
         }
+    }
+    /* Preserve the independent FAT integrity contract, including mandatory
+     * FAT12 CHECK. No private FAT scanner is linked or invoked. */
+    if(profile_fat_width(m->spec) && volume && volume->check &&
+       (volume->header.capabilities&IFS_FS_VOLUME_CHECK)) {
+        uint64_t errors=UINT64_MAX;
+        if(volume->check(session,0u,&errors)!=IFS_FS_OK || errors!=0u)
+            goto done;
     }
     result=0;
 done:

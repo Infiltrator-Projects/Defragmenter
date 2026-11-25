@@ -1377,9 +1377,9 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device,
     int logical_sector = 0;
     int geometry = ioctl(target.fd, BLKSSZGET, &logical_sector);
     ld_device_close(&target);
-    if (geometry != 0 || logical_sector != (int)LDTM_OFS_BLOCK_BYTES) {
+    if (geometry != 0 || logical_sector != (int)LDTM_MEDIA_SECTOR_BYTES) {
         fprintf(stderr, "The OFS Test Media corpus requires %u-byte logical sectors.\n",
-                LDTM_OFS_BLOCK_BYTES);
+                LDTM_MEDIA_SECTOR_BYTES);
         return 2;
     }
     printf("Safety check: %s\n", safety);
