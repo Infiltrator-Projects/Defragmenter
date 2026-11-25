@@ -255,8 +255,15 @@ static int verify_fat_growth_call(const IfsDefragHostV2 *host,void *symbol,void 
         const uint64_t reserve=blocks/10u+(blocks%10u!=0u);
         IfsFsExtentV2 extent={0};
         uint32_t n=0u;
-        if(!blocks || length<=0 || (size_t)length>=sizeof(path) ||
-           map->map(session,path,0u,&extent,1u,&n)!=IFS_FS_OK || n!=1u ||
+        if(length<=0 || (size_t)length>=sizeof(path))goto done;
+        /* The corpus deliberately contains one empty file. It must have
+         * no allocated extent and needs no growth reservation. */
+        if(!blocks) {
+            if(map->map(session,path,0u,&extent,1u,&n)!=IFS_FS_END || n)
+                goto done;
+            continue;
+        }
+        if(map->map(session,path,0u,&extent,1u,&n)!=IFS_FS_OK || n!=1u ||
            extent.flags || extent.reserved || extent.logical_offset ||
            extent.length!=size ||
            extent.physical_offset>runtime.volume_bytes ||
@@ -300,8 +307,8 @@ static int verify_fat_growth_call(const IfsDefragHostV2 *host,void *symbol,void 
     if(!ended || !have_base || allocated!=info.total_bytes-info.free_bytes ||
        base>runtime.volume_bytes || info.total_bytes>runtime.volume_bytes-base)goto done;
     for(unsigned i=0u;i<LDTM_RAW_FILES;++i)
-        if(gaps[i].start<base || gaps[i].end>base+info.total_bytes ||
-           (gaps[i].start-base)%unit)goto done;
+        if(gaps[i].end && (gaps[i].start<base || gaps[i].end>base+info.total_bytes ||
+           (gaps[i].start-base)%unit))goto done;
     result=0;
 done:
     if(session && core->unmount(session)!=IFS_FS_OK)result=-1;
