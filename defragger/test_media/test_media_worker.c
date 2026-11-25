@@ -1559,7 +1559,7 @@ int ldtm_worker_verify(const char *device) {
         {
             char detail[512];
             if (require_fragmentation_state(spec, partition,
-                                            spec->creator == LDTM_CREATOR_ZFS ? 1 : 0, detail,
+                                            0, detail,
                                             sizeof(detail)) != 0) {
                 emit_status(spec->key, "verify-failed", detail);
                 failures++;
@@ -1633,6 +1633,26 @@ int ldtm_worker_qualify(const char *device)
         fputs("Unable to rebind the protected test disk identity.\n", stderr);
         return 2;
     }
+    /* Do not mutate a previously prepared disk until the currently installed
+     * providers have passed both destructive policies on disposable media.
+     * The provider package may have changed since Build Test Disk. */
+    for (size_t index = 0U; index < LDTM_SPEC_COUNT; ++index) {
+        const LdtmFilesystemSpec *spec = &ldtm_specs()[index];
+        if (!expected[index].populated ||
+            preflight_corpus(spec, safety, sizeof(safety)) != 0 ||
+            preflight_mutations(spec, safety, sizeof(safety)) != 0) {
+            fprintf(stderr, "Current disposable qualification failed for %s; physical media untouched.\n",
+                    spec->key);
+            return 2;
+        }
+    }
+    char current_fingerprint[LDTM_HASH_HEX];
+    if (ldtm_device_fingerprint(canonical, current_fingerprint) != 0 ||
+        strcmp(current_fingerprint, fingerprint) != 0 ||
+        ldtm_device_safety_check(canonical, 0, safety, sizeof(safety)) != 0) {
+        fputs("Test disk changed or became unsafe during qualification.\n", stderr);
+        return 2;
+    }
     if (unmount_descendants(canonical) != 0 ||
         load_partition_map(canonical, &map) != 0) {
         fputs("Unable to obtain an unmounted qualified partition map.\n", stderr);
@@ -1660,19 +1680,16 @@ int ldtm_worker_qualify(const char *device)
             continue;
         }
 
-        if (spec->creator == LDTM_CREATOR_ZFS ||
-            spec->creator == LDTM_CREATOR_SWAP) {
-            /* Every slot included in Qualify engines must pass both
-             * production mutation operations. A missing writer is a failed
-             * qualification, never a silent skip or a successful test.
-             * The independent Verify files action remains read-only and may
-             * still validate the test corpus without qualifying mutation. */
-            emit_status(
-                spec->key, "qualification-failed",
-                spec->creator == LDTM_CREATOR_ZFS
-                    ? "ZFS.so has no qualified Defragment and Growth Defrag writer"
-                    : "swap has no file defragmentation or Growth Defrag operation");
-            ++failures;
+        if (spec->creator == LDTM_CREATOR_SWAP) {
+            /* SWAP has no file allocation or file relocation operations.
+             * Verify its real provider-owned header without claiming either. */
+            if (ldtm_raw_fixture(spec, partition, false, detail, sizeof(detail)) != 0) {
+                emit_status(spec->key, "qualification-failed", detail);
+                ++failures;
+            } else {
+                emit_status(spec->key, "qualified",
+                    "Common V2 SWAP header verified; file mutation does not apply");
+            }
             continue;
         }
 
@@ -1700,7 +1717,8 @@ int ldtm_worker_qualify(const char *device)
 
         printf("+ production Defragment\n");
         fflush(stdout);
-        if (run_production_defrag(spec, partition, "defrag") != 0 ||
+        if (require_fragmentation_state(spec, partition, 1, detail, sizeof(detail)) != 0 ||
+            run_production_defrag(spec, partition, "defrag") != 0 ||
             require_fragmentation_state(
                 spec, partition, 0, detail, sizeof(detail)) != 0) {
             emit_status(
@@ -1712,11 +1730,16 @@ int ldtm_worker_qualify(const char *device)
             continue;
         }
 
-        /*
-         * Growth Defrag is a separate writer contract. Run it after packed
-         * Defragment so the final test medium proves both mutation paths on
-         * the same retained payload before independent byte verification.
-         */
+        /* Growth Defrag must relocate a fresh fragmented corpus, not
+         * merely accept the packed result of ordinary Defragment. The
+         * protected Test Media partition is explicitly disposable. Rebuild
+         * it only with the same native provider and prove fragmentation. */
+        detail[0] = '\0';
+        if (qualify_corpus(spec, partition, detail, sizeof(detail)) != 0) {
+            emit_status(spec->key, "qualification-failed", detail);
+            ++failures;
+            continue;
+        }
         detail[0] = '\0';
         printf("+ production Growth Defrag (10%% reserve)\n");
         fflush(stdout);

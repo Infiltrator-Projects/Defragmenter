@@ -226,9 +226,10 @@ jobs:
             "$fixture" verify-corruption "$FORMAT" "$work/media.img"
           fi
           echo "REAL_COMMON_V2_TEST_MEDIA_PASS $FORMAT"
-          if [ "$FORMAT" != swap ] && [ "$FORMAT" != zfs ]; then
+          if [ "$FORMAT" != swap ]; then
             "$fixture" qualify-defrag "$FORMAT" "$work/media.img"
             "$fixture" qualify-create "$FORMAT" "$work/growth.img"
             "$fixture" qualify-growth "$FORMAT" "$work/growth.img"
+            "$fixture" preflight-mutations "$FORMAT"
             echo "REAL_COMMON_V2_BOTH_MUTATIONS_PASS $FORMAT"
           fi

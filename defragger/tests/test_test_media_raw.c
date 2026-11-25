@@ -225,7 +225,7 @@ static int qualify_image_operation(const LdtmFilesystemSpec *spec,
     struct stat st;
     char detail[512]={0};
     CHECK(lstat(path,&st)==0 && S_ISREG(st.st_mode) && st.st_nlink==1);
-    CHECK(spec->creator!=LDTM_CREATOR_SWAP && spec->creator!=LDTM_CREATOR_ZFS);
+    CHECK(spec->creator!=LDTM_CREATOR_SWAP);
     CHECK(require_fragmentation_state(spec,path,1,detail,sizeof(detail))==0);
     CHECK(run_production_defrag(spec,path,operation)==0);
     CHECK(require_fragmentation_state(spec,path,0,detail,sizeof(detail))==0);
@@ -251,6 +251,14 @@ int main(int argc, char **argv)
         if (!spec) return 2;
         char detail[512] = {0};
         int result = preflight_corpus(spec, detail, sizeof(detail));
+        fprintf(result == 0 ? stdout : stderr, "%s\n", detail);
+        return result != 0;
+    }
+    if (argc == 3 && strcmp(argv[1], "preflight-mutations") == 0) {
+        const LdtmFilesystemSpec *spec = ldtm_find_spec(argv[2]);
+        if (!spec) return 2;
+        char detail[512] = {0};
+        int result = preflight_mutations(spec, detail, sizeof(detail));
         fprintf(result == 0 ? stdout : stderr, "%s\n", detail);
         return result != 0;
     }
