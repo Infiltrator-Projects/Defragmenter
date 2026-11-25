@@ -259,11 +259,12 @@ int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
         (void)snprintf(detail,capacity,"Reserved: %s",spec->note);
         return 0;
     }
-    const int ready=ldtm_common_v2_media_available(spec);
-    (void)snprintf(detail,capacity,
-        ready ? "%s has required Common V2 FORMAT/CORE and extent-map operations." :
-                "%s lacks required Common V2 FORMAT/CORE or extent-map operations; operation refused.",
-        spec->key);
+    char missing[384]={0};
+    const int ready=ldtm_common_v2_media_detail(spec,missing,sizeof(missing));
+    if(ready)
+        (void)snprintf(detail,capacity,"%s: required Common V2 operations available",spec->key);
+    else
+        (void)snprintf(detail,capacity,"%s: missing %s; operation refused",spec->key,missing);
     return ready;
 }
 

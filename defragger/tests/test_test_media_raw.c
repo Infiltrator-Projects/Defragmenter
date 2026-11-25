@@ -125,6 +125,14 @@ int main(int argc, char **argv)
 {
     if (argc == 1)
         return contracts();
+    if (argc == 3 && strcmp(argv[1],"preflight")==0) {
+        const LdtmFilesystemSpec *spec=ldtm_find_spec(argv[2]);
+        if(!spec)return 2;
+        char detail[512]={0};
+        int ready=ldtm_spec_creator_available(spec,detail,sizeof(detail));
+        fprintf(ready?stdout:stderr,"%s\n",detail);
+        return ready?0:1;
+    }
     if (argc != 4)
         return 2;
     const LdtmFilesystemSpec *spec = ldtm_find_spec(argv[2]);

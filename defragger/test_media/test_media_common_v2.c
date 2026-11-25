@@ -18,6 +18,8 @@ typedef struct {
     int create;
     int require_map;
     unsigned fragmented;
+    char *detail;
+    size_t detail_capacity;
     const IfsDefragHostV2 *services;
     IfsFilesystemTargetV2 binding;
 } MediaV2;
@@ -30,46 +32,68 @@ static const char *provider(const LdtmFilesystemSpec *s)
 static int is_swap(const LdtmFilesystemSpec *s)
 { return s && s->creator==LDTM_CREATOR_SWAP; }
 
-static const IfsFsModuleApiV2 *qualify(void *symbol,const MediaV2 *m)
+/* Report every absent operation in the same qualification path used by
+ * the destructive worker. Do not infer capabilities from a filename or
+ * from the presence of an unadvertised function pointer. */
+static void missing(MediaV2 *m,const char *operation)
+{
+    if(!m->detail || !m->detail_capacity)return;
+    size_t used=strlen(m->detail);
+    if(used<m->detail_capacity)
+        (void)snprintf(m->detail+used,m->detail_capacity-used,
+            "%s%s",used?", ":"",operation);
+}
+static const IfsFsModuleApiV2 *qualify(void *symbol,MediaV2 *m)
 {
     IfsFsModuleApiEntryV2 entry=NULL;
     _Static_assert(sizeof(entry)==sizeof(symbol),"Common V2 entry width");
     memcpy(&entry,&symbol,sizeof(entry));
     const IfsFsModuleApiV2 *api=entry?entry():NULL;
     if(!api || !ifs_fs_api_v2_valid(api,provider(m->spec)) ||
-       !(api->runtime_profiles & IFS_FS_PROFILE_HOSTED))return NULL;
+       !(api->runtime_profiles & IFS_FS_PROFILE_HOSTED)) {
+        missing(m,"valid hosted Common V2 descriptor");
+        return NULL;
+    }
     const IfsFsCoreOpsV2 *core=
         (const IfsFsCoreOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_CORE);
     const IfsFsVolumeOpsV2 *volume=
         (const IfsFsVolumeOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_VOLUME);
-    if(!core || !(core->header.capabilities & IFS_FS_CORE_PROBE) ||
-       !core->probe || (m->create && !volume))return NULL;
-    if(m->create && (!(volume->header.capabilities & IFS_FS_VOLUME_FORMAT) ||
-                     !volume->format))return NULL;
-    if(is_swap(m->spec))return api;
-    if(m->require_map) {
-        const IfsFsDefragOpsV2 *map=(const IfsFsDefragOpsV2 *)
-            ifs_fs_group_v2(api,IFS_FS_GROUP_DEFRAG);
-        if(!map || !(map->header.capabilities&IFS_FS_DEFRAG_MAP) || !map->map)
-            return NULL;
+    int ok=1;
+#define NEED(test, name) do { if(!(test)) { missing(m,name); ok=0; } } while(0)
+#define CORE(cap, member) (core && (core->header.capabilities & (cap)) && core->member)
+    NEED(CORE(IFS_FS_CORE_PROBE,probe),"CORE.PROBE");
+    if(m->create)
+        NEED(volume && (volume->header.capabilities & IFS_FS_VOLUME_FORMAT) &&
+             volume->format,"VOLUME.FORMAT");
+    if(!is_swap(m->spec)) {
+        NEED(CORE(IFS_FS_CORE_MOUNT,mount) && core->unmount,"CORE.MOUNT/UNMOUNT");
+        NEED(CORE(IFS_FS_CORE_STAT,stat),"CORE.STAT");
+        NEED(CORE(IFS_FS_CORE_LIST,directory_entry),"CORE.LIST");
+        NEED(CORE(IFS_FS_CORE_READ,read),"CORE.READ");
+        if(m->create) {
+            NEED(CORE(IFS_FS_CORE_CREATE,create),"CORE.CREATE");
+            NEED(CORE(IFS_FS_CORE_WRITE,write),"CORE.WRITE");
+        }
+        if(m->require_map) {
+            const IfsFsDefragOpsV2 *map=(const IfsFsDefragOpsV2 *)
+                ifs_fs_group_v2(api,IFS_FS_GROUP_DEFRAG);
+            NEED(map && (map->header.capabilities & IFS_FS_DEFRAG_MAP) &&
+                 map->map,"DEFRAG.MAP");
+        }
     }
-    uint64_t required=IFS_FS_CORE_MOUNT|IFS_FS_CORE_STAT|
-                      IFS_FS_CORE_LIST|IFS_FS_CORE_READ;
-    if(m->create)required|=IFS_FS_CORE_CREATE|IFS_FS_CORE_WRITE;
-    if((core->header.capabilities & required)!=required ||
-       !core->mount || !core->unmount || !core->stat ||
-       !core->directory_entry || !core->read ||
-       (m->create && (!core->create || !core->write)))
-        return NULL;
-    return api;
+#undef CORE
+#undef NEED
+    return ok?api:NULL;
 }
 static int module_call(MediaV2 *m,IfsFilesystemCall callback)
 {
     const char *id=provider(m->spec);
     char filename[64]={0};
     if(!id || ifs_filesystem_module_find_readonly_v2(
-            id,filename,sizeof(filename))!=0)
+            id,filename,sizeof(filename))!=0) {
+        missing(m,"unique trusted hosted Common V2 provider");
         return -1;
+    }
     return ifs_filesystem_module_call(id,filename,
                                      IFS_FS_COMMON_EXPORT_V2,callback,m);
 }
@@ -85,10 +109,31 @@ int ldtm_common_v2_available(const LdtmFilesystemSpec *s)
 }
 /* Preflight the complete destructive-media workload, including the ability
  * to prove actual allocation fragmentation. ABI presence alone is not enough. */
+int ldtm_common_v2_media_detail(const LdtmFilesystemSpec *s,
+                                char *detail,size_t capacity)
+{
+    if(detail && capacity)detail[0]='\0';
+    MediaV2 m={.spec=s,.create=1,.require_map=1,
+               .detail=detail,.detail_capacity=capacity};
+    if(module_call(&m,available)!=0) {
+        if(detail && capacity && !detail[0])
+            missing(&m,"trusted provider load");
+        return 0;
+    }
+    /* The FAT creator additionally requires canonical filename and, for
+     * FAT12, VOLUME.CHECK. Apply its exact contract before disk partitioning. */
+    if(s && (s->creator==LDTM_CREATOR_FAT12 ||
+             s->creator==LDTM_CREATOR_FAT16 ||
+             s->creator==LDTM_CREATOR_FAT32) &&
+       ldtm_fat_common_available(s)!=0) {
+        missing(&m,"canonical FAT creator contract (including FAT12 VOLUME.CHECK)");
+        return 0;
+    }
+    return 1;
+}
 int ldtm_common_v2_media_available(const LdtmFilesystemSpec *s)
 {
-    MediaV2 m={.spec=s,.create=1,.require_map=1};
-    return module_call(&m,available)==0;
+    return ldtm_common_v2_media_detail(s,NULL,0u);
 }
 static int make_path(unsigned number,char name[32])
 {
@@ -170,6 +215,14 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
         switch(m->spec->creator) {
         case LDTM_CREATOR_EXFAT: variant=64u; label=NULL; break;
         case LDTM_CREATOR_NTFS: variant=1u; break;
+        case LDTM_CREATOR_EXT3: variant=3u; break;
+        case LDTM_CREATOR_EXT4: variant=4u; break;
+        case LDTM_CREATOR_XFS: variant=5u; break;
+        case LDTM_CREATOR_BTRFS: variant=1u; break;
+        case LDTM_CREATOR_HFS: variant=1u; break;
+        case LDTM_CREATOR_HFSPLUS: variant=4u; break;
+        case LDTM_CREATOR_APFS: variant=1u; break;
+        case LDTM_CREATOR_SFS: variant=3u; break;
         case LDTM_CREATOR_UFS: variant=3u; break;
         case LDTM_CREATOR_UFS1: variant=1u; break;
         case LDTM_CREATOR_SFS2: variant=4096u; break;
