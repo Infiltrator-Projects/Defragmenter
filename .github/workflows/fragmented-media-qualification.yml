@@ -149,6 +149,7 @@ jobs:
           trap 'rm -rf "$work"' EXIT
           export DEFRAGMENTER_MAPPER="$PWD/defragger/build-media/defragmenter-mapper"
           defragger/build-media/defragmenter-test-media-raw-test preflight "$FORMAT"
+          defragger/build-media/defragmenter-test-media-raw-test preflight-corpus "$FORMAT"
           defragger/build-media/defragmenter-test-media-raw-test qualify-create "$FORMAT" "$work/media.img"
           defragger/build-media/defragmenter-test-media-raw-test verify "$FORMAT" "$work/media.img"
           if [ "$FORMAT" != swap ]; then

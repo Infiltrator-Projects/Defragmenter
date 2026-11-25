@@ -214,6 +214,7 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
     if(host->open_target(host->context,m->path,m->create,NULL,0u,
                          &m->binding.target)!=0)return -1;
     int result=-1,mounted=0;
+    const char *stage="target geometry/runtime";
     void *session=NULL;
     IfsFsHostRuntimeV2 runtime={0};
     IfsFsVolumeInfoV2 info={.structure_bytes=sizeof(info)};
@@ -252,6 +253,7 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
         case LDTM_CREATOR_SWAP: variant=4096u; break;
         default: break;
         }
+        stage="VOLUME.FORMAT";
         const int rc=volume->format(&runtime,variant,label,0u);
         if(rc!=IFS_FS_OK) {
             fprintf(stderr,"%s Common V2 FORMAT failed (variant %u, error %d)\n",
@@ -260,8 +262,12 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
         }
         if(variant) {
             uint32_t detected=0u;
-            if(core->probe(&runtime,&detected)!=IFS_FS_OK || detected!=variant)
+            stage="CORE.PROBE exact format variant";
+            if(core->probe(&runtime,&detected)!=IFS_FS_OK || detected!=variant) {
+                fprintf(stderr,"%s: expected variant %u, detected %u\n",
+                        provider(m->spec),(unsigned)variant,(unsigned)detected);
                 goto done;
+            }
         }
     }
     if(is_swap(m->spec)) {
@@ -269,12 +275,15 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
         result=core->probe(&runtime,&variant)==IFS_FS_OK && variant==4096u?0:-1;
         goto done;
     }
+    stage="CORE.MOUNT";
     if(core->mount(&runtime,&session,&info)!=IFS_FS_OK || !session)goto done;
     mounted=1;
+    stage="mounted allocation geometry";
     if(!profile_geometry_valid(m->spec,&info))goto done;
     uint8_t actual[65536],expected[65536];
     char path[32],entry_name[768];
     if(m->create) {
+        stage="CORE.CREATE";
         for(unsigned file=0u;file<LDTM_RAW_FILES;++file) {
             if(make_path(file,path)!=0 ||
                core->create(session,path,IFS_FS_ENTRY_FILE)!=IFS_FS_OK)
@@ -282,6 +291,7 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
         }
         /* Alternate the first and second halves to force interleaved file
          * growth through the provider's own allocation/CoW machinery. */
+        stage="CORE.WRITE";
         for(unsigned phase=0u;phase<2u;++phase)
             for(unsigned file=0u;file<LDTM_RAW_FILES;++file) {
                 uint64_t length=ldtm_raw_file_bytes(m->spec,file);
@@ -295,24 +305,33 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
                                            end-at:sizeof(actual));
                     if(host->stop_requested(host->context))goto done;
                     ldtm_raw_payload(expected,n,file,at);
-                    if(core->write(session,path,at,expected,n)!=IFS_FS_OK)
+                    const int rc=core->write(session,path,at,expected,n);
+                    if(rc!=IFS_FS_OK) {
+                        fprintf(stderr,"%s: write %s at %llu (%u bytes) failed: %d\n",
+                                provider(m->spec),path,(unsigned long long)at,n,rc);
                         goto done;
+                    }
                     at+=n;
                 }
             }
-        if(core->unmount(session)!=IFS_FS_OK)goto done;
+        stage="CORE.UNMOUNT after write";
+        const int unmount_rc=core->unmount(session);
         mounted=0;session=NULL;
+        if(unmount_rc!=IFS_FS_OK)goto done;
+        stage="target sync";
         if(host->sync_target(host->context,&m->binding.target)!=0)goto done;
         /* The post-format corpus check is deliberately a read-only mount,
          * even while retaining the original exclusive device lease. A
          * provider must not repair or change the just-written evidence. */
         if(ifs_filesystem_target_runtime_v2(&m->binding,0,0u,&runtime)!=0 ||
            !ifs_fs_host_v2_valid(&runtime))goto done;
+        stage="read-only CORE.MOUNT";
         info=(IfsFsVolumeInfoV2){.structure_bytes=sizeof(info)};
         if(core->mount(&runtime,&session,&info)!=IFS_FS_OK || !session)goto done;
         mounted=1;
         if(!profile_geometry_valid(m->spec,&info))goto done;
     }
+    stage="CORE.LIST";
     unsigned seen=0u;
     int directory_complete=0;
     for(uint32_t index=0u;index<65536u;++index) {
@@ -341,10 +360,12 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
         IfsFsEntryV2 e={.structure_bytes=sizeof(e),.name=entry_name,
                         .name_capacity=sizeof(entry_name)};
         uint64_t length=ldtm_raw_file_bytes(m->spec,file);
+        stage="CORE.STAT";
         if(core->stat(session,path,&e)!=IFS_FS_OK ||
            e.type!=IFS_FS_ENTRY_FILE || e.size_bytes!=length)
             goto done;
         if(m->require_map && file<LDTM_TARGET_FILE_COUNT) {
+            stage="DEFRAG.MAP";
             const IfsFsDefragOpsV2 *map=(const IfsFsDefragOpsV2 *)
                 ifs_fs_group_v2(api,IFS_FS_GROUP_DEFRAG);
             unsigned displaced=0u;
@@ -356,6 +377,7 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
             }
             m->fragmented+=displaced;
         }
+        stage="CORE.READ and payload comparison";
         for(uint64_t at=0u;at<length;) {
             uint32_t n=(uint32_t)((length-at)<sizeof(actual)?
                                    length-at:sizeof(actual));
@@ -371,12 +393,15 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
      * FAT12 CHECK. No private FAT scanner is linked or invoked. */
     if(profile_fat_width(m->spec) && volume && volume->check &&
        (volume->header.capabilities&IFS_FS_VOLUME_CHECK)) {
+        stage="VOLUME.CHECK";
         uint64_t errors=UINT64_MAX;
         if(volume->check(session,0u,&errors)!=IFS_FS_OK || errors!=0u)
             goto done;
     }
     result=0;
 done:
+    if(result!=0)
+        fprintf(stderr,"%s Common V2 corpus failed at %s\n",provider(m->spec),stage);
     if(mounted && core->unmount(session)!=IFS_FS_OK)result=-1;
     if(m->create && host->sync_target(host->context,&m->binding.target)!=0)
         result=-1;

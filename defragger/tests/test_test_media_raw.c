@@ -228,6 +228,14 @@ int main(int argc, char **argv)
         fprintf(ready?stdout:stderr,"%s\n",detail);
         return ready?0:1;
     }
+    if (argc == 3 && strcmp(argv[1], "preflight-corpus") == 0) {
+        const LdtmFilesystemSpec *spec = ldtm_find_spec(argv[2]);
+        if (!spec) return 2;
+        char detail[512] = {0};
+        int result = preflight_corpus(spec, detail, sizeof(detail));
+        fprintf(result == 0 ? stdout : stderr, "%s\n", detail);
+        return result != 0;
+    }
     if (argc != 4)
         return 2;
     const LdtmFilesystemSpec *spec = ldtm_find_spec(argv[2]);

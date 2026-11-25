@@ -1275,28 +1275,35 @@ static int state_write_status(FILE *state, const LdtmFilesystemSpec *spec,
     return state_flush(state);
 }
 
+/* One qualification implementation is shared by disposable preflight and
+ * actual partition population. The preflight must not emit a populated state
+ * for the physical medium: that state belongs only to successful real writes. */
+static int qualify_corpus(const LdtmFilesystemSpec *spec, const char *partition,
+                          char *detail, size_t capacity)
+{
+    if (!ldtm_spec_creator_available(spec, detail, capacity) ||
+        ldtm_raw_fixture(spec, partition, true, detail, capacity) != 0)
+        return -1;
+    if (spec->creator == LDTM_CREATOR_SWAP)
+        return ldtm_raw_fixture(spec, partition, false, detail, capacity);
+    unsigned fragmented = 0U;
+    /* The independent read-only extent pass also verifies every corpus byte,
+     * so another byte-only reopen between the two passes is unnecessary. */
+    if (ldtm_common_v2_verify_fragmentation(spec, partition, &fragmented) != 0 ||
+        fragmented != LDTM_TARGET_FILE_COUNT) {
+        (void)snprintf(detail, capacity,
+            "Common V2 corpus extent verification requires all %u large files fragmented; proved %u",
+            LDTM_TARGET_FILE_COUNT, fragmented);
+        return -1;
+    }
+    return 0;
+}
+
 static int create_raw_and_populate(const LdtmFilesystemSpec *spec, const char *partition,
                                    FILE *state)
 {
     char detail[512] = {0};
-    if (!ldtm_spec_creator_available(spec, detail, sizeof(detail)) ||
-        ldtm_raw_fixture(spec, partition, true, detail, sizeof(detail)) != 0 ||
-        ldtm_raw_fixture(spec, partition, false, detail, sizeof(detail)) != 0) {
-        emit_status(spec->key, "qualification-failed", detail);
-        return state_write_status(state, spec, "qualification-failed", detail) == 0 ? 1 : -1;
-    }
-    unsigned fragmented = 0U;
-    int accepted = 0;
-    if (spec->creator != LDTM_CREATOR_SWAP) {
-        accepted = ldtm_common_v2_verify_fragmentation(spec, partition, &fragmented);
-        if (accepted != 0 || fragmented != LDTM_TARGET_FILE_COUNT) {
-            accepted = -1;
-            (void)snprintf(detail, sizeof(detail),
-                "Common V2 corpus extent verification requires all %u large files fragmented; proved %u",
-                LDTM_TARGET_FILE_COUNT, fragmented);
-        }
-    }
-    if (accepted != 0) {
+    if (qualify_corpus(spec, partition, detail, sizeof(detail)) != 0) {
         emit_status(spec->key, "qualification-failed", detail);
         return state_write_status(state, spec, "qualification-failed", detail) == 0 ? 1 : -1;
     }
@@ -1306,6 +1313,54 @@ static int create_raw_and_populate(const LdtmFilesystemSpec *spec, const char *p
             : "Common V2 corpus fully verified; provider extent maps proved all eight large files fragmented";
     emit_status(spec->key, "populated", message);
     return state_write_status(state, spec, "populated", message);
+}
+
+/* Actual provider qualification before the destructive boundary. Use one
+ * private, sparse, exact-size regular image at a time. Its filesystem bytes
+ * are written exclusively by the provider, never by the application.
+ * Failure (including insufficient scratch space) leaves the selected disk
+ * untouched and its existing mounts intact. */
+static int preflight_corpus(const LdtmFilesystemSpec *spec,
+                            char *detail, size_t capacity)
+{
+    char directory[] = "/tmp/defragmenter-provider-check.XXXXXX";
+    if (!mkdtemp(directory)) {
+        (void)snprintf(detail, capacity, "Cannot create private provider preflight directory: %s",
+                       strerror(errno));
+        return -1;
+    }
+    char image[sizeof(directory) + 32U];
+    int result = -1;
+    int length = snprintf(image, sizeof(image), "%s/media.img", directory);
+    if (length < 0 || (size_t)length >= sizeof(image)) {
+        (void)snprintf(detail, capacity, "Cannot construct provider preflight image path");
+        goto cleanup;
+    }
+    int fd = open(image, O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC | O_NOFOLLOW, 0600);
+    if (fd < 0) {
+        (void)snprintf(detail, capacity, "Cannot create provider preflight image: %s",
+                       strerror(errno));
+        goto cleanup;
+    }
+    int sized = ftruncate(fd, (off_t)((uint64_t)spec->size_mib * LDTM_MIB)) == 0;
+    int closed = close(fd) == 0;
+    if (!sized || !closed) {
+        (void)snprintf(detail, capacity, "Cannot size or close provider preflight image");
+    } else {
+        result = qualify_corpus(spec, image, detail, capacity);
+    }
+    if (unlink(image) != 0) {
+        (void)snprintf(detail, capacity, "Cannot remove provider preflight image: %s",
+                       strerror(errno));
+        result = -1;
+    }
+cleanup:
+    if (rmdir(directory) != 0) {
+        (void)snprintf(detail, capacity, "Cannot remove provider preflight directory: %s",
+                       strerror(errno));
+        result = -1;
+    }
+    return result;
 }
 
 static int recursive_remove(const char *path) {
@@ -1384,6 +1439,24 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device,
     }
     printf("Safety check: %s\n", safety);
     fflush(stdout);
+    for (size_t n = 0U; n < ldtm_spec_count(); ++n) {
+        const LdtmFilesystemSpec *spec = &ldtm_specs()[n];
+        printf("Preflight: qualifying %s on a disposable image before touching the selected disk\n",
+               spec->key);
+        fflush(stdout);
+        if (preflight_corpus(spec, safety, sizeof(safety)) != 0) {
+            emit_status(spec->key, "qualification-failed", safety);
+            fprintf(stderr, "Provider preflight failed; selected disk has not been repartitioned or unmounted.\n");
+            return 2;
+        }
+    }
+    /* A long-running preflight cannot authorize a newly attached disk. */
+    if (ldtm_device_fingerprint(canonical, current_fingerprint) != 0 ||
+        strcmp(current_fingerprint, confirmed_fingerprint) != 0 ||
+        ldtm_device_safety_check(canonical, 0, safety, sizeof(safety)) != 0) {
+        fputs("Selected disk changed or became unsafe during provider preflight.\n", stderr);
+        return 2;
+    }
     if (unmount_descendants(canonical) != 0) {
         fputs("Unable to unmount all descendants.\n", stderr);
         return 2;
