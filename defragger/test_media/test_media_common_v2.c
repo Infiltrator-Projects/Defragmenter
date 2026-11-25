@@ -99,9 +99,13 @@ static const IfsFsModuleApiV2 *qualify(void *symbol,MediaV2 *m)
         if(m->create) {
             NEED(CORE(IFS_FS_CORE_CREATE,create),"CORE.CREATE");
             NEED(CORE(IFS_FS_CORE_WRITE,write),"CORE.WRITE");
-            if(is_bfs(m->spec))NEED(CORE(IFS_FS_CORE_REMOVE,remove),"CORE.REMOVE (BFS gap corpus)");
+            if(is_bfs(m->spec) || m->spec->creator==LDTM_CREATOR_NTFS)
+                NEED(CORE(IFS_FS_CORE_REMOVE,remove),"CORE.REMOVE (sacrificial allocation corpus)");
+            if(m->spec->creator==LDTM_CREATOR_NTFS)
+                NEED(volume && (volume->header.capabilities&IFS_FS_VOLUME_QUERY) &&
+                     volume->query,"VOLUME.QUERY (NTFS sacrificial allocation budget)");
         }
-        if(m->require_map) {
+        if(m->require_map || (m->create && m->spec->creator==LDTM_CREATOR_NTFS)) {
             const IfsFsDefragOpsV2 *map=(const IfsFsDefragOpsV2 *)
                 ifs_fs_group_v2(api,IFS_FS_GROUP_DEFRAG);
             NEED(map && (map->header.capabilities & IFS_FS_DEFRAG_MAP) &&
@@ -203,6 +207,166 @@ static int file_fragmented(const IfsFsDefragOpsV2 *map,void *session,
         first+=count;
     }
     return -1;
+}
+
+/* Workload-only NTFS fragmentation. The provider alone allocates blocks;
+ * these helpers use verified physical extents to decide when enough real
+ * sacrificial file allocations have been created. No allocator hint,
+ * metadata parsing, raw placement write or synthetic extent is used.
+ */
+typedef struct {
+    uint64_t tail[LDTM_TARGET_FILE_COUNT];
+    unsigned blocked[LDTM_TARGET_FILE_COUNT];
+} NtfsCorpusTails;
+
+static int ntfs_corpus_scan(const MediaV2 *m,const IfsFsDefragOpsV2 *map,
+    void *session,const char *path,uint64_t bytes,uint64_t capacity,
+    unsigned own,NtfsCorpusTails *tails,int record_tail)
+{
+    uint64_t first=0u,logical=0u,last=0u;
+    unsigned displaced=0u;
+    for(unsigned page=0u;page<131072u;++page) {
+        IfsFsExtentV2 ranges[32]={{0}};
+        uint32_t count=0u;
+        if(m->services->stop_requested(m->services->context))return -1;
+        const int rc=map->map(session,path,first,ranges,32u,&count);
+        if(rc==IFS_FS_END) {
+            if(count || logical!=bytes)return -1;
+            if(record_tail && own<LDTM_TARGET_FILE_COUNT) {
+                tails->tail[own]=last;
+                tails->blocked[own]=displaced || last==capacity;
+            }
+            return 0;
+        }
+        if(rc!=IFS_FS_OK || !count || count>32u || first>UINT64_MAX-count)
+            return -1;
+        for(uint32_t i=0u;i<count;++i) {
+            const IfsFsExtentV2 *e=&ranges[i];
+            if(e->flags || e->reserved || !e->length ||
+               e->logical_offset!=logical || logical>bytes ||
+               e->length>bytes-logical || e->physical_offset>capacity ||
+               e->length>capacity-e->physical_offset)return -1;
+            if(logical && e->physical_offset!=last)displaced=1u;
+            last=e->physical_offset+e->length;
+            if(!record_tail)
+                for(unsigned k=0u;k<LDTM_TARGET_FILE_COUNT;++k)
+                    if(k!=own && e->physical_offset<=tails->tail[k] &&
+                       tails->tail[k]<last)tails->blocked[k]=1u;
+            logical+=e->length;
+        }
+        first+=count;
+    }
+    return -1;
+}
+static unsigned ntfs_corpus_blocked(const NtfsCorpusTails *tails)
+{
+    unsigned n=0u;
+    for(unsigned k=0u;k<LDTM_TARGET_FILE_COUNT;++k)n+=tails->blocked[k]!=0u;
+    return n;
+}
+static int ntfs_corpus_write(const MediaV2 *m,const IfsFsCoreOpsV2 *core,
+    void *session,const char *path,unsigned file,uint64_t start,uint64_t end,
+    int sacrificial)
+{
+    uint8_t buf[65536];
+    if(sacrificial)memset(buf,0xa5,sizeof(buf));
+    for(uint64_t at=start;at<end;) {
+        const uint32_t n=(uint32_t)(end-at<sizeof(buf)?end-at:sizeof(buf));
+        if(m->services->stop_requested(m->services->context))return -1;
+        if(!sacrificial)ldtm_raw_payload(buf,n,file,at);
+        const int rc=core->write(session,path,at,buf,n);
+        if(rc!=IFS_FS_OK) {
+            fprintf(stderr,"NTFS corpus write %s at %llu (%u bytes) failed: %d\n",
+                path,(unsigned long long)at,n,rc);
+            return -1;
+        }
+        at+=n;
+    }
+    return 0;
+}
+static int create_ntfs_corpus(const MediaV2 *m,const IfsFsCoreOpsV2 *core,
+    const IfsFsVolumeOpsV2 *volume,const IfsFsDefragOpsV2 *map,
+    void *session,const IfsFsVolumeInfoV2 *initial,uint64_t capacity)
+{
+    const uint64_t unit=initial->block_bytes;
+    const uint64_t quantum=unit>LDTM_MIB?unit:LDTM_MIB;
+    const uint64_t blocker_max=32u*LDTM_MIB;
+    const char *temporary="/LDTM-TEMP";
+    char path[32];
+    NtfsCorpusTails tails={0};
+    uint64_t remaining=0u;
+    unsigned blockers=0u;
+    if(!unit || !core->remove || !volume->query || !map || !map->map)
+        return -1;
+    /* Establish one real allocated prefix in each target. Every other
+     * payload byte is deferred until the blocking workload is established. */
+    for(unsigned file=0u;file<LDTM_RAW_FILES;++file) {
+        const uint64_t bytes=ldtm_raw_file_bytes(m->spec,file);
+        uint64_t prefix=file<LDTM_TARGET_FILE_COUNT?quantum:0u;
+        if(file<LDTM_TARGET_FILE_COUNT && (bytes<=prefix ||
+           make_path(file,path) ||
+           ntfs_corpus_write(m,core,session,path,file,0u,prefix,0)))return -1;
+        if(bytes-prefix>UINT64_MAX-remaining)return -1;
+        remaining+=bytes-prefix;
+    }
+    for(unsigned file=0u;file<LDTM_TARGET_FILE_COUNT;++file)
+        if(make_path(file,path) ||
+           ntfs_corpus_scan(m,map,session,path,quantum,capacity,file,&tails,1))
+            return -1;
+    for(unsigned file=0u;file<LDTM_TARGET_FILE_COUNT;++file)
+        if(make_path(file,path) ||
+           ntfs_corpus_scan(m,map,session,path,quantum,capacity,file,&tails,0))
+            return -1;
+    if(core->create(session,temporary,IFS_FS_ENTRY_DIRECTORY)!=IFS_FS_OK)return -1;
+    /* The native allocator may place files in different locality zones.
+     * Keep temporary files allocated until the real payloads have grown.
+     * Their physical maps, not creation order, establish whether a target's
+     * next cluster is occupied. Reserve all remaining payload capacity plus
+     * a conservative 64 MiB for native metadata growth; never fill to ENOSPC.
+     */
+    const uint64_t reserve=64u*LDTM_MIB;
+    if(remaining>UINT64_MAX-reserve)return -1;
+    while(ntfs_corpus_blocked(&tails)<LDTM_TARGET_FILE_COUNT && blockers<128u) {
+        IfsFsVolumeInfoV2 current={.structure_bytes=sizeof(current)};
+        if(volume->query(session,&current)!=IFS_FS_OK || current.block_bytes!=unit ||
+           current.free_bytes>current.total_bytes)return -1;
+        if(current.free_bytes<=remaining+reserve)break;
+        uint64_t bytes=current.free_bytes-remaining-reserve;
+        if(bytes>blocker_max)bytes=blocker_max;
+        bytes-=bytes%unit;
+        if(!bytes)break;
+        const int n=snprintf(path,sizeof(path),"%s/B%03u.TMP",temporary,blockers);
+        if(n<=0 || (size_t)n>=sizeof(path) ||
+           core->create(session,path,IFS_FS_ENTRY_FILE)!=IFS_FS_OK ||
+           ntfs_corpus_write(m,core,session,path,0u,0u,bytes,1) ||
+           ntfs_corpus_scan(m,map,session,path,bytes,capacity,
+                            LDTM_TARGET_FILE_COUNT,&tails,0))return -1;
+        ++blockers;
+    }
+    fprintf(stderr,"NTFS corpus: %u target prefixes physically blocked or already fragmented; %u temporary files\n",
+            ntfs_corpus_blocked(&tails),blockers);
+    /* Interleave remaining growth while the blockers are still allocated.
+     * Exact final fragmentation is always re-proved after their removal and
+     * a fresh read-only mount; a scheduling hint is not a qualification. */
+    for(uint64_t base=0u;;base+=quantum) {
+        int any=0;
+        for(unsigned file=0u;file<LDTM_RAW_FILES;++file) {
+            const uint64_t bytes=ldtm_raw_file_bytes(m->spec,file);
+            if(file<LDTM_TARGET_FILE_COUNT && base==0u){any=1;continue;}
+            if(base>=bytes)continue;
+            any=1;
+            const uint64_t end=bytes-base<quantum?bytes:base+quantum;
+            if(make_path(file,path) ||
+               ntfs_corpus_write(m,core,session,path,file,base,end,0))return -1;
+        }
+        if(!any)break;
+    }
+    for(unsigned i=0u;i<blockers;++i) {
+        const int n=snprintf(path,sizeof(path),"%s/B%03u.TMP",temporary,i);
+        if(n<=0 || (size_t)n>=sizeof(path) ||
+           core->remove(session,path)!=IFS_FS_OK)return -1;
+    }
+    return core->remove(session,temporary)==IFS_FS_OK?0:-1;
 }
 
 /* SCO BFS intrinsically requires one contiguous extent per file. Build
@@ -406,39 +570,10 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
         if(is_bfs(m->spec)) {
             if(create_bfs_corpus(m,core,session,info.block_bytes)!=0)goto done;
         } else if(m->spec->creator==LDTM_CREATOR_NTFS) {
-            /* NTFS's native allocator can extend a run into adjacent free
-             * space. Interleave bounded one-MiB increments rather than two
-             * large passes. Keep each individual host transfer unchanged.
-             * This limits runlist pressure on the existing native reader
-             * while retaining exactly the same lengths and payload bytes.
-             * NTFS owns placement; the independent eight-file MAP gate
-             * remains the authority on whether fragmentation was achieved.
-             */
-            const uint64_t quantum=LDTM_MIB;
-            for(uint64_t base=0u;;base+=quantum) {
-                int remaining=0;
-                for(unsigned file=0u;file<LDTM_RAW_FILES;++file) {
-                    const uint64_t length=ldtm_raw_file_bytes(m->spec,file);
-                    if(base>=length)continue;
-                    remaining=1;
-                    const uint64_t end=length-base<quantum?length:base+quantum;
-                    if(make_path(file,path)!=0)goto done;
-                    for(uint64_t at=base;at<end;) {
-                        const uint32_t n=(uint32_t)(end-at<sizeof(actual)?
-                                                    end-at:sizeof(actual));
-                        if(host->stop_requested(host->context))goto done;
-                        ldtm_raw_payload(expected,n,file,at);
-                        const int rc=core->write(session,path,at,expected,n);
-                        if(rc!=IFS_FS_OK) {
-                            fprintf(stderr,"%s: write %s at %llu (%u bytes) failed: %d\n",
-                                    provider(m->spec),path,(unsigned long long)at,n,rc);
-                            goto done;
-                        }
-                        at+=n;
-                    }
-                }
-                if(!remaining)break;
-            }
+            const IfsFsDefragOpsV2 *map=(const IfsFsDefragOpsV2 *)
+                ifs_fs_group_v2(api,IFS_FS_GROUP_DEFRAG);
+            if(create_ntfs_corpus(m,core,volume,map,session,&info,
+                                  runtime.volume_bytes)!=0)goto done;
         } else for(unsigned phase=0u;phase<2u;++phase)
             for(unsigned file=0u;file<LDTM_RAW_FILES;++file) {
                 uint64_t length=ldtm_raw_file_bytes(m->spec,file);
@@ -502,6 +637,13 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
         seen|=1u<<(unsigned)number;
     }
     if(!directory_complete || seen!=((1u<<LDTM_RAW_FILES)-1u))goto done;
+    if(m->spec->creator==LDTM_CREATOR_NTFS) {
+        IfsFsEntryV2 temporary={.structure_bytes=sizeof(temporary),
+            .name=entry_name,.name_capacity=sizeof(entry_name)};
+        stage="NTFS sacrificial directory removal";
+        if(core->stat(session,"/LDTM-TEMP",&temporary)!=IFS_FS_NOT_FOUND)
+            goto done;
+    }
     for(unsigned file=0u;file<LDTM_RAW_FILES;++file) {
         if(make_path(file,path)!=0)goto done;
         IfsFsEntryV2 e={.structure_bytes=sizeof(e),.name=entry_name,
@@ -525,7 +667,12 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
                         provider(m->spec),path);
                 goto done;
             }
-            if(file<LDTM_TARGET_FILE_COUNT)m->fragmented+=displaced;
+            if(file<LDTM_TARGET_FILE_COUNT) {
+                m->fragmented+=displaced;
+                if(m->spec->creator==LDTM_CREATOR_NTFS)
+                    fprintf(stderr,"NTFS corpus %s: %s\n",path,
+                            displaced?"physically fragmented":"contiguous");
+            }
         }
         stage="CORE.READ and payload comparison";
         for(uint64_t at=0u;at<length;) {
