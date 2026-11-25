@@ -584,9 +584,9 @@ const InfiltratrThemePalette* install_style(InfiltratrThemeMode mode) {
 class Desktop {
 public:
     explicit Desktop(bool start_services = true) {
-        mapper_ = defragger::resolve_program("mapper");
-        engine_ = defragger::resolve_program("operation-engine");
-        helper_path_ = defragger::resolve_program("helper");
+        mapper_ = defragger::resolve_program("mapper", false);
+        engine_ = defragger::resolve_program("operation-engine", false);
+        helper_path_ = defragger::resolve_program("helper", false);
         theme_mode_ = load_theme_mode();
         palette_ = install_style(theme_mode_);
         window_ = gtk_window_new(GTK_WINDOW_TOPLEVEL);
@@ -1657,7 +1657,7 @@ private:
         if (action_name == "test-media") {
             GError* failure = nullptr;
             try {
-                const std::string executable = defragger::resolve_program("test-media");
+                const std::string executable = defragger::resolve_program("test-media", false);
                 const char* argv[] = {executable.c_str(), nullptr};
                 auto* process = g_subprocess_newv(argv, G_SUBPROCESS_FLAGS_NONE, &failure);
                 if (process) g_object_unref(process);
