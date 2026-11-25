@@ -46,6 +46,9 @@ jobs:
       - name: Verify generic corpus and application policy contracts
         run: |
           ctest --test-dir defragger/build --output-on-failure -R '^defragmenter-test-media-(core|corpus-contract)$'
+      - name: Verify actual Common V2 mapping presentation and desktop mutation policy
+        run: |
+          ctest --test-dir defragger/build --output-on-failure -R '^defragmenter-(cpp-runtime|desktop-policy|helper-policy)$'
       - name: Prove all registered missing providers refuse without modifying test media
         run: |
           ctest --test-dir defragger/build --output-on-failure -R '^defragmenter-test-media-missing-so$'
@@ -78,7 +81,11 @@ jobs:
             defragmenter-ntfs-worker defragmenter-exfat-worker \
             defragmenter-affs-worker hfs_analyser \
             defragmenter-hfsplus-worker defragmenter-xfs-worker \
-            defragmenter-swap-worker defragmenter-test-media; do
+            defragmenter-swap-worker defragmenter-btrfs-worker \
+            defragmenter-sfs-worker defragmenter-pfs3-worker \
+            defragmenter-ufs-worker defragmenter-zfs-worker \
+            ext-metadata-worker defragmenter-mapper defragmenter-operation-engine \
+            defragmenter-privileged-helper defragmenter defragmenter-test-media; do
             exe="defragger/build/$executable"
             test -x "$exe"
             if strings -a "$exe" | grep -E \
