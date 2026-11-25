@@ -406,30 +406,35 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
         if(is_bfs(m->spec)) {
             if(create_bfs_corpus(m,core,session,info.block_bytes)!=0)goto done;
         } else if(m->spec->creator==LDTM_CREATOR_NTFS) {
-            /* NTFS's native allocator can extend a run into the free space
-             * immediately following its previous allocation. Two large
-             * sequential passes leave some files physically contiguous.
-             * Interleave every transfer across all nonempty files instead,
-             * keeping the exact same lengths and deterministic payload.
-             * This is workload scheduling only; actual placement is owned
-             * by NTFS and the independent eight-file MAP gate is unchanged.
+            /* NTFS's native allocator can extend a run into adjacent free
+             * space. Interleave bounded one-MiB increments rather than two
+             * large passes. Keep each individual host transfer unchanged.
+             * This limits runlist pressure on the existing native reader
+             * while retaining exactly the same lengths and payload bytes.
+             * NTFS owns placement; the independent eight-file MAP gate
+             * remains the authority on whether fragmentation was achieved.
              */
-            for(uint64_t at=0u;;at+=sizeof(actual)) {
+            const uint64_t quantum=LDTM_MIB;
+            for(uint64_t base=0u;;base+=quantum) {
                 int remaining=0;
                 for(unsigned file=0u;file<LDTM_RAW_FILES;++file) {
                     const uint64_t length=ldtm_raw_file_bytes(m->spec,file);
-                    if(at>=length)continue;
+                    if(base>=length)continue;
                     remaining=1;
-                    const uint32_t n=(uint32_t)(length-at<sizeof(actual)?
-                                                length-at:sizeof(actual));
-                    if(make_path(file,path)!=0 ||
-                       host->stop_requested(host->context))goto done;
-                    ldtm_raw_payload(expected,n,file,at);
-                    const int rc=core->write(session,path,at,expected,n);
-                    if(rc!=IFS_FS_OK) {
-                        fprintf(stderr,"%s: write %s at %llu (%u bytes) failed: %d\n",
-                                provider(m->spec),path,(unsigned long long)at,n,rc);
-                        goto done;
+                    const uint64_t end=length-base<quantum?length:base+quantum;
+                    if(make_path(file,path)!=0)goto done;
+                    for(uint64_t at=base;at<end;) {
+                        const uint32_t n=(uint32_t)(end-at<sizeof(actual)?
+                                                    end-at:sizeof(actual));
+                        if(host->stop_requested(host->context))goto done;
+                        ldtm_raw_payload(expected,n,file,at);
+                        const int rc=core->write(session,path,at,expected,n);
+                        if(rc!=IFS_FS_OK) {
+                            fprintf(stderr,"%s: write %s at %llu (%u bytes) failed: %d\n",
+                                    provider(m->spec),path,(unsigned long long)at,n,rc);
+                            goto done;
+                        }
+                        at+=n;
                     }
                 }
                 if(!remaining)break;
