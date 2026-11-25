@@ -1551,29 +1551,19 @@ int ldtm_worker_verify(const char *device) {
 }
 
 
-static int run_production_defrag(
-    const char *engine, const LdtmFilesystemSpec *spec,
-    const char *partition, const char *operation, const char *journal)
+/* Use exactly the same trusted Common V2 host as the operation engine.
+ * Qualification never launches a replacement filesystem worker. */
+static int run_production_defrag(const LdtmFilesystemSpec *spec,
+    const char *partition, const char *operation)
 {
-    const bool growth = strcmp(operation, "growth-defrag") == 0;
-    const char *argv[16];
-    size_t arg = 0U;
-    argv[arg++] = engine;
-    argv[arg++] = operation;
-    argv[arg++] = partition;
-    argv[arg++] = "--filesystem";
-    argv[arg++] = spec->key;
-    argv[arg++] = "--write";
-    argv[arg++] = "--confirm";
-    argv[arg++] = partition;
-    argv[arg++] = "--journal";
-    argv[arg++] = journal;
-    if (growth) {
-        argv[arg++] = "--growth-percent";
-        argv[arg++] = "10";
-    }
-    argv[arg] = NULL;
-    return run_process(argv, NULL, 0);
+    const char *format=!strcmp(spec->key,"ufs")?"ufs2":spec->key;
+    char module[64]={0};
+    if(ifs_filesystem_module_find_v2(format,module,sizeof(module))!=0)
+        return -1;
+    char *argv[]={(char *)"defragmenter-test-media",(char *)operation,
+        (char *)partition,(char *)"--write",(char *)"--confirm",
+        (char *)partition,NULL};
+    return ifs_filesystem_module_run(format,module,6,argv);
 }
 
 int ldtm_worker_qualify(const char *device)
@@ -1582,7 +1572,6 @@ int ldtm_worker_qualify(const char *device)
     char safety[512];
     char state_path[PATH_MAX];
     char fingerprint[LDTM_HASH_HEX];
-    char engine[PATH_MAX];
     LdtmPartitionMap map;
     LdtmVerifyFilesystem expected[LDTM_SPEC_COUNT];
     int failures = 0;
@@ -1605,13 +1594,6 @@ int ldtm_worker_qualify(const char *device)
     }
     if (ldtm_device_fingerprint(canonical, fingerprint) != 0) {
         fputs("Unable to rebind the protected test disk identity.\n", stderr);
-        return 2;
-    }
-    if (ldtm_resolve_program(
-            "/System/Commands/Defragmenter/defragmenter-operation-engine",
-            engine, sizeof(engine)) != 0) {
-        fputs("The installed production Defragmenter operation engine is unavailable.\n",
-              stderr);
         return 2;
     }
     if (unmount_descendants(canonical) != 0 ||
@@ -1670,28 +1652,18 @@ int ldtm_worker_qualify(const char *device)
         printf("\n=== qualify %s on %s ===\n", spec->key, partition);
         fflush(stdout);
 
-        /*
-         * A previous interrupted qualification deliberately leaves the real
-         * production journal behind. Recover it with the production engine
-         * before starting a new destructive transaction.
-         */
-        if (access(journal, F_OK) == 0) {
-            printf("+ recovering interrupted production transaction\n");
-            fflush(stdout);
-            if (run_production_defrag(
-                    engine, spec, partition, "recover", journal) != 0) {
-                emit_status(
-                    spec->key, "qualification-failed",
-                    "production Recover could not complete the previous test transaction");
-                failures++;
-                continue;
-            }
+        // Never discard an external journal left by an old implementation.
+        // It cannot be safely translated into provider-owned V2 recovery.
+        if (access(journal, F_OK) == 0 || errno != ENOENT) {
+            emit_status(spec->key,"qualification-failed",
+                "Unresolved legacy journal; no Common V2 mutation attempted");
+            ++failures;
+            continue;
         }
 
         printf("+ production Defragment\n");
         fflush(stdout);
-        if (run_production_defrag(
-                engine, spec, partition, "defrag", journal) != 0 ||
+        if (run_production_defrag(spec, partition, "defrag") != 0 ||
             require_fragmentation_state(
                 spec, partition, 0, detail, sizeof(detail)) != 0) {
             emit_status(
@@ -1711,8 +1683,7 @@ int ldtm_worker_qualify(const char *device)
         detail[0] = '\0';
         printf("+ production Growth Defrag (10%% reserve)\n");
         fflush(stdout);
-        if (run_production_defrag(
-                engine, spec, partition, "growth-defrag", journal) != 0 ||
+        if (run_production_defrag(spec, partition, "growth-defrag") != 0 ||
             require_fragmentation_state(
                 spec, partition, 0, detail, sizeof(detail)) != 0) {
             emit_status(
@@ -1726,7 +1697,7 @@ int ldtm_worker_qualify(const char *device)
 
         emit_status(
             spec->key, "qualified",
-            "production Defragment and Growth Defrag completed; exact analyser reports zero fragmentation");
+            "Common V2 Defragment and Growth Defrag verified by provider; corpus bytes intact and all eight large files contiguous");
     }
 
     if (failures != 0) {

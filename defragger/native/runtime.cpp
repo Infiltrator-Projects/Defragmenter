@@ -19,13 +19,9 @@ namespace {
 
 std::vector<std::string> worker_default_options(
     std::string_view worker, std::string_view operation_name) {
-    if (operation_name == "recover") return {};
-    if (worker == "fat-native" || worker == "exfat-native") {
-        return {"--batch-clusters", "4096", "--ram-buffer", "auto"};
-    }
-    if (worker == "ext-native") {
-        return {"--batch-clusters", "4096"};
-    }
+    (void)worker;
+    (void)operation_name;
+    // Buffering, relocation and recovery belong to the Common V2 module.
     return {};
 }
 
@@ -51,14 +47,14 @@ OperationSpec operation(std::string name, std::string worker,
         policy = "recovery";
         label = "Recover";
         description =
-            "Complete or roll back an interrupted raw-device journal transaction.";
+            "Invoke the selected Common V2 provider's durable recovery.";
     } else {
         throw std::logic_error("invalid operation declaration");
     }
     auto defaults = worker_default_options(worker, name);
     return {std::move(name), std::move(worker), std::move(policy),
             std::move(label), std::move(description), std::move(warning),
-            std::move(defaults), {}, true, true};
+            std::move(defaults), {}, true, false};
 }
 
 std::vector<OperationSpec> standard_write_ops(

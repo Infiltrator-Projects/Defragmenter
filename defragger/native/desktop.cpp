@@ -897,7 +897,7 @@ public:
         gtk_stack_add_named(GTK_STACK(pages_), build_operation_page("Analyse", "Scan the selected filesystem and render its true physical allocation.", "system-search-symbolic", "Analyse selected volume", "analyse", true), "analyse");
         gtk_stack_add_named(GTK_STACK(pages_), build_operation_page("Defragment", "Compact movable extents while preserving the verified filesystem contract.", "view-grid-symbolic", "Defragment selected volume", "defrag", true), "defrag");
         gtk_stack_add_named(GTK_STACK(pages_), build_operation_page("Growth Defrag", "Keep at least the qualified growth reserve contiguous after file data.", "go-up-symbolic", "Growth Defrag selected volume", "growth-defrag", true), "growth");
-        gtk_stack_add_named(GTK_STACK(pages_), build_operation_page("Recover", "Resume a journalled operation without weakening target identity checks.", "edit-undo-symbolic", "Recover selected volume", "recover", false), "recover");
+        gtk_stack_add_named(GTK_STACK(pages_), build_operation_page("Recover", "Invoke the selected Common V2 provider’s own recovery operation.", "edit-undo-symbolic", "Recover selected volume", "recover", false), "recover");
         gtk_stack_add_named(GTK_STACK(pages_), build_test_media_page(), "test-media");
         gtk_stack_add_named(GTK_STACK(pages_), build_settings_page(), "settings");
         gtk_stack_set_visible_child_name(GTK_STACK(pages_), "overview");
@@ -1678,6 +1678,7 @@ private:
             v->exact_analysis = false;
             v->defrag_qualified = false;
             v->growth_qualified = false;
+            v->recovery_qualified = false;
             v->defrag_reason.clear();
             v->growth_reason.clear();
             start({mapper_, v->path, "--fstype", v->filesystem, "--cells", std::to_string(desired_map_cells())}, "mapper", "analysis");
@@ -1691,7 +1692,7 @@ private:
                 const auto* backend = defragger::backend_by_fstype(v->filesystem);
                 const auto* spec = defragger::operation_for(*backend, action_name);
                 std::string message = spec->description + (spec->warning.empty() ? "" : "\n\n" + spec->warning)
-                    + "\n\nKeep this volume connected and unmounted. Stop finishes the active journalled transaction.";
+                    + "\n\nKeep this volume connected and unmounted. Stop requests cancellation from the Common V2 provider.";
                 if (!confirm(spec->label + " " + v->path + "?", message)) return;
                 start(std::move(args), "operation-engine", action_name);
             } catch (const std::exception& ex) { error("Operation unavailable", ex.what()); }
@@ -1927,6 +1928,8 @@ private:
         const Json* growth_qualified = map.find("growth_qualified");
         v->defrag_qualified = v->exact_analysis && defrag_qualified != nullptr && defrag_qualified->bool_or(false);
         v->growth_qualified = v->exact_analysis && growth_qualified != nullptr && growth_qualified->bool_or(false);
+        const Json* recovery_qualified = map.find("recovery_qualified");
+        v->recovery_qualified = recovery_qualified != nullptr && recovery_qualified->bool_or(false);
         v->defrag_reason = field(map, "defrag_reason");
         v->growth_reason = field(map, "growth_reason");
         if (v->exact_analysis && !v->defrag_qualified && !v->defrag_reason.empty())
@@ -1939,8 +1942,9 @@ private:
             note("Analysis warning: " + std::string(warning->string()));
         queue_maps();
         const bool complete_allocation = number(map, "unknown_bytes") == 0U;
-        const bool complete_fragmentation = v->exact_analysis && map.find("fragmented_files") != nullptr;
-        const bool complete_file_count = v->exact_analysis && map.find("regular_files") != nullptr;
+        const bool complete_fragmentation = map.find("fragmented_files") != nullptr;
+        const bool complete_file_count = map.find("regular_files") != nullptr;
+        const bool complete_directory_fragmentation = map.find("fragmented_directories") != nullptr;
         std::string summary = "Capacity " + bytes(number(map, "total_bytes")) + "    Free "
             + (complete_allocation ? bytes(number(map, "free_bytes")) : std::string("Not calculated"))
             + "    Used " + (complete_allocation ? bytes(number(map, "used_bytes")) : std::string("Not calculated"));
@@ -1964,7 +1968,7 @@ private:
             return std::string(text);
         };
         gtk_label_set_text(GTK_LABEL(cards_[0]), complete_fragmentation ?
-            (std::to_string(fragmented_files) + " files · " + std::to_string(fragmented_directories) + " dirs").c_str() : "Not calculated");
+            (std::to_string(fragmented_files) + " files · " + (complete_directory_fragmentation ? std::to_string(fragmented_directories) + " dirs" : "dirs unknown")).c_str() : "Not calculated");
         gtk_label_set_text(GTK_LABEL(cards_[1]), complete_allocation ?
             (bytes(free_bytes) + " (" + percentage(gauge_values_[1]) + ")").c_str() : "Not calculated");
         gtk_label_set_text(GTK_LABEL(cards_[2]), complete_allocation ?

@@ -733,6 +733,8 @@ static int v2_fat_extent_json(FILE *out,const IfsFsModuleApiV2 *api,
        (IFS_FS_DEFRAG_PLAN|IFS_FS_DEFRAG_EXECUTE|IFS_FS_DEFRAG_VERIFY)?"true":"false",
        (defrag->header.capabilities&(IFS_FS_DEFRAG_PLAN|IFS_FS_DEFRAG_EXECUTE|IFS_FS_DEFRAG_VERIFY))==
        (IFS_FS_DEFRAG_PLAN|IFS_FS_DEFRAG_EXECUTE|IFS_FS_DEFRAG_VERIFY)?"true":"false")<0)return -1;
+    if(fprintf(out,",\"recovery_qualified\":%s",
+        (defrag->header.capabilities&IFS_FS_DEFRAG_RECOVER)?"true":"false")<0)return -1;
     /* The current FAT DEFRAG contract maps regular files, not directories.
      * Do not publish a fabricated zero for a volume containing subdirectories. */
     if(!m.dirs && fputs(",\"fragmented_directories\":0",out)==EOF)return -1;
@@ -845,6 +847,8 @@ static int v2_catalogue_json(FILE *out,const IfsFsModuleApiV2 *api,
        (unsigned long long)m.files,(unsigned long long)m.fragmented,
        (unsigned long long)m.dirs,m.dirs?"false":"true",
        (unsigned long long)defrag->header.capabilities)<0)return -1;
+    if(fprintf(out,",\"recovery_qualified\":%s",
+        (defrag->header.capabilities&IFS_FS_DEFRAG_RECOVER)?"true":"false")<0)return -1;
     if(!m.dirs && fputs(",\"fragmented_directories\":0",out)==EOF)return -1;
     return fputs("}\n",out)==EOF || fflush(out)!=0?-1:0;
 }

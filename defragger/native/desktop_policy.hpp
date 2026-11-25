@@ -17,7 +17,7 @@ struct DesktopVolume {
     std::uint64_t start_sector = 0;
     bool mounted = false, readonly = false, image = false, verified = false;
     bool exact_analysis = false;
-    bool defrag_qualified = false, growth_qualified = false;
+    bool defrag_qualified = false, growth_qualified = false, recovery_qualified = false;
     std::string defrag_reason, growth_reason;
 };
 

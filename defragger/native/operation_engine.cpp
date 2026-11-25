@@ -80,6 +80,8 @@ int main(int argc, char** argv) {
         // independent providers to probe the medium with Common V2.
         if (filesystem != "ufs1" && filesystem != "ufs2")
             filesystem = "ufs";
+    } else if (backend && backend->id == "sfs") {
+        if(filesystem!="sfs2")filesystem="sfs";
     } else if (backend && backend->id != "affs") {
         filesystem = backend->id;
     }

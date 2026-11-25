@@ -106,12 +106,10 @@ DesktopControls desktop_controls(const DesktopVolume* v, bool busy,
     const auto* backend = backend_by_fstype(v->filesystem);
     if (!backend || v->readonly || v->mounted) return out;
 
-    // Recovery admission comes from the persistent transaction, not a source
-    // scan that may be impossible halfway through committing that transaction.
-    // The native worker validates journal schema, target binding and staged
-    // bytes before writing; discovery metadata only selects that validator.
-    out.recover = journal_exists && operation_for(*backend, "recover");
-    if (!v->verified) return out;
+    // An external journal belongs to a retired protocol and cannot be
+    // interpreted by Common V2. Preserve it and block all writes.
+    if (journal_exists || !v->verified) return out;
+    out.recover = v->recovery_qualified && operation_for(*backend, "recover");
 
     /*
      * Once native identity has been proved and the target is writable and
@@ -180,12 +178,13 @@ void desktop_verify_identity(DesktopVolume& v, std::string_view detected) {
      * as vfat are allowed to resolve to the exact FAT width proven by the
      * native analyser.
      */
-    v.filesystem = actual->id;
+    v.filesystem = std::string(detected);
     // Identity verification alone never authorises a raw write. A fresh
     // exact allocation analysis must establish that separately.
     v.exact_analysis = false;
     v.defrag_qualified = false;
     v.growth_qualified = false;
+    v.recovery_qualified = false;
     v.defrag_reason.clear();
     v.growth_reason.clear();
     v.verified = true;
@@ -199,7 +198,7 @@ std::vector<std::string> desktop_mutation(const DesktopVolume& v,
                                           bool journal_exists) {
     const auto* backend = backend_by_fstype(v.filesystem);
     const auto* spec = backend ? operation_for(*backend, operation) : nullptr;
-    if (!backend || !spec || (operation != "recover" && !v.verified) ||
+    if (!backend || !spec || !v.verified ||
         v.mounted || v.readonly)
         throw std::runtime_error("Volume is not verified, unmounted, writable or supported");
     if (operation != "recover" && !v.exact_analysis)
@@ -215,20 +214,16 @@ std::vector<std::string> desktop_mutation(const DesktopVolume& v,
             v.growth_reason.empty()
                 ? "This exact filesystem layout is outside the qualified Growth Defrag writer contract"
                 : v.growth_reason);
-    if ((operation == "recover") != journal_exists)
-        throw std::runtime_error("An unfinished journal must be recovered before further writes");
-    if (journal.empty()) throw std::runtime_error("A persistent journal path is required");
+    if (journal_exists)
+        throw std::runtime_error("A legacy external journal exists; Common V2 cannot interpret it. No writes permitted.");
+    if (operation == "recover" && !v.recovery_qualified)
+        throw std::runtime_error("The selected Common V2 provider does not qualify recovery");
+    (void)journal;
+    (void)cells;
+    // The provider owns its own durable recovery mechanism. No private
+    // worker options or host-managed filesystem journal cross this boundary.
     std::vector<std::string> args = {std::string(engine), std::string(operation), v.path,
-        "--filesystem", v.filesystem, "--write", "--confirm", v.path, "--journal", std::string(journal)};
-    args.insert(args.end(), spec->default_options.begin(), spec->default_options.end());
-    if (operation == "growth-defrag") {
-        args.emplace_back("--growth-percent");
-        args.emplace_back("10");
-    }
-    if (operation != "recover") {
-        args.emplace_back("--live-map-cells");
-        args.emplace_back(std::to_string(std::clamp(cells, 256U, 1048576U)));
-    }
+        "--filesystem", v.filesystem, "--write", "--confirm", v.path};
     return args;
 }
 } // namespace defragger

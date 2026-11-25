@@ -141,70 +141,23 @@ int main() {
 
     const BackendInfo* fat12 = backend_by_fstype("fat12");
     ok = check(fat12 != nullptr, "FAT12 lookup") && ok;
-    if (fat12 != nullptr) {
-        const std::string fat_worker = fake_map_worker(
-            "{\"filesystem\":\"FAT12\",\"bytes_per_sector\":512,"
-            "\"sectors_per_cluster\":1,\"cluster_size\":512,"
-            "\"total_sectors\":8,\"data_start_sector\":4,"
-            "\"data_clusters\":4,\"free_clusters\":2,\"used_clusters\":2,"
-            "\"regular_files\":1,\"fragmented_files\":1,\"directories\":1,"
-            "\"fragmented_directories\":0,\"free_gaps_below_highest\":1,"
-            "\"cell_count\":2,\"cells\":["
-            "{\"start\":2,\"end\":3,\"free\":0,\"used\":2,"
-            "\"fragmented\":1,\"directory\":1,\"bad\":0},"
-            "{\"start\":4,\"end\":5,\"free\":2,\"used\":0,"
-            "\"fragmented\":0,\"directory\":0,\"bad\":0}]}");
-        (void)setenv("DEFRAGMENTER_FAT_WORKER", fat_worker.c_str(), 1);
+    if(fat12) {
+        const std::string worker=fake_map_worker(
+            "{\"filesystem\":\"fat12\",\"abi\":2,\"unit_size\":512,"
+            "\"total_units\":4,\"free_units\":2,\"allocated_ranges\":[[0,2]],"
+            "\"fragmented_ranges\":[[1,2]],\"regular_files\":1,\"fragmented_files\":1,"
+            "\"directories\":0,\"fragmented_directories\":0,\"defrag_qualified\":false,"
+            "\"growth_qualified\":false,\"recovery_qualified\":false}");
+        (void)setenv("DEFRAGMENTER_FAT_WORKER",worker.c_str(),1);
         try {
-            const Json mapped = map_backend(*fat12, "/dev/null", 2U);
-            ok = check(mapped.at("filesystem").string() == "FAT12",
-                       "FAT-specific map contract accepted") && ok;
-            ok = check(mapped.at("data_clusters").unsigned_value() == 4U,
-                       "FAT map geometry preserved") && ok;
-            ok = check(mapped.at("map_accuracy").string() == "exact" &&
-                       mapped.at("unit_size").unsigned_value() == 512U &&
-                       mapped.at("total_units").unsigned_value() == 4U,
-                       "FAT map exposes common native desktop geometry") && ok;
-            ok = check(
-                       mapped.at("display_unit_size").unsigned_value() == 512U &&
-                       mapped.at("display_units_per_allocation_unit").unsigned_value() == 1U &&
-                       mapped.at("display_prefix_units").unsigned_value() == 4U &&
-                       mapped.at("display_suffix_units").unsigned_value() == 0U &&
-                       mapped.at("display_total_units").unsigned_value() == 8U &&
-                       mapped.at("display_unit_name").string() == "sectors",
-                       "FAT map exposes exact physical-sector display geometry") && ok;
-            ok = check(mapped.at("total_bytes").unsigned_value() == 2048U &&
-                       mapped.at("free_bytes").unsigned_value() == 1024U &&
-                       mapped.at("used_bytes").unsigned_value() == 1024U &&
-                       mapped.at("unknown_bytes").unsigned_value() == 0U,
-                       "FAT map exposes common native desktop totals") && ok;
-        } catch (...) {
-            ok = check(false, "FAT-specific map contract accepted") && ok;
-        }
-        (void)unlink(fat_worker.c_str());
+            const Json mapped=map_backend(*fat12,"/dev/null",2U);
+            ok=check(mapped.at("unknown_bytes").unsigned_value()==0U &&
+                     mapped.at("free_bytes").unsigned_value()==1024U &&
+                     mapped.at("fragmented_files").unsigned_value()==1U,
+                     "V2 FAT exact extent presentation") && ok;
+        } catch (...) {ok=check(false,"V2 FAT map") && ok;}
+        (void)unlink(worker.c_str());
         (void)unsetenv("DEFRAGMENTER_FAT_WORKER");
-    }
-
-
-    const BackendInfo* ufs = backend_by_fstype("ufs2");
-    ok = check(ufs != nullptr, "UFS2 alias lookup") && ok;
-    if (ufs != nullptr) {
-        const std::string exact_worker = fake_map_worker(
-            "{\"schema\":1,\"backend\":\"read-only-domain\","
-            "\"filesystem\":\"ufs\",\"map_accuracy\":\"exact\","
-            "\"unit_size\":4096,\"total_units\":1,\"cell_count\":1,"
-            "\"cells\":[{\"start\":0,\"end\":0,\"free\":0,\"used\":1,"
-            "\"unknown\":0,\"bad\":0,\"fragmented\":0,\"directory\":0}]}");
-        (void)setenv("DEFRAGMENTER_UFS_WORKER", exact_worker.c_str(), 1);
-        try {
-            const Json mapped = map_backend(*ufs, "/dev/null", 1U);
-            ok = check(mapped.at("map_accuracy").string() == "exact",
-                       "UFS exact native map contract accepted") && ok;
-        } catch (...) {
-            ok = check(false, "UFS exact native map contract accepted") && ok;
-        }
-        (void)unlink(exact_worker.c_str());
-        (void)unsetenv("DEFRAGMENTER_UFS_WORKER");
     }
 
     const std::vector<std::string> input{
@@ -273,113 +226,41 @@ int main() {
     }
     ok = check(rejected_timeout, "child execution timeout is enforced") && ok;
 
-    const BackendInfo* btrfs = backend_by_fstype("btrfs");
-    ok = check(btrfs != nullptr, "Btrfs lookup") && ok;
-    if (btrfs != nullptr) {
-        const std::string valid_worker = fake_map_worker(
-            "{\"schema\":1,\"backend\":\"read-only-domain\","
-            "\"filesystem\":\"btrfs\",\"map_accuracy\":\"exact-single-device\","
-            "\"unit_size\":4096,\"total_units\":1,\"cell_count\":1,"
-            "\"cells\":[{\"start\":0,\"end\":0,\"free\":0,\"used\":1,"
-            "\"unknown\":0,\"outside\":0,\"bad\":0,"
-            "\"fragmented\":0,\"directory\":0}]}");
-        (void)setenv("DEFRAGMENTER_BTRFS_WORKER", valid_worker.c_str(), 1);
-        try {
-            const Json mapped = map_backend(*btrfs, "/dev/null", 1U);
-            ok = check(mapped.at("filesystem").string() == "btrfs",
-                       "valid native map accepted") && ok;
-        } catch (...) {
-            ok = check(false, "valid native map accepted") && ok;
-        }
-        (void)unlink(valid_worker.c_str());
-
-        const std::string wrong_identity = fake_map_worker(
-            "{\"schema\":1,\"backend\":\"read-only-domain\","
-            "\"filesystem\":\"zfs\",\"map_accuracy\":\"exact-single-device\","
-            "\"unit_size\":4096,\"total_units\":1,\"cell_count\":1,"
-            "\"cells\":[{\"start\":0,\"end\":0,\"free\":0,\"used\":1,"
-            "\"unknown\":0,\"outside\":0,\"bad\":0,"
-            "\"fragmented\":0,\"directory\":0}]}");
-        (void)setenv("DEFRAGMENTER_BTRFS_WORKER", wrong_identity.c_str(), 1);
-        bool rejected_identity = false;
-        try {
-            (void)map_backend(*btrfs, "/dev/null", 1U);
-        } catch (const std::runtime_error&) {
-            rejected_identity = true;
-        }
-        ok = check(rejected_identity, "native map identity mismatch rejected") && ok;
-        (void)unlink(wrong_identity.c_str());
-
-        const std::string wrong_accuracy = fake_map_worker(
-            "{\"schema\":1,\"backend\":\"read-only-domain\","
-            "\"filesystem\":\"btrfs\",\"map_accuracy\":\"summary\","
-            "\"unit_size\":4096,\"total_units\":1,\"cell_count\":1,"
-            "\"cells\":[{\"start\":0,\"end\":0,\"free\":0,\"used\":1,"
-            "\"unknown\":0,\"outside\":0,\"bad\":0,"
-            "\"fragmented\":0,\"directory\":0}]}");
-        (void)setenv("DEFRAGMENTER_BTRFS_WORKER", wrong_accuracy.c_str(), 1);
-        bool rejected_accuracy = false;
-        try {
-            (void)map_backend(*btrfs, "/dev/null", 1U);
-        } catch (const std::runtime_error&) {
-            rejected_accuracy = true;
-        }
-        ok = check(rejected_accuracy, "native map accuracy mismatch rejected") && ok;
-        (void)unlink(wrong_accuracy.c_str());
-
-        const std::string inconsistent_counts = fake_map_worker(
-            "{\"schema\":1,\"backend\":\"read-only-domain\","
-            "\"filesystem\":\"btrfs\",\"map_accuracy\":\"exact-single-device\","
-            "\"unit_size\":4096,\"total_units\":4,\"cell_count\":1,"
-            "\"cells\":[{\"start\":0,\"end\":3,\"free\":1,\"used\":2,"
-            "\"unknown\":0,\"outside\":0,\"bad\":0,"
-            "\"fragmented\":0,\"directory\":0}]}");
-        (void)setenv("DEFRAGMENTER_BTRFS_WORKER", inconsistent_counts.c_str(), 1);
-        bool rejected_counts = false;
-        try {
-            (void)map_backend(*btrfs, "/dev/null", 1U);
-        } catch (const std::runtime_error&) {
-            rejected_counts = true;
-        }
-        ok = check(rejected_counts, "native map inconsistent counts rejected") && ok;
-        (void)unlink(inconsistent_counts.c_str());
-        (void)unsetenv("DEFRAGMENTER_BTRFS_WORKER");
-    }
-
-    const BackendInfo* ntfs = backend_by_fstype("ntfs");
-    if (ntfs != nullptr) {
-        const std::string combined_worker = fake_map_worker(
-            "{\"filesystem\":\"ntfs\",\"cluster_size\":512,\"total_clusters\":8,"
-            "\"free_ranges\":[[3,8]],\"defrag_qualified\":false,\"growth_qualified\":false,"
-            "\"defrag_reason\":\"fixed layout\",\"growth_reason\":\"fixed layout\"}",
-            "test \"$1\" = analyse-json || exit 12");
-        (void)setenv("DEFRAGMENTER_NTFS_WORKER", combined_worker.c_str(), 1);
-        const Json mapped = map_backend(*ntfs, "/dev/null", 1U);
-        ok = check(!mapped.at("defrag_qualified").boolean() &&
-                   !mapped.at("growth_qualified").boolean(),
-                   "combined NTFS rejection is preserved without duplicate worker calls") && ok;
-        (void)unlink(combined_worker.c_str());
-        const std::string failed_worker = fake_map_worker("{}",
-            "printf '%s\\n' '@@ANALYSIS {\"phase\":\"scan\"}' >&2\n"
-            "printf '%s\\n' 'real checksum failure' >&2\nexit 1");
-        (void)setenv("DEFRAGMENTER_NTFS_WORKER", failed_worker.c_str(), 1);
-        bool clean_failure = false;
-        try { (void)map_backend(*ntfs, "/dev/null", 1U); }
-        catch (const std::exception& failure) {
-            const std::string detail(failure.what());
-            clean_failure = detail.find("real checksum failure") != std::string::npos &&
-                            detail.find("@@ANALYSIS") == std::string::npos;
-        }
-        ok = check(clean_failure, "native progress is excluded from failure diagnostics") && ok;
-        (void)unlink(failed_worker.c_str());
-        (void)unsetenv("DEFRAGMENTER_NTFS_WORKER");
+    const BackendInfo* btrfs=backend_by_fstype("btrfs");
+    ok=check(btrfs!=nullptr,"Btrfs lookup") && ok;
+    if(btrfs) {
+        const auto test_map=[&](const char* json,bool accepted) {
+            const std::string worker=fake_map_worker(json,"test \"$1\" = map-catalogue || exit 12");
+            (void)setenv("DEFRAGMENTER_BTRFS_WORKER",worker.c_str(),1);
+            bool passed=false;
+            try {
+                const Json map=map_backend(*btrfs,"/dev/null",1U);
+                passed=map.at("map_accuracy").string()=="summary" &&
+                    map.at("unknown_bytes").unsigned_value()==3584U &&
+                    !map.at("defrag_qualified").boolean();
+            } catch (...) {}
+            (void)unlink(worker.c_str());
+            (void)unsetenv("DEFRAGMENTER_BTRFS_WORKER");
+            return passed==accepted;
+        };
+        ok=check(test_map("{\"filesystem\":\"btrfs\",\"abi\":2,\"device_bytes\":4096,"
+            "\"file_extents\":[[0,512,0]],\"regular_files\":1,\"fragmented_files\":0}",true),
+            "Common V2 catalogue preserves unknown allocation") && ok;
+        ok=check(test_map("{\"filesystem\":\"zfs\",\"abi\":2,\"device_bytes\":4096,"
+            "\"file_extents\":[],\"regular_files\":0,\"fragmented_files\":0}",false),
+            "Foreign provider rejected") && ok;
+        ok=check(test_map("{\"filesystem\":\"btrfs\",\"abi\":1,\"device_bytes\":4096,"
+            "\"file_extents\":[],\"regular_files\":0,\"fragmented_files\":0}",false),
+            "Legacy response rejected") && ok;
+        ok=check(test_map("{\"filesystem\":\"btrfs\",\"abi\":2,\"device_bytes\":4096,"
+            "\"file_extents\":[[0,4097,0]],\"regular_files\":1,\"fragmented_files\":0}",false),
+            "Out-of-range V2 extent rejected") && ok;
     }
 
     const HelperCommand helper = helper_command(
         "operation-engine",
         {"defrag", "/dev/test", "--filesystem", "ext4", "--write",
-         "--confirm", "/dev/test", "--journal",
-         "/var/lib/defragmenter/state/1000/test.journal"},
+         "--confirm", "/dev/test"},
         1000U);
     ok = check(
         helper.executable ==
@@ -403,8 +284,7 @@ int main() {
         (void)helper_command(
             "operation-engine",
             {"defrag", "/dev/test", "--filesystem", "fat32", "--write",
-             "--confirm", "/dev/test", "--journal",
-             "/var/lib/defragmenter/state/1000/test.journal",
+             "--confirm", "/dev/test",
              "--diagnostic-log", "/etc/defragger-root.log"},
             1000U);
     } catch (const std::exception&) {
@@ -418,8 +298,7 @@ int main() {
         (void)helper_command(
             "operation-engine",
             {"defrag", "/dev/test", "--filesystem", "fat32", "--write",
-             "--confirm", "/dev/other", "--journal",
-             "/var/lib/defragmenter/state/1000/test.journal"},
+             "--confirm", "/dev/other"},
             1000U);
     } catch (const std::exception&) {
         rejected_confirm = true;

@@ -80,11 +80,14 @@ int main()
     volume.exact_analysis = true;
     volume.defrag_qualified = true;
     volume.growth_qualified = true;
+    volume.recovery_qualified = true;
     controls = defragger::desktop_controls(&volume, false, false, false);
     CHECK(controls.analyse);
     CHECK(controls.defrag);
     CHECK(controls.growth_defrag);
-    CHECK(!controls.recover);
+    CHECK(controls.recover);
+    const auto args=defragger::desktop_mutation(volume,"growth-defrag","engine","legacy.journal",4096,false);
+    CHECK(args == std::vector<std::string>({"engine","growth-defrag","/dev/test1","--filesystem","ntfs","--write","--confirm","/dev/test1"}));
 
     controls = defragger::desktop_controls(&volume, true, false, false);
     CHECK(!controls.analyse);
@@ -95,9 +98,9 @@ int main()
 
     controls = defragger::desktop_controls(&volume, false, false, true);
     CHECK(controls.analyse);
-    CHECK(controls.defrag);
-    CHECK(controls.growth_defrag);
-    CHECK(controls.recover);
+    CHECK(!controls.defrag);
+    CHECK(!controls.growth_defrag);
+    CHECK(!controls.recover);
 
     volume.mounted = true;
     controls = defragger::desktop_controls(&volume, false, false, true);
@@ -142,12 +145,9 @@ int main()
     CHECK(fat_defrag != nullptr);
     CHECK(fat_recover != nullptr);
     CHECK(ext_defrag != nullptr);
-    CHECK(fat_defrag->default_options ==
-          std::vector<std::string>({"--batch-clusters", "4096",
-                                    "--ram-buffer", "auto"}));
+    CHECK(fat_defrag->default_options.empty());
     CHECK(fat_recover->default_options.empty());
-    CHECK(ext_defrag->default_options ==
-          std::vector<std::string>({"--batch-clusters", "4096"}));
+    CHECK(ext_defrag->default_options.empty());
 
     return 0;
 }

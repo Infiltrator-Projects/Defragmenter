@@ -183,7 +183,7 @@ Json map_fat(const BackendInfo& backend, const std::string& path,
     overlay_ranges(result.at("cells").array(),std::move(fragmented),"fragmented");
     for(const auto* field:{"regular_files","fragmented_files","directories",
            "fragmented_directories","directory_fragmentation_available",
-           "defrag_qualified","growth_qualified"}) {
+           "defrag_qualified","growth_qualified","recovery_qualified"}) {
         if(const Json* value=payload.find(field))set(result,field,*value);
     }
     const auto regular=required_u64(payload,"regular_files");
@@ -249,7 +249,7 @@ Json map_catalogue(const BackendInfo& backend,const std::string& path,
     overlay_ranges(result.at("cells").array(),std::move(fragmented),"fragmented");
     for(const auto* key:{"regular_files","fragmented_files","directories",
                          "fragmented_directories","directory_fragmentation_available",
-                         "provider_defrag_capabilities"})
+                         "provider_defrag_capabilities","recovery_qualified"})
         if(const Json* value=payload.find(key))set(result,key,*value);
     const auto regular=required_u64(payload,"regular_files");
     const auto split=required_u64(payload,"fragmented_files");

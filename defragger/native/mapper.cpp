@@ -171,6 +171,12 @@ int main(int argc, char** argv) {
                 }
             }
         }
+        if (backend != nullptr && (filesystem=="ofs" || filesystem=="ffs" ||
+            filesystem=="ufs1" || filesystem=="ufs2" || filesystem=="sfs2")) {
+            if(identified_filesystem.empty())
+                identified_filesystem=defragger::backend_identified_filesystem(*backend,path);
+            if(identified_filesystem!=filesystem)backend=nullptr;
+        }
         if (backend == nullptr) {
             std::fputs(
                 "No self-contained filesystem plugin recognised this volume.\n",
