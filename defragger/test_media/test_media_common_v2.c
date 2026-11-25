@@ -41,7 +41,7 @@ static const IfsFsModuleApiV2 *qualify(void *symbol,const MediaV2 *m)
     const IfsFsVolumeOpsV2 *volume=
         (const IfsFsVolumeOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_VOLUME);
     if(!core || !(core->header.capabilities & IFS_FS_CORE_PROBE) ||
-       !core->probe || !volume)return NULL;
+       !core->probe || (m->create && !volume))return NULL;
     if(m->create && (!(volume->header.capabilities & IFS_FS_VOLUME_FORMAT) ||
                      !volume->format))return NULL;
     if(is_swap(m->spec))return api;
@@ -176,8 +176,9 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
                     at+=n;
                 }
             }
-        if(core->unmount(session)!=IFS_FS_OK)goto done;
+        const int unmount_rc=core->unmount(session);
         mounted=0;session=NULL;
+        if(unmount_rc!=IFS_FS_OK)goto done;
         if(host->sync_target(host->context,&m->binding.target)!=0)goto done;
         if(core->mount(&runtime,&session,&info)!=IFS_FS_OK)goto done;
         mounted=1;

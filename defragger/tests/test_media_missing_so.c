@@ -56,7 +56,7 @@ static int refuse_missing_module(const char *binary, const char *format,
             dup2(quiet, STDERR_FILENO) < 0)
             _exit(127);
         close(quiet);
-        execl(binary, binary, "create", format, image, (char *)NULL);
+        execl(binary, binary, "recreate", format, image, (char *)NULL);
         _exit(127);
     }
     int status = 0;
@@ -101,7 +101,9 @@ int main(int argc, char **argv)
     if (!ok) goto done;
     unsigned char before[32], after[32];
     if (digest_file(image, before) != 0) goto done;
-    const char *const formats[] = {"exfat", "ext2", "ext3", "ext4"};
+    const char *const formats[] = {"fat12", "fat16", "fat32", "exfat", "ntfs",
+        "ext2", "ext3", "ext4", "xfs", "btrfs", "ofs", "ffs", "sfs",
+        "pfs3", "hfs", "hfsplus", "minix", "ufs", "zfs", "apfs", "swap"};
     for (size_t n = 0U; n < sizeof(formats) / sizeof(formats[0]); ++n) {
         if (refuse_missing_module(argv[1], formats[n], image, root) != 0 ||
             digest_file(image, after) != 0 ||
@@ -111,7 +113,7 @@ int main(int argc, char **argv)
             goto done;
         }
     }
-    puts("Missing EXFAT/EXT providers: all rejected without changing media bytes");
+    puts("All registered missing providers rejected without changing media bytes");
     result = 0;
 done:
     unlink(image);

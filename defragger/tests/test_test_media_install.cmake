@@ -23,9 +23,6 @@ foreach(_path IN ITEMS
     "System/Commands/Defragmenter/ext4/ext-metadata-worker"
     "System/Resources/Icons/defragmenter.png"
     "System/Resources/Themes/Defragmenter/art/hero-landscape.jpg"
-    "System/Commands/Defragmenter/test-media-mkfs-ofs"
-    "System/Commands/Defragmenter/test-media-mkfs-ffs"
-    "System/Commands/Defragmenter/test-media-mkfs-ufs"
     "usr/share/applications/io.github.defragmenter.TestMedia.desktop")
     if(NOT EXISTS "${_root}/${_path}")
         message(FATAL_ERROR "staged Test Media install is missing ${_path}")
@@ -40,5 +37,10 @@ if(EXISTS "${_root}/System/Resources/Documentation/Defragmenter")
     message(FATAL_ERROR "staged Test Media install resurrected legacy documentation folder")
 endif()
 
+foreach(_legacy IN ITEMS ofs ffs ufs)
+    if(EXISTS "${_root}/System/Commands/Defragmenter/test-media-mkfs-${_legacy}")
+        message(FATAL_ERROR "legacy Test Media helper installed: ${_legacy}")
+    endif()
+endforeach()
 file(REMOVE_RECURSE "${_root}")
-message(STATUS "Test Media staged install contains GUI plus OFS/FFS/UFS C creators")
+message(STATUS "Test Media staged install contains the Common V2 GUI")

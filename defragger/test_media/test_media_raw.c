@@ -196,8 +196,7 @@ int ldtm_raw_fixture(const LdtmFilesystemSpec *spec,const char *path,
 {
     if(detail && capacity)detail[0]='\0';
     if(!spec || !path || !*path)return -1;
-    int ready=ldtm_common_v2_available(spec);
-    if(!ready) {
+    if(create && !ldtm_common_v2_available(spec)) {
         if(detail && capacity)
             (void)snprintf(detail,capacity,
               "%s requires a complete Common V2 provider; no fallback",

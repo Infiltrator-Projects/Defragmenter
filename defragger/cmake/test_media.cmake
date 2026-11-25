@@ -113,11 +113,7 @@ endif()
 
 
 install(TARGETS defragmenter-test-media RUNTIME DESTINATION /Programs)
-install(TARGETS
-    defragmenter-test-media-mkfs-ofs
-    defragmenter-test-media-mkfs-ffs
-    defragmenter-test-media-mkfs-ufs
-    RUNTIME DESTINATION /System/Commands/Defragmenter)
+# Legacy CLI adapters are build/test targets only; Test Media invokes the Common V2 host directly.
 install(FILES packaging/io.github.defragmenter.TestMedia.desktop
         DESTINATION share/applications)
 

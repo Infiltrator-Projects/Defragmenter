@@ -30,28 +30,22 @@ static const LdtmFilesystemSpec LDTM_SPECS[LDTM_SPEC_COUNT] = {
      "Amiga Original File System DOS\\0; installed OFS driver uses the full 2 GiB qualification "
      "cap."},
     {"ffs", "LD_FFS", 2048U, 200U, LDTM_CREATOR_AFFS,
-     "Amiga Fast File System DOS\\1; first-party raw C creator uses the full 2 GiB qualification "
-     "cap."},
+     "Amiga Fast File System DOS\\1; Common V2 driver uses the full 2 GiB qualification cap."},
     {"sfs", "LD_SFS", 2048U, 200U, LDTM_CREATOR_AFFS,
-     "Amiga Smart File System SFS0 v3; first-party raw C creator uses the standard 200 MiB "
+     "Amiga Smart File System SFS0 v3; Common V2 driver uses the standard 200 MiB "
      "heterogeneous fragmented corpus."},
     {"pfs3", "LD_PFS3", 2048U, 200U, LDTM_CREATOR_PFS3,
-     "Amiga Professional File System 3; first-party raw C creator uses the standard 200 MiB "
+     "Amiga Professional File System 3; Common V2 driver uses the standard 200 MiB "
      "heterogeneous fragmented corpus in the qualified small-disk subset."},
     {"hfs", "LD_HFS", 2048U, 200U, LDTM_CREATOR_HFS, ""},
     {"hfsplus", "LD_HFSPLUS", 2048U, 200U, LDTM_CREATOR_HFSPLUS, ""},
     {"minix", "LD_MINIX", 2048U, 200U, LDTM_CREATOR_MINIX, ""},
     {"ufs", "LD_UFS", 2048U, 200U, LDTM_CREATOR_UFS,
-     "Built-in first-party bounded UFS2/FFS creator writes the qualification image directly and "
-     "requires exact allocation/fragmentation analysis before native mutation testing."},
+     "UFS2 Common V2 provider must support the full corpus and exact fragmentation analysis."},
     {"zfs", "LD_ZFS", 2048U, 200U, LDTM_CREATOR_ZFS,
-     "First-party raw C creator writes a bounded legacy-version-28 single-disk ZFS fixture with "
-     "Fletcher-4 block checksums; the native exact analyser verifies allocation and fragmentation. "
-     "Analysis-only by design."},
+     "ZFS Common V2 provider must create and verify the corpus; defragmentation is analysis-only."},
     {"apfs", "LD_APFS", 2048U, 200U, LDTM_CREATOR_APFS,
-     "Built-in first-party raw C creator manufactures a 2 GiB qualified bounded APFS "
-     "checkpoint/spaceman/flat-tree fixture with the standard 200 MiB heterogeneous fragmented "
-     "corpus."},
+     "APFS Common V2 provider must create and verify the full fragmented corpus."},
     {"swap", "LD_SWAP", 2048U, 0U, LDTM_CREATOR_SWAP, "Swap contains no files."}};
 
 const LdtmFilesystemSpec *ldtm_specs(void) { return LDTM_SPECS; }

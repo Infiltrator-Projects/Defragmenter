@@ -132,9 +132,7 @@ int main(int argc, char **argv)
         return 2;
     char detail[512] = {0};
     int result;
-    if (strcmp(argv[1], "verify") == 0 && spec->creator == LDTM_CREATOR_UFS)
-        result = verify_ufs2_raw_payload(argv[3], detail, sizeof(detail));
-    else {
+    {
         const bool fresh = strcmp(argv[1], "create") == 0;
         const bool create = fresh || strcmp(argv[1], "recreate") == 0;
         if (!create && strcmp(argv[1], "verify") != 0)
