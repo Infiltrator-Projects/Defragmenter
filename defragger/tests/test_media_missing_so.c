@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 /*
- * A missing independent EXFAT/EXT provider must not permit Defragmenter
+ * A missing independent filesystem provider must not permit Defragmenter
  * Test Media to erase existing signatures before a format operation fails.
  * This regression never opens a real block device or needs root privileges.
  */
@@ -91,7 +91,7 @@ int main(int argc, char **argv)
     if (fd < 0) goto done;
     unsigned char marker[4096];
     memset(marker, 0xA5, sizeof(marker));
-    const off_t bytes = (off_t)(8U * 1024U * 1024U);
+    const off_t bytes = (off_t)(2048ULL * 1024ULL * 1024ULL);
     int ok = ftruncate(fd, bytes) == 0 &&
              pwrite(fd, marker, sizeof(marker), 0) == (ssize_t)sizeof(marker) &&
              pwrite(fd, marker, sizeof(marker), bytes - (off_t)sizeof(marker)) ==
@@ -105,6 +105,14 @@ int main(int argc, char **argv)
         "ext2", "ext3", "ext4", "xfs", "btrfs", "ofs", "ffs", "sfs",
         "pfs3", "hfs", "hfsplus", "minix", "ufs", "zfs", "apfs", "swap"};
     for (size_t n = 0U; n < sizeof(formats) / sizeof(formats[0]); ++n) {
+        const off_t size = (off_t)((n == 0 ? 255ULL : 2048ULL) * 1024ULL * 1024ULL);
+        int target = open(image, O_RDWR | O_CLOEXEC);
+        if (target < 0) goto done;
+        int prepared = ftruncate(target, size) == 0 &&
+            pwrite(target, marker, sizeof(marker), size - (off_t)sizeof(marker)) == (ssize_t)sizeof(marker) &&
+            fsync(target) == 0;
+        if (close(target) != 0) prepared = 0;
+        if (!prepared || digest_file(image, before) != 0) goto done;
         if (refuse_missing_module(argv[1], formats[n], image, root) != 0 ||
             digest_file(image, after) != 0 ||
             memcmp(before, after, sizeof(before)) != 0) {

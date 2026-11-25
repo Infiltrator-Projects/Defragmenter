@@ -645,20 +645,6 @@ static int production_fragment_counts(const LdtmFilesystemSpec *spec,
     return 0;
 }
 
-static int production_map_accepts(const LdtmFilesystemSpec *spec,
-                                  const char *partition,
-                                  char *detail, size_t detail_capacity) {
-    char *output = NULL;
-    if (production_map_output(spec, partition, &output,
-                              detail, detail_capacity) != 0)
-        return -1;
-    free(output);
-    (void)snprintf(
-        detail, detail_capacity,
-        "production mapper accepted the complete filesystem geometry");
-    return 0;
-}
-
 static int require_fragmentation_state(const LdtmFilesystemSpec *spec,
                                        const char *partition,
                                        int expect_fragmented,
@@ -669,10 +655,11 @@ static int require_fragmentation_state(const LdtmFilesystemSpec *spec,
             spec, partition, &fragmented_files,
             &fragmented_directories, detail, detail_capacity) != 0)
         return -1;
-    if (expect_fragmented != 0 && fragmented_files == 0U) {
+    if (expect_fragmented != 0 && fragmented_files < LDTM_TARGET_FILE_COUNT) {
         (void)snprintf(
             detail, detail_capacity,
-            "qualification requires a genuinely fragmented retained file before Defragment; production analyser reported zero fragmented files");
+            "qualification requires at least %u genuinely fragmented files; production analyser reported %llu",
+            LDTM_TARGET_FILE_COUNT, (unsigned long long)fragmented_files);
         return -1;
     }
     if (expect_fragmented == 0 &&
@@ -1297,17 +1284,15 @@ static int create_raw_and_populate(const LdtmFilesystemSpec *spec, const char *p
         emit_status(spec->key, "qualification-failed", detail);
         return state_write_status(state, spec, "qualification-failed", detail) == 0 ? 1 : -1;
     }
-    const int accepted =
-        spec->creator == LDTM_CREATOR_SWAP
-            ? production_map_accepts(spec, partition, detail, sizeof(detail))
-            : require_fragmentation_state(spec, partition, 1, detail, sizeof(detail));
+    const int accepted = spec->creator == LDTM_CREATOR_SWAP ? 0 :
+        require_fragmentation_state(spec, partition, 1, detail, sizeof(detail));
     if (accepted != 0) {
         emit_status(spec->key, "qualification-failed", detail);
         return state_write_status(state, spec, "qualification-failed", detail) == 0 ? 1 : -1;
     }
     const char *message =
         spec->creator == LDTM_CREATOR_SWAP
-            ? "first-party swap header and native page map verified"
+            ? "Common V2 SWAP header verified; file fragmentation does not apply"
             : "Common V2 corpus fully verified; production analyser proved fragmentation";
     emit_status(spec->key, "populated", message);
     return state_write_status(state, spec, "populated", message);
@@ -1692,14 +1677,13 @@ int ldtm_worker_verify(const char *device) {
 
         if (spec->creator == LDTM_CREATOR_SWAP) {
             char detail[512] = {0};
-            if (ldtm_raw_fixture(spec, partition, false, detail, sizeof(detail)) != 0 ||
-                production_map_accepts(spec, partition, detail, sizeof(detail)) != 0) {
+            if (ldtm_raw_fixture(spec, partition, false, detail, sizeof(detail)) != 0) {
                 emit_status(spec->key, "verify-failed", detail);
                 failures++;
             } else {
                 emit_status(
                     spec->key, "verified",
-                    "swap header, reserved/bad-page geometry and inactive page map are accepted by the production analyser");
+                    "SWAP header verified by its Common V2 provider; no file allocation map applies");
             }
             continue;
         }

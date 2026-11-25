@@ -130,17 +130,6 @@ static int create(const IfsDefragHostV2 *host,void *symbol,void *opaque)
     if(f->target.bytes!=(uint64_t)f->spec->size_mib*LDTM_MIB ||
        f->target.bytes<2u*LDTM_MIB ||
        host->stop_requested(host->context))goto done;
-    /* Preserve the existing Test Media signature-neutralisation step.
-     * This touches only the exclusive, prequalified sacrificial target;
-     * no filesystem records are invented by the host. */
-    uint8_t zeroes[65536]={0};
-    for(uint64_t at=0;at<LDTM_MIB;at+=sizeof zeroes) {
-        if(host->stop_requested(host->context) ||
-           write_at(f,at,zeroes,sizeof zeroes)!=0 ||
-           write_at(f,f->target.bytes-LDTM_MIB+at,zeroes,sizeof zeroes)!=0)
-            goto done;
-    }
-
     IfsFsHostRuntimeV2 io=make_host(f,1);
     if(!ifs_fs_host_v2_valid(&io) ||
        volume->format(&io,fat_bits(f->spec),NULL,0u)!=IFS_FS_OK)

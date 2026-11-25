@@ -54,7 +54,7 @@ FAT source-unit tests can use `FAT_DEFRAG_SOURCE_DIR` pointing to the matching p
 
 ## Test Media and package layout
 
-`defragmenter-test-media` manufactures deliberately fragmented sacrificial disks without external formatters or mounted target filesystems. The deterministic file-bearing corpus has 200 MiB of large files and eight boundary-sized files. Protected schema 3 state binds disk identity and per-slot results; expected bytes come from the compiled corpus. Schema 2 test disks must be rebuilt.
+`defragmenter-test-media` manufactures deliberately fragmented sacrificial disks solely through independent Common V2 providers, without host formatters, signature clearing or mounted target filesystems. A provider must pass actual corpus qualification, not merely export the V2 ABI. SWAP is format/probe-only because it contains no files. The deterministic file-bearing corpus has 200 MiB of large files and eight boundary-sized files. Protected schema 3 state binds disk identity and per-slot results; expected bytes come from the compiled corpus. Schema 2 test disks must be rebuilt.
 
 Only `/Programs/defragmenter` and `/Programs/defragmenter-test-media` are user-launchable. Internal native workers belong to `/System/Commands/Defragmenter`; independent filesystem `.so` drivers belong to `/System/Filesystems`. One illustrated `/System/Resources/Documentation/Defragmenter.pdf` is installed, with the complete GPL-3.0 licence in its appendix. Source documentation remains in Git. Icons and themes belong to `/System/Resources`, desktop integration to `/usr/share`. The package builder rejects the old `/System/Filesystems/Defragmenter` private-worker layout.
 

@@ -115,7 +115,6 @@ int ldtm_mmc_identity_material(
     uint64_t size_bytes, unsigned int major_number, unsigned int minor_number,
     const char *cid, char *material, size_t capacity);
 int ldtm_is_reserved_partition_label(const char *label);
-int ldtm_sanitize_reserved_partitions(const char *device);
 int ldtm_worker_prepare(const char *device, const char *confirmed_device,
                         const char *confirmed_fingerprint);
 int ldtm_worker_verify(const char *device);

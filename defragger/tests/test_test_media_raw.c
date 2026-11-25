@@ -133,7 +133,8 @@ int main(int argc, char **argv)
     char detail[512] = {0};
     int result;
     {
-        const bool fresh = strcmp(argv[1], "create") == 0;
+        const bool qualified = strcmp(argv[1], "qualify-create") == 0;
+        const bool fresh = qualified || strcmp(argv[1], "create") == 0;
         const bool create = fresh || strcmp(argv[1], "recreate") == 0;
         if (!create && strcmp(argv[1], "verify") != 0)
             return 2;
@@ -144,7 +145,14 @@ int main(int argc, char **argv)
             CHECK(close(fd) == 0);
             CHECK(ldtm_raw_fixture(spec, argv[3], false, detail, sizeof(detail)) != 0);
         }
-        result = ldtm_raw_fixture(spec, argv[3], create, detail, sizeof(detail));
+        if (qualified) {
+            FILE *state = tmpfile();
+            CHECK(state != NULL);
+            result = create_raw_and_populate(spec, argv[3], state);
+            CHECK(fclose(state) == 0);
+        } else {
+            result = ldtm_raw_fixture(spec, argv[3], create, detail, sizeof(detail));
+        }
     }
     fprintf(result == 0 ? stdout : stderr, "%s\n", detail);
     return result != 0;

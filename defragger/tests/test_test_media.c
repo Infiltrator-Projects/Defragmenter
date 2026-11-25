@@ -706,8 +706,8 @@ int main(void) {
     CHECK(ofs->creator == LDTM_CREATOR_AFFS);
     CHECK(ffs->creator == LDTM_CREATOR_AFFS);
     CHECK(sfs->creator == LDTM_CREATOR_AFFS);
-    CHECK(strcmp(ldtm_creator_program(ofs), "/System/Commands/Defragmenter/test-media-mkfs-ofs") == 0);
-    CHECK(strcmp(ldtm_creator_program(ffs), "/System/Commands/Defragmenter/test-media-mkfs-ffs") == 0);
+    CHECK(ldtm_creator_program(ofs) == NULL);
+    CHECK(ldtm_creator_program(ffs) == NULL);
     CHECK(ldtm_creator_program(sfs) == NULL);
     CHECK(strcmp(ldtm_creator_display_name(fat12), "Filesystem driver") == 0);
     CHECK(strcmp(ldtm_creator_display_name(ofs), "Filesystem driver") == 0);
@@ -720,12 +720,11 @@ int main(void) {
           strstr(sfs->note, "200 MiB heterogeneous") != NULL);
     CHECK(pfs3->creator == LDTM_CREATOR_PFS3 &&
           strstr(pfs3->note, "200 MiB heterogeneous") != NULL);
-    CHECK(strcmp(ldtm_creator_program(ufs), "makefs") == 0);
+    CHECK(ldtm_creator_program(ufs) == NULL);
     CHECK(strstr(ufs->note, "UFS2") != NULL &&
-          strstr(ufs->note, "exact allocation/fragmentation") != NULL);
-    CHECK(strstr(zfs->note, "First-party") != NULL &&
-          strstr(zfs->note, "legacy-version-28") != NULL &&
-          strstr(zfs->note, "native exact analyser") != NULL);
+          strstr(ufs->note, "exact fragmentation") != NULL);
+    CHECK(strstr(zfs->note, "Common V2") != NULL &&
+          strstr(zfs->note, "analysis-only") != NULL);
     CHECK(fat12->size_mib == 255U);
     CHECK(fat16->size_mib == 2048U);
     CHECK(ofs->size_mib == 2048U && ffs->size_mib == 2048U);

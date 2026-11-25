@@ -37,7 +37,7 @@ The native GTK 3 desktop provides Overview, Analyse, Defragment, Growth Defrag, 
 
 ## Test Media
 
-`/Programs/defragmenter-test-media` builds deliberately fragmented **sacrificial** media for qualification. Its 21 registered slots use first-party C fixture creation and raw verification rather than host formatters or mounted target filesystems. The deterministic file-bearing corpus includes eight large files totalling 200 MiB plus boundary-sized files. State schema 3 binds a disk identity and build results; it cannot substitute a saved expected-file list for actual byte verification. Rebuild older schema 2 test disks.
+`/Programs/defragmenter-test-media` builds deliberately fragmented **sacrificial** media for qualification. Its 21 registered slots require the independently installed Common V2 providers to format, create, write, read and verify the corpus. Providers that lack the required capabilities refuse preparation before repartitioning; ABI acceptance alone is not media qualification. SWAP is a format/probe-only exception because it contains no files. The deterministic file-bearing corpus includes eight large files totalling 200 MiB plus boundary-sized files. State schema 3 binds a disk identity and build results; it cannot substitute a saved expected-file list for actual byte verification. Rebuild older schema 2 test disks.
 
 **Test Media is destructive. Never use it on a system disk or irreplaceable data.** Development and validation require verified backups and disposable targets.
 

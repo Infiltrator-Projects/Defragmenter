@@ -105,18 +105,8 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
     if(m->create) {
         if(host->stop_requested(host->context) ||
            runtime.volume_bytes<2u*LDTM_MIB)goto done;
-        /* This is a prequalified, exclusively leased Test Media image.
-         * Neutralise stale signatures only AFTER the Common V2 provider has
-         * authenticated and advertised its actual format capability. */
-        uint8_t empty[65536]={0};
-        for(uint64_t at=0u;at<LDTM_MIB;at+=sizeof(empty)) {
-            if(host->stop_requested(host->context) ||
-               runtime.write_at(runtime.context,at,empty,sizeof(empty))!=0 ||
-               runtime.write_at(runtime.context,
-                   runtime.volume_bytes-LDTM_MIB+at,empty,sizeof(empty))!=0)
-                goto done;
-        }
-        /* Common V2 FORMAT variants and label support are provider-defined.
+        /* The provider owns all on-disk initialization, including signatures.
+         * Common V2 FORMAT variants and label support are provider-defined.
          * These values select the provider's existing public contract; no
          * filesystem data structures are interpreted here. */
         uint32_t variant=0u;
@@ -141,7 +131,7 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
     }
     if(is_swap(m->spec)) {
         uint32_t variant=0u;
-        result=core->probe(&runtime,&variant)==IFS_FS_OK?0:-1;
+        result=core->probe(&runtime,&variant)==IFS_FS_OK && variant==4096u?0:-1;
         goto done;
     }
     if(core->mount(&runtime,&session,&info)!=IFS_FS_OK)goto done;
@@ -176,9 +166,8 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
                     at+=n;
                 }
             }
-        const int unmount_rc=core->unmount(session);
+        if(core->unmount(session)!=IFS_FS_OK)goto done;
         mounted=0;session=NULL;
-        if(unmount_rc!=IFS_FS_OK)goto done;
         if(host->sync_target(host->context,&m->binding.target)!=0)goto done;
         if(core->mount(&runtime,&session,&info)!=IFS_FS_OK)goto done;
         mounted=1;

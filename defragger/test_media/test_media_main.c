@@ -24,14 +24,7 @@ int main(int argc, char **argv) {
         if (argc == 8 && strcmp(argv[2], "prepare") == 0 &&
             strcmp(argv[4], "--confirmed") == 0 &&
             strcmp(argv[6], "--fingerprint") == 0) {
-            int result = ldtm_worker_prepare(argv[3], argv[5], argv[7]);
-            if (result != 0) return result;
-            if (ldtm_sanitize_reserved_partitions(argv[3]) != 0) {
-                fputs("Test Media build completed, but reserved partition sanitation failed.\n",
-                      stderr);
-                return 2;
-            }
-            return 0;
+            return ldtm_worker_prepare(argv[3], argv[5], argv[7]);
         }
         if (argc == 4 && strcmp(argv[2], "verify") == 0) {
             return ldtm_worker_verify(argv[3]);
