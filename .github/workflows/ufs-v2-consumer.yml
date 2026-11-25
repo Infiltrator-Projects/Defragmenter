@@ -105,7 +105,7 @@ jobs:
           jq -e '.filesystem == "ufs2" and .abi == 2 and .source == "Common V2 VOLUME_QUERY"' \
             build/ufs2-worker-volume.json
           "$worker" map "$image" --path /file000 > build/ufs2-worker-map.log
-          grep -Fq 'Common V2 provider operation verified' build/ufs2-worker-map.log
+          jq -e '.filesystem=="ufs2" and .abi==2 and .extent_count==(.extents|length) and .extent_count>0' build/ufs2-worker-map.log
           if "$worker" map "$image" --path /missing-file; then
             echo "ERROR: installed UFS worker invented a missing file via V2" >&2
             exit 1
@@ -130,8 +130,10 @@ jobs:
           "$consumer" map "$image" --filesystem ufs2 --path /file000 > build/ufs2-file-map.log
           "$consumer" map "$image" --filesystem ufs --path /file000 > build/ufs2-alias-map.log
           for record in build/ufs2-root-map.log build/ufs2-file-map.log build/ufs2-alias-map.log; do
-            grep -F 'Common V2 provider operation verified' "$record"
+            jq -e '.filesystem=="ufs2" and .abi==2 and .extent_count==(.extents|length)' "$record"
           done
+          jq -e '.extent_count>32' build/ufs2-file-map.log
+          cmp build/ufs2-file-map.log build/ufs2-alias-map.log
           if "$consumer" map "$image" --filesystem ufs2 --path /does-not-exist; then
             echo "ERROR: native UFS2 map invented an absent file" >&2
             exit 1

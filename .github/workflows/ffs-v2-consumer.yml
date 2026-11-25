@@ -82,9 +82,10 @@ jobs:
           jq -e '.filesystem=="ffs" and .abi==2 and .total_bytes>0' \
             defragger/build/ffs-v2-worker-volume.json
           "$worker" map "$image" --path="$file" > defragger/build/ffs-v2-worker-map.log
-          grep -Fq 'Common V2 provider operation verified' \
-            defragger/build/ffs-v2-worker-map.log
-          grep -Fq 'Common V2 provider operation verified' defragger/build/ffs-v2-map.log
+          for record in defragger/build/ffs-v2-worker-map.log defragger/build/ffs-v2-map.log; do
+            jq -e '.filesystem=="ffs" and .abi==2 and .extent_count==(.extents|length) and .extent_count>0' "$record"
+          done
+          cmp defragger/build/ffs-v2-worker-map.log defragger/build/ffs-v2-map.log
           if "$consumer" map "$image" --filesystem ffs --path=/; then
             echo "ERROR: FFS V2 mapped a directory as an allocated file" >&2; exit 1
           fi
