@@ -101,8 +101,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist pkg
-          gh release view -R "$FS_REPO" --json tagName,publishedAt,url
-          gh release download -R "$FS_REPO" -p '*.deb' -D dist
+          tag=$(gh release view -R "$FS_REPO" --json tagName --jq .tagName)
+          test -n "$tag"
+          gh release view "$tag" -R "$FS_REPO" --json tagName,publishedAt,url
+          gh release download "$tag" -R "$FS_REPO" -p '*.deb' -D dist
           test "$(find dist -maxdepth 1 -name '*.deb' | wc -l)" -eq 1
           sha256sum dist/*.deb
           dpkg-deb -x dist/*.deb pkg
@@ -121,4 +123,7 @@ jobs:
           defragger/build-media/defragmenter-test-media-raw-test preflight "$FORMAT"
           defragger/build-media/defragmenter-test-media-raw-test qualify-create "$FORMAT" "$work/media.img"
           defragger/build-media/defragmenter-test-media-raw-test verify "$FORMAT" "$work/media.img"
+          if [ "$FORMAT" != swap ]; then
+            defragger/build-media/defragmenter-test-media-raw-test verify-corruption "$FORMAT" "$work/media.img"
+          fi
           echo "REAL_COMMON_V2_TEST_MEDIA_PASS $FORMAT"
