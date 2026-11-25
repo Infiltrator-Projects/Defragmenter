@@ -226,6 +226,25 @@ int main() {
             qualified.at("defrag_qualified").boolean() &&
             !qualified.at("growth_qualified").boolean(),
             "Read-only provider plan qualifies only its own policy without inventing allocation") && ok;
+        const auto complete=map_v2_response(*btrfs,Json::parse(
+            R"({"filesystem":"btrfs","abi":2,"device_bytes":4096,"file_extents":[[0,512,0]],"regular_files":1,"fragmented_files":0,"allocation_ranges":[[0,512,2],[512,1024,3],[1024,4096,1]],"allocation_unknown_bytes":0,"allocation_free_bytes":3072})"),1U);
+        ok=check(complete.at("map_accuracy").string()=="exact-allocation" &&
+            complete.at("unknown_bytes").unsigned_value()==0U &&
+            complete.at("reserved_bytes").unsigned_value()==512U &&
+            complete.at("allocated_bytes").unsigned_value()==512U &&
+            complete.at("free_bytes").unsigned_value()==3072U,
+            "Canonical whole-volume allocation retains reserved and free space") && ok;
+        const auto partial=map_v2_response(*btrfs,Json::parse(
+            R"({"filesystem":"btrfs","abi":2,"device_bytes":4096,"file_extents":[[0,512,0]],"regular_files":1,"fragmented_files":0,"allocation_ranges":[[0,512,2],[512,4096,0]],"allocation_unknown_bytes":3584,"allocation_free_bytes":0})"),1U);
+        ok=check(partial.at("map_accuracy").string()=="summary" &&
+            partial.at("unknown_bytes").unsigned_value()==3584U,
+            "Explicit unknown allocation remains unknown") && ok;
+        bool contradicted=false;
+        try {
+            (void)map_v2_response(*btrfs,Json::parse(
+                R"({"filesystem":"btrfs","abi":2,"device_bytes":4096,"file_extents":[[0,512,0]],"regular_files":1,"fragmented_files":0,"allocation_ranges":[[0,4096,1]],"allocation_unknown_bytes":0,"allocation_free_bytes":4096})"),1U);
+        } catch(const std::exception&) { contradicted=true; }
+        ok=check(contradicted,"File extent cannot overlap canonical free allocation") && ok;
         ok=check(test_map("{\"filesystem\":\"zfs\",\"abi\":2,\"device_bytes\":4096,"
             "\"file_extents\":[],\"regular_files\":0,\"fragmented_files\":0}",false),
             "Foreign provider rejected") && ok;

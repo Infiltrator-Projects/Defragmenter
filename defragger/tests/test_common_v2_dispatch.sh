@@ -74,6 +74,9 @@ grep -Fq 'durably synced' "$root/output.txt"
 grep -Fq '"abi":2' "$root/catalogue.json"
 grep -Fq '"file_extents":[[64,68,0]]' "$root/catalogue.json"
 grep -Fq '"regular_files":1' "$root/catalogue.json"
+grep -Fq '"allocation_ranges":[[0,512,2],[512,1048576,1]]' "$root/catalogue.json"
+grep -Fq '"allocation_unknown_bytes":0' "$root/catalogue.json"
+grep -Fq '"allocation_free_bytes":1048064' "$root/catalogue.json"
 grep -Fq '"provider_plan_preflight":true' "$root/catalogue.json"
 grep -Fq '"defrag_qualified":true' "$root/catalogue.json"
 grep -Fq '"growth_qualified":true' "$root/catalogue.json"
@@ -132,6 +135,11 @@ if "$engine" map "$device" --filesystem testv2bad > /dev/null 2>&1; then
     echo "Incomplete Common V2 map was incorrectly reported as success" >&2
     exit 1
 fi
+test "$before_broken" = "$(sha256sum "$device" | cut -d' ' -f1)"
+if "$engine" map-catalogue "$device" --filesystem testv2bad > "$root/invalid-catalogue.json" 2>/dev/null; then
+    echo "Premature allocation END was accepted" >&2;exit 1
+fi
+test ! -s "$root/invalid-catalogue.json"
 test "$before_broken" = "$(sha256sum "$device" | cut -d' ' -f1)"
 rm -f "$root/Filesystems/TESTV2BROKENMAP.so"
 

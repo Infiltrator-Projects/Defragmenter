@@ -1951,7 +1951,10 @@ private:
         const bool complete_directory_fragmentation = map.find("fragmented_directories") != nullptr;
         std::string summary = "Capacity " + bytes(number(map, "total_bytes")) + "    Free "
             + (complete_allocation ? bytes(number(map, "free_bytes")) : std::string("Not calculated"))
-            + "    Used " + (complete_allocation ? bytes(number(map, "used_bytes")) : std::string("Not calculated"));
+            + (number(map, "reserved_bytes") ? "    Used/reserved " : "    Used ")
+            + (complete_allocation ? bytes(number(map, "used_bytes")) : std::string("Not calculated"));
+        if (complete_allocation && number(map, "reserved_bytes"))
+            summary += " (reserved " + bytes(number(map, "reserved_bytes")) + ")";
         const std::uint64_t total_bytes = number(map, "total_bytes");
         const std::uint64_t free_bytes = number(map, "free_bytes");
         const std::uint64_t used_bytes = number(map, "used_bytes");

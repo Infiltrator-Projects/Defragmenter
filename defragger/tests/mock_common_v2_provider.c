@@ -28,7 +28,7 @@ static int mount(const IfsFsHostRuntimeV2 *h,void **out,IfsFsVolumeInfoV2 *info)
     if(!v)return IFS_FS_NO_SPACE;
     v->host=h;*out=v;
     info->variant=1u;info->block_bytes=h->logical_sector_bytes;
-    info->total_bytes=h->volume_bytes;info->free_bytes=0u;
+    info->total_bytes=h->volume_bytes;info->free_bytes=h->volume_bytes-512u;
     info->max_name_bytes=8u;
     return IFS_FS_OK;
 }
@@ -147,10 +147,36 @@ static const IfsFsDefragOpsV2 defrag={
 #endif
     .release_plan=release_plan
 };
+/* Test-only allocation callback deliberately emits one range per page.
+ * A short successful page is not END. The broken provider lies about
+ * termination, which must prevent publication of the whole catalogue. */
+static int allocation_map(void *m,uint64_t first,IfsFsAllocationRangeV2 *out,
+                          uint32_t cap,uint32_t *written) {
+    if(!written)return IFS_FS_INVALID;
+    *written=0u;
+    if(!m || !out || !cap)return IFS_FS_INVALID;
+    MockVolume *v=m;
+    if(first==v->host->volume_bytes)return IFS_FS_END;
+    if(first==0u)out[0]=(IfsFsAllocationRangeV2){0u,512u,IFS_FS_SPACE_ALLOCATED,0u};
+    else if(first==512u) {
+#ifdef IFS_TEST_BROKEN_MAP
+        return IFS_FS_END;
+#else
+        out[0]=(IfsFsAllocationRangeV2){first,v->host->volume_bytes-first,IFS_FS_SPACE_FREE,0u};
+#endif
+    } else return IFS_FS_INVALID;
+    *written=1u;return IFS_FS_OK;
+}
+static const IfsFsAllocationOpsV2 allocation={
+    .header={IFS_FS_GROUP_ABI_V2,sizeof(IfsFsAllocationOpsV2),
+             IFS_FS_GROUP_ALLOCATION,0u,IFS_FS_ALLOCATION_MAP},
+    .map=allocation_map
+};
 static const IfsFsGroupHeaderV2 *query(uint32_t id,uint32_t min,uint32_t max) {
     if(min>IFS_FS_GROUP_ABI_V2 || max<IFS_FS_GROUP_ABI_V2)return NULL;
     if(id==IFS_FS_GROUP_CORE)return &core.header;
     if(id==IFS_FS_GROUP_DEFRAG)return &defrag.header;
+    if(id==IFS_FS_GROUP_ALLOCATION)return &allocation.header;
     return NULL;
 }
 static const IfsFsModuleApiV2 api={
@@ -165,7 +191,8 @@ static const IfsFsModuleApiV2 api={
 #endif
     .runtime_profiles=IFS_FS_PROFILE_HOSTED,
     .group_mask=IFS_FS_GROUP_BIT(IFS_FS_GROUP_CORE)|
-                IFS_FS_GROUP_BIT(IFS_FS_GROUP_DEFRAG),
+                IFS_FS_GROUP_BIT(IFS_FS_GROUP_DEFRAG)|
+                IFS_FS_GROUP_BIT(IFS_FS_GROUP_ALLOCATION),
     .query_group=query
 };
 __attribute__((visibility("default")))

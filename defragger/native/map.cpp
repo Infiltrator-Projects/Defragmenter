@@ -186,11 +186,56 @@ Json map_catalogue(const BackendInfo& backend,const Json& payload,
         if(split)fragmented.push_back({start,end});
     }
     std::vector<StateRange> ranges;
-    for(const auto& r:merge_ranges(std::move(occupied)))
-        ranges.push_back({r.start,r.end,1U});
+    std::uint64_t reserved=0U, allocated=0U, unknown=0U, free=0U;
+    const auto* physical=payload.find("allocation_ranges");
+    if(physical) {
+        // Revalidate the transport before presentation. Canonical provider
+        // allocation is a complete partition coverage, not a list of file
+        // extents. Reserved bytes are unavailable (rendered as used), but
+        // separately reported. Unknown bytes never become free.
+        std::uint64_t cursor=0U;
+        std::vector<UnitRange> free_ranges;
+        for(const auto& value:physical->array()) {
+            if(!value.is_array() || value.array().size()!=3U)
+                throw std::runtime_error("Malformed Common V2 allocation range");
+            const auto start=value.array()[0].unsigned_value();
+            const auto end=value.array()[1].unsigned_value();
+            const auto state=value.array()[2].unsigned_value();
+            if(start!=cursor || end<=start || end>total || state>IFS_FS_SPACE_RESERVED)
+                throw std::runtime_error("Invalid Common V2 allocation coverage");
+            const auto length=end-start;
+            unsigned display=2U;
+            if(state==IFS_FS_SPACE_FREE) {
+                free+=length; display=0U; free_ranges.push_back({start,end});
+            } else if(state==IFS_FS_SPACE_ALLOCATED) {
+                allocated+=length;display=1U;
+            } else if(state==IFS_FS_SPACE_RESERVED) {
+                reserved+=length;display=1U;
+            } else unknown+=length;
+            ranges.push_back({start,end,display});
+            cursor=end;
+        }
+        if(cursor!=total || free!=required_u64(payload,"allocation_free_bytes") ||
+           unknown!=required_u64(payload,"allocation_unknown_bytes"))
+            throw std::runtime_error("Incomplete or inconsistent Common V2 allocation coverage");
+        std::size_t i=0U;
+        for(const auto& r:merge_ranges(occupied)) {
+            while(i<free_ranges.size() && free_ranges[i].end<=r.start)++i;
+            if(i<free_ranges.size() && free_ranges[i].start<r.end)
+                throw std::runtime_error("Common V2 file extent overlaps provider-confirmed free space");
+        }
+    } else {
+        for(const auto& r:merge_ranges(std::move(occupied)))
+            ranges.push_back({r.start,r.end,1U});
+    }
     Json result=aggregate_ranges(total,cells,1U,filesystem,std::move(ranges),
-        "summary",{{"fragmentation_available",Json(true)},
+        physical && !unknown ? "exact-allocation" : "summary",
+        {{"fragmentation_available",Json(true)},
         {"fragmentation_basis",Json("Common V2 file extent catalogue")}});
+    if(physical) {
+        set(result,"reserved_bytes",Json::unsigned_integer(reserved));
+        set(result,"allocated_bytes",Json::unsigned_integer(allocated));
+    }
     overlay_ranges(result.at("cells").array(),std::move(fragmented),"fragmented");
     for(const auto* key:{"regular_files","fragmented_files","directories",
                          "fragmented_directories","directory_fragmentation_available",

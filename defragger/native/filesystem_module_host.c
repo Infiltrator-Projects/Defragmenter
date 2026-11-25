@@ -896,6 +896,45 @@ static int v2_catalogue_directory(V2Catalogue *m,const char *path,unsigned depth
     }
     return -1;
 }
+/* Transport only the canonical provider-owned physical allocation group.
+ * This is independent of object extents. Missing groups leave the old
+ * file catalogue incomplete; a malformed advertised group fails closed.
+ */
+static int v2_allocation_json(FILE *out,const IfsFsAllocationOpsV2 *ops,
+    void *volume,const IfsFsVolumeInfoV2 *info,const IfsFsHostRuntimeV2 *runtime)
+{
+    uint64_t cursor=0u,unknown=0u,free_bytes=0u,entries=0u;
+    if(!ops || !ops->map ||
+       fputs(",\"allocation_ranges\":[",out)==EOF)return -1;
+    for(unsigned page=0u;page<131072u;++page) {
+        IfsFsAllocationRangeV2 ranges[128]={{0}};
+        uint32_t count=0u;
+        uint64_t next=cursor;
+        if(runtime->cancelled && runtime->cancelled(runtime->context))return -1;
+        const int rc=ops->map(volume,cursor,ranges,128u,&count);
+        if(!ifs_fs_allocation_page_v2_valid(runtime->volume_bytes,cursor,rc,
+                ranges,128u,count,&next,&unknown))return -1;
+        if(rc==IFS_FS_END) {
+            /* The volume's accounting must agree with a complete map.
+             * For partial maps, known free cannot exceed measured free. */
+            if(free_bytes>info->free_bytes ||
+               (!unknown && free_bytes!=info->free_bytes))return -1;
+            return fprintf(out,"],\"allocation_unknown_bytes\":%llu,"
+                "\"allocation_free_bytes\":%llu",
+                (unsigned long long)unknown,(unsigned long long)free_bytes)<0?-1:0;
+        }
+        for(uint32_t i=0u;i<count;++i) {
+            const IfsFsAllocationRangeV2 *r=&ranges[i];
+            if(r->state==IFS_FS_SPACE_FREE)free_bytes+=r->length;
+            if(entries>=1048576u || fprintf(out,"%s[%llu,%llu,%u]",
+               entries?",":"",(unsigned long long)r->physical_offset,
+               (unsigned long long)(r->physical_offset+r->length),r->state)<0)return -1;
+            ++entries;
+        }
+        cursor=next;
+    }
+    return -1;
+}
 static int v2_catalogue_json(FILE *out,const IfsFsModuleApiV2 *api,
     const IfsFsCoreOpsV2 *core,const IfsFsDefragOpsV2 *defrag,void *volume,
     const IfsFsVolumeInfoV2 *info,const IfsFsHostRuntimeV2 *runtime)
@@ -918,6 +957,10 @@ static int v2_catalogue_json(FILE *out,const IfsFsModuleApiV2 *api,
        (unsigned long long)m.files,(unsigned long long)m.fragmented,
        (unsigned long long)m.dirs,m.dirs?"false":"true",
        (unsigned long long)defrag->header.capabilities)<0)return -1;
+    const IfsFsAllocationOpsV2 *allocation=(const void *)
+        ifs_fs_group_v2(api,IFS_FS_GROUP_ALLOCATION);
+    if(allocation && v2_allocation_json(out,allocation,volume,info,runtime))
+        return -1;
     /* A complete file catalogue need not imply complete volume allocation
      * accounting. Ask the authoritative provider to qualify both policies
      * on this read-only session; do not execute, verify a mutation, or write.
