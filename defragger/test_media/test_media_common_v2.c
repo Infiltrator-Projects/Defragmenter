@@ -222,7 +222,9 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
         case LDTM_CREATOR_HFS: variant=1u; break;
         case LDTM_CREATOR_HFSPLUS: variant=4u; break;
         case LDTM_CREATOR_APFS: variant=1u; break;
-        case LDTM_CREATOR_SFS: variant=3u; break;
+        case LDTM_CREATOR_AFFS:
+            if(!strcmp(m->spec->key,"sfs"))variant=3u;
+            break;
         case LDTM_CREATOR_UFS: variant=3u; break;
         case LDTM_CREATOR_UFS1: variant=1u; break;
         case LDTM_CREATOR_SFS2: variant=4096u; break;
