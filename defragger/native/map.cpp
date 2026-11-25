@@ -43,23 +43,10 @@ std::uint64_t optional_u64(const Json& object, std::string_view key,
     return value == nullptr ? fallback : value->unsigned_value();
 }
 
-double optional_real(const Json& object, std::string_view key,
-                     double fallback = 0.0) {
-    const Json* value = object.find(key);
-    return value == nullptr ? fallback : value->real_value();
-}
-
 bool optional_bool(const Json& object, std::string_view key,
                    bool fallback = false) {
     const Json* value = object.find(key);
     return value == nullptr ? fallback : value->boolean();
-}
-
-std::string optional_string(const Json& object, std::string_view key,
-                            std::string_view fallback = {}) {
-    const Json* value = object.find(key);
-    return value == nullptr ? std::string(fallback)
-                            : std::string(value->string());
 }
 
 Json parse_worker_json(const CommandResult& result, const char* action) {
@@ -123,43 +110,6 @@ void analysis_phase(const char* phase) {
     std::fflush(stderr);
 }
 
-struct MutationQualification {
-    bool qualified = false;
-    std::string reason;
-};
-
-std::string concise_child_detail(const CommandResult& result) {
-    std::string detail = !result.standard_error.empty()
-        ? result.standard_error : result.standard_output;
-    while (!detail.empty() &&
-           (detail.back() == '\n' || detail.back() == '\r'))
-        detail.pop_back();
-    constexpr std::size_t kMaxReason = 2048U;
-    if (detail.size() > kMaxReason) {
-        detail.resize(kMaxReason);
-        detail += "...";
-    }
-    return detail;
-}
-
-MutationQualification mutation_qualification(
-    const BackendInfo& backend, const std::string& path,
-    const char* mode) {
-    try {
-        const CommandResult result = worker(
-            backend, mode, path, {}, 2U * 1024U * 1024U,
-            std::chrono::seconds(60));
-        if (result.return_code == 0)
-            return {true, {}};
-        std::string detail = concise_child_detail(result);
-        if (detail.empty())
-            detail = "The native writer rejected this on-disk layout.";
-        return {false, std::move(detail)};
-    } catch (const std::exception& error) {
-        return {false, error.what()};
-    }
-}
-
 std::vector<UnitRange> pair_ranges(
     const Json& payload,
     std::string_view key,
@@ -192,189 +142,8 @@ std::vector<UnitRange> pair_ranges(
     return ranges;
 }
 
-Json::Object selected_details(
-    const Json& payload,
-    std::initializer_list<std::string_view> keys) {
-    Json::Object details;
-    for (const auto key : keys) {
-        if (const Json* value = payload.find(key); value != nullptr)
-            details.emplace(std::string(key), *value);
-    }
-    return details;
-}
-
 void set(Json& object, std::string key, Json value) {
     object.object()[std::move(key)] = std::move(value);
-}
-
-void add_fragmentation_summary(Json& result, const Json& payload,
-                               bool copy_percentage) {
-    for (const auto key : {
-             std::string_view("regular_files"),
-             std::string_view("directories"),
-             std::string_view("fragmented_files"),
-             std::string_view("fragmented_directories")}) {
-        set(result, std::string(key),
-            Json::unsigned_integer(optional_u64(payload, key)));
-    }
-    if (copy_percentage && payload.find("fragmentation_percent") != nullptr)
-        set(result, "fragmentation_percent",
-            Json::real(optional_real(payload, "fragmentation_percent")));
-}
-
-void overlay_fragmentation(Json& result, const Json& payload,
-                           std::uint64_t total,
-                           std::string_view units_name) {
-    auto fragmented = pair_ranges(payload, "fragmented_ranges", total);
-    auto directories = pair_ranges(payload, "directory_ranges", total);
-    Json::Array& cells = result.at("cells").array();
-    const std::uint64_t fragmented_units =
-        overlay_ranges(cells, std::move(fragmented), "fragmented");
-    const std::uint64_t directory_units =
-        overlay_ranges(cells, std::move(directories), "directory");
-    Json* details = result.find("details");
-    if (details == nullptr) {
-        set(result, "details", Json(Json::Object{}));
-        details = result.find("details");
-    }
-    set(*details, "fragmented_" + std::string(units_name) + "_mapped",
-        Json::unsigned_integer(fragmented_units));
-    set(*details, "directory_" + std::string(units_name) + "_mapped",
-        Json::unsigned_integer(directory_units));
-}
-
-Json generic_free_range_map(
-    const BackendInfo& backend,
-    const Json& payload,
-    std::size_t cells,
-    std::uint64_t total,
-    std::uint64_t unit_size,
-    std::string filesystem,
-    Json::Object details,
-    bool copy_percentage,
-    std::string_view unit_name) {
-    const auto free = pair_ranges(payload, "free_ranges", total, true);
-    const auto used = complement_ranges(total, free);
-    std::vector<StateRange> states;
-    states.reserve(free.size() + used.size());
-    for (const auto& range : free)
-        states.push_back({range.start, range.end, 0U});
-    for (const auto& range : used)
-        states.push_back({range.start, range.end, 1U});
-
-    Json result = aggregate_ranges(
-        total, cells, unit_size, std::move(filesystem),
-        std::move(states), backend.map_accuracy, std::move(details));
-    add_fragmentation_summary(result, payload, copy_percentage);
-    overlay_fragmentation(result, payload, total, unit_name);
-    return result;
-}
-
-Json map_affs(const BackendInfo& backend, const std::string& path,
-              std::size_t cells) {
-    Json payload = parse_worker_json(
-        worker(backend, "analyse-json", path), "native Amiga analyser");
-    if (payload.at("filesystem").string() != "affs")
-        throw std::runtime_error("native Amiga analyser returned wrong identity");
-    const std::uint64_t total = required_u64(payload, "total_blocks");
-    const std::uint64_t size = required_u64(payload, "block_size");
-    Json::Object details;
-    details["block_size"] = Json::unsigned_integer(size);
-    details["dostype"] = Json(
-        "DOS\\" + std::to_string(payload.find("dostype") != nullptr
-            ? optional_u64(payload, "dostype") : 0U));
-    details["variant"] = Json(payload.find("variant") != nullptr
-        ? optional_string(payload, "variant", "Amiga DOS") : "Amiga DOS");
-    details["fragmentation_available"] = Json(true);
-    details["fragmentation_basis"] =
-        Json("first-party native C OFS/FFS block catalogue");
-    return generic_free_range_map(
-        backend, payload, cells, total, size, "affs",
-        std::move(details), false, "blocks");
-}
-
-Json map_exfat(const BackendInfo& backend, const std::string& path,
-               std::size_t cells) {
-    Json payload = parse_worker_json(
-        worker(backend, "analyse-json", path), "native exFAT analyser");
-    if (payload.at("filesystem").string() != "exfat")
-        throw std::runtime_error("native exFAT analyser returned wrong identity");
-    const std::uint64_t size = required_u64(payload, "cluster_size");
-    const std::uint64_t total = required_u64(payload, "total_clusters");
-    Json::Object details =
-        selected_details(payload, {"cluster_size", "serial"});
-    details["fragmentation_available"] = Json(true);
-    details["fragmentation_basis"] =
-        Json("native C exFAT FAT/bitmap/directory catalogue");
-    Json result = generic_free_range_map(
-        backend, payload, cells, total, size, "exfat",
-        std::move(details), true, "clusters");
-    if (const Json* value = payload.find("growth_10_satisfied"))
-        set(result, "growth_10_satisfied", *value);
-    return result;
-}
-
-Json map_ext(const BackendInfo& backend, const std::string& path,
-             std::size_t cells) {
-    Json payload = parse_worker_json(
-        worker(backend, "analyse-json", path), "native EXT analyser");
-    const std::string filesystem(payload.at("filesystem").string());
-    if (filesystem != "ext2" && filesystem != "ext3" &&
-        filesystem != "ext4") {
-        throw std::runtime_error("native EXT analyser returned wrong identity");
-    }
-    const std::uint64_t size = required_u64(payload, "block_size");
-    const std::uint64_t total = required_u64(payload, "total_blocks");
-
-    if (backend.map_auxiliary_worker.empty())
-        throw std::logic_error("EXT backend omitted its metadata worker");
-    Json metadata = parse_worker_json(
-        worker_program(backend.map_auxiliary_worker, "analyse-json", path),
-        "native EXT metadata classifier");
-    if (required_u64(metadata, "block_size") != size ||
-        required_u64(metadata, "total_blocks") != total) {
-        throw std::runtime_error(
-            "native EXT metadata classifier returned mismatched geometry");
-    }
-
-    Json::Object details;
-    details["fragmentation_available"] = Json(true);
-    details["fragmentation_basis"] =
-        Json("native C EXT inode allocation scanner");
-    details["metadata_basis"] =
-        Json("native C EXT block-group and reserved-inode classifier");
-    for (const auto key : {"inodes_scanned", "malformed_inodes"})
-        if (const Json* value = payload.find(key)) details[key] = *value;
-    if (const Json* value = payload.find("growth_10_satisfied"))
-        details["growth_10_satisfied"] = *value;
-
-    Json result = generic_free_range_map(
-        backend, payload, cells, total, size, filesystem,
-        std::move(details), false, "blocks");
-
-    if (const Json* warning = payload.find("analysis_warning")) {
-        if (!warning->is_string()) throw std::runtime_error("EXT analysis warning is not text");
-        set(result, "analysis_warning", *warning);
-    }
-
-    auto metadata_ranges =
-        pair_ranges(metadata, "metadata_ranges", total, true);
-    const std::uint64_t metadata_units =
-        overlay_ranges(result.at("cells").array(),
-                       std::move(metadata_ranges), "bad");
-    set(result.at("details"), "metadata_blocks_mapped",
-        Json::unsigned_integer(metadata_units));
-
-    const std::uint64_t regular =
-        payload.find("regular_files") != nullptr
-            ? optional_u64(payload, "regular_files") : 0U;
-    const std::uint64_t fragmented =
-        payload.find("fragmented_files") != nullptr
-            ? optional_u64(payload, "fragmented_files") : 0U;
-    set(result, "fragmentation_percent",
-        Json::real(100.0 * static_cast<double>(fragmented) /
-                   static_cast<double>(std::max<std::uint64_t>(1U, regular))));
-    return result;
 }
 
 Json map_fat(const BackendInfo& backend, const std::string& path,
@@ -444,214 +213,55 @@ Json map_fat(const BackendInfo& backend, const std::string& path,
     return result;
 }
 
-Json map_hfsplus(const BackendInfo& backend, const std::string& path,
-                  std::size_t cells) {
-    Json payload = parse_worker_json(
-        worker(backend, "analyse-json", path), "native HFS+ analyser");
-    if (payload.at("filesystem").string() != "hfsplus")
-        throw std::runtime_error("native HFS+ analyser returned wrong identity");
-    const std::uint64_t total = required_u64(payload, "total_blocks");
-    const std::uint64_t size = required_u64(payload, "block_size");
-    Json::Object details;
-    details["block_size"] = Json::unsigned_integer(size);
-    details["variant"] = Json(payload.find("variant") != nullptr
-        ? optional_string(payload, "variant", "HFS+") : "HFS+");
-    details["journaled"] = Json(payload.find("journaled") != nullptr
-        ? optional_bool(payload, "journaled") : false);
-    details["fragmentation_available"] = Json(true);
-    details["fragmentation_basis"] =
-        Json("first-party native C HFS+/HFSX catalog and allocation-file scan");
-    Json result = generic_free_range_map(
-        backend, payload, cells, total, size,
-        payload.find("signature") != nullptr &&
-                payload.at("signature").string() == "HX"
-            ? "hfsx" : "hfsplus",
-        std::move(details), false, "blocks");
-    if (const Json* value = payload.find("free_blocks"))
-        set(result.at("details"), "header_free_blocks", *value);
+/* All non-FAT providers use the same Common V2 per-file extent contract.
+ * The host has no authoritative free-space or directory allocation map;
+ * unclassified physical bytes remain unknown, so a partial map cannot
+ * authorize destructive operations in the desktop. */
+Json map_catalogue(const BackendInfo& backend,const std::string& path,
+                   std::size_t cells) {
+    const Json payload=parse_worker_json(
+        worker(backend,"map-catalogue",path,{},map_capture_limit(cells)),
+        "Common V2 file extent catalogue");
+    const auto filesystem=std::string(payload.at("filesystem").string());
+    const auto* actual=backend_by_fstype(filesystem);
+    if(!actual || actual->id!=backend.id || required_u64(payload,"abi")!=2U)
+        throw std::runtime_error("Common V2 catalogue has wrong identity or ABI");
+    const auto total=required_u64(payload,"device_bytes");
+    if(!total)throw std::runtime_error("Common V2 catalogue has no target geometry");
+    std::vector<UnitRange> occupied,fragmented;
+    for(const auto& extent:payload.at("file_extents").array()) {
+        if(!extent.is_array() || extent.array().size()!=3U)
+            throw std::runtime_error("Malformed Common V2 file extent");
+        const auto start=extent.array()[0].unsigned_value();
+        const auto end=extent.array()[1].unsigned_value();
+        const auto split=extent.array()[2].unsigned_value();
+        if(start>=end || end>total || split>1U)
+            throw std::runtime_error("Invalid Common V2 physical extent");
+        occupied.push_back({start,end});
+        if(split)fragmented.push_back({start,end});
+    }
+    std::vector<StateRange> ranges;
+    for(const auto& r:merge_ranges(std::move(occupied)))
+        ranges.push_back({r.start,r.end,1U});
+    Json result=aggregate_ranges(total,cells,1U,filesystem,std::move(ranges),
+        "summary",{{"fragmentation_available",Json(true)},
+        {"fragmentation_basis",Json("Common V2 file extent catalogue")}});
+    overlay_ranges(result.at("cells").array(),std::move(fragmented),"fragmented");
+    for(const auto* key:{"regular_files","fragmented_files","directories",
+                         "fragmented_directories","directory_fragmentation_available",
+                         "provider_defrag_capabilities"})
+        if(const Json* value=payload.find(key))set(result,key,*value);
+    const auto regular=required_u64(payload,"regular_files");
+    const auto split=required_u64(payload,"fragmented_files");
+    if(split>regular)throw std::runtime_error("Invalid Common V2 file totals");
+    set(result,"fragmentation_percent",Json::real(regular?
+        100.0*static_cast<double>(split)/static_cast<double>(regular):0.0));
+    set(result,"defrag_qualified",Json(false));
+    set(result,"growth_qualified",Json(false));
+    const auto reason=Json("Common V2 file extents do not establish a complete volume allocation map");
+    set(result,"defrag_reason",reason);
+    set(result,"growth_reason",reason);
     return result;
-}
-
-Json map_ntfs(const BackendInfo& backend, const std::string& path,
-              std::size_t cells) {
-    Json payload = parse_worker_json(
-        worker(backend, "analyse-json", path, {"--qualify"}), "native NTFS analyser");
-    if (payload.at("filesystem").string() != "ntfs")
-        throw std::runtime_error("native NTFS analyser returned wrong identity");
-    const std::uint64_t size = required_u64(payload, "cluster_size");
-    const std::uint64_t total = required_u64(payload, "total_clusters");
-    Json::Object details =
-        selected_details(payload, {"cluster_size", "serial",
-                                   "mft_records_scanned",
-                                   "mft_malformed_records",
-                                   "hibernation_active"});
-    details["fragmentation_available"] = Json(true);
-    details["fragmentation_basis"] =
-        Json("native C NTFS MFT and mapping-pairs catalogue");
-    Json result = generic_free_range_map(
-        backend, payload, cells, total, size, "ntfs",
-        std::move(details), true, "clusters");
-    if (const Json* value = payload.find("growth_10_satisfied"))
-        set(result, "growth_10_satisfied", *value);
-    const Json* defrag = payload.find("defrag_qualified");
-    const Json* growth = payload.find("growth_qualified");
-    if ((defrag == nullptr) != (growth == nullptr))
-        throw std::runtime_error("NTFS analyser returned incomplete qualification");
-    if (defrag != nullptr) {
-        if (!defrag->is_bool() || !growth->is_bool())
-            throw std::runtime_error("NTFS qualification is not boolean");
-        set(result, "defrag_qualified", *defrag);
-        set(result, "growth_qualified", *growth);
-    }
-    for (const auto key : {"defrag_reason", "growth_reason"}) {
-        if (const Json* value = payload.find(key)) {
-            if (!value->is_string()) throw std::runtime_error("NTFS qualification reason is not text");
-            set(result, key, *value);
-        }
-    }
-    return result;
-}
-
-Json map_xfs(const BackendInfo& backend, const std::string& path,
-             std::size_t cells) {
-    Json payload = parse_worker_json(
-        worker(backend, "analyse-json", path), "native XFS analyser");
-    if (payload.at("filesystem").string() != "xfs")
-        throw std::runtime_error("native XFS analyser returned wrong identity");
-    const std::uint64_t size = required_u64(payload, "block_size");
-    const std::uint64_t total = required_u64(payload, "dblocks");
-    Json::Object details =
-        selected_details(payload, {
-            "block_size", "sector_size", "inode_size", "agblocks",
-            "allocation_groups", "bnobt_blocks", "fdblocks",
-            "inodes_scanned", "malformed_inodes", "realtime_inodes",
-            "inobt_blocks", "bmap_blocks"});
-    if (const auto found = details.find("agblocks"); found != details.end()) {
-        details["allocation_group_blocks"] = found->second;
-        details.erase(found);
-    }
-    if (const auto found = details.find("fdblocks"); found != details.end()) {
-        details["superblock_free_blocks"] = found->second;
-        details.erase(found);
-    }
-    if (const auto found = details.find("realtime_inodes");
-        found != details.end()) {
-        details["realtime_inodes_not_mapped"] = found->second;
-        details.erase(found);
-    }
-    details["free_space_basis"] =
-        Json("XFS per-allocation-group block-number free-space B+trees");
-    details["fragmentation_available"] = Json(true);
-    details["fragmentation_basis"] =
-        Json("native C XFS inode B+tree and data-fork extent scanner");
-    return generic_free_range_map(
-        backend, payload, cells, total, size, "xfs",
-        std::move(details), true, "blocks");
-}
-
-void validate_native_map(const BackendInfo& backend, const Json& payload) {
-    if (payload.find("schema") == nullptr ||
-        payload.at("schema").unsigned_value() != 1U)
-        throw std::runtime_error(
-            "native filesystem mapper returned incompatible map schema");
-
-    const Json* domain = payload.find("backend");
-    if (domain == nullptr || !domain->is_string() ||
-        domain->string() != "read-only-domain")
-        throw std::runtime_error(
-            "native filesystem mapper returned wrong backend domain");
-
-    const Json* filesystem = payload.find("filesystem");
-    if (filesystem == nullptr || !filesystem->is_string())
-        throw std::runtime_error(
-            "native filesystem mapper omitted filesystem identity");
-    const BackendInfo* resolved = backend_by_fstype(filesystem->string());
-    if (resolved == nullptr || resolved->id != backend.id)
-        throw std::runtime_error(
-            "native filesystem mapper returned wrong filesystem identity");
-
-    const Json* accuracy = payload.find("map_accuracy");
-    if (accuracy == nullptr || !accuracy->is_string() ||
-        !backend_accepts_map_accuracy(backend, accuracy->string()))
-        throw std::runtime_error(
-            "native filesystem mapper returned unexpected accuracy contract");
-
-    const Json* raw_cells = payload.find("cells");
-    if (raw_cells == nullptr || !raw_cells->is_array())
-        throw std::runtime_error(
-            "native filesystem mapper omitted allocation cells");
-
-    const std::uint64_t unit_size = required_u64(payload, "unit_size");
-    const std::uint64_t total_units = required_u64(payload, "total_units");
-    const std::uint64_t cell_count = required_u64(payload, "cell_count");
-    if (unit_size == 0U || total_units == 0U || cell_count == 0U ||
-        cell_count != raw_cells->array().size())
-        throw std::runtime_error(
-            "native filesystem mapper returned invalid map geometry");
-
-    std::uint64_t expected_start = 0U;
-    for (const auto& cell : raw_cells->array()) {
-        if (!cell.is_object())
-            throw std::runtime_error(
-                "native filesystem mapper returned malformed allocation cell");
-        const std::uint64_t start = required_u64(cell, "start");
-        const std::uint64_t end = required_u64(cell, "end");
-        if (start != expected_start || end < start || end >= total_units)
-            throw std::runtime_error(
-                "native filesystem mapper returned discontinuous allocation cells");
-
-        const std::uint64_t span = end - start + 1U;
-        const std::uint64_t free = required_u64(cell, "free");
-        const std::uint64_t used = required_u64(cell, "used");
-        const std::uint64_t unknown =
-            optional_u64(cell, "unknown");
-        const std::uint64_t outside =
-            optional_u64(cell, "outside");
-        const std::uint64_t bad =
-            optional_u64(cell, "bad");
-        const std::uint64_t fragmented =
-            optional_u64(cell, "fragmented");
-        const std::uint64_t directory =
-            optional_u64(cell, "directory");
-
-        if (free > span || used > span || unknown > span ||
-            outside > span || bad > span ||
-            fragmented > used || directory > used ||
-            free > UINT64_MAX - used ||
-            free + used > UINT64_MAX - unknown ||
-            free + used + unknown > UINT64_MAX - outside ||
-            free + used + unknown + outside > UINT64_MAX - bad ||
-            free + used + unknown + outside + bad != span) {
-            throw std::runtime_error(
-                "native filesystem mapper returned inconsistent allocation counts");
-        }
-        expected_start = end + 1U;
-    }
-    if (expected_start != total_units)
-        throw std::runtime_error(
-            "native filesystem mapper did not cover the complete map");
-}
-
-Json map_native(const BackendInfo& backend, const std::string& path,
-                std::size_t cells) {
-    const CommandResult result =
-        worker(backend, "map", path,
-               {"--cells", std::to_string(std::max<std::size_t>(1U, cells))},
-               map_capture_limit(cells));
-    Json payload = parse_worker_json(result, "native filesystem mapper");
-    validate_native_map(backend, payload);
-    std::string warning = result.standard_error;
-    while (!warning.empty() &&
-           (warning.back() == '\n' || warning.back() == '\r'))
-        warning.pop_back();
-    constexpr std::size_t kMaxAnalysisWarning = 2048U;
-    if (warning.size() > kMaxAnalysisWarning) {
-        warning.resize(kMaxAnalysisWarning);
-        warning += "...";
-    }
-    if (!warning.empty())
-        set(payload, "analysis_warning", Json(std::move(warning)));
-    return payload;
 }
 
 } // namespace
@@ -878,63 +488,8 @@ Json map_backend(const BackendInfo& backend, const std::string& path,
                  std::size_t cells) {
     (void)map_capture_limit(cells);
     analysis_phase("Scanning filesystem allocation and file metadata");
-    Json result;
-    switch (backend.map_adapter) {
-    case MapAdapter::NativeMap:
-        result = map_native(backend, path, cells);
-        break;
-    case MapAdapter::Affs:
-        result = map_affs(backend, path, cells);
-        break;
-    case MapAdapter::Exfat:
-        result = map_exfat(backend, path, cells);
-        break;
-    case MapAdapter::Ext:
-        result = map_ext(backend, path, cells);
-        break;
-    case MapAdapter::Fat:
-        result = map_fat(backend, path, cells);
-        break;
-    case MapAdapter::HfsPlus:
-        result = map_hfsplus(backend, path, cells);
-        break;
-    case MapAdapter::Ntfs:
-        result = map_ntfs(backend, path, cells);
-        break;
-    case MapAdapter::Xfs:
-        result = map_xfs(backend, path, cells);
-        break;
-    default:
-        throw std::runtime_error("unknown allocation-map adapter");
-    }
-
-    if ((backend.capabilities & CAP_DEFRAG) != 0U) {
-        MutationQualification defrag{true, {}};
-        MutationQualification growth{true, {}};
-        const bool map_reports_qualification =
-            result.find("defrag_qualified") != nullptr &&
-            result.find("growth_qualified") != nullptr;
-        const bool run_preflight =
-            backend.qualification_mode == QualificationMode::WorkerPreflight ||
-            (backend.qualification_mode == QualificationMode::MapOrWorkerPreflight &&
-             !map_reports_qualification);
-        if (run_preflight) {
-            analysis_phase("Checking Defragment availability (up to 60 seconds)");
-            defrag = mutation_qualification(
-                backend, path, "preflight-defrag");
-            analysis_phase("Checking Growth Defrag availability (up to 60 seconds)");
-            growth = mutation_qualification(
-                backend, path, "preflight-growth");
-        }
-        if (!result.find("defrag_qualified"))
-            set(result, "defrag_qualified", Json(defrag.qualified));
-        if (!result.find("growth_qualified"))
-            set(result, "growth_qualified", Json(growth.qualified));
-        if (!defrag.reason.empty())
-            set(result, "defrag_reason", Json(std::move(defrag.reason)));
-        if (!growth.reason.empty())
-            set(result, "growth_reason", Json(std::move(growth.reason)));
-    }
+    Json result = backend.map_adapter == MapAdapter::Fat
+        ? map_fat(backend,path,cells) : map_catalogue(backend,path,cells);
     analysis_phase("Preparing allocation map");
     return result;
 }

@@ -38,6 +38,14 @@ static int unmount(void *m) {
     v->host->release(v->host->context,v);
     return IFS_FS_OK;
 }
+static int directory_entry(void *m,const char *path,uint32_t index,IfsFsEntryV2 *e) {
+    if(!m || !path || strcmp(path,"/") || !e || !e->name ||
+       e->name_capacity<5u)return IFS_FS_INVALID;
+    if(index)return IFS_FS_END;
+    memcpy(e->name,"FILE",5u);
+    e->name_bytes=4u;e->size_bytes=4u;e->type=IFS_FS_ENTRY_FILE;
+    return IFS_FS_OK;
+}
 static int map(void *m,const char *path,uint64_t first,IfsFsExtentV2 *out,
                uint32_t cap,uint32_t *written) {
     if(!m || !path || (strcmp(path,"/FILE") && strcmp(path,"/")) ||
@@ -109,8 +117,8 @@ static void release_plan(void *m,void *plan) {
 }
 static const IfsFsCoreOpsV2 core={
     .header={IFS_FS_GROUP_ABI_V2,sizeof(IfsFsCoreOpsV2),
-             IFS_FS_GROUP_CORE,0u,IFS_FS_CORE_PROBE|IFS_FS_CORE_MOUNT},
-    .probe=probe,.mount=mount,.unmount=unmount
+             IFS_FS_GROUP_CORE,0u,IFS_FS_CORE_PROBE|IFS_FS_CORE_MOUNT|IFS_FS_CORE_LIST},
+    .probe=probe,.mount=mount,.unmount=unmount,.directory_entry=directory_entry
 };
 static const IfsFsDefragOpsV2 defrag={
     .header={IFS_FS_GROUP_ABI_V2,sizeof(IfsFsDefragOpsV2),

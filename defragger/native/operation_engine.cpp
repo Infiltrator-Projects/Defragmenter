@@ -86,7 +86,7 @@ int main(int argc, char** argv) {
     if (operation != "defrag" && operation != "growth-defrag" &&
         operation != "recover" && operation != "analyse" &&
         operation != "analyse-json" && operation != "map" &&
-        operation != "volume-info") {
+        operation != "volume-info" && operation != "map-catalogue") {
         return usage();
     }
     if (filesystem.empty() || filesystem.size() > 15U) {

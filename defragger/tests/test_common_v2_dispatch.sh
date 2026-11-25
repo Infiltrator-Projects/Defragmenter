@@ -61,6 +61,11 @@ before=$(sha256sum "$device" | cut -d' ' -f1)
 "$engine" defrag "$device" --filesystem testv2 \
    --write --confirm "$device" > "$root/output.txt"
 grep -Fq 'durably synced' "$root/output.txt"
+# The catalogue consumes actual V2 directory entries and file extent maps.
+"$engine" map-catalogue "$device" --filesystem testv2 > "$root/catalogue.json"
+grep -Fq '"abi":2' "$root/catalogue.json"
+grep -Fq '"file_extents":[[64,68,0]]' "$root/catalogue.json"
+grep -Fq '"regular_files":1' "$root/catalogue.json"
 # Read-only V2 mapping must consume all 33 extents in two pages.
 "$engine" map "$device" --filesystem testv2 > "$root/output.txt"
 grep -Fq 'durably synced' "$root/output.txt"

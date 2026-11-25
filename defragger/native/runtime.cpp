@@ -309,15 +309,15 @@ const std::vector<BackendInfo>& backend_registry() {
         result.push_back({
             "ext2", "EXT2", {"ext2"}, write, "exact",
             "ext-native", MapAdapter::Ext, standard_write_ops("ext-native"),
-            QualificationMode::WorkerPreflight, "ext-metadata"});
+            QualificationMode::None});
         result.push_back({
             "ext3", "EXT3", {"ext3"}, write, "exact",
             "ext-native", MapAdapter::Ext, standard_write_ops("ext-native"),
-            QualificationMode::WorkerPreflight, "ext-metadata"});
+            QualificationMode::None});
         result.push_back({
             "ext4", "EXT4", {"ext4"}, write, "exact",
             "ext-native", MapAdapter::Ext, standard_write_ops("ext-native"),
-            QualificationMode::WorkerPreflight, "ext-metadata"});
+            QualificationMode::None});
         for (const int bits : {12, 16, 32}) {
             const std::string id = "fat" + std::to_string(bits);
             result.push_back({

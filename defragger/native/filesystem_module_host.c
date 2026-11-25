@@ -739,6 +739,116 @@ static int v2_fat_extent_json(FILE *out,const IfsFsModuleApiV2 *api,
     return fputs("}\n",out)==EOF || fflush(out)!=0?-1:0;
 }
 
+
+/* Common V2 guarantees file extent maps, not a whole-volume free-space or
+ * metadata map. Preserve physical byte ranges exactly and mark everything
+ * outside those ranges unknown in the consumer. Never infer free space
+ * from an absent file extent or use a format-specific disk parser. */
+typedef struct {
+    const IfsFsCoreOpsV2 *core;
+    const IfsFsDefragOpsV2 *defrag;
+    const IfsFsHostRuntimeV2 *runtime;
+    void *volume;
+    FILE *out;
+    uint32_t unit;
+    uint64_t files, fragmented, dirs, entries, extents;
+    int comma;
+} V2Catalogue;
+static int v2_catalogue_file(V2Catalogue *m,const char *path,uint64_t bytes)
+{
+    uint64_t first=0u,logical=0u,previous_end=0u;
+    int split=0;
+    for(unsigned page=0u;page<131072u;++page) {
+        IfsFsExtentV2 ext[32]={{0}};
+        uint32_t n=0u;
+        if(m->runtime->cancelled && m->runtime->cancelled(m->runtime->context))
+            return -1;
+        const int rc=m->defrag->map(m->volume,path,first,ext,32u,&n);
+        if(rc==IFS_FS_END) {
+            if(n || logical!=bytes)return -1;
+            ++m->files;
+            if(split)++m->fragmented;
+            return 0;
+        }
+        if(rc!=IFS_FS_OK || !n || n>32u || first>UINT64_MAX-n)return -1;
+        for(uint32_t i=0u;i<n;++i) {
+            const IfsFsExtentV2 *e=&ext[i];
+            if(e->flags || e->reserved || !e->length ||
+               e->logical_offset!=logical || logical>bytes ||
+               e->length>bytes-logical ||
+               e->physical_offset>m->runtime->volume_bytes ||
+               e->length>m->runtime->volume_bytes-e->physical_offset ||
+               ++m->extents>1048576u)return -1;
+            const int displaced=logical &&
+                (e->physical_offset<previous_end ||
+                 e->physical_offset-previous_end>=m->unit);
+            const uint64_t end=e->physical_offset+e->length;
+            if(fprintf(m->out,"%s[%llu,%llu,%u]",m->comma?",":"",
+                 (unsigned long long)e->physical_offset,
+                 (unsigned long long)end,(unsigned)displaced)<0)return -1;
+            m->comma=1;
+            if(displaced)split=1;
+            previous_end=end;
+            logical+=e->length;
+        }
+        first+=n;
+    }
+    return -1;
+}
+static int v2_catalogue_directory(V2Catalogue *m,const char *path,unsigned depth)
+{
+    if(depth>64u)return -1;
+    for(uint32_t index=0u;index<1048576u;++index) {
+        char name[4096]={0},child[4096];
+        IfsFsEntryV2 e={.structure_bytes=sizeof(e),.name=name,
+                       .name_capacity=sizeof(name)};
+        if(m->runtime->cancelled && m->runtime->cancelled(m->runtime->context))
+            return -1;
+        const int rc=m->core->directory_entry(m->volume,path,index,&e);
+        if(rc==IFS_FS_END)return 0;
+        if(rc!=IFS_FS_OK || ++m->entries>1048576u ||
+           !e.name_bytes || e.name_bytes>=sizeof(name) ||
+           name[e.name_bytes] || strlen(name)!=e.name_bytes ||
+           strchr(name,'/') || strchr(name,'\\'))return -1;
+        if(!strcmp(name,".") || !strcmp(name,".."))continue;
+        const int len=snprintf(child,sizeof(child),"%s%s%s",path,
+                               !strcmp(path,"/")?"":"/",name);
+        if(len<=0 || (size_t)len>=sizeof(child))return -1;
+        if(e.type==IFS_FS_ENTRY_DIRECTORY) {
+            ++m->dirs;
+            if(v2_catalogue_directory(m,child,depth+1u))return -1;
+        } else if(e.type==IFS_FS_ENTRY_FILE) {
+            if(v2_catalogue_file(m,child,e.size_bytes))return -1;
+        } else if(e.type!=IFS_FS_ENTRY_LINK)return -1;
+    }
+    return -1;
+}
+static int v2_catalogue_json(FILE *out,const IfsFsModuleApiV2 *api,
+    const IfsFsCoreOpsV2 *core,const IfsFsDefragOpsV2 *defrag,void *volume,
+    const IfsFsVolumeInfoV2 *info,const IfsFsHostRuntimeV2 *runtime)
+{
+    if(!out || !(core->header.capabilities&IFS_FS_CORE_LIST) ||
+       !core->directory_entry || !info->block_bytes ||
+       !info->total_bytes || info->total_bytes>runtime->volume_bytes ||
+       info->free_bytes>info->total_bytes)return -1;
+    V2Catalogue m={.core=core,.defrag=defrag,.runtime=runtime,
+        .volume=volume,.out=out,.unit=info->block_bytes};
+    if(fprintf(out,"{\"filesystem\":\"%s\",\"abi\":2,"
+       "\"device_bytes\":%llu,\"file_extents\":[",api->format_id,
+       (unsigned long long)runtime->volume_bytes)<0 ||
+       v2_catalogue_directory(&m,"/",0u))return -1;
+    /* No directory allocation contract is assumed. Zero directories is
+     * the only case where directory fragmentation is exactly zero. */
+    if(fprintf(out,"],\"regular_files\":%llu,\"fragmented_files\":%llu,"
+       "\"directories\":%llu,\"directory_fragmentation_available\":%s,"
+       "\"provider_defrag_capabilities\":%llu",
+       (unsigned long long)m.files,(unsigned long long)m.fragmented,
+       (unsigned long long)m.dirs,m.dirs?"false":"true",
+       (unsigned long long)defrag->header.capabilities)<0)return -1;
+    if(!m.dirs && fputs(",\"fragmented_directories\":0",out)==EOF)return -1;
+    return fputs("}\n",out)==EOF || fflush(out)!=0?-1:0;
+}
+
 static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user) {
     const Command *command=user;
     IfsFsModuleApiEntryV2 entry=NULL;
@@ -772,10 +882,12 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
     const int reporting=!strcmp(operation,"volume-info");
     const int recovering=!strcmp(operation,"recover");
     const int extent_json=!strcmp(operation,"map-extents");
+    const int catalogue=!strcmp(operation,"map-catalogue");
+    if(catalogue && command->argc!=3)return 2;
     if(extent_json && (command->argc!=3 ||
        (strcmp(api->format_id,"fat12") && strcmp(api->format_id,"fat16") &&
         strcmp(api->format_id,"fat32"))))return 2;
-    const int analysing=probing || reporting || extent_json || !strcmp(operation,"analyse") ||
+    const int analysing=probing || reporting || extent_json || catalogue || !strcmp(operation,"analyse") ||
         !strcmp(operation,"analyse-json") || !strcmp(operation,"map");
     const int defragging=!strcmp(operation,"defrag");
     const int growing=!strcmp(operation,"growth-defrag");
@@ -895,6 +1007,10 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
         uint64_t repaired=0u;
         operation_ok=defrag->recover(volume,0u,&repaired)==IFS_FS_OK;
 
+    } else if(catalogue) {
+        extent_output=tmpfile();
+        operation_ok=extent_output && v2_catalogue_json(extent_output,api,core,defrag,volume,&info,&h)==0;
+        if(!operation_ok)fputs("Common V2 file extent catalogue failed\n",stderr);
     } else if(extent_json) {
         extent_output=tmpfile();
         operation_ok=extent_output &&
@@ -952,7 +1068,7 @@ static int run_common_v2(const IfsDefragHostV2 *services,void *symbol,void *user
                api->format_id,reported.variant,reported.block_bytes,
                (unsigned long long)reported.total_bytes,
                (unsigned long long)reported.free_bytes);
-    } else if(!result && extent_json) {
+    } else if(!result && (extent_json || catalogue)) {
         if(fseek(extent_output,0,SEEK_SET)!=0)result=1;
         char buffer[16384];
         size_t count;
