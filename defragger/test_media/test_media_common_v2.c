@@ -17,6 +17,7 @@ typedef struct {
     const char *path;
     int create;
     int require_map;
+    int bfs_layout; /* 1: compact, 2: fragmented free space, 3: growth */
     unsigned fragmented;
     char *detail;
     size_t detail_capacity;
@@ -31,6 +32,8 @@ static const char *provider(const LdtmFilesystemSpec *s)
 }
 static int is_swap(const LdtmFilesystemSpec *s)
 { return s && s->creator==LDTM_CREATOR_SWAP; }
+static int is_bfs(const LdtmFilesystemSpec *s)
+{ return s && !strcmp(s->key,"bfs"); }
 
 /* These values are test-profile parameters, not filesystem algorithms.
  * Format, allocation, extent decoding and integrity checking are performed
@@ -96,6 +99,7 @@ static const IfsFsModuleApiV2 *qualify(void *symbol,MediaV2 *m)
         if(m->create) {
             NEED(CORE(IFS_FS_CORE_CREATE,create),"CORE.CREATE");
             NEED(CORE(IFS_FS_CORE_WRITE,write),"CORE.WRITE");
+            if(is_bfs(m->spec))NEED(CORE(IFS_FS_CORE_REMOVE,remove),"CORE.REMOVE (BFS gap corpus)");
         }
         if(m->require_map) {
             const IfsFsDefragOpsV2 *map=(const IfsFsDefragOpsV2 *)
@@ -201,6 +205,112 @@ static int file_fragmented(const IfsFsDefragOpsV2 *map,void *session,
     return -1;
 }
 
+/* SCO BFS intrinsically requires one contiguous extent per file. Build
+ * genuine fragmented free space by alternating sacrificial files and
+ * complete target files, then remove only the sacrificial files. All
+ * formatting, namespace changes and payload writes remain provider-owned. */
+static int create_bfs_corpus(const MediaV2 *m,const IfsFsCoreOpsV2 *core,
+                             void *session,uint32_t unit)
+{
+    const uint32_t capacity=4u*1024u*1024u;
+    uint8_t *buf=malloc(capacity);
+    if(!buf)return -1;
+    int rc=-1;char path[32],gap[32];
+    memset(buf,0,unit);
+    for(unsigned i=0;i<LDTM_RAW_FILES;++i) {
+        if(i<LDTM_TARGET_FILE_COUNT) {
+            (void)snprintf(gap,sizeof(gap),"/G%06u.TMP",i);
+            memset(buf,0x5a,unit);
+            if(core->create(session,gap,IFS_FS_ENTRY_FILE)!=IFS_FS_OK ||
+               core->write(session,gap,0u,buf,unit)!=IFS_FS_OK)goto done;
+        }
+        if(make_path(i,path)!=0)goto done;
+        uint64_t length=ldtm_raw_file_bytes(m->spec,i);
+        for(uint64_t at=0;at<length;) {
+            uint32_t n=(uint32_t)(length-at<capacity?length-at:capacity);
+            if(m->services->stop_requested(m->services->context))goto done;
+            ldtm_raw_payload(buf,n,i,at);
+            if(core->write(session,path,at,buf,n)!=IFS_FS_OK)goto done;
+            at+=n;
+        }
+    }
+    for(unsigned i=0;i<LDTM_TARGET_FILE_COUNT;++i) {
+        (void)snprintf(gap,sizeof(gap),"/G%06u.TMP",i);
+        if(core->remove(session,gap)!=IFS_FS_OK)goto done;
+    }
+    rc=0;
+done:
+    free(buf);return rc;
+}
+/* BFS root and every file are separately mapped; compare their rounded
+ * allocation sum to the provider's volume accounting. The native check
+ * rejects unreferenced allocations. Consequently all remaining space
+ * is unowned, not merely absent from a partial file map. */
+typedef struct {uint64_t start,end;unsigned index;} BfsRun;
+static int bfs_single_run(const IfsFsDefragOpsV2 *map,void *session,
+                          const char *path,uint64_t length,uint64_t unit,
+                          uint64_t capacity,BfsRun *out)
+{
+    IfsFsExtentV2 e={0};uint32_t n=0;
+    if(!length)return map->map(session,path,0,&e,1,&n)==IFS_FS_END && !n?0:-1;
+    if(map->map(session,path,0,&e,1,&n)!=IFS_FS_OK || n!=1 ||
+       e.logical_offset || e.length!=length || e.flags || e.reserved ||
+       e.physical_offset%unit || e.physical_offset>capacity ||
+       length>UINT64_MAX-(unit-1))return -1;
+    uint64_t allocated=((length+unit-1)/unit)*unit;
+    if(allocated>capacity-e.physical_offset)return -1;
+    out->start=e.physical_offset;out->end=e.physical_offset+allocated;
+    return map->map(session,path,1,&e,1,&n)==IFS_FS_END && !n?0:-1;
+}
+static int verify_bfs_layout(const MediaV2 *m,const IfsFsCoreOpsV2 *core,
+    const IfsFsVolumeOpsV2 *volume,const IfsFsDefragOpsV2 *map,void *session,
+    const IfsFsVolumeInfoV2 *info,uint64_t capacity)
+{
+    const uint64_t unit=info->block_bytes;
+    if(unit!=512u || !volume || !volume->check ||
+       !(volume->header.capabilities&IFS_FS_VOLUME_CHECK))return -1;
+    uint64_t errors=UINT64_MAX;
+    if(volume->check(session,0,&errors)!=IFS_FS_OK || errors)return -1;
+    char root_name[32],path[32];
+    IfsFsEntryV2 e={.structure_bytes=sizeof(e),.name=root_name,.name_capacity=sizeof(root_name)};
+    BfsRun root={0},runs[LDTM_RAW_FILES]={{0}};
+    if(core->stat(session,"/",&e)!=IFS_FS_OK || e.type!=IFS_FS_ENTRY_DIRECTORY ||
+       !e.size_bytes || bfs_single_run(map,session,"/",e.size_bytes,unit,capacity,&root))return -1;
+    if(info->total_bytes>capacity-root.start || info->free_bytes>info->total_bytes)return -1;
+    uint64_t sum=root.end-root.start,limit=root.start+info->total_bytes;
+    unsigned count=0;
+    for(unsigned i=0;i<LDTM_RAW_FILES;++i) {
+        uint64_t length=ldtm_raw_file_bytes(m->spec,i);BfsRun r={.index=i};
+        if(make_path(i,path) || bfs_single_run(map,session,path,length,unit,capacity,&r))return -1;
+        if(!length)continue;
+        if(r.start<root.end || r.end>limit || r.end-r.start>info->total_bytes-sum)return -1;
+        sum+=r.end-r.start;
+        unsigned j=count++;
+        while(j && runs[j-1].start>r.start){runs[j]=runs[j-1];--j;}
+        runs[j]=r;
+    }
+    if(sum!=info->total_bytes-info->free_bytes)return -1;
+    uint64_t end=root.end;unsigned gap_targets=0;
+    for(unsigned i=0;i<count;++i) {
+        const BfsRun *r=&runs[i];
+        if(r->start<end)return -1;
+        if(m->bfs_layout==1 && r->start!=end)return -1;
+        if(m->bfs_layout==2 && r->index<LDTM_TARGET_FILE_COUNT) {
+            if(r->start-end<unit)return -1;
+            ++gap_targets;
+        }
+        if(m->bfs_layout==3) {
+            uint64_t blocks=(r->end-r->start)/unit;
+            uint64_t reserve=(blocks/10+(blocks%10!=0))*unit;
+            uint64_t next=i+1<count?runs[i+1].start:limit;
+            if(next<r->end || next-r->end<reserve)return -1;
+        }
+        end=r->end;
+    }
+    if(m->bfs_layout==2 && gap_targets!=LDTM_TARGET_FILE_COUNT)return -1;
+    return 0;
+}
+
 static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
 {
     MediaV2 *m=opaque;
@@ -211,6 +321,7 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
     const IfsFsVolumeOpsV2 *volume=
         (const IfsFsVolumeOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_VOLUME);
     m->binding.services=host;
+    m->services=host;
     if(host->open_target(host->context,m->path,m->create,NULL,0u,
                          &m->binding.target)!=0)return -1;
     int result=-1,mounted=0;
@@ -292,7 +403,9 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
         /* Alternate the first and second halves to force interleaved file
          * growth through the provider's own allocation/CoW machinery. */
         stage="CORE.WRITE";
-        for(unsigned phase=0u;phase<2u;++phase)
+        if(is_bfs(m->spec)) {
+            if(create_bfs_corpus(m,core,session,info.block_bytes)!=0)goto done;
+        } else for(unsigned phase=0u;phase<2u;++phase)
             for(unsigned file=0u;file<LDTM_RAW_FILES;++file) {
                 uint64_t length=ldtm_raw_file_bytes(m->spec,file);
                 uint64_t blocks=(length+info.block_bytes-1u)/info.block_bytes;
@@ -345,7 +458,7 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
         if(number<0) {
             /* FAT's corpus profile admits exactly its 16 files; other
              * providers may expose genuine native metadata entries. */
-            if(profile_fat_width(m->spec))goto done;
+            if(profile_fat_width(m->spec) || is_bfs(m->spec))goto done;
             continue;
         }
         if((seen&(1u<<(unsigned)number)) ||
@@ -392,6 +505,11 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
             at+=n;
         }
     }
+    if(m->bfs_layout) {
+        stage="BFS independently verified allocation layout";
+        const IfsFsDefragOpsV2 *map=(const IfsFsDefragOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_DEFRAG);
+        if(m->fragmented || verify_bfs_layout(m,core,volume,map,session,&info,runtime.volume_bytes))goto done;
+    }
     /* Exercise the provider's native integrity checker whenever advertised,
      * not just for FAT. FAT12 CHECK remains mandatory at preflight. An
      * unavailable checker is not evidence of filesystem integrity. */
@@ -432,4 +550,11 @@ int ldtm_common_v2_verify_fragmentation(const LdtmFilesystemSpec *s,
     const int rc=module_call(&m,execute);
     if(!rc)*fragmented=m.fragmented;
     return rc;
+}
+
+int ldtm_common_v2_verify_bfs_layout(const LdtmFilesystemSpec *s,const char *path,int mode)
+{
+    if(!is_bfs(s) || !path || mode<0 || mode>2)return -1;
+    MediaV2 m={.spec=s,.path=path,.require_map=1,.bfs_layout=mode+1};
+    return module_call(&m,execute);
 }

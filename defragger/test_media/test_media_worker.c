@@ -407,12 +407,20 @@ static int require_fragmentation_state(const LdtmFilesystemSpec *spec,
                                        const char *partition,
                                        int expect_fragmented,
                                        char *detail, size_t detail_capacity) {
+    if(!strcmp(spec->key,"bfs")) {
+        const int rc=ldtm_common_v2_verify_bfs_layout(spec,partition,expect_fragmented);
+        (void)snprintf(detail,detail_capacity,
+            "BFS contiguous-file %s layout and corpus verification %s",
+            expect_fragmented==1?"free-space fragmentation":expect_fragmented==2?"10% growth reserve":"compaction",
+            rc?"failed":"passed");
+        return rc;
+    }
     unsigned fragmented=0u;
     if(ldtm_common_v2_verify_fragmentation(spec,partition,&fragmented)!=0) {
         (void)snprintf(detail,detail_capacity,"Common V2 corpus bytes or extent verification failed");
         return -1;
     }
-    const unsigned expected=expect_fragmented?LDTM_TARGET_FILE_COUNT:0u;
+    const unsigned expected=expect_fragmented==1?LDTM_TARGET_FILE_COUNT:0u;
     if(fragmented!=expected) {
         (void)snprintf(detail,detail_capacity,
             "Common V2 extent verification requires %u fragmented corpus files; found %u",
@@ -1034,6 +1042,7 @@ static int qualify_corpus(const LdtmFilesystemSpec *spec, const char *partition,
         return -1;
     if (spec->creator == LDTM_CREATOR_SWAP)
         return ldtm_raw_fixture(spec, partition, false, detail, capacity);
+    if(!strcmp(spec->key,"bfs"))return require_fragmentation_state(spec,partition,1,detail,capacity);
     unsigned fragmented = 0U;
     /* The independent read-only extent pass also verifies every corpus byte,
      * so another byte-only reopen between the two passes is unnecessary. */
@@ -1058,7 +1067,9 @@ static int create_raw_and_populate(const LdtmFilesystemSpec *spec, const char *p
     const char *message =
         spec->creator == LDTM_CREATOR_SWAP
             ? "Common V2 SWAP header verified; file fragmentation does not apply"
-            : "Common V2 corpus fully verified; provider extent maps proved all eight large files fragmented";
+            : !strcmp(spec->key,"bfs")
+              ? "Common V2 BFS corpus verified; provider maps proved eight genuine free-space gaps"
+              : "Common V2 corpus fully verified; provider extent maps proved all eight large files fragmented";
     emit_status(spec->key, "populated", message);
     return state_write_status(state, spec, "populated", message);
 }
@@ -1108,7 +1119,7 @@ static int preflight_image(const LdtmFilesystemSpec *spec,
                     "Disposable Common V2 %s failed", operation);
                 result = -1;
             } else {
-                result = require_fragmentation_state(spec, image, 0, detail, capacity);
+                result = require_fragmentation_state(spec, image, !strcmp(operation,"growth-defrag")?2:0, detail, capacity);
             }
         }
     }
@@ -1559,7 +1570,7 @@ int ldtm_worker_verify(const char *device) {
         {
             char detail[512];
             if (require_fragmentation_state(spec, partition,
-                                            0, detail,
+                                            !strcmp(spec->key,"bfs")?2:0, detail,
                                             sizeof(detail)) != 0) {
                 emit_status(spec->key, "verify-failed", detail);
                 failures++;
@@ -1745,7 +1756,7 @@ int ldtm_worker_qualify(const char *device)
         fflush(stdout);
         if (run_production_defrag(spec, partition, "growth-defrag") != 0 ||
             require_fragmentation_state(
-                spec, partition, 0, detail, sizeof(detail)) != 0) {
+                spec, partition, 2, detail, sizeof(detail)) != 0) {
             emit_status(
                 spec->key, "qualification-failed",
                 detail[0] != '\0'

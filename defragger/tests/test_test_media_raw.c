@@ -336,7 +336,7 @@ static int qualify_image_operation(const LdtmFilesystemSpec *spec,
     CHECK(spec->creator!=LDTM_CREATOR_SWAP);
     CHECK(require_fragmentation_state(spec,path,1,detail,sizeof(detail))==0);
     CHECK(run_production_defrag(spec,path,operation)==0);
-    CHECK(require_fragmentation_state(spec,path,0,detail,sizeof(detail))==0);
+    CHECK(require_fragmentation_state(spec,path,!strcmp(operation,"growth-defrag")?2:0,detail,sizeof(detail))==0);
     if(!strcmp(operation,"growth-defrag") &&
        (spec->creator==LDTM_CREATOR_FAT12 ||
         spec->creator==LDTM_CREATOR_FAT16 ||
