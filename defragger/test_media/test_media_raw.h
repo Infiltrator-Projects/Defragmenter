@@ -10,17 +10,6 @@
  * file identities and lengths never come from mutable saved state. */
 #define LDTM_RAW_FILES 16U
 typedef struct {
-    uint64_t bytes;
-    uint64_t start[2];
-    uint64_t count[2];
-} LdtmRawFile;
-typedef struct {
-    uint64_t capacity;
-    uint32_t unit;
-    LdtmRawFile files[LDTM_RAW_FILES];
-    uint64_t end;
-} LdtmRawPlan;
-typedef struct {
     const LdtmFilesystemSpec *spec;
     uint32_t seen;
     uint64_t done[LDTM_RAW_FILES];
@@ -29,19 +18,10 @@ typedef struct {
 uint64_t ldtm_raw_file_bytes(const LdtmFilesystemSpec *spec, unsigned file);
 void ldtm_raw_name(unsigned file, char output[16]);
 int ldtm_raw_name_index(const char *name);
-int ldtm_raw_open(const char *path, bool write, uint64_t *capacity);
-int ldtm_raw_read(int fd, uint64_t offset, void *data, size_t bytes);
-int ldtm_raw_write(int fd, uint64_t offset, const void *data, size_t bytes);
-int ldtm_raw_plan(const LdtmFilesystemSpec *spec, uint64_t capacity, uint32_t unit, uint64_t first,
-                  LdtmRawPlan *plan);
-int ldtm_raw_write_payload(int fd, const LdtmRawPlan *plan);
 void ldtm_raw_payload(uint8_t *, size_t, unsigned, uint64_t);
 void ldtm_raw_check_init(LdtmRawCheck *check, const LdtmFilesystemSpec *spec);
 int ldtm_raw_check_file(LdtmRawCheck *check, unsigned file, uint64_t bytes);
-int ldtm_raw_check_data(LdtmRawCheck *check, int fd, unsigned file, uint64_t physical,
-                        uint64_t logical, uint64_t bytes);
 int ldtm_raw_check_finish(const LdtmRawCheck *check);
-uint32_t ldtm_raw_crc32c(const void *data, size_t bytes);
 
 /* Common V2 is the only accepted Test Media filesystem interface. */
 int ldtm_common_v2_available(const LdtmFilesystemSpec *);

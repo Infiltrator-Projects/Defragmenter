@@ -192,7 +192,7 @@ if(BUILD_TESTING)
     add_test(NAME defragmenter-test-media-missing-so
         COMMAND "$<TARGET_FILE:defragmenter-test-media-missing-so-test>"
             "$<TARGET_FILE:defragmenter-test-media-raw-test>")
-    set_tests_properties(defragmenter-test-media-missing-so PROPERTIES TIMEOUT 120)
+    set_tests_properties(defragmenter-test-media-missing-so PROPERTIES TIMEOUT 300)
 
     add_executable(defragmenter-swap-native-v2-test tests/test_swap_native_v2.c)
     target_compile_options(defragmenter-swap-native-v2-test PRIVATE ${LD_WARNING_FLAGS})

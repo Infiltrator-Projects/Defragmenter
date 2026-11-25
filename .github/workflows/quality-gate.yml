@@ -43,6 +43,45 @@ jobs:
           ctest --test-dir defragger/build \
             --output-on-failure \
             -R '^defragmenter-strict-common-v2-host$'
+      - name: Prove all registered missing providers refuse without modifying test media
+        run: |
+          ctest --test-dir defragger/build --output-on-failure \
+            -R '^defragmenter-test-media-missing-so
+        run: |
+          set -euo pipefail
+          test ! -e defragger/native/ifs_defrag_services_v1.h
+          test ! -e defragger/native/ifs_defrag_services_v1.c
+          test ! -e defragger/native/ifs_ext_module_v1.h
+          if grep -En 'ldtm_raw_(open|read|write|plan|check_data|crc32c)' \
+            defragger/test_media/test_media_raw.c defragger/test_media/test_media_raw.h; then
+            echo "Private physical corpus I/O reintroduced" >&2
+            exit 1
+          fi
+          if grep -REn '"(wipefs|mkfs[^"]*|makefs)"' defragger/test_media; then
+            echo "External filesystem formatter or signature clearing reintroduced" >&2
+            exit 1
+          fi
+          for executable in \
+            defragmenter-fat-worker defragmenter-apfs-worker \
+            defragmenter-minix-worker defragmenter-ext-worker \
+            defragmenter-ntfs-worker defragmenter-exfat-worker \
+            defragmenter-affs-worker hfs_analyser \
+            defragmenter-hfsplus-worker defragmenter-xfs-worker \
+            defragmenter-swap-worker defragmenter-test-media; do
+            exe="defragger/build/$executable"
+            test -x "$exe"
+            if strings -a "$exe" | grep -E \
+              'infiltrator_filesystem_.*_v1|infiltrator_filesystem_module_v[1345]|ifs_defrag_services_v1'; then
+              echo "Legacy filesystem ABI found in $exe" >&2
+              exit 1
+            fi
+          done
+          echo "DEFRAGMENTER_ONLY_COMMON_V2_PASS"
+  ufs-consumer:
+    uses: ./.github/workflows/ufs-v2-consumer.yml
+  ffs-consumer:
+    uses: ./.github/workflows/ffs-v2-consumer.yml
+
       - name: Forbid obsolete ABI recognition in built executables
         run: |
           set -euo pipefail

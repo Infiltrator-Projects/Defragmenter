@@ -46,25 +46,47 @@ static int digest_file(const char *path, unsigned char digest[32])
 static int refuse_missing_module(const char *binary, const char *format,
                                  const char *image, const char *empty_root)
 {
+    int channel[2];
+    if (pipe(channel) != 0) return -1;
     pid_t child = fork();
-    if (child < 0) return -1;
+    if (child < 0) {
+        close(channel[0]);close(channel[1]);return -1;
+    }
     if (child == 0) {
-        if (setenv("IFS_TEST_MODULE_PARENT", empty_root, 1) != 0)
-            _exit(127);
-        int quiet = open("/dev/null", O_WRONLY);
-        if (quiet < 0 || dup2(quiet, STDOUT_FILENO) < 0 ||
-            dup2(quiet, STDERR_FILENO) < 0)
-            _exit(127);
-        close(quiet);
+        close(channel[0]);
+        if (setenv("IFS_TEST_MODULE_PARENT", empty_root, 1) != 0 ||
+            dup2(channel[1], STDOUT_FILENO) < 0 ||
+            dup2(channel[1], STDERR_FILENO) < 0) _exit(127);
+        close(channel[1]);
         execl(binary, binary, "recreate", format, image, (char *)NULL);
         _exit(127);
     }
-    int status = 0;
-    while (waitpid(child, &status, 0) < 0) {
-        if (errno != EINTR) return -1;
+    close(channel[1]);
+    char output[4096]={0}, chunk[1024];
+    size_t used=0u;int read_error=0;
+    for (;;) {
+        ssize_t n=read(channel[0],chunk,sizeof(chunk));
+        if (!n) break;
+        if (n<0) { if (errno==EINTR) continue;read_error=1;break; }
+        size_t take=(size_t)n;
+        if(take>sizeof(output)-1u-used)take=sizeof(output)-1u-used;
+        memcpy(output+used,chunk,take);used+=take;
     }
-    return WIFEXITED(status) && WEXITSTATUS(status) != 0 &&
-           WEXITSTATUS(status) != 127 ? 0 : -1;
+    close(channel[0]);
+    int status=0;
+    while(waitpid(child,&status,0)<0) {
+        if(errno!=EINTR)return -1;
+    }
+    /* A generic failure, an unknown format or inability to open the image
+     * must not masquerade as a successful missing-provider regression. */
+    if(read_error || !WIFEXITED(status) || WEXITSTATUS(status)==0 ||
+       WEXITSTATUS(status)==127 || !strstr(output,format) ||
+       !strstr(output,"missing unique trusted hosted Common V2 provider") ||
+       !strstr(output,"no fallback")) {
+        fprintf(stderr,"%s: expected exact missing-provider refusal: %s\n",format,output);
+        return -1;
+    }
+    return 0;
 }
 
 int main(int argc, char **argv)
@@ -100,19 +122,22 @@ int main(int argc, char **argv)
     if (close(fd) != 0) ok = 0;
     if (!ok) goto done;
     unsigned char before[32], after[32];
-    if (digest_file(image, before) != 0) goto done;
     const char *const formats[] = {"fat12", "fat16", "fat32", "exfat", "ntfs",
         "ext2", "ext3", "ext4", "xfs", "btrfs", "ofs", "ffs", "sfs",
         "pfs3", "hfs", "hfsplus", "minix", "ufs", "zfs", "apfs", "swap", "ufs1", "sfs2"};
     for (size_t n = 0U; n < sizeof(formats) / sizeof(formats[0]); ++n) {
         const off_t size = (off_t)((n == 0 ? 255ULL : 2048ULL) * 1024ULL * 1024ULL);
-        int target = open(image, O_RDWR | O_CLOEXEC);
-        if (target < 0) goto done;
-        int prepared = ftruncate(target, size) == 0 &&
-            pwrite(target, marker, sizeof(marker), size - (off_t)sizeof(marker)) == (ssize_t)sizeof(marker) &&
-            fsync(target) == 0;
-        if (close(target) != 0) prepared = 0;
-        if (!prepared || digest_file(image, before) != 0) goto done;
+        /* The first slot has FAT12's exact geometry. Every other slot
+         * shares the second 2 GiB geometry; reuse its unchanged digest. */
+        if(n<2u) {
+            int target=open(image,O_RDWR|O_CLOEXEC);
+            if(target<0)goto done;
+            int prepared=ftruncate(target,size)==0 &&
+                pwrite(target,marker,sizeof(marker),size-(off_t)sizeof(marker))==(ssize_t)sizeof(marker) &&
+                fsync(target)==0;
+            if(close(target)!=0)prepared=0;
+            if(!prepared || digest_file(image,before)!=0)goto done;
+        }
         if (refuse_missing_module(argv[1], formats[n], image, root) != 0 ||
             digest_file(image, after) != 0 ||
             memcmp(before, after, sizeof(before)) != 0) {

@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "test_media_raw.h"
-#include "ld_device.h"
-#include "infiltratr/posix_io.h"
-#include <errno.h>
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
 
 uint64_t ldtm_raw_file_bytes(const LdtmFilesystemSpec *spec, unsigned file)
 {
@@ -31,54 +27,6 @@ int ldtm_raw_name_index(const char *name)
             return (int)file;
     }
     return -1;
-}
-
-int ldtm_raw_open(const char *path, bool write, uint64_t *capacity)
-{
-    const int fd = ld_device_open_verified_fd(path, write, NULL, 0U);
-    if (fd < 0)
-        return -1;
-    if (ld_fd_size_bytes(fd, capacity) != 0 || *capacity == 0U) {
-        (void)close(fd);
-        return -1;
-    }
-    return fd;
-}
-
-int ldtm_raw_read(int fd, uint64_t offset, void *data, size_t bytes)
-{
-    return infiltratr_pread_full(fd, data, bytes, offset);
-}
-int ldtm_raw_write(int fd, uint64_t offset, const void *data, size_t bytes)
-{
-    return infiltratr_pwrite_full(fd, data, bytes, offset);
-}
-
-int ldtm_raw_plan(const LdtmFilesystemSpec *spec, uint64_t capacity, uint32_t unit, uint64_t first,
-                  LdtmRawPlan *plan)
-{
-    if (spec == NULL || unit == 0U || capacity / unit <= first)
-        return -1;
-    *plan = (LdtmRawPlan){.capacity = capacity, .unit = unit};
-    uint64_t cursor = first;
-    for (unsigned phase = 0U; phase < 2U; ++phase) {
-        for (unsigned file = 0U; file < LDTM_RAW_FILES; ++file) {
-            LdtmRawFile *item = &plan->files[file];
-            item->bytes = ldtm_raw_file_bytes(spec, file);
-            const uint64_t units = (item->bytes + unit - 1U) / unit;
-            const uint64_t first_half = units > 1U ? units / 2U : units;
-            const uint64_t count = phase == 0U ? first_half : units - first_half;
-            item->start[phase] = count != 0U ? cursor : 0U;
-            item->count[phase] = count;
-            if (count == 0U)
-                continue;
-            if (cursor >= capacity / unit || count > capacity / unit - cursor)
-                return -1;
-            cursor += count + 2U;
-        }
-    }
-    plan->end = cursor;
-    return 0;
 }
 
 void ldtm_raw_payload(uint8_t *data, size_t bytes, unsigned file, uint64_t logical)
@@ -108,31 +56,6 @@ void ldtm_raw_payload(uint8_t *data, size_t bytes, unsigned file, uint64_t logic
     }
 }
 
-int ldtm_raw_write_payload(int fd, const LdtmRawPlan *plan)
-{
-    uint8_t buffer[65536];
-    for (unsigned file = 0U; file < LDTM_RAW_FILES; ++file) {
-        uint64_t logical = 0U;
-        for (unsigned part = 0U; part < 2U; ++part) {
-            uint64_t remaining = plan->files[file].count[part] * plan->unit;
-            uint64_t physical = plan->files[file].start[part] * plan->unit;
-            while (remaining != 0U) {
-                const size_t take = remaining < sizeof(buffer) ? (size_t)remaining : sizeof(buffer);
-                memset(buffer, 0, take);
-                const uint64_t available =
-                    logical < plan->files[file].bytes ? plan->files[file].bytes - logical : 0U;
-                ldtm_raw_payload(buffer, available < take ? (size_t)available : take, file, logical);
-                if (ldtm_raw_write(fd, physical, buffer, take) != 0)
-                    return -1;
-                logical += take;
-                physical += take;
-                remaining -= take;
-            }
-        }
-    }
-    return fsync(fd);
-}
-
 void ldtm_raw_check_init(LdtmRawCheck *check, const LdtmFilesystemSpec *spec)
 {
     *check = (LdtmRawCheck){.spec = spec};
@@ -145,28 +68,6 @@ int ldtm_raw_check_file(LdtmRawCheck *check, unsigned file, uint64_t bytes)
     check->seen |= UINT32_C(1) << file;
     return 0;
 }
-int ldtm_raw_check_data(LdtmRawCheck *check, int fd, unsigned file, uint64_t physical,
-                        uint64_t logical, uint64_t bytes)
-{
-    if (file >= LDTM_RAW_FILES || logical != check->done[file] ||
-        logical > ldtm_raw_file_bytes(check->spec, file) ||
-        bytes > ldtm_raw_file_bytes(check->spec, file) - logical)
-        return -1;
-    uint8_t actual[65536], expected[65536];
-    while (bytes != 0U) {
-        const size_t take = bytes < sizeof(actual) ? (size_t)bytes : sizeof(actual);
-        if (ldtm_raw_read(fd, physical, actual, take) != 0)
-            return -1;
-        ldtm_raw_payload(expected, take, file, logical);
-        if (memcmp(actual, expected, take) != 0)
-            return -1;
-        physical += take;
-        logical += take;
-        bytes -= take;
-        check->done[file] += take;
-    }
-    return 0;
-}
 int ldtm_raw_check_finish(const LdtmRawCheck *check)
 {
     if (check->seen != (UINT32_C(1) << LDTM_RAW_FILES) - 1U)
@@ -176,18 +77,6 @@ int ldtm_raw_check_finish(const LdtmRawCheck *check)
             return -1;
     return 0;
 }
-uint32_t ldtm_raw_crc32c(const void *data, size_t bytes)
-{
-    const uint8_t *p = data;
-    uint32_t crc = UINT32_MAX;
-    for (size_t i = 0U; i < bytes; ++i) {
-        crc ^= p[i];
-        for (unsigned bit = 0U; bit < 8U; ++bit)
-            crc = (crc >> 1U) ^ ((crc & 1U) != 0U ? UINT32_C(0x82f63b78) : 0U);
-    }
-    return ~crc;
-}
-
 /* Every destructive operation is preceded by exact Common V2 capability
  * discovery. The provider owns format, allocation and all on-disk records.
  * Nothing is erased merely because a Test Media format was selected. */
