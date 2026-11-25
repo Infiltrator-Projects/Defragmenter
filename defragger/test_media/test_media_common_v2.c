@@ -283,17 +283,26 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
         if(core->unmount(session)!=IFS_FS_OK)goto done;
         mounted=0;session=NULL;
         if(host->sync_target(host->context,&m->binding.target)!=0)goto done;
-        if(core->mount(&runtime,&session,&info)!=IFS_FS_OK)goto done;
+        /* The post-format corpus check is deliberately a read-only mount,
+         * even while retaining the original exclusive device lease. A
+         * provider must not repair or change the just-written evidence. */
+        if(ifs_filesystem_target_runtime_v2(&m->binding,0,0u,&runtime)!=0 ||
+           !ifs_fs_host_v2_valid(&runtime))goto done;
+        info=(IfsFsVolumeInfoV2){.structure_bytes=sizeof(info)};
+        if(core->mount(&runtime,&session,&info)!=IFS_FS_OK || !session)goto done;
         mounted=1;
+        if(info.block_bytes<512u || (info.block_bytes&(info.block_bytes-1u)))
+            goto done;
     }
     unsigned seen=0u;
     int directory_complete=0;
     for(uint32_t index=0u;index<65536u;++index) {
+        memset(entry_name,0xff,sizeof(entry_name));
         IfsFsEntryV2 e={.structure_bytes=sizeof(e),
                         .name=entry_name,.name_capacity=sizeof(entry_name)};
         int rc=core->directory_entry(session,"/",index,&e);
         if(rc==IFS_FS_END){directory_complete=1;break;}
-        if(rc!=IFS_FS_OK)goto done;
+        if(rc!=IFS_FS_OK || !memchr(entry_name,'\0',sizeof(entry_name)))goto done;
         int number=ldtm_raw_name_index(entry_name);
         if(number<0)continue; /* legitimate provider metadata is not corpus */
         if((seen&(1u<<(unsigned)number)) ||

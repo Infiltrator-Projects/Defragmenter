@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
  * FAT12/16/32 Test Media uses only the canonical Common V2 filesystem ABI.
  * No historical selectors, fallback, or host-owned FAT parser.
- * Every data operation delegates to the installed FAT12.so module.
+ * Every data operation delegates to the exact installed FAT12/16/32 module.
  */
 #include "test_media_raw.h"
 #include "filesystem_module_host.h"
@@ -13,8 +13,7 @@
 typedef struct {
     const LdtmFilesystemSpec *spec;
     const char *path;
-    const IfsDefragHostV2 *host;
-    IfsDefragTarget target;
+    IfsFilesystemTargetV2 binding;
 } Fat12Fixture;
 
 static unsigned fat_bits(const LdtmFilesystemSpec *spec)
@@ -26,42 +25,9 @@ static unsigned fat_bits(const LdtmFilesystemSpec *spec)
     return 0u;
 }
 
-static int read_at(void *user,uint64_t at,void *out,uint32_t bytes)
-{
-    Fat12Fixture *f=user;
-    return f->host->read_at(f->host->context,&f->target,at,out,bytes);
-}
-static int write_at(void *user,uint64_t at,const void *data,uint32_t bytes)
-{
-    Fat12Fixture *f=user;
-    return f->host->write_at(f->host->context,&f->target,at,data,bytes);
-}
-static int flush_at(void *user)
-{
-    Fat12Fixture *f=user;
-    return f->host->sync_target(f->host->context,&f->target);
-}
-static void *allocate_at(void *ctx,size_t n) {(void)ctx;return malloc(n);}
-static void release_at(void *ctx,void *p) {(void)ctx;free(p);}
-static IfsFsHostRuntimeV2 make_host(Fat12Fixture *f,int writable)
-{
-    IfsFsHostRuntimeV2 io={0};
-    io.abi_version=IFS_FS_HOST_ABI_V2;
-    io.structure_bytes=sizeof(io);
-    io.capabilities=writable ? IFS_FS_HOST_EXCLUSIVE|IFS_FS_HOST_DURABLE :
-                               IFS_FS_HOST_READ_ONLY;
-    io.context=f;
-    io.volume_bytes=f->target.bytes;
-    io.logical_sector_bytes=512u;
-    io.physical_sector_bytes=512u;
-    io.maximum_transfer_bytes=65536u;
-    io.read_at=read_at;
-    io.write_at=writable?write_at:NULL;
-    io.flush=writable?flush_at:NULL;
-    io.allocate=allocate_at;
-    io.release=release_at;
-    return io;
-}
+/* Use the same authoritative Common V2 runtime constructor as all other
+ * Test Media providers. It validates actual sector geometry, exposes clock
+ * and random services, and never supplies write callbacks to a reader. */
 static const IfsFsModuleApiV2 *canonical(void *symbol,
                                          const LdtmFilesystemSpec *spec)
 {
@@ -69,7 +35,8 @@ static const IfsFsModuleApiV2 *canonical(void *symbol,
     _Static_assert(sizeof(entry)==sizeof(symbol),"dynamic symbol width");
     memcpy(&entry,&symbol,sizeof(entry));
     const IfsFsModuleApiV2 *api=entry?entry():NULL;
-    if (!fat_bits(spec) || !ifs_fs_api_v2_valid(api,spec->key))return NULL;
+    if (!fat_bits(spec) || !ifs_fs_api_v2_valid(api,spec->key) ||
+        !(api->runtime_profiles & IFS_FS_PROFILE_HOSTED))return NULL;
     const IfsFsCoreOpsV2 *core=
         (const IfsFsCoreOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_CORE);
     const IfsFsVolumeOpsV2 *volume=
@@ -78,7 +45,7 @@ static const IfsFsModuleApiV2 *canonical(void *symbol,
         IFS_FS_CORE_LIST|IFS_FS_CORE_STAT|IFS_FS_CORE_READ|
         IFS_FS_CORE_WRITE|IFS_FS_CORE_CREATE;
     if(!core || (core->header.capabilities & required)!=required ||
-       !core->mount || !core->unmount || !core->create ||
+       !core->probe || !core->mount || !core->unmount || !core->create ||
        !core->write || !core->read || !core->stat || !core->directory_entry ||
        !volume || !(volume->header.capabilities & IFS_FS_VOLUME_FORMAT) ||
        !volume->format ||
@@ -123,20 +90,21 @@ static int create(const IfsDefragHostV2 *host,void *symbol,void *opaque)
     if(!api)return -1;
     const IfsFsCoreOpsV2 *core=(const IfsFsCoreOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_CORE);
     const IfsFsVolumeOpsV2 *volume=(const IfsFsVolumeOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_VOLUME);
-    f->host=host;
-    if(host->open_target(host->context,f->path,1,NULL,0,&f->target)!=0)return -1;
+    f->binding.services=host;
+    if(host->open_target(host->context,f->path,1,NULL,0,&f->binding.target)!=0)return -1;
     int result=-1,mounted=0;
     void *session=NULL;
-    if(f->target.bytes!=(uint64_t)f->spec->size_mib*LDTM_MIB ||
-       f->target.bytes<2u*LDTM_MIB ||
+    if(f->binding.target.bytes!=(uint64_t)f->spec->size_mib*LDTM_MIB ||
+       f->binding.target.bytes<2u*LDTM_MIB ||
        host->stop_requested(host->context))goto done;
-    IfsFsHostRuntimeV2 io=make_host(f,1);
-    if(!ifs_fs_host_v2_valid(&io) ||
+    IfsFsHostRuntimeV2 io={0};
+    if(ifs_filesystem_target_runtime_v2(&f->binding,1,0u,&io)!=0 ||
+       !ifs_fs_host_v2_valid(&io) ||
        volume->format(&io,fat_bits(f->spec),NULL,0u)!=IFS_FS_OK)
         goto done;
     IfsFsVolumeInfoV2 info={0};
     info.structure_bytes=sizeof(info);
-    if(core->mount(&io,&session,&info)!=IFS_FS_OK)goto done;
+    if((core->mount(&io,&session,&info)!=IFS_FS_OK || !session))goto done;
     mounted=1;
     if(info.variant!=fat_bits(f->spec) ||
        info.block_bytes<512u ||
@@ -174,8 +142,8 @@ static int create(const IfsDefragHostV2 *host,void *symbol,void *opaque)
     }
 done:
     if(mounted && core->unmount(session)!=IFS_FS_OK)result=-1;
-    if(host->sync_target(host->context,&f->target)!=0)result=-1;
-    host->close_target(host->context,&f->target);
+    if(host->sync_target(host->context,&f->binding.target)!=0)result=-1;
+    host->close_target(host->context,&f->binding.target);
     return result;
 }
 int ldtm_fat_common_create(const LdtmFilesystemSpec *spec,const char *path)
@@ -191,16 +159,17 @@ static int verify(const IfsDefragHostV2 *host,void *symbol,void *opaque)
     if(!api)return -1;
     const IfsFsCoreOpsV2 *core=(const IfsFsCoreOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_CORE);
     const IfsFsVolumeOpsV2 *volume=(const IfsFsVolumeOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_VOLUME);
-    f->host=host;
-    if(host->open_target(host->context,f->path,0,NULL,0,&f->target)!=0)return -1;
+    f->binding.services=host;
+    if(host->open_target(host->context,f->path,0,NULL,0,&f->binding.target)!=0)return -1;
     int result=-1,mounted=0;
     void *session=NULL;
-    IfsFsHostRuntimeV2 io=make_host(f,0);
+    IfsFsHostRuntimeV2 io={0};
     IfsFsVolumeInfoV2 info={0};
     info.structure_bytes=sizeof(info);
-    if(f->target.bytes!=(uint64_t)f->spec->size_mib*LDTM_MIB ||
+    if(f->binding.target.bytes!=(uint64_t)f->spec->size_mib*LDTM_MIB ||
+       ifs_filesystem_target_runtime_v2(&f->binding,0,0u,&io)!=0 ||
        !ifs_fs_host_v2_valid(&io) ||
-       core->mount(&io,&session,&info)!=IFS_FS_OK)goto done;
+       (core->mount(&io,&session,&info)!=IFS_FS_OK || !session))goto done;
     mounted=1;
     if(info.variant!=fat_bits(f->spec) ||
        info.block_bytes<512u ||
@@ -256,7 +225,7 @@ static int verify(const IfsDefragHostV2 *host,void *symbol,void *opaque)
     result=0;
 done:
     if(mounted && core->unmount(session)!=IFS_FS_OK)result=-1;
-    host->close_target(host->context,&f->target);
+    host->close_target(host->context,&f->binding.target);
     return result;
 }
 int ldtm_fat_common_verify(const LdtmFilesystemSpec *spec,const char *path)

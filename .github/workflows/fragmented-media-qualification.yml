@@ -7,6 +7,34 @@ on:
 permissions:
   contents: read
 jobs:
+  repository-coverage:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refuse incomplete independent filesystem coverage
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Discover independent repositories, not the retired aggregate tree.
+          # A new provider requires a reviewed geometry/corpus profile and an
+          # actual real-corpus job; a missing implementation is not a pass.
+          gh api --paginate '/orgs/Infiltrator-Projects/repos?per_page=100' \
+            --jq '.[] | select((.archived | not) and (.name | startswith("Filesystem-"))) | .full_name' \
+            | LC_ALL=C sort -u > independent.txt
+          awk '/^[[:space:]]*- repository: Infiltrator-Projects\/Filesystem-/ {print $3}' \
+            .github/workflows/fragmented-media-qualification.yml \
+            | LC_ALL=C sort -u > qualified-profiles.txt
+          test -s independent.txt
+          test -s qualified-profiles.txt
+          LC_ALL=C comm -23 independent.txt qualified-profiles.txt > missing-profiles.txt
+          printf 'Independent repositories: %s; registered real-corpus profiles: %s\n' \
+            "$(wc -l < independent.txt)" "$(wc -l < qualified-profiles.txt)"
+          if [ -s missing-profiles.txt ]; then
+            echo 'Unregistered independent providers (no complete pass):' >&2
+            cat missing-profiles.txt >&2
+            exit 1
+          fi
   real-corpus:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
