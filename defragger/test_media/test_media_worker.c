@@ -408,7 +408,8 @@ static int require_fragmentation_state(const LdtmFilesystemSpec *spec,
                                        int expect_fragmented,
                                        char *detail, size_t detail_capacity) {
     if(!strcmp(spec->key,"bfs")) {
-        const int rc=ldtm_common_v2_verify_bfs_layout(spec,partition,expect_fragmented);
+        int rc=ldtm_common_v2_verify_bfs_layout(spec,partition,expect_fragmented);
+        if(!rc && expect_fragmented==2)rc=ldtm_common_v2_verify_growth(spec,partition);
         (void)snprintf(detail,detail_capacity,
             "BFS contiguous-file %s layout and corpus verification %s",
             expect_fragmented==1?"free-space fragmentation":expect_fragmented==2?"10% growth reserve":"compaction",
@@ -426,6 +427,16 @@ static int require_fragmentation_state(const LdtmFilesystemSpec *spec,
             "Common V2 extent verification requires %u fragmented corpus files; found %u",
             expected,fragmented);
         return -1;
+    }
+    if(expect_fragmented==2) {
+        if(ldtm_common_v2_verify_growth(spec,partition)!=0) {
+            (void)snprintf(detail,detail_capacity,
+                "Canonical Common V2 allocation map did not prove every 10%% growth reserve");
+            return -1;
+        }
+        (void)snprintf(detail,detail_capacity,
+            "Common V2 corpus bytes, contiguous files and all eight 10%% growth reserves verified");
+        return 0;
     }
     (void)snprintf(detail,detail_capacity,
         "Common V2 corpus bytes verified; %u large files fragmented",fragmented);

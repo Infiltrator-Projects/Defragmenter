@@ -18,6 +18,7 @@ typedef struct {
     int create;
     int require_map;
     int bfs_layout; /* 1: compact, 2: fragmented free space, 3: growth */
+    int verify_growth;
     unsigned fragmented;
     char *detail;
     size_t detail_capacity;
@@ -475,6 +476,114 @@ static int verify_bfs_layout(const MediaV2 *m,const IfsFsCoreOpsV2 *core,
     return 0;
 }
 
+/* The native file maps prove logical coverage and the last payload byte;
+ * the separate whole-volume allocation map proves adjacent allocator space.
+ * Never infer free space from gaps in a file map or from VOLUME.QUERY alone.
+ * Each physical allocation block is indivisible. Less than one allocation
+ * unit of padding may follow the last payload byte (including format-owned
+ * per-block overhead); an additional occupied block may not intervene.
+ */
+typedef struct {
+    uint64_t end,required,start,proved;
+    int tail_owned,started;
+} NativeGrowthGap;
+
+static int verify_native_growth(const MediaV2 *m,const IfsFsModuleApiV2 *api,
+                               void *session,const IfsFsVolumeInfoV2 *info,
+                               uint64_t capacity)
+{
+    const IfsFsDefragOpsV2 *map=(const void*)ifs_fs_group_v2(api,IFS_FS_GROUP_DEFRAG);
+    const IfsFsAllocationOpsV2 *allocation=(const void*)
+        ifs_fs_group_v2(api,IFS_FS_GROUP_ALLOCATION);
+    if(!map || !map->map || !allocation || !allocation->map ||
+       !(allocation->header.capabilities&IFS_FS_ALLOCATION_MAP)) {
+        fprintf(stderr,"%s: canonical ALLOCATION.MAP required for growth verification\n",provider(m->spec));
+        return -1;
+    }
+    const uint64_t unit=info->block_bytes;
+    if(!unit || info->free_bytes>capacity)return -1;
+    NativeGrowthGap gaps[LDTM_TARGET_FILE_COUNT]={{0}};
+    for(unsigned file=0u;file<LDTM_TARGET_FILE_COUNT;++file) {
+        char path[32];if(make_path(file,path))return -1;
+        const uint64_t length=ldtm_raw_file_bytes(m->spec,file);
+        uint64_t logical=0u,first=0u,last=0u,blocks=0u;
+        int ended=0;
+        for(unsigned page=0u;page<131072u;++page) {
+            IfsFsExtentV2 ranges[32]={{0}};uint32_t n=0u;
+            if(m->services->stop_requested(m->services->context))return -1;
+            int rc=map->map(session,path,first,ranges,32u,&n);
+            if(rc==IFS_FS_END){if(n || logical!=length)return -1;ended=1;break;}
+            if(rc!=IFS_FS_OK || !n || n>32u || first>UINT64_MAX-n)return -1;
+            for(uint32_t j=0u;j<n;++j) {
+                const IfsFsExtentV2 *e=&ranges[j];
+                if(e->flags || e->reserved || !e->length || e->logical_offset!=logical ||
+                   e->length>length-logical || e->physical_offset>capacity ||
+                   e->length>capacity-e->physical_offset ||
+                   (logical && (e->physical_offset<last || e->physical_offset-last>=unit)))
+                    return -1;
+                uint64_t add=e->length/unit+(e->length%unit!=0u);
+                if(add>UINT64_MAX-blocks)return -1;
+                blocks+=add;logical+=e->length;last=e->physical_offset+e->length;
+            }
+            first+=n;
+        }
+        if(!ended || !blocks || !last)return -1;
+        uint64_t reserve=blocks/10u+(blocks%10u!=0u);
+        if(reserve>UINT64_MAX/unit || reserve*unit>capacity-last)return -1;
+        gaps[file].end=last;gaps[file].required=reserve*unit;
+    }
+    uint64_t at=0u,unknown=0u,free_bytes=0u;
+    int ended=0;
+    for(unsigned page=0u;page<1048576u;++page) {
+        IfsFsAllocationRangeV2 ranges[64]={{0}};
+        uint32_t n=0u;uint64_t next=at;
+        if(m->services->stop_requested(m->services->context))return -1;
+        const int rc=allocation->map(session,at,ranges,64u,&n);
+        if(!ifs_fs_allocation_page_v2_valid(capacity,at,rc,ranges,64u,n,&next,&unknown) || unknown)
+            return -1;
+        if(rc==IFS_FS_END){ended=1;break;}
+        for(uint32_t j=0u;j<n;++j) {
+            const IfsFsAllocationRangeV2 *r=&ranges[j];
+            const uint64_t end=r->physical_offset+r->length;
+            if(r->state==IFS_FS_SPACE_FREE)free_bytes+=r->length;
+            for(unsigned i=0u;i<LDTM_TARGET_FILE_COUNT;++i) {
+                NativeGrowthGap *g=&gaps[i];
+                if(r->physical_offset<g->end && end>=g->end) {
+                    if(r->state!=IFS_FS_SPACE_ALLOCATED)return -1;
+                    g->tail_owned=1;
+                }
+                if(!g->tail_owned || g->proved>=g->required || end<=g->end)continue;
+                if(g->started) {
+                    if(r->physical_offset!=g->start+g->proved || r->state!=IFS_FS_SPACE_FREE)
+                        return -1;
+                } else {
+                    if(r->state!=IFS_FS_SPACE_FREE) {
+                        if(end-g->end>=unit)return -1;
+                        continue;
+                    }
+                    if(r->physical_offset<g->end || r->physical_offset-g->end>=unit)
+                        return -1;
+                    g->start=r->physical_offset;g->started=1;
+                }
+                const uint64_t need=g->required-g->proved;
+                g->proved+=r->length<need?r->length:need;
+            }
+        }
+        if(next<=at)return -1;
+        at=next;
+    }
+    if(!ended || at!=capacity || free_bytes!=info->free_bytes)return -1;
+    for(unsigned i=0u;i<LDTM_TARGET_FILE_COUNT;++i) {
+        NativeGrowthGap *g=&gaps[i];
+        if(!g->tail_owned || !g->started || g->proved!=g->required ||
+           g->required>capacity-g->start)return -1;
+        for(unsigned j=0u;j<i;++j)
+            if(g->start<gaps[j].start+gaps[j].required &&
+               gaps[j].start<g->start+g->required)return -1;
+    }
+    return 0;
+}
+
 static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
 {
     MediaV2 *m=opaque;
@@ -691,6 +800,11 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
         const IfsFsDefragOpsV2 *map=(const IfsFsDefragOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_DEFRAG);
         if(m->fragmented || verify_bfs_layout(m,core,volume,map,session,&info,runtime.volume_bytes))goto done;
     }
+    if(m->verify_growth) {
+        stage="canonical whole-volume 10% growth reserve verification";
+        if(m->fragmented || verify_native_growth(m,api,session,&info,runtime.volume_bytes))
+            goto done;
+    }
     /* Exercise the provider's native integrity checker whenever advertised,
      * not just for FAT. FAT12 CHECK remains mandatory at preflight. An
      * unavailable checker is not evidence of filesystem integrity. */
@@ -733,6 +847,12 @@ int ldtm_common_v2_verify_fragmentation(const LdtmFilesystemSpec *s,
     return rc;
 }
 
+int ldtm_common_v2_verify_growth(const LdtmFilesystemSpec *s,const char *path)
+{
+    if(!s || !path || is_swap(s))return -1;
+    MediaV2 m={.spec=s,.path=path,.require_map=1,.verify_growth=1};
+    return module_call(&m,execute);
+}
 int ldtm_common_v2_verify_bfs_layout(const LdtmFilesystemSpec *s,const char *path,int mode)
 {
     if(!is_bfs(s) || !path || mode<0 || mode>2)return -1;
