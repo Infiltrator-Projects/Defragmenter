@@ -364,7 +364,10 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
         if(core->stat(session,path,&e)!=IFS_FS_OK ||
            e.type!=IFS_FS_ENTRY_FILE || e.size_bytes!=length)
             goto done;
-        if(m->require_map && file<LDTM_TARGET_FILE_COUNT) {
+        /* Every corpus file must have a complete physical mapping. The
+         * fragmentation threshold applies only to the large target files;
+         * small boundary-sized files still need independently verified maps. */
+        if(m->require_map) {
             stage="DEFRAG.MAP";
             const IfsFsDefragOpsV2 *map=(const IfsFsDefragOpsV2 *)
                 ifs_fs_group_v2(api,IFS_FS_GROUP_DEFRAG);
@@ -375,7 +378,7 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
                         provider(m->spec),path);
                 goto done;
             }
-            m->fragmented+=displaced;
+            if(file<LDTM_TARGET_FILE_COUNT)m->fragmented+=displaced;
         }
         stage="CORE.READ and payload comparison";
         for(uint64_t at=0u;at<length;) {
@@ -389,9 +392,10 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
             at+=n;
         }
     }
-    /* Preserve the independent FAT integrity contract, including mandatory
-     * FAT12 CHECK. No private FAT scanner is linked or invoked. */
-    if(profile_fat_width(m->spec) && volume && volume->check &&
+    /* Exercise the provider's native integrity checker whenever advertised,
+     * not just for FAT. FAT12 CHECK remains mandatory at preflight. An
+     * unavailable checker is not evidence of filesystem integrity. */
+    if(volume && volume->check &&
        (volume->header.capabilities&IFS_FS_VOLUME_CHECK)) {
         stage="VOLUME.CHECK";
         uint64_t errors=UINT64_MAX;
