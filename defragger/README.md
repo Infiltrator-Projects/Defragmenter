@@ -33,7 +33,7 @@ A missing, untrusted or incompatible required `.so` rejects the operation. Modul
 | `native/` | C++17 GTK desktop, one registry, mapper, dispatcher and privileged session |
 | `src/core/` | Filesystem-neutral device, identity, mounted-overlap and bounded I/O safety |
 | `gui/filesystems/*/native/` | Format-specific native workers or trusted `.so` hosts |
-| `test_media/` | 21-slot destructive fixture creator and independent raw verifier |
+| `test_media/` | 23-slot generic Common V2 corpus creator and verifier |
 | `tests/` | Native regressions, fault injection, independent Python fixture/black-box tools |
 | `cmake/` | Native build graph and integration |
 | `packaging/` | Generic Debian and CPU-native source installers |
@@ -54,7 +54,7 @@ FAT source-unit tests can use `FAT_DEFRAG_SOURCE_DIR` pointing to the matching p
 
 ## Test Media and package layout
 
-`defragmenter-test-media` manufactures deliberately fragmented sacrificial disks solely through independent Common V2 providers, without host formatters, signature clearing or mounted target filesystems. A provider must pass actual corpus qualification, including complete native per-file extent maps proving fragmentation of all eight large files, not merely export the V2 ABI. SWAP is format/probe-only because it contains no files. The deterministic file-bearing corpus has 200 MiB of large files and eight boundary-sized files. Protected schema 3 state binds disk identity and per-slot results; expected bytes come from the compiled corpus. Schema 2 test disks must be rebuilt.
+`defragmenter-test-media` manufactures deliberately fragmented sacrificial disks solely through independent Common V2 providers, without host formatters, signature clearing or mounted target filesystems. A provider must pass actual corpus qualification, including complete native per-file extent maps proving fragmentation of all eight large files, not merely export the V2 ABI. SWAP is format/probe-only because it contains no files. All profiles use one native Common V2 host, including FAT; obsolete per-format adapters and helper executables have been deleted rather than disabled. The deterministic file-bearing corpus has 200 MiB of large files and eight boundary-sized files. Protected schema 3 state binds disk identity and per-slot results; expected bytes come from the compiled corpus. Schema 2 test disks must be rebuilt.
 
 Only `/Programs/defragmenter` and `/Programs/defragmenter-test-media` are user-launchable. Internal native workers belong to `/System/Commands/Defragmenter`; independent filesystem `.so` drivers belong to `/System/Filesystems`. One illustrated `/System/Resources/Documentation/Defragmenter.pdf` is installed, with the complete GPL-3.0 licence in its appendix. Source documentation remains in Git. Icons and themes belong to `/System/Resources`, desktop integration to `/usr/share`. The package builder rejects the old `/System/Filesystems/Defragmenter` private-worker layout.
 
