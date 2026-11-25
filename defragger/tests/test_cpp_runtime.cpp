@@ -219,6 +219,13 @@ int main() {
         ok=check(test_map("{\"filesystem\":\"btrfs\",\"abi\":2,\"device_bytes\":4096,"
             "\"file_extents\":[[0,512,0]],\"regular_files\":1,\"fragmented_files\":0}",true),
             "Common V2 catalogue preserves unknown allocation") && ok;
+        const auto qualified = map_v2_response(*btrfs,Json::parse(
+            R"({"filesystem":"btrfs","abi":2,"device_bytes":4096,"file_extents":[[0,512,0]],"regular_files":1,"fragmented_files":0,"provider_plan_preflight":true,"defrag_qualified":true,"growth_qualified":false})"),1U);
+        ok=check(qualified.at("unknown_bytes").unsigned_value()==3584U &&
+            qualified.at("map_accuracy").string()=="summary" &&
+            qualified.at("defrag_qualified").boolean() &&
+            !qualified.at("growth_qualified").boolean(),
+            "Read-only provider plan qualifies only its own policy without inventing allocation") && ok;
         ok=check(test_map("{\"filesystem\":\"zfs\",\"abi\":2,\"device_bytes\":4096,"
             "\"file_extents\":[],\"regular_files\":0,\"fragmented_files\":0}",false),
             "Foreign provider rejected") && ok;

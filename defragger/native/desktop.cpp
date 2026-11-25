@@ -1676,6 +1676,7 @@ private:
         if (!v || busy_) return;
         if (action_name == "analyse") {
             v->exact_analysis = false;
+            v->provider_plan_preflight = false;
             v->defrag_qualified = false;
             v->growth_qualified = false;
             v->recovery_qualified = false;
@@ -1926,8 +1927,11 @@ private:
         v->exact_analysis = !accuracy.empty() && accuracy != "summary" && number(map, "unknown_bytes") == 0U;
         const Json* defrag_qualified = map.find("defrag_qualified");
         const Json* growth_qualified = map.find("growth_qualified");
-        v->defrag_qualified = v->exact_analysis && defrag_qualified != nullptr && defrag_qualified->bool_or(false);
-        v->growth_qualified = v->exact_analysis && growth_qualified != nullptr && growth_qualified->bool_or(false);
+        const Json* provider_plan = map.find("provider_plan_preflight");
+        v->provider_plan_preflight = provider_plan != nullptr && provider_plan->bool_or(false);
+        const bool qualified_analysis = v->exact_analysis || v->provider_plan_preflight;
+        v->defrag_qualified = qualified_analysis && defrag_qualified != nullptr && defrag_qualified->bool_or(false);
+        v->growth_qualified = qualified_analysis && growth_qualified != nullptr && growth_qualified->bool_or(false);
         const Json* recovery_qualified = map.find("recovery_qualified");
         v->recovery_qualified = recovery_qualified != nullptr && recovery_qualified->bool_or(false);
         v->defrag_reason = field(map, "defrag_reason");

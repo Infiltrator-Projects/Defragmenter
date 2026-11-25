@@ -747,6 +747,25 @@ static int v2_fat_extent_json(FILE *out,const IfsFsModuleApiV2 *api,
 }
 
 
+/* PLAN is an independent provider-owned, read-only qualification. Never
+ * infer a writable layout from an advertised capability or from an incomplete
+ * allocation map. A fresh plan is still required under the exclusive write
+ * lease before executing any mutation. */
+static int v2_readonly_plan(const IfsFsDefragOpsV2 *defrag,void *volume,
+                            uint32_t policy)
+{
+    const uint64_t required=IFS_FS_DEFRAG_PLAN|IFS_FS_DEFRAG_EXECUTE|
+                            IFS_FS_DEFRAG_VERIFY;
+    if(!defrag || (defrag->header.capabilities&required)!=required ||
+       !defrag->plan || !defrag->execute || !defrag->verify ||
+       !defrag->release_plan)return 0;
+    void *plan=NULL;
+    const int rc=defrag->plan(volume,"/",policy,&plan);
+    if(rc!=IFS_FS_OK || !plan)return 0;
+    defrag->release_plan(volume,plan);
+    return 1;
+}
+
 /* Common V2 guarantees file extent maps, not a whole-volume free-space or
  * metadata map. Preserve physical byte ranges exactly and mark everything
  * outside those ranges unknown in the consumer. Never infer free space
@@ -852,6 +871,15 @@ static int v2_catalogue_json(FILE *out,const IfsFsModuleApiV2 *api,
        (unsigned long long)m.files,(unsigned long long)m.fragmented,
        (unsigned long long)m.dirs,m.dirs?"false":"true",
        (unsigned long long)defrag->header.capabilities)<0)return -1;
+    /* A complete file catalogue need not imply complete volume allocation
+     * accounting. Ask the authoritative provider to qualify both policies
+     * on this read-only session; do not execute, verify a mutation, or write.
+     * Refusal remains a refusal, not an invitation to use a legacy worker. */
+    const int packed=v2_readonly_plan(defrag,volume,0u);
+    const int growth=v2_readonly_plan(defrag,volume,10u);
+    if(fprintf(out,",\"provider_plan_preflight\":true,\"defrag_qualified\":%s,"
+        "\"growth_qualified\":%s",packed?"true":"false",
+        growth?"true":"false")<0)return -1;
     if(fprintf(out,",\"recovery_qualified\":%s",
         (defrag->header.capabilities&IFS_FS_DEFRAG_RECOVER)?"true":"false")<0)return -1;
     if(!m.dirs && fputs(",\"fragmented_directories\":0",out)==EOF)return -1;

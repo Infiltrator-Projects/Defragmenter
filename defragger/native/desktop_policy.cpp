@@ -182,6 +182,7 @@ void desktop_verify_identity(DesktopVolume& v, std::string_view detected) {
     // Identity verification alone never authorises a raw write. A fresh
     // exact allocation analysis must establish that separately.
     v.exact_analysis = false;
+    v.provider_plan_preflight = false;
     v.defrag_qualified = false;
     v.growth_qualified = false;
     v.recovery_qualified = false;
@@ -201,9 +202,9 @@ std::vector<std::string> desktop_mutation(const DesktopVolume& v,
     if (!backend || !spec || !v.verified ||
         v.mounted || v.readonly)
         throw std::runtime_error("Volume is not verified, unmounted, writable or supported");
-    if (operation != "recover" && !v.exact_analysis)
+    if (operation != "recover" && !v.exact_analysis && !v.provider_plan_preflight)
         throw std::runtime_error(
-            "An exact allocation analysis is required before filesystem mutation");
+            "Exact allocation analysis or a Common V2 read-only provider plan is required before filesystem mutation");
     if (operation == "defrag" && !v.defrag_qualified)
         throw std::runtime_error(
             v.defrag_reason.empty()

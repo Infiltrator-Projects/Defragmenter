@@ -66,6 +66,9 @@ grep -Fq 'durably synced' "$root/output.txt"
 grep -Fq '"abi":2' "$root/catalogue.json"
 grep -Fq '"file_extents":[[64,68,0]]' "$root/catalogue.json"
 grep -Fq '"regular_files":1' "$root/catalogue.json"
+grep -Fq '"provider_plan_preflight":true' "$root/catalogue.json"
+grep -Fq '"defrag_qualified":true' "$root/catalogue.json"
+grep -Fq '"growth_qualified":true' "$root/catalogue.json"
 # Both public analysis entry points must emit real V2 JSON, not a legacy
 # status string. The path map must retain all 33 extents across two pages.
 "$engine" analyse-json "$device" --filesystem testv2 > "$root/analysis.json"

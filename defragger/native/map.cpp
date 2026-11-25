@@ -197,11 +197,17 @@ Json map_catalogue(const BackendInfo& backend,const Json& payload,
     if(split>regular)throw std::runtime_error("Invalid Common V2 file totals");
     set(result,"fragmentation_percent",Json::real(regular?
         100.0*static_cast<double>(split)/static_cast<double>(regular):0.0));
-    set(result,"defrag_qualified",Json(false));
-    set(result,"growth_qualified",Json(false));
-    const auto reason=Json("Common V2 file extents do not establish a complete volume allocation map");
-    set(result,"defrag_reason",reason);
-    set(result,"growth_reason",reason);
+    // Allocation accuracy and writer qualification are separate contracts.
+    // Only a real provider PLAN on the read-only mount may qualify either
+    // operation when the physical allocation map remains incomplete.
+    const bool preflight=optional_bool(payload,"provider_plan_preflight");
+    const bool packed=preflight && optional_bool(payload,"defrag_qualified");
+    const bool growth=preflight && optional_bool(payload,"growth_qualified");
+    set(result,"provider_plan_preflight",Json(preflight));
+    set(result,"defrag_qualified",Json(packed));
+    set(result,"growth_qualified",Json(growth));
+    if(!packed)set(result,"defrag_reason",Json("Common V2 provider did not qualify a read-only Defragment plan"));
+    if(!growth)set(result,"growth_reason",Json("Common V2 provider did not qualify a read-only Growth Defrag plan"));
     return result;
 }
 

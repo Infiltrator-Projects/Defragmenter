@@ -123,6 +123,23 @@ int main() {
     CHECK(args.at(0) == "/tmp/engine" && args.at(1) == "defrag");
     CHECK(args.at(7) == v.path && args.size()==8U);
 
+    // A summary map is not exact, but a real read-only Common V2 plan may
+    // qualify its own operation. Without that proof, no mutation is allowed.
+    DesktopVolume summary = v;
+    summary.exact_analysis = false;
+    summary.provider_plan_preflight = false;
+    try {
+        (void)desktop_mutation(summary,"defrag","/tmp/engine",journal,512,false);
+        CHECK(false);
+    } catch(const std::runtime_error&) {}
+    summary.provider_plan_preflight = true;
+    summary.growth_qualified = false;
+    CHECK(desktop_mutation(summary,"defrag","/tmp/engine",journal,512,false).size()==8U);
+    try {
+        (void)desktop_mutation(summary,"growth-defrag","/tmp/engine",journal,512,false);
+        CHECK(false);
+    } catch(const std::runtime_error&) {}
+
     controls = desktop_controls(&v, false, false, true);
     CHECK(!controls.defrag);
     CHECK(!controls.growth_defrag);
