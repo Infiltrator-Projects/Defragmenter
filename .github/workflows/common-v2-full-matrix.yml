@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # V2-only installed consumer matrix; real-media tests remain in each FS repo.
-name: Verify all 23 independent filesystem Common V2 APIs
+name: Verify all 44 independent filesystem Common V2 APIs
 on:
   push:
     branches: [main]
@@ -85,6 +85,69 @@ jobs:
           - repository: Infiltrator-Projects/Filesystem-ZFS
             format_id: zfs
             module_file: ZFS.so
+          - repository: Infiltrator-Projects/Filesystem-ADFS
+            format_id: adfs
+            module_file: auto
+          - repository: Infiltrator-Projects/Filesystem-Bcachefs
+            format_id: bcachefs
+            module_file: auto
+          - repository: Infiltrator-Projects/Filesystem-BeFS
+            format_id: befs
+            module_file: auto
+          - repository: Infiltrator-Projects/Filesystem-BFS
+            format_id: bfs
+            module_file: auto
+          - repository: Infiltrator-Projects/Filesystem-CPM
+            format_id: cpm
+            module_file: auto
+          - repository: Infiltrator-Projects/Filesystem-EFS
+            format_id: efs
+            module_file: auto
+          - repository: Infiltrator-Projects/Filesystem-F2FS
+            format_id: f2fs
+            module_file: auto
+          - repository: Infiltrator-Projects/Filesystem-Fosfat
+            format_id: fosfat
+            module_file: auto
+          - repository: Infiltrator-Projects/Filesystem-GFS2
+            format_id: gfs2
+            module_file: auto
+          - repository: Infiltrator-Projects/Filesystem-HPFS
+            format_id: hpfs
+            module_file: auto
+          - repository: Infiltrator-Projects/Filesystem-JFS
+            format_id: jfs
+            module_file: auto
+          - repository: Infiltrator-Projects/Filesystem-NILFS2
+            format_id: nilfs2
+            module_file: auto
+          - repository: Infiltrator-Projects/Filesystem-OCFS2
+            format_id: ocfs2
+            module_file: auto
+          - repository: Infiltrator-Projects/Filesystem-OMFS
+            format_id: omfs
+            module_file: auto
+          - repository: Infiltrator-Projects/Filesystem-QNX4
+            format_id: qnx4
+            module_file: auto
+          - repository: Infiltrator-Projects/Filesystem-QNX6
+            format_id: qnx6
+            module_file: auto
+          - repository: Infiltrator-Projects/Filesystem-ReiserFS
+            format_id: reiserfs
+            module_file: auto
+          - repository: Infiltrator-Projects/Filesystem-SysV
+            format_id: sysv
+            module_file: auto
+          - repository: Infiltrator-Projects/Filesystem-UDF
+            format_id: udf
+            module_file: auto
+          - repository: Infiltrator-Projects/Filesystem-VMFS
+            format_id: vmfs
+            module_file: auto
+          - repository: Infiltrator-Projects/Filesystem-VMFS6
+            format_id: vmfs6
+            module_file: auto
     uses: ./.github/workflows/common-v2-integration.yml
     with:
       repository: ${{ matrix.repository }}

@@ -268,7 +268,7 @@ const std::vector<BackendInfo>& backend_registry() {
             CAP_GROWTH_DEFRAG;
 
         std::vector<BackendInfo> result;
-        result.reserve(20);
+        result.reserve(41);
         result.push_back({
             "affs", "Amiga OFS/FFS",
             {"affs", "amiga", "ofs", "ffs", "dostype"}, write, "exact",
@@ -392,6 +392,15 @@ const std::vector<BackendInfo>& backend_registry() {
             "zfs", "ZFS/OpenZFS Member", {"zfs", "zfs_member"},
             read, "exact-bounded", "zfs-native", MapAdapter::NativeMap, {},
             QualificationMode::None, {}, {"summary", "exact"}});
+        // New formats share the universal Common V2 dispatcher. Registry
+        // entries are routing hints, never evidence of provider capabilities.
+        // The provider's read-only PLAN and exclusive mutation lease remain
+        // mandatory; missing or unsupported operations are refused.
+        for (const char* id : {"adfs", "bcachefs", "befs", "bfs", "cpm", "efs", "f2fs", "fosfat", "gfs2", "hpfs", "jfs", "nilfs2", "ocfs2", "omfs", "qnx4", "qnx6", "reiserfs", "sysv", "udf", "vmfs", "vmfs6"}) {
+            result.push_back({id, id, {id}, write, "summary",
+                "operation-engine", MapAdapter::NativeMap,
+                standard_write_ops("operation-engine")});
+        }
         validate_backend_registry(result);
         return result;
     }();

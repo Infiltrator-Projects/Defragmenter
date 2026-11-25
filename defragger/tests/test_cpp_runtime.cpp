@@ -71,7 +71,7 @@ int main() {
     ok = check(rejected_overlap, "native aggregation rejects overlapping states") && ok;
 
     const auto& registry = backend_registry();
-    ok = check(registry.size() == 20U, "registry size") && ok;
+    ok = check(registry.size() == 41U, "registry size") && ok;
 
     // Each EXT variant is independently registered; no format impersonation.
     for (const char* expected : {"ext2", "ext3", "ext4"}) {

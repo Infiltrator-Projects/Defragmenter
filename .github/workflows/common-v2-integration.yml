@@ -52,6 +52,11 @@ jobs:
           gh release download -R "$FS_REPO" -p '*.deb' -D dist
           test "$(find dist -maxdepth 1 -name '*.deb' | wc -l)" -eq 1
           dpkg-deb -x dist/*.deb pkg
+          if [ "$MODULE" = auto ]; then
+            mapfile -t modules < <(find pkg/System/Filesystems -maxdepth 1 -type f -name '*.so')
+            test "${#modules[@]}" -eq 1
+            MODULE=$(basename "${modules[0]}")
+          fi
           test -s "pkg/System/Filesystems/$MODULE"
           nm -D --defined-only "pkg/System/Filesystems/$MODULE" |
             grep -w infiltrator_filesystem_api_v2

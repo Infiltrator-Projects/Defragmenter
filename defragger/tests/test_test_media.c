@@ -90,9 +90,9 @@ int main(void) {
     size_t count = 0U;
     const char *cursor;
 
-    CHECK(ldtm_spec_count() == 23U);
-    CHECK(ldtm_allocated_capacity_bytes() == UINT64_C(45311) * LDTM_MIB);
-    CHECK(ldtm_required_capacity_bytes() == (UINT64_C(45311) * LDTM_MIB) + LDTM_GIB);
+    CHECK(ldtm_spec_count() == 44U);
+    CHECK(ldtm_allocated_capacity_bytes() == UINT64_C(88319) * LDTM_MIB);
+    CHECK(ldtm_required_capacity_bytes() == (UINT64_C(88319) * LDTM_MIB) + LDTM_GIB);
     CHECK(fat12 != NULL && fat16 != NULL && ofs != NULL && ffs != NULL && sfs != NULL && pfs3 != NULL);
     CHECK(xfs != NULL && btrfs != NULL && ufs != NULL && zfs != NULL && apfs != NULL);
 
@@ -207,7 +207,16 @@ int main(void) {
     CHECK(strstr(script, "type=swap, name=\"LD_SWAP\"") != NULL);
     cursor = script;
     while ((cursor = strstr(cursor, "name=\"LD_")) != NULL) { ++count; cursor += 6; }
-    CHECK(count == 23U);
+    CHECK(count == LDTM_SPEC_COUNT);
+    /* Every new profile appears exactly once and uses only the generic
+     * Common V2 corpus path. */
+    const char *const added[] = {"adfs", "bcachefs", "befs", "bfs", "cpm", "efs", "f2fs", "fosfat", "gfs2", "hpfs", "jfs", "nilfs2", "ocfs2", "omfs", "qnx4", "qnx6", "reiserfs", "sysv", "udf", "vmfs", "vmfs6"};
+    for (size_t i = 0U; i < sizeof(added)/sizeof(added[0]); ++i) {
+        const LdtmFilesystemSpec *spec = ldtm_find_spec(added[i]);
+        CHECK(spec && spec->creator == LDTM_CREATOR_GENERIC_V2);
+        CHECK(spec->size_mib == 2048U && ldtm_target_payload_bytes(spec) == UINT64_C(200)*LDTM_MIB);
+        CHECK(strstr(script, spec->label) != NULL);
+    }
 
     puts("test-media core tests passed");
     return 0;

@@ -1379,7 +1379,8 @@ static int parse_verify_state(FILE *stream, const char *device,
 {
     char line[LDTM_LINE_MAX];
     unsigned headers = 0U;
-    uint32_t filesystems = 0U;
+    size_t filesystems = 0U;
+    bool seen[LDTM_SPEC_COUNT] = {false};
     memset(state, 0, sizeof(*state) * LDTM_SPEC_COUNT);
     saved_fingerprint[0] = '\0';
     while (fgets(line, sizeof(line), stream) != NULL) {
@@ -1422,8 +1423,7 @@ static int parse_verify_state(FILE *stream, const char *device,
             if (spec == NULL)
                 return -1;
             const size_t index = (size_t)(spec - ldtm_specs());
-            const uint32_t bit = UINT32_C(1) << index;
-            if ((filesystems & bit) != 0U ||
+            if (index >= LDTM_SPEC_COUNT || seen[index] ||
                 strlen(fields[2]) >= sizeof(state[index].build_status) ||
                 strlen(fields[3]) >= sizeof(state[index].build_detail))
                 return -1;
@@ -1432,14 +1432,15 @@ static int parse_verify_state(FILE *stream, const char *device,
                 strcmp(fields[2], "formatted-unpopulated") != 0 &&
                 strcmp(fields[2], "qualification-failed") != 0 && strcmp(fields[2], "skipped") != 0)
                 return -1;
-            filesystems |= bit;
+            seen[index] = true;
+            ++filesystems;
             state[index].populated = strcmp(fields[2], "populated") == 0;
             memcpy(state[index].build_status, fields[2], strlen(fields[2]) + 1U);
             memcpy(state[index].build_detail, fields[3], strlen(fields[3]) + 1U);
         } else
             return -1;
     }
-    return !ferror(stream) && headers == 15U && filesystems == (UINT32_C(1) << LDTM_SPEC_COUNT) - 1U
+    return !ferror(stream) && headers == 15U && filesystems == LDTM_SPEC_COUNT
                ? 0
                : -1;
 }
