@@ -1454,6 +1454,28 @@ static int recursive_remove(const char *path) {
     return rmdir(path);
 }
 
+/* The current disposable qualification host exposes 512-byte logical
+ * AND physical sectors. A pass with that geometry cannot authorize
+ * repartitioning a device with different physical failure boundaries.
+ * This is a generic host constraint, not knowledge of any filesystem. */
+static int qualified_media_geometry(const char *canonical)
+{
+    LdDevice target;
+    if(ld_device_try_open(canonical,false,&target)!=0)return -1;
+    int logical=0,physical=0;
+    int ok=ioctl(target.fd,BLKSSZGET,&logical)==0 &&
+           ioctl(target.fd,BLKPBSZGET,&physical)==0;
+    ld_device_close(&target);
+    if(!ok || logical!=(int)LDTM_MEDIA_SECTOR_BYTES ||
+       physical!=(int)LDTM_MEDIA_SECTOR_BYTES) {
+        fprintf(stderr,
+            "Disposable qualification covers %u/%u logical/physical sectors; target reports %d/%d. Physical media untouched.\n",
+            LDTM_MEDIA_SECTOR_BYTES,LDTM_MEDIA_SECTOR_BYTES,logical,physical);
+        return -1;
+    }
+    return 0;
+}
+
 int ldtm_worker_prepare(const char *device, const char *confirmed_device,
                         const char *confirmed_fingerprint) {
     char canonical[PATH_MAX];
@@ -1494,21 +1516,7 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device,
         fprintf(stderr, "%s\n", safety);
         return 2;
     }
-    /* The complete Test Media layout includes the fixed-block OFS corpus.
-     * Check this before unmounting or writing the new partition table. */
-    LdDevice target;
-    if (ld_device_try_open(canonical, false, &target) != 0) {
-        perror("Could not open the confirmed Test Media disk for geometry checks");
-        return 2;
-    }
-    int logical_sector = 0;
-    int geometry = ioctl(target.fd, BLKSSZGET, &logical_sector);
-    ld_device_close(&target);
-    if (geometry != 0 || logical_sector != (int)LDTM_MEDIA_SECTOR_BYTES) {
-        fprintf(stderr, "The OFS Test Media corpus requires %u-byte logical sectors.\n",
-                LDTM_MEDIA_SECTOR_BYTES);
-        return 2;
-    }
+    if(qualified_media_geometry(canonical)!=0)return 2;
     printf("Safety check: %s\n", safety);
     fflush(stdout);
     for (size_t n = 0U; n < ldtm_spec_count(); ++n) {
@@ -1527,7 +1535,8 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device,
     /* A long-running preflight cannot authorize a newly attached disk. */
     if (ldtm_device_fingerprint(canonical, current_fingerprint) != 0 ||
         strcmp(current_fingerprint, confirmed_fingerprint) != 0 ||
-        ldtm_device_safety_check(canonical, 0, safety, sizeof(safety)) != 0) {
+        ldtm_device_safety_check(canonical, 0, safety, sizeof(safety)) != 0 ||
+        qualified_media_geometry(canonical)!=0) {
         fputs("Selected disk changed or became unsafe during provider preflight.\n", stderr);
         return 2;
     }
@@ -1923,6 +1932,7 @@ int ldtm_worker_qualify(const char *device)
         fputs("Unable to rebind the protected test disk identity.\n", stderr);
         return 2;
     }
+    if(qualified_media_geometry(canonical)!=0)return 2;
     /* Do not mutate a previously prepared disk until the currently installed
      * providers have passed both destructive policies on disposable media.
      * The provider package may have changed since Build Test Disk. */
@@ -1940,7 +1950,8 @@ int ldtm_worker_qualify(const char *device)
     char current_fingerprint[LDTM_HASH_HEX];
     if (ldtm_device_fingerprint(canonical, current_fingerprint) != 0 ||
         strcmp(current_fingerprint, fingerprint) != 0 ||
-        ldtm_device_safety_check(canonical, 0, safety, sizeof(safety)) != 0) {
+        ldtm_device_safety_check(canonical, 0, safety, sizeof(safety)) != 0 ||
+        qualified_media_geometry(canonical)!=0) {
         fputs("Test disk changed or became unsafe during qualification.\n", stderr);
         return 2;
     }
