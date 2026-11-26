@@ -1602,7 +1602,7 @@ private:
                     DesktopVolume volume;
                     volume.path = self->pending_image_path_;
                     volume.filesystem = field(probe_data, "filesystem");
-                    if (!defragger::backend_by_fstype(volume.filesystem)) throw std::runtime_error("Unsupported filesystem image.");
+                    defragger::desktop_verify_identity(volume,volume.filesystem);
                     std::error_code size_error;
                     volume.size = fs::file_size(volume.path, size_error);
                     if (size_error) throw std::runtime_error("Filesystem image changed during probing");
@@ -1682,7 +1682,7 @@ private:
             v->recovery_qualified = false;
             v->defrag_reason.clear();
             v->growth_reason.clear();
-            start({mapper_, v->path, "--fstype", v->filesystem, "--cells", std::to_string(desired_map_cells())}, "mapper", "analysis");
+            start({mapper_, v->path, "--fstype", v->verified?v->filesystem:"auto", "--cells", std::to_string(desired_map_cells())}, "mapper", "analysis");
         } else if (action_name == "unmount") {
             if (confirm("Unmount " + v->path + "?", "The selected volume must be unmounted for raw filesystem operations."))
                 start({"udisksctl", "unmount", "-b", v->path}, "udisksctl", "unmount");
@@ -1690,11 +1690,10 @@ private:
             try {
                 const auto journal = defragger::desktop_journal(*v, getuid());
                 auto args = defragger::desktop_mutation(*v, action_name, engine_, journal, 4096, fs::exists(journal));
-                const auto* backend = defragger::backend_by_fstype(v->filesystem);
-                const auto* spec = defragger::operation_for(*backend, action_name);
-                std::string message = spec->description + (spec->warning.empty() ? "" : "\n\n" + spec->warning)
+                const auto spec = defragger::generic_operation(action_name);
+                std::string message = spec.description + (spec.warning.empty() ? "" : "\n\n" + spec.warning)
                     + "\n\nKeep this volume connected and unmounted. Stop requests cancellation from the Common V2 provider.";
-                if (!confirm(spec->label + " " + v->path + "?", message)) return;
+                if (!confirm(spec.label + " " + v->path + "?", message)) return;
                 start(std::move(args), "operation-engine", action_name);
             } catch (const std::exception& ex) { error("Operation unavailable", ex.what()); }
         }

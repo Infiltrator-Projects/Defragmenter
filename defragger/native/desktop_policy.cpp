@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "desktop_policy.hpp"
+extern "C" {
+#include "filesystem_module_host.h"
+}
 
 #include <openssl/sha.h>
 
@@ -35,8 +38,7 @@ std::string filesystem_from_test_media_label(std::string_view label) {
         return {};
 
     std::string candidate = lower_ascii(std::string(label.substr(prefix.size())));
-    const auto* backend = backend_by_fstype(candidate);
-    return backend == nullptr ? std::string{} : candidate;
+    return ifs_fs_format_id_valid(candidate.c_str())?candidate:std::string{};
 }
 void visit(const Json& node, std::vector<DesktopVolume>& result) {
     if (!node.is_object()) return;
@@ -58,8 +60,11 @@ void visit(const Json& node, std::vector<DesktopVolume>& result) {
          */
         filesystem = filesystem_from_test_media_label(discovery_label);
     }
-    const bool generic_fat = filesystem == "fat" || filesystem == "vfat" || filesystem == "msdos";
-    if ((backend_by_fstype(filesystem) || generic_fat) && !value(node, "path").empty()) {
+    // List candidate leaf devices independently of OS recognition. No
+    // filesystem hint is authority; the selected provider must probe it.
+    const auto* descendants=node.find("children");
+    const bool leaf=!descendants || !descendants->is_array() || descendants->array().empty();
+    if (leaf && !value(node, "path").empty()) {
         DesktopVolume volume;
         volume.path = value(node, "path");
         volume.filesystem = filesystem;
@@ -103,25 +108,12 @@ DesktopControls desktop_controls(const DesktopVolume* v, bool busy,
     if (!v || busy) return out;
     out.analyse = true;
     out.unmount = v->mounted && !v->image;
-    const auto* backend = backend_by_fstype(v->filesystem);
-    if (!backend || v->readonly || v->mounted) return out;
-
-    // An external journal belongs to a retired protocol and cannot be
-    // interpreted by Common V2. Preserve it and block all writes.
-    if (journal_exists || !v->verified) return out;
-    out.recover = v->recovery_qualified && operation_for(*backend, "recover");
-
-    /*
-     * Once native identity has been proved and the target is writable and
-     * unmounted, operation controls are entry points rather than the mutation
-     * authority.  Keep supported Defragment/Growth Defrag controls clickable
-     * even when exact writer qualification rejected this layout or a journal
-     * needs recovery, so desktop_mutation() can report the precise reason
-     * instead of presenting an unexplained dead button.  The destructive path
-     * still re-checks every prerequisite before constructing an engine command.
-     */
-    out.defrag = operation_for(*backend, "defrag") != nullptr;
-    out.growth_defrag = operation_for(*backend, "growth-defrag") != nullptr;
+    if(v->readonly || v->mounted || journal_exists || !v->verified)return out;
+    // Only the actual provider's per-target qualification enables a write.
+    const bool analysed=v->exact_analysis || v->provider_plan_preflight;
+    out.defrag=analysed && v->defrag_qualified;
+    out.growth_defrag=analysed && v->growth_qualified;
+    out.recover=v->recovery_qualified;
     return out;
 }
 
@@ -158,27 +150,12 @@ std::string desktop_journal(const DesktopVolume& v, unsigned uid) {
 }
 
 void desktop_verify_identity(DesktopVolume& v, std::string_view detected) {
-    const auto* candidate = backend_by_fstype(v.filesystem);
-    const auto* actual = backend_by_fstype(detected);
-    const bool generic_fat =
-        v.filesystem == "fat" || v.filesystem == "vfat" ||
-        v.filesystem == "msdos";
-    const bool fat_variant =
-        actual != nullptr &&
-        (actual->id == "fat12" || actual->id == "fat16" ||
-         actual->id == "fat32");
-    if (!actual || (!generic_fat && candidate != actual) ||
-        (generic_fat && !fat_variant))
-        throw std::runtime_error(
-            "Native filesystem identity conflicts with discovery metadata");
-
-    /*
-     * Store the registry's canonical lower-case identity rather than the
-     * worker's display spelling (for example FAT16). Discovery aliases such
-     * as vfat are allowed to resolve to the exact FAT width proven by the
-     * native analyser.
-     */
-    v.filesystem = lower_ascii(std::string(detected));
+    const auto actual=lower_ascii(std::string(detected));
+    if(!ifs_fs_format_id_valid(actual.c_str()) ||
+       (v.verified && v.filesystem!=actual))
+        throw std::runtime_error("Native provider identity changed after verification");
+    // The first successful native probe supersedes advisory OS labels.
+    v.filesystem=actual;
     // Identity verification alone never authorises a raw write. A fresh
     // exact allocation analysis must establish that separately.
     v.exact_analysis = false;
@@ -197,9 +174,8 @@ std::vector<std::string> desktop_mutation(const DesktopVolume& v,
                                           std::string_view journal,
                                           unsigned cells,
                                           bool journal_exists) {
-    const auto* backend = backend_by_fstype(v.filesystem);
-    const auto* spec = backend ? operation_for(*backend, operation) : nullptr;
-    if (!backend || !spec || !v.verified ||
+    if ((operation!="defrag" && operation!="growth-defrag" && operation!="recover") ||
+        !ifs_fs_format_id_valid(v.filesystem.c_str()) || !v.verified ||
         v.mounted || v.readonly)
         throw std::runtime_error("Volume is not verified, unmounted, writable or supported");
     if (operation != "recover" && !v.exact_analysis && !v.provider_plan_preflight)

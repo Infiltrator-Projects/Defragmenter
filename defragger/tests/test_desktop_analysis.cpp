@@ -73,8 +73,8 @@ int main()
      */
     controls = defragger::desktop_controls(&volume, false, false, false);
     CHECK(controls.analyse);
-    CHECK(controls.defrag);
-    CHECK(controls.growth_defrag);
+    CHECK(!controls.defrag);
+    CHECK(!controls.growth_defrag);
     CHECK(!controls.recover);
 
     volume.exact_analysis = true;
@@ -121,33 +121,16 @@ int main()
         ]
     })");
     const auto labelled_volumes = defragger::desktop_discover(labelled);
-    CHECK(labelled_volumes.size() == 4U);
+    CHECK(labelled_volumes.size() == 5U);
     CHECK(labelled_volumes[0].filesystem == "fat12");
     CHECK(labelled_volumes[1].filesystem == "ext2");
     CHECK(labelled_volumes[2].filesystem == "ofs");
     CHECK(labelled_volumes[3].filesystem == "hfsplus");
 
-    /* The runtime registry, not GTK, remains the capability authority. */
-    const auto* backend = defragger::backend_by_fstype("ntfs");
-    CHECK(backend != nullptr);
-    CHECK(defragger::operation_for(*backend, "defrag") != nullptr);
-    CHECK(defragger::operation_for(*backend, "growth-defrag") != nullptr);
-    CHECK(defragger::operation_for(*backend, "recover") != nullptr);
-
-    /* Worker invocation defaults belong to operation contracts, not desktop policy. */
-    const auto* fat = defragger::backend_by_fstype("fat12");
-    const auto* ext = defragger::backend_by_fstype("ext4");
-    CHECK(fat != nullptr);
-    CHECK(ext != nullptr);
-    const auto* fat_defrag = defragger::operation_for(*fat, "defrag");
-    const auto* fat_recover = defragger::operation_for(*fat, "recover");
-    const auto* ext_defrag = defragger::operation_for(*ext, "defrag");
-    CHECK(fat_defrag != nullptr);
-    CHECK(fat_recover != nullptr);
-    CHECK(ext_defrag != nullptr);
-    CHECK(fat_defrag->default_options.empty());
-    CHECK(fat_recover->default_options.empty());
-    CHECK(ext_defrag->default_options.empty());
-
+    CHECK(labelled_volumes[4].filesystem == "not_a_filesystem");
+    // Generic descriptions are independent of installed provider names.
+    CHECK(defragger::generic_operation("defrag").default_options.empty());
+    CHECK(defragger::generic_operation("growth-defrag").default_options.empty());
+    CHECK(defragger::generic_operation("recover").default_options.empty());
     return 0;
 }

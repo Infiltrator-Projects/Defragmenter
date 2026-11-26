@@ -62,13 +62,13 @@ int main() {
 
     CHECK(desktop_journal(v, 1000) ==
         "/var/lib/defragmenter/state/1000/volume-fc1f33e16c4a68d6.journal");
-    try {
-        desktop_verify_identity(v, "ntfs");
-        CHECK(false);
-    } catch (const std::runtime_error&) {}
-    CHECK(!v.verified);
     desktop_verify_identity(v, "ext4");
     CHECK(v.verified);
+    try {
+        desktop_verify_identity(v, "other_provider");
+        CHECK(false);
+    } catch (const std::runtime_error&) {}
+    CHECK(v.verified && v.filesystem=="ext4");
 
     /*
      * Once identity is verified and the target is writable and offline,
@@ -77,8 +77,8 @@ int main() {
      * authority and supplies the precise rejection reason.
      */
     controls = desktop_controls(&v, false, false, false);
-    CHECK(controls.defrag);
-    CHECK(controls.growth_defrag);
+    CHECK(!controls.defrag);
+    CHECK(!controls.growth_defrag);
 
     v.exact_analysis = true;
     v.defrag_qualified = true;
@@ -109,7 +109,7 @@ int main() {
     DesktopVolume rejected = v;
     rejected.defrag_qualified = false;
     rejected.defrag_reason = "qualified writer rejected feature X";
-    CHECK(desktop_controls(&rejected, false, false, false).defrag);
+    CHECK(!desktop_controls(&rejected, false, false, false).defrag);
     try {
         (void)desktop_mutation(
             rejected, "defrag", "/tmp/engine", journal, 512, false);
