@@ -1093,6 +1093,105 @@ static int create_raw_and_populate(const LdtmFilesystemSpec *spec, const char *p
 static int run_production_defrag(const LdtmFilesystemSpec *spec,
     const char *partition, const char *operation);
 
+/* Independent negative qualification: obtain one verified payload location
+ * from the installed provider's Common V2 extent map, damage one byte of
+ * a disposable regular image, prove rejection, restore, and reverify.
+ * This is intentional fault injection, not a filesystem implementation.
+ * The installed worker calls it only on a newly created private image;
+ * the physical-device paths never enter this function. */
+typedef struct {
+    const LdtmFilesystemSpec *spec;
+    const char *path;
+    uint64_t offset;
+} CorruptionTarget;
+
+static int locate_payload(const IfsDefragHostV2 *host, void *symbol, void *opaque)
+{
+    CorruptionTarget *t=opaque;
+    const char *id=!strcmp(t->spec->key,"ufs")?"ufs2":t->spec->key;
+    IfsFsModuleApiEntryV2 entry=NULL;
+    _Static_assert(sizeof(entry)==sizeof(symbol),"Common V2 entry width");
+    memcpy(&entry,&symbol,sizeof(entry));
+    const IfsFsModuleApiV2 *api=entry?entry():NULL;
+    if(!api || !ifs_fs_api_v2_valid(api,id) ||
+       !(api->runtime_profiles&IFS_FS_PROFILE_HOSTED))return -1;
+    const IfsFsCoreOpsV2 *core=(const void *)ifs_fs_group_v2(api,IFS_FS_GROUP_CORE);
+    const IfsFsDefragOpsV2 *map=(const void *)ifs_fs_group_v2(api,IFS_FS_GROUP_DEFRAG);
+    if(!core || !core->mount || !core->unmount || !map ||
+       !(map->header.capabilities&IFS_FS_DEFRAG_MAP) || !map->map)return -1;
+    IfsFilesystemTargetV2 binding={.services=host};
+    if(host->open_target(host->context,t->path,0,NULL,0u,&binding.target)!=0)
+        return -1;
+    IfsFsHostRuntimeV2 runtime={0};
+    IfsFsVolumeInfoV2 info={.structure_bytes=sizeof(info)};
+    void *session=NULL;
+    int rc=-1;
+    if(ifs_filesystem_target_runtime_v2(&binding,0,0u,&runtime)!=0 ||
+       core->mount(&runtime,&session,&info)!=IFS_FS_OK || !session)
+        goto done;
+    char name[16],path[32];
+    ldtm_raw_name(0u,name);
+    int len=snprintf(path,sizeof(path),"/%s",name);
+    IfsFsExtentV2 extent={0};
+    uint32_t count=0u;
+    if(len>0 && (size_t)len<sizeof(path) &&
+       map->map(session,path,0u,&extent,1u,&count)==IFS_FS_OK &&
+       count==1u && !extent.flags && !extent.reserved &&
+       extent.logical_offset==0u && extent.length>=64u &&
+       extent.physical_offset<=runtime.volume_bytes &&
+       64u<=runtime.volume_bytes-extent.physical_offset) {
+        t->offset=extent.physical_offset;
+        rc=0;
+    }
+    if(core->unmount(session)!=IFS_FS_OK)rc=-1;
+done:
+    host->close_target(host->context,&binding.target);
+    return rc;
+}
+
+static int verify_corruption(const LdtmFilesystemSpec *spec,const char *path)
+{
+    if(!spec || !path || spec->creator==LDTM_CREATOR_SWAP)return 2;
+    /* Refuse block devices, symlinks, shared links and wrong-size images
+     * before asking any provider to inspect the negative-test target. */
+    struct stat st;
+    if(lstat(path,&st)!=0 || !S_ISREG(st.st_mode) || st.st_nlink!=1 ||
+       st.st_size!=(off_t)((uint64_t)spec->size_mib*LDTM_MIB))return 1;
+    char detail[512]={0};
+    if(ldtm_raw_fixture(spec,path,false,detail,sizeof(detail))!=0)return 1;
+    const char *id=!strcmp(spec->key,"ufs")?"ufs2":spec->key;
+    char module[64]={0};
+    CorruptionTarget target={.spec=spec,.path=path};
+    if(ifs_filesystem_module_find_readonly_v2(id,module,sizeof(module))!=0 ||
+       ifs_filesystem_module_call(id,module,IFS_FS_COMMON_EXPORT_V2,
+                                 locate_payload,&target)!=0)return 1;
+    int fd=open(path,O_RDWR|O_CLOEXEC|O_NOFOLLOW);
+    if(fd<0)return 1;
+    struct stat opened;
+    uint8_t actual[64],expected[64];
+    ldtm_raw_payload(expected,sizeof(expected),0u,0u);
+    if(fstat(fd,&opened)!=0 || !S_ISREG(opened.st_mode) ||
+       opened.st_dev!=st.st_dev || opened.st_ino!=st.st_ino ||
+       opened.st_size!=(off_t)((uint64_t)spec->size_mib*LDTM_MIB) ||
+       pread(fd,actual,sizeof(actual),(off_t)target.offset)!=(ssize_t)sizeof(actual) ||
+       memcmp(actual,expected,sizeof(actual))) {
+        close(fd);
+        fprintf(stderr,"Common V2 extent did not identify the expected payload bytes\n");
+        return 1;
+    }
+    const off_t offset=(off_t)(target.offset+37u);
+    const uint8_t damaged=(uint8_t)(actual[37]^0x40u);
+    int changed=pwrite(fd,&damaged,1u,offset)==1 && fsync(fd)==0;
+    int rejected=changed && ldtm_raw_fixture(spec,path,false,detail,sizeof(detail))!=0;
+    /* Always restore before returning, even if the verifier accepted damage. */
+    int restored=pwrite(fd,actual+37,1u,offset)==1 && fsync(fd)==0;
+    if(close(fd)!=0)restored=0;
+    if(!changed || !rejected || !restored ||
+       ldtm_raw_fixture(spec,path,false,detail,sizeof(detail))!=0)return 1;
+    puts("Common V2 verifier rejected one corrupted payload byte and accepted the restored corpus");
+    return 0;
+}
+
 static int preflight_image(const LdtmFilesystemSpec *spec,
                            const char *operation, char *detail, size_t capacity)
 {
@@ -1121,6 +1220,13 @@ static int preflight_image(const LdtmFilesystemSpec *spec,
         (void)snprintf(detail, capacity, "Cannot size or close provider preflight image");
     } else {
         result = qualify_corpus(spec, image, detail, capacity);
+        /* The negative corruption regression is part of installed preflight,
+         * not only CI. It can run solely on this private regular image. */
+        if(result==0 && !operation && spec->creator!=LDTM_CREATOR_SWAP &&
+           verify_corruption(spec,image)!=0) {
+            (void)snprintf(detail,capacity,"Disposable Common V2 payload corruption qualification failed");
+            result=-1;
+        }
         /* A successful corpus is not evidence that the mutation engine works.
          * Invoke the same strict host used on the actual disk, then reopen
          * read-only and verify both allocation and every payload byte. */
