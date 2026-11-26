@@ -407,11 +407,11 @@ static int require_fragmentation_state(const LdtmFilesystemSpec *spec,
                                        const char *partition,
                                        int expect_fragmented,
                                        char *detail, size_t detail_capacity) {
-    if(!strcmp(spec->key,"bfs")) {
-        int rc=ldtm_common_v2_verify_bfs_layout(spec,partition,expect_fragmented);
+    if(ldtm_common_v2_layout(spec)==IFS_FS_LAYOUT_CONTIGUOUS_FILE) {
+        int rc=ldtm_common_v2_verify_contiguous_layout(spec,partition,expect_fragmented);
         if(!rc && expect_fragmented==2)rc=ldtm_common_v2_verify_growth(spec,partition);
         (void)snprintf(detail,detail_capacity,
-            "BFS contiguous-file %s layout and corpus verification %s",
+            "Provider contiguous-file %s layout and corpus verification %s",
             expect_fragmented==1?"free-space fragmentation":expect_fragmented==2?"10% growth reserve":"compaction",
             rc?"failed":"passed");
         return rc;
@@ -1058,9 +1058,9 @@ static int qualify_corpus(const LdtmFilesystemSpec *spec, const char *partition,
     if (!ldtm_spec_creator_available(spec, detail, capacity) ||
         ldtm_raw_fixture(spec, partition, true, detail, capacity) != 0)
         return -1;
-    if (spec->creator == LDTM_CREATOR_SWAP)
+    if (ldtm_common_v2_layout(spec)==IFS_FS_LAYOUT_NO_NAMESPACE)
         return ldtm_raw_fixture(spec, partition, false, detail, capacity);
-    if(!strcmp(spec->key,"bfs"))return require_fragmentation_state(spec,partition,1,detail,capacity);
+    if(ldtm_common_v2_layout(spec)==IFS_FS_LAYOUT_CONTIGUOUS_FILE)return require_fragmentation_state(spec,partition,1,detail,capacity);
     unsigned fragmented = 0U;
     /* The independent read-only extent pass also verifies every corpus byte,
      * so another byte-only reopen between the two passes is unnecessary. */
@@ -1083,10 +1083,10 @@ static int create_raw_and_populate(const LdtmFilesystemSpec *spec, const char *p
         return state_write_status(state, spec, "qualification-failed", detail) == 0 ? 1 : -1;
     }
     const char *message =
-        spec->creator == LDTM_CREATOR_SWAP
+        ldtm_common_v2_layout(spec)==IFS_FS_LAYOUT_NO_NAMESPACE
             ? "Common V2 SWAP header verified; file fragmentation does not apply"
-            : !strcmp(spec->key,"bfs")
-              ? "Common V2 BFS corpus verified; provider maps proved eight genuine free-space gaps"
+            : ldtm_common_v2_layout(spec)==IFS_FS_LAYOUT_CONTIGUOUS_FILE
+              ? "Common V2 contiguous-file corpus verified; provider maps proved eight genuine free-space gaps"
               : "Common V2 corpus fully verified; provider extent maps proved all eight large files fragmented";
     emit_status(spec->key, "populated", message);
     return state_write_status(state, spec, "populated", message);
@@ -1158,7 +1158,7 @@ done:
 
 static int verify_corruption(const LdtmFilesystemSpec *spec,const char *path)
 {
-    if(!spec || !path || spec->creator==LDTM_CREATOR_SWAP)return 2;
+    if(!spec || !path || ldtm_common_v2_layout(spec)==IFS_FS_LAYOUT_NO_NAMESPACE)return 2;
     /* Refuse block devices, symlinks, shared links and wrong-size images
      * before asking any provider to inspect the negative-test target. */
     struct stat st;
@@ -1274,7 +1274,7 @@ static int preflight_corpus(const LdtmFilesystemSpec *spec,
 static int preflight_mutations(const LdtmFilesystemSpec *spec,
                                char *detail, size_t capacity)
 {
-    if (spec->creator == LDTM_CREATOR_SWAP)
+    if (ldtm_common_v2_layout(spec)==IFS_FS_LAYOUT_NO_NAMESPACE)
         return 0;
     if (preflight_image(spec, "defrag", detail, capacity) != 0)
         return -1;
@@ -1372,7 +1372,7 @@ static int recovery_fixture_invoke(RecoveryFixture *f)
 static int preflight_recovery(const LdtmFilesystemSpec *spec,
                                char *detail,size_t capacity)
 {
-    if(spec->creator==LDTM_CREATOR_SWAP)return 0;
+    if(ldtm_common_v2_layout(spec)==IFS_FS_LAYOUT_NO_NAMESPACE)return 0;
     for(uint32_t policy=0u;policy<=10u;policy+=10u) {
     unsigned proven_replay=0u;
     /* Each crash starts from a separately formatted and verified
@@ -1849,7 +1849,7 @@ int ldtm_worker_verify(const char *device) {
             continue;
         }
 
-        if (spec->creator == LDTM_CREATOR_SWAP) {
+        if (ldtm_common_v2_layout(spec)==IFS_FS_LAYOUT_NO_NAMESPACE) {
             char detail[512] = {0};
             if (ldtm_raw_fixture(spec, partition, false, detail, sizeof(detail)) != 0) {
                 emit_status(spec->key, "verify-failed", detail);
@@ -1865,7 +1865,7 @@ int ldtm_worker_verify(const char *device) {
         {
             char detail[512];
             if (require_fragmentation_state(spec, partition,
-                                            !strcmp(spec->key,"bfs")?2:0, detail,
+                                            ldtm_common_v2_layout(spec)==IFS_FS_LAYOUT_CONTIGUOUS_FILE?2:0, detail,
                                             sizeof(detail)) != 0) {
                 emit_status(spec->key, "verify-failed", detail);
                 failures++;
@@ -1989,7 +1989,7 @@ int ldtm_worker_qualify(const char *device)
             continue;
         }
 
-        if (spec->creator == LDTM_CREATOR_SWAP) {
+        if (ldtm_common_v2_layout(spec)==IFS_FS_LAYOUT_NO_NAMESPACE) {
             /* SWAP has no file allocation or file relocation operations.
              * Verify its real provider-owned header without claiming either. */
             if (ldtm_raw_fixture(spec, partition, false, detail, sizeof(detail)) != 0) {

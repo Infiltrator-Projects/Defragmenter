@@ -4,6 +4,7 @@
 
 #include "test_media.h"
 #include <stdbool.h>
+#include <infiltratr/filesystem_module_v2.h>
 
 /* The deterministic corpus is filesystem-neutral. Production creation and
  * inspection delegate exclusively to trusted Common V2 providers. Expected
@@ -26,8 +27,9 @@ int ldtm_raw_check_finish(const LdtmRawCheck *check);
 /* Common V2 is the only accepted Test Media filesystem interface. */
 int ldtm_common_v2_media_available(const LdtmFilesystemSpec *);
 int ldtm_common_v2_media_detail(const LdtmFilesystemSpec *, char *, size_t);
-/* BFS modes: 0 compact, 1 genuine free-space holes, 2 growth gaps. */
-int ldtm_common_v2_verify_bfs_layout(const LdtmFilesystemSpec *, const char *, int);
+/* Provider-described layout and contiguous-file workload verification. */
+int ldtm_common_v2_layout(const LdtmFilesystemSpec *);
+int ldtm_common_v2_verify_contiguous_layout(const LdtmFilesystemSpec *, const char *, int);
 int ldtm_common_v2_verify_fragmentation(const LdtmFilesystemSpec *, const char *, unsigned *);
 int ldtm_common_v2_verify_contiguous(const LdtmFilesystemSpec *, const char *);
 int ldtm_common_v2_verify_growth(const LdtmFilesystemSpec *, const char *);

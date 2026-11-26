@@ -18,7 +18,8 @@ typedef struct {
     int create;
     int require_map;
     int require_contiguous; /* Post-mutation proof covers every nonempty file. */
-    int bfs_layout; /* 1: compact, 2: fragmented free space, 3: growth */
+    int contiguous_layout; /* 1: compact, 2: fragmented free space, 3: growth */
+    IfsFsFormatProfileV2 profile;
     int verify_growth;
     unsigned fragmented;
     char *detail;
@@ -32,31 +33,20 @@ static const char *provider(const LdtmFilesystemSpec *s)
     if(!s || !s->key)return NULL;
     return s->key;
 }
-static int is_swap(const LdtmFilesystemSpec *s)
-{ return s && s->creator==LDTM_CREATOR_SWAP; }
-static int is_bfs(const LdtmFilesystemSpec *s)
-{ return s && !strcmp(s->key,"bfs"); }
-
-/* These values are test-profile parameters, not filesystem algorithms.
- * Format, allocation, extent decoding and integrity checking are performed
- * only by the selected Common V2 provider. */
-static uint32_t profile_fat_width(const LdtmFilesystemSpec *s)
+static int no_namespace(const MediaV2 *m)
+{return m->profile.layout==IFS_FS_LAYOUT_NO_NAMESPACE;}
+static int contiguous_layout(const MediaV2 *m)
+{return m->profile.layout==IFS_FS_LAYOUT_CONTIGUOUS_FILE;}
+static int blocked_growth(const MediaV2 *m)
+{return m->profile.layout==IFS_FS_LAYOUT_BLOCKED_GROWTH;}
+static int profile_geometry_valid(const MediaV2 *m,const IfsFsVolumeInfoV2 *info)
 {
-    if(s->creator==LDTM_CREATOR_FAT12)return 12u;
-    if(s->creator==LDTM_CREATOR_FAT16)return 16u;
-    if(s->creator==LDTM_CREATOR_FAT32)return 32u;
-    return 0u;
-}
-static int profile_geometry_valid(const LdtmFilesystemSpec *s,
-                                  const IfsFsVolumeInfoV2 *info)
-{
-    uint32_t width=profile_fat_width(s);
     return info->block_bytes>=512u &&
            !(info->block_bytes&(info->block_bytes-1u)) &&
-           (!width || info->variant==width) &&
-           (width!=12u || info->block_bytes==65536u);
+           info->variant==m->profile.probe_variant &&
+           (!m->profile.exact_block_bytes ||
+            info->block_bytes==m->profile.exact_block_bytes);
 }
-
 /* Report every absent operation in the same qualification path used by
  * the destructive worker. Do not infer capabilities from a filename or
  * from the presence of an unadvertised function pointer. */
@@ -83,6 +73,19 @@ static const IfsFsModuleApiV2 *qualify(void *symbol,MediaV2 *m)
         (const IfsFsCoreOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_CORE);
     const IfsFsVolumeOpsV2 *volume=
         (const IfsFsVolumeOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_VOLUME);
+    const IfsFsFormatProfileOpsV2 *format=
+        (const void *)ifs_fs_group_v2(api,IFS_FS_GROUP_FORMAT_PROFILE);
+    m->profile=(IfsFsFormatProfileV2){.structure_bytes=sizeof(m->profile)};
+    if(!format || !(format->header.capabilities&IFS_FS_FORMAT_PROFILE_DEFAULT) ||
+       !format->get_default || format->get_default(&m->profile)!=IFS_FS_OK ||
+       !ifs_fs_format_profile_v2_valid(&m->profile)) {
+        missing(m,"valid provider FORMAT_PROFILE.DEFAULT");return NULL;
+    }
+    const uint64_t capacity=(uint64_t)m->spec->size_mib*LDTM_MIB;
+    if(capacity<m->profile.minimum_bytes ||
+       (m->profile.maximum_bytes && capacity>m->profile.maximum_bytes)) {
+        missing(m,"supported disposable geometry");return NULL;
+    }
     int ok=1;
 #define NEED(test, name) do { if(!(test)) { missing(m,name); ok=0; } } while(0)
 #define CORE(cap, member) (core && (core->header.capabilities & (cap)) && core->member)
@@ -90,10 +93,10 @@ static const IfsFsModuleApiV2 *qualify(void *symbol,MediaV2 *m)
     if(m->create)
         NEED(volume && (volume->header.capabilities & IFS_FS_VOLUME_FORMAT) &&
              volume->format,"VOLUME.FORMAT");
-    if(profile_fat_width(m->spec)==12u || m->require_contiguous)
+    if((m->profile.flags&IFS_FS_FORMAT_REQUIRE_CHECK) || m->require_contiguous)
         NEED(volume && (volume->header.capabilities&IFS_FS_VOLUME_CHECK) &&
              volume->check,"VOLUME.CHECK (integrity qualification)");
-    if(!is_swap(m->spec)) {
+    if(!no_namespace(m)) {
         NEED(CORE(IFS_FS_CORE_MOUNT,mount) && core->unmount,"CORE.MOUNT/UNMOUNT");
         NEED(CORE(IFS_FS_CORE_STAT,stat),"CORE.STAT");
         NEED(CORE(IFS_FS_CORE_LIST,directory_entry),"CORE.LIST");
@@ -101,13 +104,13 @@ static const IfsFsModuleApiV2 *qualify(void *symbol,MediaV2 *m)
         if(m->create) {
             NEED(CORE(IFS_FS_CORE_CREATE,create),"CORE.CREATE");
             NEED(CORE(IFS_FS_CORE_WRITE,write),"CORE.WRITE");
-            if(is_bfs(m->spec) || m->spec->creator==LDTM_CREATOR_NTFS)
+            if(contiguous_layout(m) || blocked_growth(m))
                 NEED(CORE(IFS_FS_CORE_REMOVE,remove),"CORE.REMOVE (sacrificial allocation corpus)");
-            if(m->spec->creator==LDTM_CREATOR_NTFS)
+            if(blocked_growth(m))
                 NEED(volume && (volume->header.capabilities&IFS_FS_VOLUME_QUERY) &&
-                     volume->query,"VOLUME.QUERY (NTFS sacrificial allocation budget)");
+                     volume->query,"VOLUME.QUERY (blocked-growth sacrificial allocation budget)");
         }
-        if(m->require_map || (m->create && m->spec->creator==LDTM_CREATOR_NTFS)) {
+        if(m->require_map || (m->create && blocked_growth(m))) {
             const IfsFsDefragOpsV2 *map=(const IfsFsDefragOpsV2 *)
                 ifs_fs_group_v2(api,IFS_FS_GROUP_DEFRAG);
             NEED(map && (map->header.capabilities & IFS_FS_DEFRAG_MAP) &&
@@ -134,6 +137,11 @@ static int available(const IfsDefragHostV2 *unused,void *symbol,void *arg)
 {
     (void)unused;
     return qualify(symbol,arg)?0:-1;
+}
+int ldtm_common_v2_layout(const LdtmFilesystemSpec *s)
+{
+    MediaV2 m={.spec=s};
+    return s && module_call(&m,available)==0?(int)m.profile.layout:-1;
 }
 /* Preflight the complete destructive-media workload, including the ability
  * to prove actual allocation fragmentation. ABI presence alone is not enough. */
@@ -202,7 +210,7 @@ static int file_fragmented(const IfsFsDefragOpsV2 *map,void *session,
     return -1;
 }
 
-/* Workload-only NTFS fragmentation. The provider alone allocates blocks;
+/* Workload-only blocked-growth fragmentation. The provider alone allocates blocks;
  * these helpers use verified physical extents to decide when enough real
  * sacrificial file allocations have been created. No allocator hint,
  * metadata parsing, raw placement write or synthetic extent is used.
@@ -210,11 +218,11 @@ static int file_fragmented(const IfsFsDefragOpsV2 *map,void *session,
 typedef struct {
     uint64_t tail[LDTM_TARGET_FILE_COUNT];
     unsigned blocked[LDTM_TARGET_FILE_COUNT];
-} NtfsCorpusTails;
+} BlockedCorpusTails;
 
-static int ntfs_corpus_scan(const MediaV2 *m,const IfsFsDefragOpsV2 *map,
+static int blocked_corpus_scan(const MediaV2 *m,const IfsFsDefragOpsV2 *map,
     void *session,const char *path,uint64_t bytes,uint64_t capacity,
-    unsigned own,NtfsCorpusTails *tails,int record_tail)
+    unsigned own,BlockedCorpusTails *tails,int record_tail)
 {
     uint64_t first=0u,logical=0u,last=0u;
     unsigned displaced=0u;
@@ -251,13 +259,13 @@ static int ntfs_corpus_scan(const MediaV2 *m,const IfsFsDefragOpsV2 *map,
     }
     return -1;
 }
-static unsigned ntfs_corpus_blocked(const NtfsCorpusTails *tails)
+static unsigned blocked_corpus_blocked(const BlockedCorpusTails *tails)
 {
     unsigned n=0u;
     for(unsigned k=0u;k<LDTM_TARGET_FILE_COUNT;++k)n+=tails->blocked[k]!=0u;
     return n;
 }
-static int ntfs_corpus_write(const MediaV2 *m,const IfsFsCoreOpsV2 *core,
+static int blocked_corpus_write(const MediaV2 *m,const IfsFsCoreOpsV2 *core,
     void *session,const char *path,unsigned file,uint64_t start,uint64_t end,
     int sacrificial)
 {
@@ -269,7 +277,7 @@ static int ntfs_corpus_write(const MediaV2 *m,const IfsFsCoreOpsV2 *core,
         if(!sacrificial)ldtm_raw_payload(buf,n,file,at);
         const int rc=core->write(session,path,at,buf,n);
         if(rc!=IFS_FS_OK) {
-            fprintf(stderr,"NTFS corpus write %s at %llu (%u bytes) failed: %d\n",
+            fprintf(stderr,"blocked-growth corpus write %s at %llu (%u bytes) failed: %d\n",
                 path,(unsigned long long)at,n,rc);
             return -1;
         }
@@ -277,7 +285,7 @@ static int ntfs_corpus_write(const MediaV2 *m,const IfsFsCoreOpsV2 *core,
     }
     return 0;
 }
-static int create_ntfs_corpus(const MediaV2 *m,const IfsFsCoreOpsV2 *core,
+static int create_blocked_corpus(const MediaV2 *m,const IfsFsCoreOpsV2 *core,
     const IfsFsVolumeOpsV2 *volume,const IfsFsDefragOpsV2 *map,
     void *session,const IfsFsVolumeInfoV2 *initial,uint64_t capacity)
 {
@@ -286,7 +294,7 @@ static int create_ntfs_corpus(const MediaV2 *m,const IfsFsCoreOpsV2 *core,
     const uint64_t blocker_max=32u*LDTM_MIB;
     const char *temporary="/LDTM-TEMP";
     char path[32];
-    NtfsCorpusTails tails={0};
+    BlockedCorpusTails tails={0};
     uint64_t remaining=0u;
     unsigned blockers=0u;
     if(!unit || !core->remove || !volume->query || !map || !map->map)
@@ -298,17 +306,17 @@ static int create_ntfs_corpus(const MediaV2 *m,const IfsFsCoreOpsV2 *core,
         uint64_t prefix=file<LDTM_TARGET_FILE_COUNT?quantum:0u;
         if(file<LDTM_TARGET_FILE_COUNT && (bytes<=prefix ||
            make_path(file,path) ||
-           ntfs_corpus_write(m,core,session,path,file,0u,prefix,0)))return -1;
+           blocked_corpus_write(m,core,session,path,file,0u,prefix,0)))return -1;
         if(bytes-prefix>UINT64_MAX-remaining)return -1;
         remaining+=bytes-prefix;
     }
     for(unsigned file=0u;file<LDTM_TARGET_FILE_COUNT;++file)
         if(make_path(file,path) ||
-           ntfs_corpus_scan(m,map,session,path,quantum,capacity,file,&tails,1))
+           blocked_corpus_scan(m,map,session,path,quantum,capacity,file,&tails,1))
             return -1;
     for(unsigned file=0u;file<LDTM_TARGET_FILE_COUNT;++file)
         if(make_path(file,path) ||
-           ntfs_corpus_scan(m,map,session,path,quantum,capacity,file,&tails,0))
+           blocked_corpus_scan(m,map,session,path,quantum,capacity,file,&tails,0))
             return -1;
     if(core->create(session,temporary,IFS_FS_ENTRY_DIRECTORY)!=IFS_FS_OK)return -1;
     /* The native allocator may place files in different locality zones.
@@ -319,7 +327,7 @@ static int create_ntfs_corpus(const MediaV2 *m,const IfsFsCoreOpsV2 *core,
      */
     const uint64_t reserve=64u*LDTM_MIB;
     if(remaining>UINT64_MAX-reserve)return -1;
-    while(ntfs_corpus_blocked(&tails)<LDTM_TARGET_FILE_COUNT && blockers<128u) {
+    while(blocked_corpus_blocked(&tails)<LDTM_TARGET_FILE_COUNT && blockers<128u) {
         IfsFsVolumeInfoV2 current={.structure_bytes=sizeof(current)};
         if(volume->query(session,&current)!=IFS_FS_OK || current.block_bytes!=unit ||
            current.free_bytes>current.total_bytes)return -1;
@@ -331,13 +339,13 @@ static int create_ntfs_corpus(const MediaV2 *m,const IfsFsCoreOpsV2 *core,
         const int n=snprintf(path,sizeof(path),"%s/B%03u.TMP",temporary,blockers);
         if(n<=0 || (size_t)n>=sizeof(path) ||
            core->create(session,path,IFS_FS_ENTRY_FILE)!=IFS_FS_OK ||
-           ntfs_corpus_write(m,core,session,path,0u,0u,bytes,1) ||
-           ntfs_corpus_scan(m,map,session,path,bytes,capacity,
+           blocked_corpus_write(m,core,session,path,0u,0u,bytes,1) ||
+           blocked_corpus_scan(m,map,session,path,bytes,capacity,
                             LDTM_TARGET_FILE_COUNT,&tails,0))return -1;
         ++blockers;
     }
-    fprintf(stderr,"NTFS corpus: %u target prefixes physically blocked or already fragmented; %u temporary files\n",
-            ntfs_corpus_blocked(&tails),blockers);
+    fprintf(stderr,"blocked-growth corpus: %u target prefixes physically blocked or already fragmented; %u temporary files\n",
+            blocked_corpus_blocked(&tails),blockers);
     /* Interleave remaining growth while the blockers are still allocated.
      * Exact final fragmentation is always re-proved after their removal and
      * a fresh read-only mount; a scheduling hint is not a qualification. */
@@ -350,7 +358,7 @@ static int create_ntfs_corpus(const MediaV2 *m,const IfsFsCoreOpsV2 *core,
             any=1;
             const uint64_t end=bytes-base<quantum?bytes:base+quantum;
             if(make_path(file,path) ||
-               ntfs_corpus_write(m,core,session,path,file,base,end,0))return -1;
+               blocked_corpus_write(m,core,session,path,file,base,end,0))return -1;
         }
         if(!any)break;
     }
@@ -362,11 +370,11 @@ static int create_ntfs_corpus(const MediaV2 *m,const IfsFsCoreOpsV2 *core,
     return core->remove(session,temporary)==IFS_FS_OK?0:-1;
 }
 
-/* SCO BFS intrinsically requires one contiguous extent per file. Build
+/* A contiguous-file layout intrinsically requires one contiguous extent per file. Build
  * genuine fragmented free space by alternating sacrificial files and
  * complete target files, then remove only the sacrificial files. All
  * formatting, namespace changes and payload writes remain provider-owned. */
-static int create_bfs_corpus(const MediaV2 *m,const IfsFsCoreOpsV2 *core,
+static int create_contiguous_corpus(const MediaV2 *m,const IfsFsCoreOpsV2 *core,
                              void *session,uint32_t unit)
 {
     const uint32_t capacity=4u*1024u*1024u;
@@ -399,14 +407,14 @@ static int create_bfs_corpus(const MediaV2 *m,const IfsFsCoreOpsV2 *core,
 done:
     free(buf);return rc;
 }
-/* BFS root and every file are separately mapped; compare their rounded
+/* contiguous-file root and every file are separately mapped; compare their rounded
  * allocation sum to the provider's volume accounting. The native check
  * rejects unreferenced allocations. Consequently all remaining space
  * is unowned, not merely absent from a partial file map. */
-typedef struct {uint64_t start,end;unsigned index;} BfsRun;
-static int bfs_single_run(const IfsFsDefragOpsV2 *map,void *session,
+typedef struct {uint64_t start,end;unsigned index;} ContiguousRun;
+static int single_run(const IfsFsDefragOpsV2 *map,void *session,
                           const char *path,uint64_t length,uint64_t unit,
-                          uint64_t capacity,BfsRun *out)
+                          uint64_t capacity,ContiguousRun *out)
 {
     IfsFsExtentV2 e={0};uint32_t n=0;
     if(!length)return map->map(session,path,0,&e,1,&n)==IFS_FS_END && !n?0:-1;
@@ -419,26 +427,26 @@ static int bfs_single_run(const IfsFsDefragOpsV2 *map,void *session,
     out->start=e.physical_offset;out->end=e.physical_offset+allocated;
     return map->map(session,path,1,&e,1,&n)==IFS_FS_END && !n?0:-1;
 }
-static int verify_bfs_layout(const MediaV2 *m,const IfsFsCoreOpsV2 *core,
+static int verify_contiguous_layout(const MediaV2 *m,const IfsFsCoreOpsV2 *core,
     const IfsFsVolumeOpsV2 *volume,const IfsFsDefragOpsV2 *map,void *session,
     const IfsFsVolumeInfoV2 *info,uint64_t capacity)
 {
     const uint64_t unit=info->block_bytes;
-    if(unit!=512u || !volume || !volume->check ||
+    if(!unit || !volume || !volume->check ||
        !(volume->header.capabilities&IFS_FS_VOLUME_CHECK))return -1;
     uint64_t errors=UINT64_MAX;
     if(volume->check(session,0,&errors)!=IFS_FS_OK || errors)return -1;
     char root_name[32],path[32];
     IfsFsEntryV2 e={.structure_bytes=sizeof(e),.name=root_name,.name_capacity=sizeof(root_name)};
-    BfsRun root={0},runs[LDTM_RAW_FILES]={{0}};
+    ContiguousRun root={0},runs[LDTM_RAW_FILES]={{0}};
     if(core->stat(session,"/",&e)!=IFS_FS_OK || e.type!=IFS_FS_ENTRY_DIRECTORY ||
-       !e.size_bytes || bfs_single_run(map,session,"/",e.size_bytes,unit,capacity,&root))return -1;
+       !e.size_bytes || single_run(map,session,"/",e.size_bytes,unit,capacity,&root))return -1;
     if(info->total_bytes>capacity-root.start || info->free_bytes>info->total_bytes)return -1;
     uint64_t sum=root.end-root.start,limit=root.start+info->total_bytes;
     unsigned count=0;
     for(unsigned i=0;i<LDTM_RAW_FILES;++i) {
-        uint64_t length=ldtm_raw_file_bytes(m->spec,i);BfsRun r={.index=i};
-        if(make_path(i,path) || bfs_single_run(map,session,path,length,unit,capacity,&r))return -1;
+        uint64_t length=ldtm_raw_file_bytes(m->spec,i);ContiguousRun r={.index=i};
+        if(make_path(i,path) || single_run(map,session,path,length,unit,capacity,&r))return -1;
         if(!length)continue;
         if(r.start<root.end || r.end>limit || r.end-r.start>info->total_bytes-sum)return -1;
         sum+=r.end-r.start;
@@ -449,14 +457,14 @@ static int verify_bfs_layout(const MediaV2 *m,const IfsFsCoreOpsV2 *core,
     if(sum!=info->total_bytes-info->free_bytes)return -1;
     uint64_t end=root.end;unsigned gap_targets=0;
     for(unsigned i=0;i<count;++i) {
-        const BfsRun *r=&runs[i];
+        const ContiguousRun *r=&runs[i];
         if(r->start<end)return -1;
-        if(m->bfs_layout==1 && r->start!=end)return -1;
-        if(m->bfs_layout==2 && r->index<LDTM_TARGET_FILE_COUNT) {
+        if(m->contiguous_layout==1 && r->start!=end)return -1;
+        if(m->contiguous_layout==2 && r->index<LDTM_TARGET_FILE_COUNT) {
             if(r->start-end<unit)return -1;
             ++gap_targets;
         }
-        if(m->bfs_layout==3) {
+        if(m->contiguous_layout==3) {
             uint64_t blocks=(r->end-r->start)/unit;
             uint64_t reserve=(blocks/10+(blocks%10!=0))*unit;
             uint64_t next=i+1<count?runs[i+1].start:limit;
@@ -464,7 +472,7 @@ static int verify_bfs_layout(const MediaV2 *m,const IfsFsCoreOpsV2 *core,
         }
         end=r->end;
     }
-    if(m->bfs_layout==2 && gap_targets!=LDTM_TARGET_FILE_COUNT)return -1;
+    if(m->contiguous_layout==2 && gap_targets!=LDTM_TARGET_FILE_COUNT)return -1;
     return 0;
 }
 
@@ -521,7 +529,7 @@ static int verify_native_growth(const MediaV2 *m,const IfsFsModuleApiV2 *api,
         }
         /* An empty file has no data extent and no growth requirement.
          * Every nonempty corpus file, including boundary-size payloads,
-         * must independently prove its real native allocation gap. */
+         * must independently prove its real persistent native allocation reservation. */
         if(!ended)return -1;
         if(!length) {
             if(blocks || last)return -1;
@@ -558,10 +566,10 @@ static int verify_native_growth(const MediaV2 *m,const IfsFsModuleApiV2 *api,
                 }
                 if(!g->tail_owned || g->proved>=g->required || end<=g->end)continue;
                 if(g->started) {
-                    if(r->physical_offset!=g->start+g->proved || r->state!=IFS_FS_SPACE_FREE)
+                    if(r->physical_offset!=g->start+g->proved || r->state!=IFS_FS_SPACE_RESERVED)
                         return -1;
                 } else {
-                    if(r->state!=IFS_FS_SPACE_FREE) {
+                    if(r->state!=IFS_FS_SPACE_RESERVED) {
                         if(end-g->end>=unit)return -1;
                         continue;
                     }
@@ -628,30 +636,10 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
          * Common V2 FORMAT variants and label support are provider-defined.
          * These values select the provider's existing public contract; no
          * filesystem data structures are interpreted here. */
-        uint32_t variant=0u;
-        const char *label=m->spec->label;
-        switch(m->spec->creator) {
-        case LDTM_CREATOR_FAT12: variant=12u; label=NULL; break;
-        case LDTM_CREATOR_FAT16: variant=16u; label=NULL; break;
-        case LDTM_CREATOR_FAT32: variant=32u; label=NULL; break;
-        case LDTM_CREATOR_EXFAT: variant=64u; label=NULL; break;
-        case LDTM_CREATOR_NTFS: variant=1u; break;
-        case LDTM_CREATOR_EXT3: variant=3u; break;
-        case LDTM_CREATOR_EXT4: variant=4u; break;
-        case LDTM_CREATOR_XFS: variant=5u; break;
-        case LDTM_CREATOR_BTRFS: variant=1u; break;
-        case LDTM_CREATOR_HFS: variant=1u; break;
-        case LDTM_CREATOR_HFSPLUS: variant=4u; break;
-        case LDTM_CREATOR_APFS: variant=1u; break;
-        case LDTM_CREATOR_AFFS:
-            if(!strcmp(m->spec->key,"sfs"))variant=3u;
-            break;
-        case LDTM_CREATOR_UFS: variant=3u; break;
-        case LDTM_CREATOR_UFS1: variant=1u; break;
-        case LDTM_CREATOR_SFS2: variant=4096u; break;
-        case LDTM_CREATOR_SWAP: variant=4096u; break;
-        default: break;
-        }
+        const uint32_t variant=m->profile.format_variant;
+        /* A short portable label is used only if the provider accepts one.
+         * GPT partition identity is independent of the filesystem label. */
+        const char *label=(m->profile.flags&IFS_FS_FORMAT_ACCEPTS_LABEL)?"LDTM":NULL;
         stage="VOLUME.FORMAT";
         const int rc=volume->format(&runtime,variant,label,0u);
         if(rc!=IFS_FS_OK) {
@@ -659,26 +647,26 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
                     provider(m->spec),(unsigned)variant,rc);
             goto done;
         }
-        if(variant) {
+        {
             uint32_t detected=0u;
             stage="CORE.PROBE exact format variant";
-            if(core->probe(&runtime,&detected)!=IFS_FS_OK || detected!=variant) {
+            if(core->probe(&runtime,&detected)!=IFS_FS_OK || detected!=m->profile.probe_variant) {
                 fprintf(stderr,"%s: expected variant %u, detected %u\n",
-                        provider(m->spec),(unsigned)variant,(unsigned)detected);
+                        provider(m->spec),(unsigned)m->profile.probe_variant,(unsigned)detected);
                 goto done;
             }
         }
     }
-    if(is_swap(m->spec)) {
+    if(no_namespace(m)) {
         uint32_t variant=0u;
-        result=core->probe(&runtime,&variant)==IFS_FS_OK && variant==4096u?0:-1;
+        result=core->probe(&runtime,&variant)==IFS_FS_OK && variant==m->profile.probe_variant?0:-1;
         goto done;
     }
     stage="CORE.MOUNT";
     if(core->mount(&runtime,&session,&info)!=IFS_FS_OK || !session)goto done;
     mounted=1;
     stage="mounted allocation geometry";
-    if(!profile_geometry_valid(m->spec,&info))goto done;
+    if(!profile_geometry_valid(m,&info))goto done;
     uint8_t actual[65536],expected[65536];
     char path[32],entry_name[768];
     if(m->create) {
@@ -691,12 +679,12 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
         /* Alternate the first and second halves to force interleaved file
          * growth through the provider's own allocation/CoW machinery. */
         stage="CORE.WRITE";
-        if(is_bfs(m->spec)) {
-            if(create_bfs_corpus(m,core,session,info.block_bytes)!=0)goto done;
-        } else if(m->spec->creator==LDTM_CREATOR_NTFS) {
+        if(contiguous_layout(m)) {
+            if(create_contiguous_corpus(m,core,session,info.block_bytes)!=0)goto done;
+        } else if(blocked_growth(m)) {
             const IfsFsDefragOpsV2 *map=(const IfsFsDefragOpsV2 *)
                 ifs_fs_group_v2(api,IFS_FS_GROUP_DEFRAG);
-            if(create_ntfs_corpus(m,core,volume,map,session,&info,
+            if(create_blocked_corpus(m,core,volume,map,session,&info,
                                   runtime.volume_bytes)!=0)goto done;
         } else for(unsigned phase=0u;phase<2u;++phase)
             for(unsigned file=0u;file<LDTM_RAW_FILES;++file) {
@@ -735,7 +723,7 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
         info=(IfsFsVolumeInfoV2){.structure_bytes=sizeof(info)};
         if(core->mount(&runtime,&session,&info)!=IFS_FS_OK || !session)goto done;
         mounted=1;
-        if(!profile_geometry_valid(m->spec,&info))goto done;
+        if(!profile_geometry_valid(m,&info))goto done;
     }
     stage="CORE.LIST";
     unsigned seen=0u;
@@ -751,7 +739,7 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
         if(number<0) {
             /* FAT's corpus profile admits exactly its 16 files; other
              * providers may expose genuine native metadata entries. */
-            if(profile_fat_width(m->spec) || is_bfs(m->spec))goto done;
+            if(contiguous_layout(m))goto done;
             continue;
         }
         if((seen&(1u<<(unsigned)number)) ||
@@ -761,10 +749,10 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
         seen|=1u<<(unsigned)number;
     }
     if(!directory_complete || seen!=((1u<<LDTM_RAW_FILES)-1u))goto done;
-    if(m->spec->creator==LDTM_CREATOR_NTFS) {
+    if(blocked_growth(m)) {
         IfsFsEntryV2 temporary={.structure_bytes=sizeof(temporary),
             .name=entry_name,.name_capacity=sizeof(entry_name)};
-        stage="NTFS sacrificial directory removal";
+        stage="blocked-growth sacrificial directory removal";
         if(core->stat(session,"/LDTM-TEMP",&temporary)!=IFS_FS_NOT_FOUND)
             goto done;
     }
@@ -801,8 +789,8 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
             }
             if(file<LDTM_TARGET_FILE_COUNT) {
                 m->fragmented+=displaced;
-                if(m->spec->creator==LDTM_CREATOR_NTFS)
-                    fprintf(stderr,"NTFS corpus %s: %s\n",path,
+                if(blocked_growth(m))
+                    fprintf(stderr,"blocked-growth corpus %s: %s\n",path,
                             displaced?"physically fragmented":"contiguous");
             }
         }
@@ -818,10 +806,10 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
             at+=n;
         }
     }
-    if(m->bfs_layout) {
-        stage="BFS independently verified allocation layout";
+    if(m->contiguous_layout) {
+        stage="contiguous-file independently verified allocation layout";
         const IfsFsDefragOpsV2 *map=(const IfsFsDefragOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_DEFRAG);
-        if(m->fragmented || verify_bfs_layout(m,core,volume,map,session,&info,runtime.volume_bytes))goto done;
+        if(m->fragmented || verify_contiguous_layout(m,core,volume,map,session,&info,runtime.volume_bytes))goto done;
     }
     if(m->verify_growth) {
         stage="canonical whole-volume 10% growth reserve verification";
@@ -862,7 +850,7 @@ int ldtm_common_v2_fixture(const LdtmFilesystemSpec *s,
 int ldtm_common_v2_verify_fragmentation(const LdtmFilesystemSpec *s,
     const char *path,unsigned *fragmented)
 {
-    if(!s || !path || !fragmented || is_swap(s))return -1;
+    if(!s || !path || !fragmented || ldtm_common_v2_layout(s)==IFS_FS_LAYOUT_NO_NAMESPACE)return -1;
     *fragmented=0u;
     MediaV2 m={.spec=s,.path=path,.require_map=1};
     const int rc=module_call(&m,execute);
@@ -874,20 +862,20 @@ int ldtm_common_v2_verify_fragmentation(const LdtmFilesystemSpec *s,
  * integrity before an ordinary Defragment operation can qualify. */
 int ldtm_common_v2_verify_contiguous(const LdtmFilesystemSpec *s,const char *path)
 {
-    if(!s || !path || is_swap(s))return -1;
+    if(!s || !path || ldtm_common_v2_layout(s)==IFS_FS_LAYOUT_NO_NAMESPACE)return -1;
     MediaV2 m={.spec=s,.path=path,.require_map=1,.require_contiguous=1};
     return module_call(&m,execute);
 }
 
 int ldtm_common_v2_verify_growth(const LdtmFilesystemSpec *s,const char *path)
 {
-    if(!s || !path || is_swap(s))return -1;
+    if(!s || !path || ldtm_common_v2_layout(s)==IFS_FS_LAYOUT_NO_NAMESPACE)return -1;
     MediaV2 m={.spec=s,.path=path,.require_map=1,.require_contiguous=1,.verify_growth=1};
     return module_call(&m,execute);
 }
-int ldtm_common_v2_verify_bfs_layout(const LdtmFilesystemSpec *s,const char *path,int mode)
+int ldtm_common_v2_verify_contiguous_layout(const LdtmFilesystemSpec *s,const char *path,int mode)
 {
-    if(!is_bfs(s) || !path || mode<0 || mode>2)return -1;
-    MediaV2 m={.spec=s,.path=path,.require_map=1,.require_contiguous=mode!=1,.bfs_layout=mode+1};
+    if(ldtm_common_v2_layout(s)!=IFS_FS_LAYOUT_CONTIGUOUS_FILE || !path || mode<0 || mode>2)return -1;
+    MediaV2 m={.spec=s,.path=path,.require_map=1,.require_contiguous=mode!=1,.contiguous_layout=mode+1};
     return module_call(&m,execute);
 }

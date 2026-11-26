@@ -135,12 +135,12 @@ static int qualify_image_operation(const LdtmFilesystemSpec *spec,
     struct stat st;
     char detail[512]={0};
     CHECK(lstat(path,&st)==0 && S_ISREG(st.st_mode) && st.st_nlink==1);
-    CHECK(spec->creator!=LDTM_CREATOR_SWAP);
+    CHECK(ldtm_common_v2_layout(spec)!=IFS_FS_LAYOUT_NO_NAMESPACE);
     CHECK(require_fragmentation_state(spec,path,1,detail,sizeof(detail))==0);
     CHECK(run_production_defrag(spec,path,operation)==0);
     CHECK(require_fragmentation_state(spec,path,!strcmp(operation,"growth-defrag")?2:0,detail,sizeof(detail))==0);
     if(!strcmp(operation,"growth-defrag"))
-        puts("Independent Common V2 allocation map proved every nonempty file's 10% growth gap is free");
+        puts("Independent Common V2 allocation map proved every nonempty file's 10% growth allocation is persistently reserved");
     printf("%s: %s verified all corpus bytes and zero fragmented large files\n",
            spec->key,operation);
     return 0;
@@ -152,7 +152,7 @@ int main(int argc, char **argv)
         return contracts();
     if (argc == 3 && strcmp(argv[1],"qualify-recovery")==0) {
         const LdtmFilesystemSpec *spec=ldtm_find_spec(argv[2]);
-        if(!spec || spec->creator==LDTM_CREATOR_SWAP)return 2;
+        if(!spec || ldtm_common_v2_layout(spec)==IFS_FS_LAYOUT_NO_NAMESPACE)return 2;
         char detail[512]={0};
         int result=preflight_recovery(spec,detail,sizeof(detail));
         fprintf(result?stderr:stdout,"%s\n",detail);
