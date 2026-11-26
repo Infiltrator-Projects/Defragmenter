@@ -493,8 +493,8 @@ static int verify_native_growth(const MediaV2 *m,const IfsFsModuleApiV2 *api,
     }
     const uint64_t unit=info->block_bytes;
     if(!unit || info->free_bytes>capacity)return -1;
-    NativeGrowthGap gaps[LDTM_TARGET_FILE_COUNT]={{0}};
-    for(unsigned file=0u;file<LDTM_TARGET_FILE_COUNT;++file) {
+    NativeGrowthGap gaps[LDTM_RAW_FILES]={{0}};
+    for(unsigned file=0u;file<LDTM_RAW_FILES;++file) {
         char path[32];if(make_path(file,path))return -1;
         const uint64_t length=ldtm_raw_file_bytes(m->spec,file);
         uint64_t logical=0u,first=0u,last=0u,blocks=0u;
@@ -518,7 +518,15 @@ static int verify_native_growth(const MediaV2 *m,const IfsFsModuleApiV2 *api,
             }
             first+=n;
         }
-        if(!ended || !blocks || !last)return -1;
+        /* An empty file has no data extent and no growth requirement.
+         * Every nonempty corpus file, including boundary-size payloads,
+         * must independently prove its real native allocation gap. */
+        if(!ended)return -1;
+        if(!length) {
+            if(blocks || last)return -1;
+            continue;
+        }
+        if(!blocks || !last)return -1;
         uint64_t reserve=blocks/10u+(blocks%10u!=0u);
         if(reserve>UINT64_MAX/unit || reserve*unit>capacity-last)return -1;
         gaps[file].end=last;gaps[file].required=reserve*unit;
@@ -540,8 +548,9 @@ static int verify_native_growth(const MediaV2 *m,const IfsFsModuleApiV2 *api,
             const IfsFsAllocationRangeV2 *r=&ranges[j];
             const uint64_t end=r->physical_offset+r->length;
             if(r->state==IFS_FS_SPACE_FREE)free_bytes+=r->length;
-            for(unsigned i=0u;i<LDTM_TARGET_FILE_COUNT;++i) {
+            for(unsigned i=0u;i<LDTM_RAW_FILES;++i) {
                 NativeGrowthGap *g=&gaps[i];
+                if(!g->required)continue;
                 if(r->physical_offset<g->end && end>=g->end) {
                     if(r->state!=IFS_FS_SPACE_ALLOCATED)return -1;
                     g->tail_owned=1;
@@ -572,8 +581,9 @@ static int verify_native_growth(const MediaV2 *m,const IfsFsModuleApiV2 *api,
                 (unsigned long long)free_bytes,(unsigned long long)info->free_bytes,ended);
         return -1;
     }
-    for(unsigned i=0u;i<LDTM_TARGET_FILE_COUNT;++i) {
+    for(unsigned i=0u;i<LDTM_RAW_FILES;++i) {
         NativeGrowthGap *g=&gaps[i];
+        if(!g->required)continue;
         if(!g->tail_owned || !g->started || g->proved!=g->required ||
            g->required>capacity-g->start) {
             fprintf(stderr,"%s: growth target %u tail %llu reserved %llu/%llu bytes (owned %d, started %d)\n",
@@ -582,7 +592,7 @@ static int verify_native_growth(const MediaV2 *m,const IfsFsModuleApiV2 *api,
             return -1;
         }
         for(unsigned j=0u;j<i;++j)
-            if(g->start<gaps[j].start+gaps[j].required &&
+            if(gaps[j].required && g->start<gaps[j].start+gaps[j].required &&
                gaps[j].start<g->start+g->required)return -1;
     }
     return 0;

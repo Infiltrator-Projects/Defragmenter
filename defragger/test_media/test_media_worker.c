@@ -435,7 +435,7 @@ static int require_fragmentation_state(const LdtmFilesystemSpec *spec,
             return -1;
         }
         (void)snprintf(detail,detail_capacity,
-            "Common V2 corpus bytes, contiguous files and all eight 10%% growth reserves verified");
+            "Common V2 corpus bytes, contiguous files and every nonempty file's 10%% growth reserve verified");
         return 0;
     }
     (void)snprintf(detail,detail_capacity,
