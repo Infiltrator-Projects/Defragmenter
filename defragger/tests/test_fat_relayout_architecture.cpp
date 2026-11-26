@@ -54,7 +54,7 @@ int main(int argc,char** argv) {
             "standard_write_ops(\"operation-engine\")"
         })contains(runtime,token,"Versioned native FAT operations");
         const auto engine=read(root/"native/operation_engine.cpp");
-        contains(engine,"ifs_filesystem_module_detect_v2","Generic FAT alias probing");
+        contains(engine,"ifs_filesystem_module_detect_installed_v2","Generic installed provider probing");
         contains(engine,"ifs_filesystem_module_run","Common V2 operation dispatch");
         check(!fs::exists(root/"tests/test_fat_relayout_architecture.py"),
               "Retired Python FAT ownership checker still exists");

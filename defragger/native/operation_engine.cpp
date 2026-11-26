@@ -23,7 +23,7 @@ namespace {
 int usage() {
     std::fputs(
         "usage: defragmenter-operation-engine-cpp "
-        "[--list-plugins|--list-installed-modules] OPERATION DEVICE --filesystem TYPE [worker options...]\n",
+        "[--list-plugins|--list-installed-modules] OPERATION DEVICE [--filesystem ID] [worker options...]\n",
         stderr);
     return 2;
 }
@@ -70,31 +70,19 @@ int main(int argc, char** argv) {
         forwarded.push_back(token);
     }
 
-    if (operation.empty() || device.empty() || filesystem.empty()) return usage();
+    if (operation.empty() || device.empty()) return usage();
 
-    // Generic names never nominate a specific on-disk format.
+    // Only an exported provider identity may explicitly select a module.
+    // Otherwise discover the unique match by probing installed SOs.
     std::transform(filesystem.begin(),filesystem.end(),filesystem.begin(),
         [](unsigned char c){return static_cast<char>(std::tolower(c));});
-    std::vector<const char *> aliases;
-    const auto* backend=defragger::backend_by_fstype(filesystem);
-    if(filesystem=="fat" || filesystem=="vfat" || filesystem=="msdos")
-        aliases={"fat12","fat16","fat32"};
-    else if(backend && backend->id=="ufs" && filesystem!="ufs1" && filesystem!="ufs2")
-        aliases={"ufs1","ufs2"};
-    else if(backend && backend->id=="affs" && filesystem!="ofs" && filesystem!="ffs")
-        aliases={"ofs","ffs"};
-    else if(backend && backend->id=="sfs" && filesystem=="smartfilesystem")
-        aliases={"sfs","sfs2"};
-    else if(backend && filesystem!="ufs1" && filesystem!="ufs2" &&
-            filesystem!="ofs" && filesystem!="ffs" && filesystem!="sfs2")
-        filesystem=backend->id;
     if (operation != "defrag" && operation != "growth-defrag" &&
         operation != "recover" && operation != "analyse" &&
         operation != "analyse-json" && operation != "map" &&
         operation != "volume-info" && operation != "map-catalogue") {
         return usage();
     }
-    if(aliases.empty() && !ifs_fs_format_id_valid(filesystem.c_str())) {
+    if(!filesystem.empty() && !ifs_fs_format_id_valid(filesystem.c_str())) {
         std::fputs("invalid Common V2 filesystem identifier\n",stderr);
         return 2;
     }
@@ -139,11 +127,11 @@ int main(int argc, char** argv) {
     }
 
     char module_file[64] = {};
-    if(!aliases.empty()) {
+    if(filesystem.empty()) {
         char discovered[IFS_FS_MAX_FORMAT_ID+1u]={};
-        if(ifs_filesystem_module_detect_v2(device.c_str(),aliases.data(),
-            aliases.size(),discovered,sizeof(discovered),module_file,sizeof(module_file))!=0) {
-            std::fputs("No unique trusted Common V2 provider recognises this alias\n",stderr);
+        if(ifs_filesystem_module_detect_installed_v2(device.c_str(),
+            discovered,sizeof(discovered),module_file,sizeof(module_file))!=0) {
+            std::fputs("No unique installed Common V2 provider recognises this target\n",stderr);
             return 2;
         }
         filesystem=discovered;

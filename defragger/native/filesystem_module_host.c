@@ -1333,3 +1333,45 @@ int ifs_filesystem_module_detect_ufs_v2(
         sizeof(candidates)/sizeof(candidates[0]),format,format_capacity,
         filename,filename_capacity);
 }
+
+/* No registry or name inference: every installed hosted descriptor may
+ * identify the target. Duplicate identity and multiple matches fail closed.
+ */
+int ifs_filesystem_module_detect_installed_v2(const char *target,char *format,
+    size_t format_capacity,char *filename,size_t filename_capacity)
+{
+    if(!target || !*target || !format || !format_capacity ||
+       !filename || !filename_capacity)return -1;
+    format[0]=filename[0]='\0';
+    int directory=ifs_open_module_directory();
+    if(directory<0)return -1;
+    DIR *entries=fdopendir(directory);
+    if(!entries){close(directory);return -1;}
+    char chosen[IFS_FS_MAX_FORMAT_ID+1u]={0},file[64]={0};
+    unsigned matches=0u;
+    int result=-1;
+    for(;;) {
+        errno=0;
+        struct dirent *item=readdir(entries);
+        if(!item){if(!errno)result=0;break;}
+        char id[IFS_FS_MAX_FORMAT_ID+1u]={0};
+        uint64_t caps=0u,groups=0u;
+        if(ifs_probe_module_v2(directory,item->d_name,id,&caps,&groups,0))continue;
+        char *argv[]={(char *)"defragmenter-v2-probe",(char *)"probe-only",
+            (char *)target,NULL};
+        if(ifs_filesystem_module_run(id,item->d_name,3,argv))continue;
+        if(++matches!=1u){result=-2;break;}
+        memcpy(chosen,id,strlen(id)+1u);
+        memcpy(file,item->d_name,strlen(item->d_name)+1u);
+    }
+    closedir(entries);
+    if(result)return result;
+    if(matches!=1u || strlen(chosen)+1u>format_capacity ||
+       strlen(file)+1u>filename_capacity)return -1;
+    char unique[64];
+    result=ifs_filesystem_module_find_readonly_v2(chosen,unique,sizeof(unique));
+    if(result || strcmp(unique,file))return result==-2?-2:-1;
+    memcpy(format,chosen,strlen(chosen)+1u);
+    memcpy(filename,file,strlen(file)+1u);
+    return 0;
+}

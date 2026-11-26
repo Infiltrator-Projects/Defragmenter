@@ -84,6 +84,11 @@ grep -Fq '"growth_qualified":true' "$root/catalogue.json"
 # status string. The path map must retain all 33 extents across two pages.
 "$engine" analyse-json "$device" --filesystem testv2 > "$root/analysis.json"
 cmp "$root/catalogue.json" "$root/analysis.json"
+# Discovery needs no filesystem name, registry entry or particular filename.
+mv "$root/Filesystems/TESTV2.so" "$root/Filesystems/ARBITRARY.so"
+"$engine" analyse-json "$device" > "$root/auto.json"
+cmp "$root/catalogue.json" "$root/auto.json"
+mv "$root/Filesystems/ARBITRARY.so" "$root/Filesystems/TESTV2.so"
 "$engine" map "$device" --filesystem testv2 > "$root/output.txt"
 grep -Fq '"extent_count":33' "$root/output.txt"
 grep -Fq '[128,192,4,0]' "$root/output.txt"
@@ -103,6 +108,9 @@ cp -- "$module" "$root/Filesystems/DUPLICATE.so"
 if "$engine" defrag "$device" --filesystem testv2 --path=/FILE \
    --write --confirm "$device" > /dev/null 2>&1; then
     echo "Duplicate V2 providers were accepted" >&2; exit 1
+fi
+if "$engine" defrag "$device" --write --confirm "$device" >/dev/null 2>&1; then
+    echo "Ambiguous automatic detection accepted" >&2; exit 1
 fi
 rm -f "$root/Filesystems/DUPLICATE.so"
 

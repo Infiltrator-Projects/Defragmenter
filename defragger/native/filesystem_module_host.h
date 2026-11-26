@@ -30,6 +30,8 @@ int ifs_filesystem_module_find_v2(const char *, char *, size_t);
 int ifs_filesystem_module_capabilities_v2(const char *,uint64_t *);
 /* CORE + VOLUME readers are discoverable before DEFRAG is qualified. */
 int ifs_filesystem_module_find_readonly_v2(const char *, char *, size_t);
+/* Discover a unique format using CORE.PROBE from all trusted installed SOs. */
+int ifs_filesystem_module_detect_installed_v2(const char *,char *,size_t,char *,size_t);
 /* Resolve exactly one format from a list using only Common V2 CORE.PROBE. */
 int ifs_filesystem_module_detect_v2(const char *,const char *const *,size_t,char *,size_t,char *,size_t);
 /* Resolve 'ufs' via UFS1.so/UFS2.so native Common V2 CORE probes only. */
