@@ -123,9 +123,11 @@ int main() {
     ok = check(fat12 != nullptr, "FAT12 lookup") && ok;
     if(fat12) {
         const Json payload=Json::parse(
-            "{\"filesystem\":\"fat12\",\"abi\":2,\"unit_size\":512,"
-            "\"total_units\":4,\"free_units\":2,\"allocated_ranges\":[[0,2]],"
-            "\"fragmented_ranges\":[[1,2]],\"regular_files\":1,\"fragmented_files\":1,"
+            "{\"filesystem\":\"fat12\",\"abi\":2,\"device_bytes\":2048,"
+            "\"file_extents\":[[0,512,0],[512,1024,1]],"
+            "\"allocation_ranges\":[[0,1024,2],[1024,2048,1]],"
+            "\"allocation_unknown_bytes\":0,\"allocation_free_bytes\":1024,"
+            "\"regular_files\":1,\"fragmented_files\":1,"
             "\"directories\":0,\"fragmented_directories\":0,\"defrag_qualified\":false,"
             "\"growth_qualified\":false,\"recovery_qualified\":false}");
         try {

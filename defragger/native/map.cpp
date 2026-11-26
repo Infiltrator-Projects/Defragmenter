@@ -58,113 +58,12 @@ void analysis_phase(const char* phase) {
     std::fflush(stderr);
 }
 
-std::vector<UnitRange> pair_ranges(
-    const Json& payload,
-    std::string_view key,
-    std::uint64_t total,
-    bool required = false) {
-    const Json* raw = payload.find(key);
-    if (raw == nullptr) {
-        if (required)
-            throw std::runtime_error("native analyser omitted " +
-                                     std::string(key));
-        return {};
-    }
-    if (!raw->is_array())
-        throw std::runtime_error("native analyser returned invalid " +
-                                 std::string(key));
-
-    std::vector<UnitRange> ranges;
-    ranges.reserve(raw->array().size());
-    for (const auto& value : raw->array()) {
-        if (!value.is_array() || value.array().size() != 2U)
-            throw std::runtime_error("native analyser returned malformed " +
-                                     std::string(key));
-        const std::uint64_t start = value.array()[0].unsigned_value();
-        const std::uint64_t end = value.array()[1].unsigned_value();
-        if (end <= start || end > total)
-            throw std::runtime_error("native analyser returned out-of-range " +
-                                     std::string(key));
-        ranges.push_back({start, end});
-    }
-    return ranges;
-}
-
 void set(Json& object, std::string key, Json value) {
     object.object()[std::move(key)] = std::move(value);
 }
 
-Json map_fat(const BackendInfo& backend,const Json& payload,std::size_t cells) {
-    // The SO returns authoritative allocation and file extents. Pixel
-    // aggregation is a presentation operation; no BPB or FAT is read here.
-    if (payload.at("filesystem").string() != backend.id ||
-        required_u64(payload,"abi") != 2U)
-        throw std::runtime_error("FAT provider returned wrong identity or ABI");
-    const auto unit=required_u64(payload,"unit_size");
-    const auto total=required_u64(payload,"total_units");
-    const auto free=required_u64(payload,"free_units");
-    if (!unit || !total || free>total)
-        throw std::runtime_error("invalid Common V2 FAT geometry");
-    const auto occupied=merge_ranges(pair_ranges(payload,"allocated_ranges",total,true));
-    auto fragmented=merge_ranges(pair_ranges(payload,"fragmented_ranges",total,true));
-    std::uint64_t allocated=0;
-    for(const auto& r:occupied) allocated+=r.end-r.start;
-    if(allocated!=total-free)
-        throw std::runtime_error("FAT provider allocation and free-space totals disagree");
-    std::size_t cursor=0;
-    for(const auto& r:fragmented) {
-        while(cursor<occupied.size() && occupied[cursor].end<=r.start)++cursor;
-        if(cursor==occupied.size() || occupied[cursor].start>r.start ||
-           occupied[cursor].end<r.end)
-            throw std::runtime_error("FAT provider marked unallocated data as fragmented");
-    }
-    std::vector<StateRange> ranges;
-    for(const auto& r:occupied)ranges.push_back({r.start,r.end,1U});
-    for(const auto& r:complement_ranges(total,occupied))ranges.push_back({r.start,r.end,0U});
-    Json result=aggregate_ranges(total,cells,unit,backend.id,std::move(ranges),
-        backend.map_accuracy,{{"fragmentation_available",Json(true)},
-        {"fragmentation_basis",Json("Common V2 provider file extent catalogue")}});
-    overlay_ranges(result.at("cells").array(),std::move(fragmented),"fragmented");
-    for(const auto* field:{"regular_files","fragmented_files","directories",
-           "fragmented_directories","directory_fragmentation_available",
-           "defrag_qualified","growth_qualified","recovery_qualified"}) {
-        if(const Json* value=payload.find(field))set(result,field,*value);
-    }
-    if(!optional_bool(payload,"defrag_qualified"))
-        set(result,"defrag_reason",Json("Common V2 provider did not qualify a read-only Defragment plan"));
-    if(!optional_bool(payload,"growth_qualified"))
-        set(result,"growth_reason",Json("Common V2 provider did not qualify a read-only Growth Defrag plan"));
-    const auto regular=required_u64(payload,"regular_files");
-    const auto split=required_u64(payload,"fragmented_files");
-    if(split>regular)throw std::runtime_error("invalid Common V2 fragmentation totals");
-    set(result,"fragmentation_percent",Json::real(regular?100.0*static_cast<double>(split)/static_cast<double>(regular):0.0));
-    set(result,"data_clusters",Json::unsigned_integer(total));
-    set(result,"free_clusters",Json::unsigned_integer(free));
-    set(result,"cluster_size",Json::unsigned_integer(unit));
-    set(result,"outside_bytes",Json::unsigned_integer(0U));
-    // Common V2 supplies physical byte offsets when a volume has allocations.
-    // An empty FAT12/16 data area has no physical extent from which to infer
-    // the prefix; omit rather than invent geometry in that case.
-    if(optional_bool(payload,"physical_geometry_available")) {
-        const auto prefix=required_u64(payload,"data_start_bytes");
-        const auto bytes=required_u64(payload,"device_bytes");
-        const auto data=multiply_or_throw(unit,total,"FAT capacity");
-        if(prefix>bytes || data>bytes-prefix)
-            throw std::runtime_error("invalid Common V2 physical extent geometry");
-        set(result,"display_unit_size",Json::unsigned_integer(1U));
-        set(result,"display_units_per_allocation_unit",Json::unsigned_integer(unit));
-        set(result,"display_prefix_units",Json::unsigned_integer(prefix));
-        set(result,"display_suffix_units",Json::unsigned_integer(bytes-prefix-data));
-        set(result,"display_total_units",Json::unsigned_integer(bytes));
-        set(result,"display_unit_name",Json("bytes"));
-    }
-    return result;
-}
-
-/* All non-FAT providers use the same Common V2 per-file extent contract.
- * The host has no authoritative free-space or directory allocation map;
- * unclassified physical bytes remain unknown, so a partial map cannot
- * authorize destructive operations in the desktop. */
+/* A single presentation contract for every provider. Only canonical
+ * allocation ranges establish free or reserved space. */
 Json map_catalogue(const BackendInfo& backend,const Json& payload,
                    std::size_t cells) {
     const auto filesystem=std::string(payload.at("filesystem").string());
@@ -480,8 +379,7 @@ bool backend_probe(const BackendInfo& backend, const std::string& path) {
 /* Pure presentation contract, also exercised by regression tests. */
 Json map_v2_response(const BackendInfo& backend,const Json& payload,std::size_t cells) {
     (void)map_capture_limit(cells);
-    return backend.map_adapter==MapAdapter::Fat
-        ? map_fat(backend,payload,cells) : map_catalogue(backend,payload,cells);
+    return map_catalogue(backend,payload,cells);
 }
 
 Json map_backend(const BackendInfo& backend, const std::string& path,

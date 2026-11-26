@@ -42,7 +42,9 @@ for bits in 12 16 32; do
     "$MAPPER" "$image" --fstype "fat$bits" --cells 1 >"$WORK/fat$bits-map.json" ||
         fail "FAT$bits production fragmentation qualification failed"
     jq -e '.backend_id == "fat'$bits'" and .fragmented_files >= 8 and
-           .fragmented_directories == 0 and .unknown_bytes == 0 and
+           .unknown_bytes == 0 and
+           .map_accuracy == "exact-allocation" and
+           (if .directory_fragmentation_available then .fragmented_directories == 0 else (.fragmented_directories == null) end) and
            .cell_count == 1 and .cells[0].fragmented > 0' "$WORK/fat$bits-map.json" >/dev/null ||
         fail "FAT$bits provider did not produce genuinely fragmented test files"
     "$MAPPER" "$image" --fstype "fat$bits" --cells 128 >"$WORK/fat$bits-detail.json" ||
