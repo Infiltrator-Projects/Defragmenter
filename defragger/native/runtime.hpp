@@ -31,17 +31,6 @@ struct OperationSpec {
     bool live_updates = true;
 };
 
-enum class MapAdapter {
-    NativeMap,
-    Affs,
-    Exfat,
-    Ext,
-    Fat,
-    HfsPlus,
-    Ntfs,
-    Xfs,
-};
-
 enum class QualificationMode {
     None,
     WorkerPreflight,
@@ -55,7 +44,6 @@ struct BackendInfo {
     std::uint32_t capabilities = 0U;
     std::string map_accuracy;
     std::string worker;
-    MapAdapter map_adapter = MapAdapter::NativeMap;
     std::vector<OperationSpec> operations;
     QualificationMode qualification_mode = QualificationMode::None;
     std::string map_auxiliary_worker;
@@ -68,7 +56,6 @@ struct BackendInfo {
         std::uint32_t capabilities_value,
         std::string map_accuracy_value,
         std::string worker_value,
-        MapAdapter map_adapter_value,
         std::vector<OperationSpec> operations_value,
         QualificationMode qualification_mode_value = QualificationMode::None,
         std::string map_auxiliary_worker_value = {},
@@ -79,7 +66,6 @@ struct BackendInfo {
           capabilities(capabilities_value),
           map_accuracy(std::move(map_accuracy_value)),
           worker(std::move(worker_value)),
-          map_adapter(map_adapter_value),
           operations(std::move(operations_value)),
           qualification_mode(qualification_mode_value),
           map_auxiliary_worker(std::move(map_auxiliary_worker_value)),

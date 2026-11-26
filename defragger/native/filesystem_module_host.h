@@ -37,8 +37,5 @@ int ifs_filesystem_module_visit_v2(IfsFilesystemVisitorV2,void *);
 int ifs_filesystem_module_detect_installed_v2(const char *,char *,size_t,char *,size_t);
 /* Resolve exactly one format from a list using only Common V2 CORE.PROBE. */
 int ifs_filesystem_module_detect_v2(const char *,const char *const *,size_t,char *,size_t,char *,size_t);
-/* Resolve 'ufs' via UFS1.so/UFS2.so native Common V2 CORE probes only. */
-int ifs_filesystem_module_detect_ufs_v2(const char *, char *, size_t,
-                                        char *, size_t);
 int ifs_filesystem_journal_matches(const char *, const char *);
 #endif

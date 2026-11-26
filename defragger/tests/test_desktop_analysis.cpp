@@ -127,7 +127,7 @@ int main()
     CHECK(labelled_volumes[2].filesystem == "ofs");
     CHECK(labelled_volumes[3].filesystem == "hfsplus");
 
-    CHECK(labelled_volumes[4].filesystem == "not_a_filesystem");
+    CHECK(!labelled_volumes[4].verified);
     // Generic descriptions are independent of installed provider names.
     CHECK(defragger::generic_operation("defrag").default_options.empty());
     CHECK(defragger::generic_operation("growth-defrag").default_options.empty());

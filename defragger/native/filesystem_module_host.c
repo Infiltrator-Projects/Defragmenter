@@ -1143,16 +1143,6 @@ int ifs_filesystem_module_detect_v2(
     return 0;
 }
 
-int ifs_filesystem_module_detect_ufs_v2(
-    const char *target,char *format,size_t format_capacity,
-    char *filename,size_t filename_capacity)
-{
-    static const char *const candidates[]={"ufs1","ufs2"};
-    return ifs_filesystem_module_detect_v2(target,candidates,
-        sizeof(candidates)/sizeof(candidates[0]),format,format_capacity,
-        filename,filename_capacity);
-}
-
 /* No registry or name inference: every installed hosted descriptor may
  * identify the target. Duplicate identity and multiple matches fail closed.
  */

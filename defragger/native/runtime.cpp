@@ -144,7 +144,7 @@ BackendInfo backend_from_provider(std::string id,std::uint64_t flags) {
         caps|=CAP_RECOVER;
         ops.push_back(generic_operation("recover"));
     }
-    return {id,id,{},caps,"summary","operation-engine",MapAdapter::NativeMap,
+    return {id,id,{},caps,"summary","operation-engine",
             std::move(ops),QualificationMode::None,{},{"summary","exact-allocation"}};
 }
 
