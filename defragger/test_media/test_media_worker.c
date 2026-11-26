@@ -1168,6 +1168,167 @@ static int preflight_mutations(const LdtmFilesystemSpec *spec,
     return preflight_image(spec, "growth-defrag", detail, capacity);
 }
 
+/* Crash the child at a successfully completed durable barrier, never
+ * after a failed flush and never via the provider's error-unwind path.
+ * A fresh process then remounts the same image and exercises RECOVER.
+ * All callbacks except flush are exactly the production host services.
+ * The test does not parse a filesystem journal or modify raw metadata. */
+typedef struct {
+    const LdtmFilesystemSpec *spec;
+    const char *path;
+    unsigned boundary;
+    uint32_t policy;
+    uint64_t repaired;
+} RecoveryFixture;
+static int (*recovery_real_flush)(void *);
+static unsigned recovery_boundary,recovery_flushes;
+static int recovery_fault_flush(void *context)
+{
+    int rc=recovery_real_flush(context);
+    if(!rc && ++recovery_flushes==recovery_boundary)_exit(86);
+    return rc;
+}
+static int recovery_fixture_call(const IfsDefragHostV2 *host,void *symbol,void *opaque)
+{
+    RecoveryFixture *f=opaque;
+    const char *id=!strcmp(f->spec->key,"ufs")?"ufs2":f->spec->key;
+    IfsFsModuleApiEntryV2 entry=NULL;
+    _Static_assert(sizeof(entry)==sizeof(symbol),"Common V2 entry width");
+    memcpy(&entry,&symbol,sizeof(entry));
+    const IfsFsModuleApiV2 *api=entry?entry():NULL;
+    if(!api || !ifs_fs_api_v2_valid(api,id) ||
+       !(api->runtime_profiles&IFS_FS_PROFILE_HOSTED))return -1;
+    const IfsFsCoreOpsV2 *core=(const void *)ifs_fs_group_v2(api,IFS_FS_GROUP_CORE);
+    const IfsFsDefragOpsV2 *defrag=(const void *)ifs_fs_group_v2(api,IFS_FS_GROUP_DEFRAG);
+    if(!core || !core->mount || !core->unmount || !defrag ||
+       (defrag->header.capabilities&IFS_FS_DEFRAG_ALL)!=IFS_FS_DEFRAG_ALL ||
+       !defrag->plan || !defrag->execute || !defrag->recover ||
+       !defrag->verify || !defrag->release_plan)return -1;
+    IfsFilesystemTargetV2 binding={.services=host};
+    if(host->open_target(host->context,f->path,1,NULL,0u,&binding.target)!=0)
+        return -1;
+    IfsFsHostRuntimeV2 runtime={0};
+    IfsFsVolumeInfoV2 info={.structure_bytes=sizeof(info)};
+    void *session=NULL,*plan=NULL;
+    int rc=-1;
+    if(ifs_filesystem_target_runtime_v2(&binding,1,0u,&runtime)!=0 ||
+       core->mount(&runtime,&session,&info)!=IFS_FS_OK || !session)
+        goto done;
+    if(f->boundary) {
+        /* Install the wrapper BEFORE mount only on the next fresh
+         * session: providers retain a private copy of the runtime. */
+        if(core->unmount(session)!=IFS_FS_OK){session=NULL;goto done;}
+        session=NULL;
+        recovery_real_flush=runtime.flush;
+        if(!recovery_real_flush)goto done;
+        recovery_boundary=UINT_MAX;recovery_flushes=0u;
+        runtime.flush=recovery_fault_flush;
+        info.structure_bytes=sizeof(info);
+        if(core->mount(&runtime,&session,&info)!=IFS_FS_OK || !session)
+            goto done;
+        if(defrag->plan(session,"/",f->policy,&plan)!=IFS_FS_OK || !plan)
+            goto done;
+        recovery_flushes=0u;recovery_boundary=f->boundary;
+        uint64_t moved=0u;
+        /* A return here means the chosen durable boundary was not hit.
+         * It must never be mistaken for an interrupted relocation. */
+        (void)defrag->execute(session,plan,&moved);
+        recovery_boundary=UINT_MAX;
+    }else if(defrag->recover(session,0u,&f->repaired)==IFS_FS_OK)
+        rc=0;
+done:
+    recovery_boundary=UINT_MAX;
+    if(plan)defrag->release_plan(session,plan);
+    if(session && core->unmount(session)!=IFS_FS_OK)rc=-1;
+    if(!rc && host->sync_target(host->context,&binding.target)!=0)rc=-1;
+    host->close_target(host->context,&binding.target);
+    return rc;
+}
+static int recovery_fixture_invoke(RecoveryFixture *f)
+{
+    const char *id=!strcmp(f->spec->key,"ufs")?"ufs2":f->spec->key;
+    char module[64]={0};
+    if(ifs_filesystem_module_find_readonly_v2(id,module,sizeof(module))!=0)return -1;
+    return ifs_filesystem_module_call(id,module,IFS_FS_COMMON_EXPORT_V2,
+                                     recovery_fixture_call,f);
+}
+/* The installed worker and CI use this identical, disposable recovery
+ * qualification. Failure must occur before any physical device is unmounted
+ * or modified. A provider that cannot replay a durable interrupted mutation
+ * has not qualified for either destructive operation. */
+static int preflight_recovery(const LdtmFilesystemSpec *spec,
+                               char *detail,size_t capacity)
+{
+    if(spec->creator==LDTM_CREATOR_SWAP)return 0;
+    for(uint32_t policy=0u;policy<=10u;policy+=10u) {
+    unsigned proven_replay=0u;
+    /* Each crash starts from a separately formatted and verified
+     * fragmented corpus. No previous recovery can mask a later fault.
+     * Four successive barriers cover data-before-metadata and redo
+     * publication/application for the native transactional writers. */
+    for(unsigned boundary=1u;boundary<=4u;++boundary) {
+        char dir[]="/tmp/defragmenter-recovery.XXXXXX",path[PATH_MAX],failure[512]={0};
+        if(!mkdtemp(dir)) {
+            (void)snprintf(detail,capacity,"Cannot create private recovery image directory");
+            return -1;
+        }
+        int length=snprintf(path,sizeof(path),"%s/media.img",dir);
+        int ok=length>0 && (size_t)length<sizeof(path);
+        int fd=ok?open(path,O_CREAT|O_EXCL|O_RDWR|O_CLOEXEC|O_NOFOLLOW,0600):-1;
+        if(fd<0)ok=0;
+        else {
+            if(ftruncate(fd,(off_t)((uint64_t)spec->size_mib*LDTM_MIB))!=0)ok=0;
+            if(close(fd)!=0)ok=0;
+        }
+        if(ok && qualify_corpus(spec,path,failure,sizeof(failure))!=0)ok=0;
+        if(ok) {
+            RecoveryFixture f={.spec=spec,.path=path,.boundary=boundary,.policy=policy};
+            fflush(NULL);
+            uint64_t started_ms=0u;
+            pid_t pid=monotonic_millis(&started_ms)==0?fork():-1;
+            if(pid==0){
+                if(setpgid(0,0)!=0)_exit(87);
+                (void)recovery_fixture_invoke(&f);_exit(87);
+            }
+            if(pid<0)ok=0;
+            else {
+                (void)setpgid(pid,pid);
+                int status=0;
+                if(wait_child_until(pid,&status,started_ms)!=0 ||
+                   !WIFEXITED(status) || WEXITSTATUS(status)!=86)
+                    ok=0;
+            }
+            if(ok) {
+                f.boundary=0u;
+                if(recovery_fixture_invoke(&f)!=0 ||
+                   ldtm_raw_fixture(spec,path,false,failure,sizeof(failure))!=0)ok=0;
+                else {
+                    if(f.repaired)++proven_replay;
+                    printf("%s: crash after durable barrier %u; recovered %llu; all payloads verified\n",
+                           spec->key,boundary,(unsigned long long)f.repaired);
+                }
+            }
+        }
+        if(fd>=0 && unlink(path)!=0)ok=0;
+        if(rmdir(dir)!=0)ok=0;
+        if(!ok) {
+            (void)snprintf(detail,capacity,
+                "%s: durable recovery qualification failed for policy %u at barrier %u: %s",
+                spec->key,policy,boundary,failure);
+            return -1;
+        }
+    }
+    if(!proven_replay) {
+        (void)snprintf(detail,capacity,"No durable recovery replay was demonstrated");
+        return -1;
+    }
+    printf("%s: interrupted native relocation policy %u and independent replay qualification passed\n",
+           spec->key,policy);
+    }
+    (void)snprintf(detail,capacity,"Both Common V2 recovery policies passed");
+    return 0;
+}
+
 static int recursive_remove(const char *path) {
     DIR *directory = opendir(path);
     struct dirent *entry;
@@ -1250,7 +1411,8 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device,
                spec->key);
         fflush(stdout);
         if (preflight_corpus(spec, safety, sizeof(safety)) != 0 ||
-            preflight_mutations(spec, safety, sizeof(safety)) != 0) {
+            preflight_mutations(spec, safety, sizeof(safety)) != 0 ||
+            preflight_recovery(spec, safety, sizeof(safety)) != 0) {
             emit_status(spec->key, "qualification-failed", safety);
             fprintf(stderr, "Provider preflight failed; selected disk has not been repartitioned or unmounted.\n");
             return 2;
@@ -1662,7 +1824,8 @@ int ldtm_worker_qualify(const char *device)
         const LdtmFilesystemSpec *spec = &ldtm_specs()[index];
         if (!expected[index].populated ||
             preflight_corpus(spec, safety, sizeof(safety)) != 0 ||
-            preflight_mutations(spec, safety, sizeof(safety)) != 0) {
+            preflight_mutations(spec, safety, sizeof(safety)) != 0 ||
+            preflight_recovery(spec, safety, sizeof(safety)) != 0) {
             fprintf(stderr, "Current disposable qualification failed for %s; physical media untouched.\n",
                     spec->key);
             return 2;
