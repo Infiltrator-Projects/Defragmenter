@@ -29,7 +29,7 @@ typedef struct {
 static const char *provider(const LdtmFilesystemSpec *s)
 {
     if(!s || !s->key)return NULL;
-    return !strcmp(s->key,"ufs")?"ufs2":s->key;
+    return s->key;
 }
 static int is_swap(const LdtmFilesystemSpec *s)
 { return s && s->creator==LDTM_CREATOR_SWAP; }

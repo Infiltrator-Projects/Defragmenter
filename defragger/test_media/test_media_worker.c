@@ -1108,7 +1108,7 @@ typedef struct {
 static int locate_payload(const IfsDefragHostV2 *host, void *symbol, void *opaque)
 {
     CorruptionTarget *t=opaque;
-    const char *id=!strcmp(t->spec->key,"ufs")?"ufs2":t->spec->key;
+    const char *id=t->spec->key;
     IfsFsModuleApiEntryV2 entry=NULL;
     _Static_assert(sizeof(entry)==sizeof(symbol),"Common V2 entry width");
     memcpy(&entry,&symbol,sizeof(entry));
@@ -1159,7 +1159,7 @@ static int verify_corruption(const LdtmFilesystemSpec *spec,const char *path)
        st.st_size!=(off_t)((uint64_t)spec->size_mib*LDTM_MIB))return 1;
     char detail[512]={0};
     if(ldtm_raw_fixture(spec,path,false,detail,sizeof(detail))!=0)return 1;
-    const char *id=!strcmp(spec->key,"ufs")?"ufs2":spec->key;
+    const char *id=spec->key;
     char module[64]={0};
     CorruptionTarget target={.spec=spec,.path=path};
     if(ifs_filesystem_module_find_readonly_v2(id,module,sizeof(module))!=0 ||
@@ -1297,7 +1297,7 @@ static int recovery_fault_flush(void *context)
 static int recovery_fixture_call(const IfsDefragHostV2 *host,void *symbol,void *opaque)
 {
     RecoveryFixture *f=opaque;
-    const char *id=!strcmp(f->spec->key,"ufs")?"ufs2":f->spec->key;
+    const char *id=f->spec->key;
     IfsFsModuleApiEntryV2 entry=NULL;
     _Static_assert(sizeof(entry)==sizeof(symbol),"Common V2 entry width");
     memcpy(&entry,&symbol,sizeof(entry));
@@ -1352,7 +1352,7 @@ done:
 }
 static int recovery_fixture_invoke(RecoveryFixture *f)
 {
-    const char *id=!strcmp(f->spec->key,"ufs")?"ufs2":f->spec->key;
+    const char *id=f->spec->key;
     char module[64]={0};
     if(ifs_filesystem_module_find_readonly_v2(id,module,sizeof(module))!=0)return -1;
     return ifs_filesystem_module_call(id,module,IFS_FS_COMMON_EXPORT_V2,
@@ -1892,7 +1892,7 @@ int ldtm_worker_verify(const char *device) {
 static int run_production_defrag(const LdtmFilesystemSpec *spec,
     const char *partition, const char *operation)
 {
-    const char *format=!strcmp(spec->key,"ufs")?"ufs2":spec->key;
+    const char *format=spec->key;
     char module[64]={0};
     if(ifs_filesystem_module_find_v2(format,module,sizeof(module))!=0)
         return -1;

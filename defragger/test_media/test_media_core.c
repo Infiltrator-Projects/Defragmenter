@@ -40,7 +40,7 @@ static const LdtmFilesystemSpec LDTM_SPECS[LDTM_SPEC_COUNT] = {
     {"hfs", "LD_HFS", 2048U, 200U, LDTM_CREATOR_HFS, ""},
     {"hfsplus", "LD_HFSPLUS", 2048U, 200U, LDTM_CREATOR_HFSPLUS, ""},
     {"minix", "LD_MINIX", 2048U, 200U, LDTM_CREATOR_MINIX, ""},
-    {"ufs", "LD_UFS", 2048U, 200U, LDTM_CREATOR_UFS,
+    {"ufs2", "LD_UFS2", 2048U, 200U, LDTM_CREATOR_UFS,
      "UFS2 Common V2 provider must support the full corpus and exact fragmentation analysis."},
     {"zfs", "LD_ZFS", 2048U, 200U, LDTM_CREATOR_ZFS,
      "ZFS Common V2 provider must create and verify the corpus; defragmentation is analysis-only."},

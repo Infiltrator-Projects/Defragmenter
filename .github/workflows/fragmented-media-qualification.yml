@@ -214,7 +214,6 @@ jobs:
           FORMAT: ${{ matrix.format_id }}
         run: |
           set -euo pipefail
-          if [ "$FORMAT" = ufs2 ]; then FORMAT=ufs; fi
           work=$(mktemp -d)
           trap 'rm -rf "$work"' EXIT
           fixture=defragger/build-media/defragmenter-test-media-raw-test

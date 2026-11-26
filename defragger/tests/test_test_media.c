@@ -77,7 +77,7 @@ int main(void) {
     const LdtmFilesystemSpec *pfs3 = ldtm_find_spec("pfs3");
     const LdtmFilesystemSpec *xfs = ldtm_find_spec("xfs");
     const LdtmFilesystemSpec *btrfs = ldtm_find_spec("btrfs");
-    const LdtmFilesystemSpec *ufs = ldtm_find_spec("ufs");
+    const LdtmFilesystemSpec *ufs = ldtm_find_spec("ufs2");
     const LdtmFilesystemSpec *zfs = ldtm_find_spec("zfs");
     const LdtmFilesystemSpec *apfs = ldtm_find_spec("apfs");
     LdtmFragmentProfile small;
@@ -199,10 +199,11 @@ int main(void) {
     CHECK(strstr(script, "name=\"LD_OFS\"") != NULL);
     CHECK(strstr(script, "name=\"LD_FFS\"") != NULL);
     CHECK(strstr(script, "name=\"LD_PFS3\"") != NULL);
-    CHECK(strstr(script, "name=\"LD_UFS\"") != NULL);
+    CHECK(strstr(script, "name=\"LD_UFS2\"") != NULL);
     CHECK(strstr(script, "name=\"LD_UFS1\"") != NULL);
     CHECK(strstr(script, "name=\"LD_SFS2\"") != NULL);
     CHECK(ldtm_find_spec("ufs1") != NULL && ldtm_find_spec("sfs2") != NULL);
+    CHECK(ldtm_find_spec("ufs") == NULL);
     CHECK(strstr(script, "name=\"LD_ZFS\"") != NULL);
     CHECK(strstr(script, "type=swap, name=\"LD_SWAP\"") != NULL);
     cursor = script;

@@ -124,7 +124,7 @@ int main(int argc, char **argv)
     unsigned char before[32], after[32];
     const char *const formats[] = {"fat12", "fat16", "fat32", "exfat", "ntfs",
         "ext2", "ext3", "ext4", "xfs", "btrfs", "ofs", "ffs", "sfs",
-        "pfs3", "hfs", "hfsplus", "minix", "ufs", "zfs", "apfs", "swap", "ufs1", "sfs2",
+        "pfs3", "hfs", "hfsplus", "minix", "ufs2", "zfs", "apfs", "swap", "ufs1", "sfs2",
         "adfs", "bcachefs", "befs", "bfs", "cpm", "efs", "f2fs", "fosfat", "gfs2", "hpfs", "jfs", "nilfs2", "ocfs2", "omfs", "qnx4", "qnx6", "reiserfs", "sysv", "udf", "vmfs", "vmfs6"};
     for (size_t n = 0U; n < sizeof(formats) / sizeof(formats[0]); ++n) {
         const off_t size = (off_t)((n == 0 ? 255ULL : 2048ULL) * 1024ULL * 1024ULL);

@@ -221,7 +221,7 @@ static const char *filesystem_family_class(const char *key)
         strcmp(key, "sfs") == 0 || strcmp(key, "pfs3") == 0)
         return "ldtm-fs-family-magenta";
     if (strcmp(key, "hfs") == 0 || strcmp(key, "hfsplus") == 0 ||
-        strcmp(key, "ufs") == 0 || strcmp(key, "minix") == 0)
+        g_str_has_prefix(key, "ufs") || strcmp(key, "minix") == 0)
         return "ldtm-fs-family-amber";
     return "ldtm-fs-family-neutral";
 }
