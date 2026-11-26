@@ -48,11 +48,15 @@ int main(int argc,char** argv) {
         check(!fs::exists(root/"native/fat_defrag_abi.h"),
               "Retired FAT defrag V1 host interface still present");
         const auto runtime=read(root/"native/runtime.cpp");
-        for(const char* token:{
-            "for (const int bits : {12, 16, 32})",
-            "write, \"exact\", \"operation-engine\", MapAdapter::Fat",
-            "standard_write_ops(\"operation-engine\")"
-        })contains(runtime,token,"Versioned native FAT operations");
+        contains(runtime,"ifs_filesystem_module_visit_v2","Installed-provider inventory");
+        check(runtime.find("MapAdapter::Fat")==std::string::npos &&
+              runtime.find("for (const int bits")==std::string::npos,
+              "Host must not carry a FAT-specific registry or map adapter");
+        const auto host=read(root/"native/filesystem_module_host.c");
+        const auto mapper=read(root/"native/map.cpp");
+        check(host.find("v2_fat_")==std::string::npos &&
+              mapper.find("map_fat(")==std::string::npos,
+              "Host must not carry FAT-specific mapping");
         const auto engine=read(root/"native/operation_engine.cpp");
         contains(engine,"ifs_filesystem_module_detect_installed_v2","Generic installed provider probing");
         contains(engine,"ifs_filesystem_module_run","Common V2 operation dispatch");

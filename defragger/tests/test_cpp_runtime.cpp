@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "runtime.hpp"
+extern "C" {
+#include "filesystem_module_host.h"
+}
 #include "helper_policy.hpp"
 #include "json.hpp"
 #include "map.hpp"
@@ -70,57 +73,21 @@ int main() {
     }
     ok = check(rejected_overlap, "native aggregation rejects overlapping states") && ok;
 
-    const auto& registry = backend_registry();
-    ok = check(registry.size() == 41U, "registry size") && ok;
-
-    // Each EXT variant is independently registered; no format impersonation.
-    for (const char* expected : {"ext2", "ext3", "ext4"}) {
-        const BackendInfo* ext = backend_by_fstype(expected);
-        ok = check(ext != nullptr, "independent EXT backend lookup") && ok;
-        if (ext != nullptr) {
-            ok = check(ext->id == expected, "EXT backend keeps its own identity") && ok;
-            ok = check((ext->capabilities & CAP_DEFRAG) != 0U,
-                       "EXT backend advertises qualified defrag") && ok;
-            ok = check(operation_for(*ext, "growth-defrag") != nullptr,
-                       "EXT growth-defrag operation") && ok;
-            ok = check(ext->worker == "operation-engine",
-                       "EXT backend retains common ABI dispatch worker") && ok;
-        }
-    }
-
-    const BackendInfo* vfat = backend_by_fstype("vfat");
-    ok = check(vfat != nullptr, "vfat alias lookup") && ok;
-    if (vfat != nullptr)
-        ok = check(vfat->id == "fat32", "vfat maps to fat32") && ok;
-
-    const BackendInfo* apfs = backend_by_fstype("apfs");
-    ok = check(apfs != nullptr, "APFS lookup") && ok;
-    if (apfs != nullptr) {
-        ok = check(apfs->map_accuracy == "exact-bounded-spaceman",
-                   "APFS registry matches native map accuracy") && ok;
-        ok = check((apfs->capabilities & CAP_DEFRAG) != 0U,
-                   "APFS advertises bounded defrag") && ok;
-        ok = check(operation_for(*apfs, "growth-defrag") != nullptr,
-                   "APFS growth-defrag operation") && ok;
-        ok = check(operation_for(*apfs, "recover") != nullptr,
-                   "APFS recover operation") && ok;
-    }
-
-    const BackendInfo* zfs = backend_by_fstype("zfs");
-    ok = check(zfs != nullptr, "ZFS lookup") && ok;
-    if (zfs != nullptr) {
-        ok = check(zfs->map_accuracy == "exact-bounded",
-                   "ZFS advertises bounded exact analysis") && ok;
-        ok = check((zfs->capabilities & CAP_DEFRAG) == 0U &&
-                   (zfs->capabilities & CAP_GROWTH_DEFRAG) == 0U &&
-                   (zfs->capabilities & CAP_RECOVER) == 0U,
-                   "ZFS mutation remains out of product scope") && ok;
-        ok = check(zfs->operations.empty(),
-                   "ZFS exposes no raw mutation operations") && ok;
-    }
-
-    const BackendInfo* fat12 = backend_by_fstype("fat12");
-    ok = check(fat12 != nullptr, "FAT12 lookup") && ok;
+    // A previously unknown descriptor must be sufficient to construct
+    // all UI operations. Neither a missing module nor a partial writer
+    // can acquire capabilities from a hard-coded registry.
+    const auto reader=backend_from_provider("arbitrary_fs",IFS_FS_DEFRAG_MAP);
+    ok=check(reader.id=="arbitrary_fs" && reader.capabilities==(CAP_MAP|CAP_ANALYSE) &&
+        reader.operations.empty(),"unknown installed read-only provider") && ok;
+    const auto incomplete=backend_from_provider("another_fs",IFS_FS_DEFRAG_PLAN);
+    ok=check(incomplete.operations.empty(),"incomplete mutation contract refused") && ok;
+    const auto writer=backend_from_provider("arbitrary_fs",IFS_FS_DEFRAG_ALL);
+    ok=check(operation_for(writer,"defrag") && operation_for(writer,"growth-defrag") &&
+        operation_for(writer,"recover"),"generic provider operations") && ok;
+    const auto nr=backend_from_provider("no_recovery",IFS_FS_DEFRAG_ALL&~IFS_FS_DEFRAG_RECOVER);
+    ok=check(operation_for(nr,"defrag") && !operation_for(nr,"recover"),"independent recovery capability") && ok;
+    const auto generic=backend_from_provider("fat12",IFS_FS_DEFRAG_MAP);
+    const BackendInfo* fat12=&generic;
     if(fat12) {
         const Json payload=Json::parse(
             "{\"filesystem\":\"fat12\",\"abi\":2,\"device_bytes\":2048,"
@@ -205,8 +172,8 @@ int main() {
     }
     ok = check(rejected_timeout, "child execution timeout is enforced") && ok;
 
-    const BackendInfo* btrfs=backend_by_fstype("btrfs");
-    ok=check(btrfs!=nullptr,"Btrfs lookup") && ok;
+    const auto fixture=backend_from_provider("btrfs",IFS_FS_DEFRAG_MAP);
+    const BackendInfo* btrfs=&fixture;
     if(btrfs) {
         const auto test_map=[&](const char* json,bool accepted) {
             bool passed=false;
@@ -310,12 +277,13 @@ int main() {
     const std::string manifest = registry_manifest_json();
     ok = check(manifest.find("\"schema\":3") != std::string::npos,
                "manifest schema") && ok;
-    ok = check(manifest.find("\"id\":\"ntfs\"") != std::string::npos,
-               "manifest NTFS entry") && ok;
-    ok = check(manifest.find("\"id\":\"hfsplus\"") != std::string::npos,
-               "manifest HFS+ entry") && ok;
-    ok = check(manifest.find("\"id\":\"pfs3\"") != std::string::npos,
-               "manifest PFS3 entry") && ok;
+    const auto listed=Json::parse(manifest).at("backends").array();
+    for(const auto& descriptor:listed) {
+        const auto id=descriptor.at("id").string_or();
+        uint64_t flags=0u;
+        ok=check(ifs_filesystem_module_capabilities_v2(id.c_str(),&flags)==0,
+                 "registry entry requires an installed unique SO") && ok;
+    }
 
     return ok ? 0 : 1;
 }

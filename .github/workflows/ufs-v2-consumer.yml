@@ -115,12 +115,13 @@ jobs:
                  and .block_bytes == 65536 and .total_bytes > 0
                  and .free_bytes > 0 and .free_bytes < .total_bytes
                  and .source == "Common V2 VOLUME_QUERY"' build/ufs2-volume.json
-          # Existing user-facing UFS aliases must select the actual format
-          # through provider-owned Common V2 probes, not host disk decoding.
-          "$consumer" volume-info "$image" --filesystem ufs > build/ufs2-auto.json
-          "$consumer" volume-info "$image" --filesystem 4.2bsd > build/ufs2-bsd-alias.json
+          # Automatic detection uses every installed SO, not a host alias table.
+          "$consumer" volume-info "$image" > build/ufs2-auto.json
           jq -e '.filesystem == "ufs2" and .abi == 2 and .total_bytes > 0' build/ufs2-auto.json
-          jq -e '.filesystem == "ufs2" and .abi == 2 and .total_bytes > 0' build/ufs2-bsd-alias.json
+          cmp build/ufs2-volume.json build/ufs2-auto.json
+          if "$consumer" volume-info "$image" --filesystem ufs; then
+            echo "ERROR: uninstalled generic identifier was accepted" >&2; exit 1
+          fi
           "$consumer" volume-info "$image" --filesystem ufs2 \
             --sector-bytes=4096 > build/ufs2-4kn.json
           jq -e '.filesystem == "ufs2" and .total_bytes > 0' build/ufs2-4kn.json
@@ -128,7 +129,7 @@ jobs:
           # block decoding. This >32-extent file exercises host pagination.
           "$consumer" map "$image" --filesystem ufs2 --path / > build/ufs2-root-map.log
           "$consumer" map "$image" --filesystem ufs2 --path /file000 > build/ufs2-file-map.log
-          "$consumer" map "$image" --filesystem ufs --path /file000 > build/ufs2-alias-map.log
+          "$consumer" map "$image" --path /file000 > build/ufs2-alias-map.log
           for record in build/ufs2-root-map.log build/ufs2-file-map.log build/ufs2-alias-map.log; do
             jq -e '.filesystem=="ufs2" and .abi==2 and .extent_count==(.extents|length)' "$record"
           done

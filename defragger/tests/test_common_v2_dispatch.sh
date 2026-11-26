@@ -6,6 +6,7 @@ engine=$1
 module=$2
 no_recovery_module=$3
 broken_map_module=$4
+mapper=$5
 root=$(mktemp -d /tmp/defrag-v2-dispatch-XXXXXXXX)
 trap 'rm -rf -- "$root"' EXIT
 chmod 700 "$root"
@@ -88,6 +89,13 @@ cmp "$root/catalogue.json" "$root/analysis.json"
 mv "$root/Filesystems/TESTV2.so" "$root/Filesystems/ARBITRARY.so"
 "$engine" analyse-json "$device" > "$root/auto.json"
 cmp "$root/catalogue.json" "$root/auto.json"
+"$mapper" --list-backends > "$root/backends.json"
+grep -Fq '"id":"testv2"' "$root/backends.json"
+"$mapper" "$device" --probe > "$root/probe.json"
+grep -Fq '"filesystem":"testv2"' "$root/probe.json"
+"$mapper" "$device" --cells 4 > "$root/map.json"
+grep -Fq '"backend_id":"testv2"' "$root/map.json"
+grep -Fq '"unknown_bytes":0' "$root/map.json"
 mv "$root/Filesystems/ARBITRARY.so" "$root/Filesystems/TESTV2.so"
 "$engine" map "$device" --filesystem testv2 > "$root/output.txt"
 grep -Fq '"extent_count":33' "$root/output.txt"
@@ -158,4 +166,10 @@ if "$engine" defrag "$device" --filesystem notinstalled --path=/FILE \
 fi
 after=$(sha256sum "$device" | cut -d' ' -f1)
 test "$before" = "$after"
+rm -f "$root/Filesystems/TESTV2.so"
+"$mapper" --list-backends > "$root/empty.json"
+grep -Fq '"backends":[]' "$root/empty.json"
+if "$mapper" "$device" --probe >/dev/null 2>&1; then
+    echo "Removed provider still discoverable" >&2; exit 1
+fi
 echo 'DEFRAGGER-STRICT-COMMON-V2-TRUST-EXECUTE-VERIFY-RECOVER-PASS'

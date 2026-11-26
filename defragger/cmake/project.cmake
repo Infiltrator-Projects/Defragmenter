@@ -797,13 +797,21 @@ if(BUILD_TESTING)
         defragmenter-runtime-cpp defragmenter-core
         defragmenter-common-v2-test-host)
     endif()
+    if(NOT TARGET defragmenter-mapper-v2-test)
+        add_executable(defragmenter-mapper-v2-test native/mapper.cpp)
+        target_compile_options(defragmenter-mapper-v2-test PRIVATE ${LD_WARNING_FLAGS})
+        target_compile_definitions(defragmenter-mapper-v2-test PRIVATE _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+        target_link_libraries(defragmenter-mapper-v2-test PRIVATE
+            defragmenter-runtime-cpp defragmenter-common-v2-test-host)
+    endif()
     add_test(NAME defragmenter-strict-common-v2-host
         COMMAND /bin/bash
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_common_v2_dispatch.sh"
             "$<TARGET_FILE:defragmenter-operation-engine-v2-test>"
             "$<TARGET_FILE:defragmenter-common-v2-test-provider>"
             "$<TARGET_FILE:defragmenter-common-v2-test-no-recovery>"
-            "$<TARGET_FILE:defragmenter-common-v2-test-broken-map>")
+            "$<TARGET_FILE:defragmenter-common-v2-test-broken-map>"
+            "$<TARGET_FILE:defragmenter-mapper-v2-test>")
 
 
     # EXT bitmap-cache and descriptor-race regression now runs in Filesystem-EXT4 CI.

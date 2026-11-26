@@ -36,6 +36,7 @@ jobs:
           set -euo pipefail
           cmake --build defragger/build-v2-map --parallel 2 --target \
             defragmenter-operation-engine-v2-test \
+            defragmenter-mapper-v2-test \
             defragmenter-common-v2-test-provider \
             defragmenter-common-v2-test-no-recovery \
             defragmenter-common-v2-test-broken-map
