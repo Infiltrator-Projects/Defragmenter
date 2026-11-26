@@ -81,6 +81,22 @@ grep -Fq '"allocation_free_bytes":1048064' "$root/catalogue.json"
 grep -Fq '"provider_plan_preflight":true' "$root/catalogue.json"
 grep -Fq '"defrag_qualified":true' "$root/catalogue.json"
 grep -Fq '"growth_qualified":true' "$root/catalogue.json"
+# Valid partial allocation remains explicitly unknown. A contradictory map
+# must fail without publishing even a partial catalogue or writing the image.
+partial="$root/partial.img"
+cp "$device" "$partial"
+printf U | dd of="$partial" bs=1 seek=96 conv=notrunc status=none
+"$engine" map-catalogue "$partial" --filesystem testv2 > "$root/partial.json"
+grep -Fq '"allocation_unknown_bytes":512' "$root/partial.json"
+grep -Fq '"allocation_free_bytes":1047552' "$root/partial.json"
+printf X | dd of="$partial" bs=1 seek=96 conv=notrunc status=none
+partial_before=$(sha256sum "$partial" | cut -d' ' -f1)
+if "$engine" map-catalogue "$partial" --filesystem testv2 > "$root/contradiction.json" 2>/dev/null; then
+    echo "Contradictory partial allocation accounting accepted" >&2; exit 1
+fi
+test ! -s "$root/contradiction.json"
+test "$partial_before" = "$(sha256sum "$partial" | cut -d' ' -f1)"
+
 # Both public analysis entry points must emit real V2 JSON, not a legacy
 # status string. The path map must retain all 33 extents across two pages.
 "$engine" analyse-json "$device" --filesystem testv2 > "$root/analysis.json"

@@ -747,10 +747,11 @@ static int v2_allocation_json(FILE *out,const IfsFsAllocationOpsV2 *ops,
         if(!ifs_fs_allocation_page_v2_valid(runtime->volume_bytes,cursor,rc,
                 ranges,64u,count,&next,&unknown))return -1;
         if(rc==IFS_FS_END) {
-            /* The volume's accounting must agree with a complete map.
-             * For partial maps, known free cannot exceed measured free. */
+            /* A partial map can conceal free space only within its UNKNOWN
+             * ranges. Both bounds must hold; subtraction avoids overflow.
+             * In particular, a complete map requires exact agreement. */
             if(free_bytes>info->free_bytes ||
-               (!unknown && free_bytes!=info->free_bytes))return -1;
+               info->free_bytes-free_bytes>unknown)return -1;
             return fprintf(out,"],\"allocation_unknown_bytes\":%llu,"
                 "\"allocation_free_bytes\":%llu",
                 (unsigned long long)unknown,(unsigned long long)free_bytes)<0?-1:0;

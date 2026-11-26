@@ -157,6 +157,25 @@ static int allocation_map(void *m,uint64_t first,IfsFsAllocationRangeV2 *out,
     if(!m || !out || !cap || cap>64u)return IFS_FS_INVALID;
     MockVolume *v=m;
     if(first==v->host->volume_bytes)return IFS_FS_END;
+    /* Test-controlled partial maps, selected by a byte in disposable media.
+     * U is consistent; X claims more measured free space than UNKNOWN could
+     * contain. Neither case is a fallback or a production provider. */
+    char mode=0;
+    if(v->host->read_at(v->host->context,96u,&mode,1u))
+        return IFS_FS_IO_ERROR;
+    if(mode=='U' || mode=='X') {
+        if(first==0u)
+            out[0]=(IfsFsAllocationRangeV2){0u,512u,IFS_FS_SPACE_ALLOCATED,0u};
+        else if(first==512u)
+            out[0]=(IfsFsAllocationRangeV2){512u,512u,IFS_FS_SPACE_UNKNOWN,0u};
+        else if(first==1024u)
+            out[0]=(IfsFsAllocationRangeV2){1024u,
+                v->host->volume_bytes-1024u,
+                mode=='U'?IFS_FS_SPACE_FREE:IFS_FS_SPACE_ALLOCATED,0u};
+        else return IFS_FS_INVALID;
+        *written=1u;
+        return IFS_FS_OK;
+    }
     if(first==0u)out[0]=(IfsFsAllocationRangeV2){0u,512u,IFS_FS_SPACE_ALLOCATED,0u};
     else if(first==512u) {
 #ifdef IFS_TEST_BROKEN_MAP
