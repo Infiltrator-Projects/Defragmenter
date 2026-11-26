@@ -57,21 +57,20 @@ std::uint32_t provider_capabilities(const defragger::BackendInfo& backend,
     if((flags&write)==write)caps|=defragger::CAP_DEFRAG|defragger::CAP_GROWTH_DEFRAG;
     if(flags&IFS_FS_DEFRAG_RECOVER)caps|=defragger::CAP_RECOVER;
     // Application policy can further restrict a provider, never extend it.
-    return caps & backend.capabilities;
+    (void)backend;
+    return caps;
 }
 
 defragger::Json probe_result(
     const defragger::BackendInfo& backend,
     std::string_view identified_filesystem) {
     using defragger::Json;
-    Json manifest = Json::parse(defragger::registry_manifest_json(2U));
-    const Json& backends = manifest.at("backends");
-    Json operations(Json::Array{});
-    for (const auto& entry : backends.array()) {
-        if (entry.at("id").string_or() == backend.id) {
-            operations = entry.at("operations");
-            break;
-        }
+    Json::Array operations;
+    for(const auto& spec:backend.operations) {
+        Json::Object item;
+        item["name"]=Json(spec.name);
+        item["label"]=Json(spec.label);
+        operations.emplace_back(std::move(item));
     }
     Json::Object out;
     out["filesystem"] = Json(std::string(identified_filesystem));
@@ -80,7 +79,7 @@ defragger::Json probe_result(
     out["capabilities"] = Json::unsigned_integer(caps);
     out["map_accuracy"] = Json("unverified");
     Json::Array supported;
-    for(const auto& item:operations.array()) {
+    for(const auto& item:operations) {
         const auto name=item.at("name").string_or();
         if((name=="defrag" && (caps&defragger::CAP_DEFRAG)) ||
            (name=="growth-defrag" && (caps&defragger::CAP_GROWTH_DEFRAG)) ||
@@ -156,37 +155,23 @@ int main(int argc, char** argv) {
     if (path.empty()) return usage();
 
     try {
-        const defragger::BackendInfo* backend = nullptr;
-        std::string identified_filesystem;
+        char format[IFS_FS_MAX_FORMAT_ID+1u]={},module[64]={};
         std::transform(filesystem.begin(),filesystem.end(),filesystem.begin(),
             [](unsigned char c){return static_cast<char>(std::tolower(c));});
-        const auto accept=[&](const defragger::BackendInfo& candidate,std::string_view exact={}) {
-            const auto found=defragger::backend_identified_filesystem(candidate,path,exact);
-            if(found.empty())return;
-            if(backend)throw std::runtime_error("Multiple Common V2 providers recognise this target");
-            backend=&candidate;
-            identified_filesystem=found;
-        };
-        if(filesystem=="vfat" || filesystem=="fat" || filesystem=="msdos") {
-            for(const auto* id:{"fat12","fat16","fat32"})
-                if(const auto* candidate=defragger::backend_by_fstype(id))
-                    accept(*candidate,id);
-        } else if(!filesystem.empty()) {
-            if(const auto* candidate=defragger::backend_by_fstype(filesystem)) {
-                if(filesystem=="ofs" || filesystem=="ffs" || filesystem=="ufs1" ||
-                   filesystem=="ufs2" || filesystem=="sfs" || filesystem=="sfs0" || filesystem=="sfs2")
-                    accept(*candidate,filesystem=="sfs0"?"sfs":filesystem);
-                else accept(*candidate);
-            }
-        } else {
-            for(const auto& candidate:defragger::backend_registry())accept(candidate);
+        int rc=0;
+        if(filesystem.empty() || filesystem=="auto")
+            rc=ifs_filesystem_module_detect_installed_v2(path.c_str(),format,sizeof(format),module,sizeof(module));
+        else {
+            const char* requested[]={filesystem.c_str()};
+            rc=ifs_filesystem_module_detect_v2(path.c_str(),requested,1u,format,sizeof(format),module,sizeof(module));
         }
-        if (backend == nullptr) {
-            std::fputs(
-                "No self-contained filesystem plugin recognised this volume.\n",
-                stderr);
-            return 2;
-        }
+        if(rc)throw std::runtime_error("No unique installed Common V2 provider recognises this target");
+        std::string identified_filesystem(format);
+        std::uint64_t flags=0;
+        if(ifs_filesystem_module_capabilities_v2(format,&flags)!=0)
+            throw std::runtime_error("Provider changed during discovery");
+        const auto selected=defragger::backend_from_provider(format,flags);
+        const auto* backend=&selected;
         if (probe) {
             if (identified_filesystem.empty()) {
                 identified_filesystem =

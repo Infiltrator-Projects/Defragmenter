@@ -86,6 +86,9 @@ struct BackendInfo {
           accepted_map_accuracies(std::move(accepted_map_accuracies_value)) {}
 };
 
+/* Generic UI description derived only from a Common V2 descriptor. */
+BackendInfo backend_from_provider(std::string id,std::uint64_t defrag_flags);
+OperationSpec generic_operation(std::string_view name);
 const std::vector<BackendInfo>& backend_registry();
 const BackendInfo* backend_by_fstype(std::string_view filesystem);
 const OperationSpec* operation_for(const BackendInfo& backend,

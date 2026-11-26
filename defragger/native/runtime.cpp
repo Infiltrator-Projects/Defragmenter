@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "runtime.hpp"
+extern "C" {
+#include "filesystem_module_host.h"
+}
 
 #include <infiltratr/escape.h>
 
@@ -55,17 +58,6 @@ OperationSpec operation(std::string name, std::string worker,
     return {std::move(name), std::move(worker), std::move(policy),
             std::move(label), std::move(description), std::move(warning),
             std::move(defaults), {}, true, false};
-}
-
-std::vector<OperationSpec> standard_write_ops(
-    const char* worker,
-    const char* defrag_warning = "",
-    const char* growth_warning = "") {
-    return {
-        operation("defrag", worker, defrag_warning),
-        operation("growth-defrag", worker, growth_warning),
-        operation("recover", worker),
-    };
 }
 
 std::string lower_ascii(std::string_view text) {
@@ -132,227 +124,52 @@ const char* qualification_mode_key(QualificationMode mode) {
     throw std::logic_error("unknown qualification mode");
 }
 
-void validate_backend_registry(const std::vector<BackendInfo>& registry) {
-    std::vector<std::string> names;
-    for (const auto& backend : registry) {
-        if (backend.id.empty())
-            throw std::logic_error("backend registry contains an empty id");
-        if (backend.map_accuracy.empty())
-            throw std::logic_error("backend " + backend.id + " has no map accuracy contract");
-        if (program_spec(backend.worker) == nullptr)
-            throw std::logic_error(
-                "backend " + backend.id + " names an unknown worker: " +
-                backend.worker);
-        if (!backend.map_auxiliary_worker.empty() &&
-            program_spec(backend.map_auxiliary_worker) == nullptr) {
-            throw std::logic_error(
-                "backend " + backend.id + " names an unknown map auxiliary worker: " +
-                backend.map_auxiliary_worker);
-        }
+ } // namespace
 
-        std::vector<std::string> accuracies;
-        for (const auto& accuracy : backend.accepted_map_accuracies) {
-            if (accuracy.empty())
-                throw std::logic_error(
-                    "backend " + backend.id + " contains an empty accepted map accuracy");
-            if (std::find(accuracies.begin(), accuracies.end(), accuracy) !=
-                accuracies.end()) {
-                throw std::logic_error(
-                    "backend " + backend.id + " repeats accepted map accuracy: " + accuracy);
-            }
-            accuracies.push_back(accuracy);
-        }
-
-        const bool writable = (backend.capabilities & CAP_DEFRAG) != 0U;
-        if (writable != !backend.operations.empty()) {
-            throw std::logic_error(
-                "backend " + backend.id +
-                " has inconsistent mutation capabilities and operations");
-        }
-        if (!writable && backend.qualification_mode != QualificationMode::None) {
-            throw std::logic_error(
-                "read-only backend " + backend.id +
-                " declares mutation qualification policy");
-        }
-
-        const std::string primary_name = lower_ascii(backend.id);
-        if (std::find(names.begin(), names.end(), primary_name) != names.end())
-            throw std::logic_error(
-                "backend registry contains duplicate id: " + primary_name);
-        names.push_back(primary_name);
-        for (const auto& raw_alias : backend.aliases) {
-            if (raw_alias.empty())
-                throw std::logic_error(
-                    "backend " + backend.id + " contains an empty alias");
-            const std::string alias = lower_ascii(raw_alias);
-            if (alias == primary_name) continue;
-            if (std::find(names.begin(), names.end(), alias) != names.end())
-                throw std::logic_error(
-                    "backend registry contains colliding alias: " + alias);
-            names.push_back(alias);
-        }
-
-        for (const auto& operation : backend.operations) {
-            if (program_spec(operation.worker) == nullptr) {
-                throw std::logic_error(
-                    "backend " + backend.id + " operation " + operation.name +
-                    " names an unknown worker: " + operation.worker);
-            }
-            for (const auto& option : operation.default_options) {
-                if (option.empty())
-                    throw std::logic_error(
-                        "backend " + backend.id + " operation " + operation.name +
-                        " contains an empty default option");
-            }
-        }
-    }
+OperationSpec generic_operation(std::string_view name) {
+    return operation(std::string(name),"operation-engine");
 }
 
-} // namespace
+BackendInfo backend_from_provider(std::string id,std::uint64_t flags) {
+    std::uint32_t caps=0u;
+    std::vector<OperationSpec> ops;
+    if(flags&IFS_FS_DEFRAG_MAP)caps|=CAP_ANALYSE|CAP_MAP;
+    const auto write=IFS_FS_DEFRAG_PLAN|IFS_FS_DEFRAG_EXECUTE|IFS_FS_DEFRAG_VERIFY;
+    if((flags&write)==write) {
+        caps|=CAP_DEFRAG|CAP_GROWTH_DEFRAG;
+        ops.push_back(generic_operation("defrag"));
+        ops.push_back(generic_operation("growth-defrag"));
+    }
+    if(flags&IFS_FS_DEFRAG_RECOVER) {
+        caps|=CAP_RECOVER;
+        ops.push_back(generic_operation("recover"));
+    }
+    return {id,id,{},caps,"summary","operation-engine",MapAdapter::NativeMap,
+            std::move(ops),QualificationMode::None,{},{"summary","exact-allocation"}};
+}
 
 const std::vector<BackendInfo>& backend_registry() {
-    static const std::vector<BackendInfo> registry = [] {
-        const std::uint32_t read = CAP_ANALYSE | CAP_MAP;
-        const std::uint32_t write =
-            read | CAP_DEFRAG | CAP_RECOVER | CAP_LIVE_MAP |
-            CAP_GROWTH_DEFRAG;
-
+    // Inventory is a snapshot of installed trusted providers, not a
+    // compile-time filesystem catalogue. Ambiguous identities are excluded.
+    static const std::vector<BackendInfo> registry=[] {
         std::vector<BackendInfo> result;
-        result.reserve(41);
-        result.push_back({
-            "affs", "Amiga OFS/FFS",
-            {"affs", "amiga", "ofs", "ffs", "dostype"}, write, "exact",
-            "operation-engine", MapAdapter::Affs,
-            standard_write_ops(
-                "operation-engine",
-                "Amiga OFS/FFS writing runs in the independently installed OFS.so or FFS.so; Defragmenter hosts the verified module only.",
-                "Amiga Growth Defrag runs in OFS.so or FFS.so and reserves 10% free blocks after each supported regular file.")});
-        result.push_back({
-            "apfs", "Apple APFS", {"apfs"}, write, "exact-bounded-spaceman",
-            "operation-engine", MapAdapter::NativeMap,
-            standard_write_ops(
-                "operation-engine",
-                "APFS writing is offline and fail-closed to the qualified one-CIB, unencrypted, snapshot-free flat-tree subset; validated older descriptor-ring checkpoint history is retained unchanged.",
-                "APFS Growth Defrag leaves an exact 10% free-block reserve after each supported regular-file data stream."),
-            QualificationMode::WorkerPreflight});
-        result.push_back({
-            "btrfs", "Btrfs", {"btrfs"}, write, "exact",
-            "operation-engine", MapAdapter::NativeMap,
-            standard_write_ops(
-                "operation-engine",
-                "Btrfs writing is offline and fail-closed to the qualified single-device, CRC32C, level-0 mixed data/metadata subset, including relocation and verification of ordinary checksum-tree-protected regular-file extents.",
-                "Btrfs Growth Defrag leaves an exact 10% free-sector reserve after each supported regular file."),
-            QualificationMode::WorkerPreflight, {}, {"exact-single-device"}});
-        result.push_back({
-            "exfat", "exFAT", {"exfat"}, write, "exact",
-            "operation-engine", MapAdapter::Exfat,
-            standard_write_ops(
-                "operation-engine",
-                "exFAT writing is dispatched to the independently installed exFAT.so; the application has no private exFAT parser, allocator or journal.",
-                "exFAT Growth Defrag runs in exFAT.so and reserves 10% free clusters after each regular file.")});
-        // Separate frontend identities mirror the separately loaded native SOs.
-        // The format-neutral worker probes and dispatches to each module's ABI.
-        result.push_back({
-            "ext2", "EXT2", {"ext2"}, write, "exact",
-            "operation-engine", MapAdapter::Ext, standard_write_ops("operation-engine"),
-            QualificationMode::None});
-        result.push_back({
-            "ext3", "EXT3", {"ext3"}, write, "exact",
-            "operation-engine", MapAdapter::Ext, standard_write_ops("operation-engine"),
-            QualificationMode::None});
-        result.push_back({
-            "ext4", "EXT4", {"ext4"}, write, "exact",
-            "operation-engine", MapAdapter::Ext, standard_write_ops("operation-engine"),
-            QualificationMode::None});
-        for (const int bits : {12, 16, 32}) {
-            const std::string id = "fat" + std::to_string(bits);
-            result.push_back({
-                id, "FAT" + std::to_string(bits),
-                {id, bits == 32 ? "vfat" : "msdos" + std::to_string(bits)},
-                write, "exact", "operation-engine", MapAdapter::Fat,
-                standard_write_ops("operation-engine")});
+        const int rc=ifs_filesystem_module_visit_v2(
+            [](void *opaque,const char *id,std::uint64_t flags,std::uint64_t)->int {
+                auto& items=*static_cast<std::vector<BackendInfo>*>(opaque);
+                try {items.push_back(backend_from_provider(id,flags));}
+                catch(...) {return -1;}
+                return 0;
+            },&result);
+        if(rc)return std::vector<BackendInfo>{};
+        std::sort(result.begin(),result.end(),[](const auto& a,const auto& b){return a.id<b.id;});
+        std::vector<BackendInfo> unique;
+        for(std::size_t i=0;i<result.size();) {
+            std::size_t next=i+1u;
+            while(next<result.size() && result[next].id==result[i].id)++next;
+            if(next==i+1u)unique.push_back(std::move(result[i]));
+            i=next;
         }
-        result.push_back({
-            "hfs", "Apple HFS", {"hfs"}, write, "exact",
-            "operation-engine", MapAdapter::NativeMap,
-            standard_write_ops(
-                "operation-engine",
-                "Classic HFS writing runs in HFS.so and relocates supported regular-file forks while preserving validated B-tree topology.",
-                "Classic HFS Growth Defrag leaves a 10% free allocation-block reserve after each supported non-empty file fork."),
-            QualificationMode::WorkerPreflight});
-        result.push_back({
-            "hfsplus", "Apple HFS+/HFSX", {"hfsplus", "hfs+", "hfsx"},
-            write, "exact", "operation-engine", MapAdapter::HfsPlus,
-            standard_write_ops(
-                "operation-engine",
-                "HFS+/HFSX writing runs in the independently installed HFSPLUS.so module.",
-                "HFS+/HFSX Growth Defrag runs in HFSPLUS.so and reserves 10% free allocation blocks after each supported fork."),
-            QualificationMode::WorkerPreflight});
-        result.push_back({
-            "minix", "Minix Filesystem", {"minix", "minix2", "minix3"},
-            write, "exact", "operation-engine", MapAdapter::NativeMap,
-            standard_write_ops(
-                "operation-engine",
-                "Minix filesystem writing runs in the independently installed MINIX.so module.",
-                "Minix Growth Defrag leaves an exact 10% free-zone reserve after every regular file.")});
-        result.push_back({
-            "ntfs", "NTFS", {"ntfs", "ntfs3"}, write, "exact",
-            "operation-engine", MapAdapter::Ntfs,
-            standard_write_ops(
-                "operation-engine",
-                "NTFS writing runs in NTFS.so using offline raw I/O. No kernel filesystem mount, filesystem ioctl or external repair utility is used.",
-                "NTFS Growth Defrag runs in NTFS.so and reserves 10% free clusters after each supported regular-file stream."),
-            QualificationMode::MapOrWorkerPreflight});
-        result.push_back({
-            "pfs3", "Amiga PFS3", {"pfs3", "pfs", "professionalfilesystem"},
-            write, "exact-allocation", "operation-engine", MapAdapter::NativeMap,
-            standard_write_ops(
-                "operation-engine",
-                "Amiga PFS3 writing runs in PFS3.so, validates supported directories and links, and fails closed on unsupported entries or layouts.",
-                "PFS3 Growth Defrag leaves an exact 10% free-block reserve after every supported regular file.")});
-        result.push_back({
-            "sfs", "Amiga SFS", {"sfs", "sfs0", "sfs2", "smartfilesystem"},
-            write, "exact-allocation", "operation-engine", MapAdapter::NativeMap,
-            standard_write_ops(
-                "operation-engine",
-                "Amiga SFS0/SFS2 writing runs in the independently installed SFS.so module.",
-                "SFS0/SFS2 Growth Defrag leaves an exact 10% free-block reserve after every regular file.")});
-        result.push_back({
-            "swap", "Linux Swap", {"swap", "swapspace", "linux-swap"},
-            0U, "unavailable", "operation-engine", MapAdapter::NativeMap, {},
-            QualificationMode::None, {}, {"unavailable"}});
-        result.push_back({
-            "ufs", "Solaris/BSD UFS", {"ufs", "ufs1", "ufs2", "4.2bsd"},
-            write, "exact", "operation-engine", MapAdapter::NativeMap,
-            standard_write_ops(
-                "operation-engine",
-                "UFS1/UFS2 writing runs in its matching UFS1.so or UFS2.so and fails closed on unsupported filesystem states or allocation layouts.",
-                "UFS Growth Defrag runs in the selected UFS.so engine and reserves 10% free fragments after each supported regular file."),
-            QualificationMode::WorkerPreflight, {},
-            {"summary", "exact-allocation", "exact"}});
-        result.push_back({
-            "xfs", "XFS", {"xfs"}, write, "exact",
-            "operation-engine", MapAdapter::Xfs,
-            standard_write_ops(
-                "operation-engine",
-                "XFS writing runs in XFS.so using offline raw I/O. No kernel filesystem mount, filesystem ioctl or external repair utility is used.",
-                "XFS Growth Defrag runs in XFS.so, requires staging space, and reserves 10% free extents after each supported regular file."),
-            QualificationMode::WorkerPreflight});
-        result.push_back({
-            "zfs", "ZFS/OpenZFS Member", {"zfs", "zfs_member"},
-            read, "exact-bounded", "operation-engine", MapAdapter::NativeMap, {},
-            QualificationMode::None, {}, {"summary", "exact"}});
-        // New formats share the universal Common V2 dispatcher. Registry
-        // entries are routing hints, never evidence of provider capabilities.
-        // The provider's read-only PLAN and exclusive mutation lease remain
-        // mandatory; missing or unsupported operations are refused.
-        for (const char* id : {"adfs", "bcachefs", "befs", "bfs", "cpm", "efs", "f2fs", "fosfat", "gfs2", "hpfs", "jfs", "nilfs2", "ocfs2", "omfs", "qnx4", "qnx6", "reiserfs", "sysv", "udf", "vmfs", "vmfs6"}) {
-            result.push_back({id, id, {id}, write, "summary",
-                "operation-engine", MapAdapter::NativeMap,
-                standard_write_ops("operation-engine")});
-        }
-        validate_backend_registry(result);
-        return result;
+        return unique;
     }();
     return registry;
 }

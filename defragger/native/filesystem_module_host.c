@@ -375,6 +375,28 @@ static int ifs_probe_module_v2(int directory, const char *name,
     return result;
 }
 
+int ifs_filesystem_module_visit_v2(IfsFilesystemVisitorV2 visitor,void *context)
+{
+    if(!visitor)return -1;
+    int directory=ifs_open_module_directory();
+    if(directory<0)return -1;
+    DIR *entries=fdopendir(directory);
+    if(!entries){close(directory);return -1;}
+    int rc=0;
+    for(;;) {
+        errno=0;
+        struct dirent *item=readdir(entries);
+        if(!item){if(errno)rc=-1;break;}
+        char id[IFS_FS_MAX_FORMAT_ID+1u]={0};
+        uint64_t caps=0u,groups=0u;
+        if(ifs_probe_module_v2(directory,item->d_name,id,&caps,&groups,0))continue;
+        rc=visitor(context,id,caps,groups);
+        if(rc)break;
+    }
+    closedir(entries);
+    return rc;
+}
+
 /* Read-only inventory includes all trusted hosted Common V2 providers, even
  * CORE/VOLUME-only modules. The mutation lookup still requires DEFRAG. */
 int ifs_filesystem_module_list_v2(void) {

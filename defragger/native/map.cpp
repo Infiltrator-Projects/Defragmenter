@@ -67,8 +67,7 @@ void set(Json& object, std::string key, Json value) {
 Json map_catalogue(const BackendInfo& backend,const Json& payload,
                    std::size_t cells) {
     const auto filesystem=std::string(payload.at("filesystem").string());
-    const auto* actual=backend_by_fstype(filesystem);
-    if((filesystem!=backend.id && (!actual || actual->id!=backend.id)) || required_u64(payload,"abi")!=2U)
+    if(filesystem!=backend.id || required_u64(payload,"abi")!=2U)
         throw std::runtime_error("Common V2 catalogue has wrong identity or ABI");
     const auto total=required_u64(payload,"device_bytes");
     if(!total)throw std::runtime_error("Common V2 catalogue has no target geometry");
@@ -353,21 +352,12 @@ std::uint64_t overlay_ranges(
 
 std::string backend_identified_filesystem(
     const BackendInfo& backend,const std::string& path,std::string_view exact) {
-    // Explicit variants cannot be silently substituted by sibling formats.
-    std::vector<const char *> candidates{backend.id.c_str()};
-    if(backend.id=="affs")candidates={"ofs","ffs"};
-    else if(backend.id=="ufs")candidates={"ufs1","ufs2"};
-    else if(backend.id=="sfs")candidates={"sfs","sfs2"};
-    std::string selected(exact);
-    if(!selected.empty()) {
-        bool allowed=false;
-        for(const auto* id:candidates)if(selected==id)allowed=true;
-        if(!allowed)return {};
-        candidates={selected.c_str()};
-    }
+    std::string selected(exact.empty()?backend.id:std::string(exact));
+    if(selected!=backend.id)return {};
+    const char* candidates[]={selected.c_str()};
     char format[IFS_FS_MAX_FORMAT_ID+1u]={0},module[64]={0};
     const int result=ifs_filesystem_module_detect_v2(path.c_str(),
-        candidates.data(),candidates.size(),format,sizeof(format),module,sizeof(module));
+        candidates,1u,format,sizeof(format),module,sizeof(module));
     if(result==-2)throw std::runtime_error("Ambiguous Common V2 provider identity");
     return result==0?std::string(format):std::string{};
 }
