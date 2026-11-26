@@ -539,8 +539,11 @@ static int verify_native_growth(const MediaV2 *m,const IfsFsModuleApiV2 *api,
         uint32_t n=0u;uint64_t next=at;
         if(m->services->stop_requested(m->services->context))return -1;
         const int rc=allocation->map(session,at,ranges,64u,&n);
-        if(!ifs_fs_allocation_page_v2_valid(capacity,at,rc,ranges,64u,n,&next,&unknown) || unknown)
+        if(!ifs_fs_allocation_page_v2_valid(capacity,at,rc,ranges,64u,n,&next,&unknown) || unknown) {
+            fprintf(stderr,"%s: invalid growth allocation page at byte %llu (status %d, entries %u, unknown %llu)\n",
+                    provider(m->spec),(unsigned long long)at,rc,n,(unsigned long long)unknown);
             return -1;
+        }
         if(rc==IFS_FS_END){ended=1;break;}
         for(uint32_t j=0u;j<n;++j) {
             const IfsFsAllocationRangeV2 *r=&ranges[j];
@@ -572,11 +575,21 @@ static int verify_native_growth(const MediaV2 *m,const IfsFsModuleApiV2 *api,
         if(next<=at)return -1;
         at=next;
     }
-    if(!ended || at!=capacity || free_bytes!=info->free_bytes)return -1;
+    if(!ended || at!=capacity || free_bytes!=info->free_bytes) {
+        fprintf(stderr,"%s: growth allocation totals disagree: scanned %llu/%llu bytes, mapped free %llu, volume free %llu, END %d\n",
+                provider(m->spec),(unsigned long long)at,(unsigned long long)capacity,
+                (unsigned long long)free_bytes,(unsigned long long)info->free_bytes,ended);
+        return -1;
+    }
     for(unsigned i=0u;i<LDTM_TARGET_FILE_COUNT;++i) {
         NativeGrowthGap *g=&gaps[i];
         if(!g->tail_owned || !g->started || g->proved!=g->required ||
-           g->required>capacity-g->start)return -1;
+           g->required>capacity-g->start) {
+            fprintf(stderr,"%s: growth target %u tail %llu reserved %llu/%llu bytes (owned %d, started %d)\n",
+                    provider(m->spec),i,(unsigned long long)g->end,
+                    (unsigned long long)g->proved,(unsigned long long)g->required,g->tail_owned,g->started);
+            return -1;
+        }
         for(unsigned j=0u;j<i;++j)
             if(g->start<gaps[j].start+gaps[j].required &&
                gaps[j].start<g->start+g->required)return -1;

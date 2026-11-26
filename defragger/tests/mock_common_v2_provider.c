@@ -154,7 +154,7 @@ static int allocation_map(void *m,uint64_t first,IfsFsAllocationRangeV2 *out,
                           uint32_t cap,uint32_t *written) {
     if(!written)return IFS_FS_INVALID;
     *written=0u;
-    if(!m || !out || !cap)return IFS_FS_INVALID;
+    if(!m || !out || !cap || cap>64u)return IFS_FS_INVALID;
     MockVolume *v=m;
     if(first==v->host->volume_bytes)return IFS_FS_END;
     if(first==0u)out[0]=(IfsFsAllocationRangeV2){0u,512u,IFS_FS_SPACE_ALLOCATED,0u};

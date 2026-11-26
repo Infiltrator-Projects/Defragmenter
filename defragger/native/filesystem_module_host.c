@@ -907,13 +907,15 @@ static int v2_allocation_json(FILE *out,const IfsFsAllocationOpsV2 *ops,
     if(!ops || !ops->map ||
        fputs(",\"allocation_ranges\":[",out)==EOF)return -1;
     for(unsigned page=0u;page<131072u;++page) {
-        IfsFsAllocationRangeV2 ranges[128]={{0}};
+        /* Providers may bound their page size. Use the same 64-range
+         * request as strict growth qualification, including terminal END. */
+        IfsFsAllocationRangeV2 ranges[64]={{0}};
         uint32_t count=0u;
         uint64_t next=cursor;
         if(runtime->cancelled && runtime->cancelled(runtime->context))return -1;
-        const int rc=ops->map(volume,cursor,ranges,128u,&count);
+        const int rc=ops->map(volume,cursor,ranges,64u,&count);
         if(!ifs_fs_allocation_page_v2_valid(runtime->volume_bytes,cursor,rc,
-                ranges,128u,count,&next,&unknown))return -1;
+                ranges,64u,count,&next,&unknown))return -1;
         if(rc==IFS_FS_END) {
             /* The volume's accounting must agree with a complete map.
              * For partial maps, known free cannot exceed measured free. */
