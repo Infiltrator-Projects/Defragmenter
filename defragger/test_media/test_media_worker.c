@@ -416,6 +416,13 @@ static int require_fragmentation_state(const LdtmFilesystemSpec *spec,
             rc?"failed":"passed");
         return rc;
     }
+    if(expect_fragmented==0) {
+        const int rc=ldtm_common_v2_verify_contiguous(spec,partition);
+        (void)snprintf(detail,detail_capacity,
+            "Common V2 post-mutation payload, complete file maps, contiguity and integrity %s",
+            rc?"failed":"verified");
+        return rc;
+    }
     unsigned fragmented=0u;
     if(ldtm_common_v2_verify_fragmentation(spec,partition,&fragmented)!=0) {
         (void)snprintf(detail,detail_capacity,"Common V2 corpus bytes or extent verification failed");
@@ -435,7 +442,7 @@ static int require_fragmentation_state(const LdtmFilesystemSpec *spec,
             return -1;
         }
         (void)snprintf(detail,detail_capacity,
-            "Common V2 corpus bytes, contiguous files and every nonempty file's 10%% growth reserve verified");
+            "Common V2 corpus bytes, contiguous files, integrity and every nonempty file's 10%% growth reserve verified");
         return 0;
     }
     (void)snprintf(detail,detail_capacity,

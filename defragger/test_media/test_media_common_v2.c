@@ -17,6 +17,7 @@ typedef struct {
     const char *path;
     int create;
     int require_map;
+    int require_contiguous; /* Post-mutation proof covers every nonempty file. */
     int bfs_layout; /* 1: compact, 2: fragmented free space, 3: growth */
     int verify_growth;
     unsigned fragmented;
@@ -89,9 +90,9 @@ static const IfsFsModuleApiV2 *qualify(void *symbol,MediaV2 *m)
     if(m->create)
         NEED(volume && (volume->header.capabilities & IFS_FS_VOLUME_FORMAT) &&
              volume->format,"VOLUME.FORMAT");
-    if(profile_fat_width(m->spec)==12u)
+    if(profile_fat_width(m->spec)==12u || m->require_contiguous)
         NEED(volume && (volume->header.capabilities&IFS_FS_VOLUME_CHECK) &&
-             volume->check,"VOLUME.CHECK (FAT12 qualification)");
+             volume->check,"VOLUME.CHECK (integrity qualification)");
     if(!is_swap(m->spec)) {
         NEED(CORE(IFS_FS_CORE_MOUNT,mount) && core->unmount,"CORE.MOUNT/UNMOUNT");
         NEED(CORE(IFS_FS_CORE_STAT,stat),"CORE.STAT");
@@ -790,6 +791,14 @@ static int execute(const IfsDefragHostV2 *host,void *symbol,void *opaque)
                         provider(m->spec),path);
                 goto done;
             }
+            /* The eight target files establish the initial workload. After
+             * relocation, every mapped file, including boundary-sized files,
+             * must be contiguous; do not discard their fragmentation result. */
+            if(m->require_contiguous && displaced) {
+                fprintf(stderr,"%s: post-mutation file remains fragmented: %s\n",
+                        provider(m->spec),path);
+                goto done;
+            }
             if(file<LDTM_TARGET_FILE_COUNT) {
                 m->fragmented+=displaced;
                 if(m->spec->creator==LDTM_CREATOR_NTFS)
@@ -861,15 +870,24 @@ int ldtm_common_v2_verify_fragmentation(const LdtmFilesystemSpec *s,
     return rc;
 }
 
+/* A fresh provider mount must prove all payloads, all file maps and native
+ * integrity before an ordinary Defragment operation can qualify. */
+int ldtm_common_v2_verify_contiguous(const LdtmFilesystemSpec *s,const char *path)
+{
+    if(!s || !path || is_swap(s))return -1;
+    MediaV2 m={.spec=s,.path=path,.require_map=1,.require_contiguous=1};
+    return module_call(&m,execute);
+}
+
 int ldtm_common_v2_verify_growth(const LdtmFilesystemSpec *s,const char *path)
 {
     if(!s || !path || is_swap(s))return -1;
-    MediaV2 m={.spec=s,.path=path,.require_map=1,.verify_growth=1};
+    MediaV2 m={.spec=s,.path=path,.require_map=1,.require_contiguous=1,.verify_growth=1};
     return module_call(&m,execute);
 }
 int ldtm_common_v2_verify_bfs_layout(const LdtmFilesystemSpec *s,const char *path,int mode)
 {
     if(!is_bfs(s) || !path || mode<0 || mode>2)return -1;
-    MediaV2 m={.spec=s,.path=path,.require_map=1,.bfs_layout=mode+1};
+    MediaV2 m={.spec=s,.path=path,.require_map=1,.require_contiguous=mode!=1,.bfs_layout=mode+1};
     return module_call(&m,execute);
 }
