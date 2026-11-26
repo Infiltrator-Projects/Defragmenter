@@ -92,7 +92,7 @@ static void test_no_untrusted_dispatch(const std::string& engine)
     const auto invalid = run(engine,
         {"defrag", "/dev/null", "--filesystem", "bad/path"});
     ensure(invalid.return_code == 2, "invalid module identifier accepted");
-    ensure(invalid.standard_error.find("invalid generic filesystem identifier") !=
+    ensure(invalid.standard_error.find("invalid Common V2 filesystem identifier") !=
            std::string::npos, "wrong invalid-identifier diagnostic");
 }
 int main(int argc, char** argv)

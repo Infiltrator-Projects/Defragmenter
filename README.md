@@ -22,7 +22,7 @@ A new write operation requires native analysis, target and mounted-overlap check
 
 The intended authority is **one installed filesystem `.so` per on-disk format**, shared across consumers. Defragmenter owns the GUI, filesystem-neutral device safety, raw-I/O host services, privilege/Stop handling, scheduling and independent verification; the authoritative module owns its format's parser, allocation rules, relocation and recovery where integrated. No missing or incompatible required module may trigger a private filesystem fallback. Integration is format-by-format, not inferred from a working GUI.
 
-- `defragger/native/`: C++17 GTK desktop, single registry, mapper, operation dispatcher and privileged-helper control plane.
+- `defragger/native/`: C++17 GTK desktop, installed-provider discovery, generic mapper, operation dispatcher and privileged-helper control plane. No compiled filesystem catalogue or filesystem-specific map adapters.
 - `defragger/src/core/`: C filesystem-neutral target, mounted-overlap, identity and raw-I/O safety.
 - `defragger/gui/filesystems/`: native format workers and module hosts, including explicitly bounded transitional engines.
 - `defragger/test_media/`: separate native C sacrificial-media construction and raw verification.

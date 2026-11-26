@@ -146,9 +146,8 @@ INSTALLED_SIZE=$(du -sk "$STAGE/root/usr" "$STAGE/root/Programs" "$STAGE/root/Sy
     printf 'Installed-Size: %s\n' "$INSTALLED_SIZE"
     printf 'Description: Safe direct filesystem analysis and canonical layout rewriting\n'
     printf ' Defragmenter analyses filesystem allocation and safely rewrites\n'
-    printf ' supported unmounted FAT, exFAT, NTFS, EXT2/3/4, XFS, Amiga OFS/FFS/SFS/PFS3,\n'
-    printf ' classic HFS, HFS+/HFSX, Btrfs, APFS, Minix and qualified UFS filesystems.\n'
-    printf ' ZFS/OpenZFS is currently analysis-only pending a qualified ZFS-owned writer.\n'
+    printf ' supported unmounted volumes through independently installed Common V2 modules.\n'
+    printf ' Filesystem support and operation availability are determined at runtime by the providers.\n'
     printf ' The package also includes the separate all-C GTK\n'
     printf ' Defragmenter Test Media program for building sacrificial field-test disks.\n'
     printf ' Shared MB Corpo typography is established in the native machine font cache when required.\n'

@@ -37,9 +37,8 @@ OperationSpec operation(std::string name, std::string worker,
         policy = "packed";
         label = "Defragment";
         description =
-            "Rewrite the unmounted filesystem directly so files and directories "
-            "are contiguous and every relocatable allocation is packed into the "
-            "earliest legal allocation units.";
+            "Invoke the installed filesystem provider's qualified packed "
+            "relocation plan on the unmounted target.";
     } else if (name == "growth-defrag") {
         policy = "growth-10";
         label = "Growth Defrag";

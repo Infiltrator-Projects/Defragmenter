@@ -126,15 +126,6 @@ static int module_call(MediaV2 *m,IfsFilesystemCall callback)
         missing(m,"unique trusted hosted Common V2 provider");
         return -1;
     }
-    const uint32_t width=profile_fat_width(m->spec);
-    if(width) {
-        char expected[16];
-        if(snprintf(expected,sizeof(expected),"FAT%u.so",width)>=(int)sizeof(expected) ||
-           strcmp(filename,expected)!=0) {
-            missing(m,"canonical provider filename");
-            return -1;
-        }
-    }
     return ifs_filesystem_module_call(id,filename,
                                      IFS_FS_COMMON_EXPORT_V2,callback,m);
 }
