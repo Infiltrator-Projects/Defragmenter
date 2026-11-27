@@ -139,9 +139,9 @@ int main(void) {
           zfs_profile.directory_second == 0U &&
           ldtm_profile_payload_bytes(&zfs_profile) == UINT64_C(200) * LDTM_MIB);
 
-    CHECK(ofs->creator == LDTM_CREATOR_AFFS);
-    CHECK(ffs->creator == LDTM_CREATOR_AFFS);
-    CHECK(sfs->creator == LDTM_CREATOR_AFFS);
+    CHECK(ofs->creator == LDTM_CREATOR_GENERIC_V2);
+    CHECK(ffs->creator == LDTM_CREATOR_GENERIC_V2);
+    CHECK(sfs->creator == LDTM_CREATOR_GENERIC_V2);
     CHECK(strcmp(ldtm_creator_display_name(fat12), "Filesystem driver") == 0);
     CHECK(strcmp(ldtm_creator_display_name(ofs), "Filesystem driver") == 0);
     CHECK(strcmp(ldtm_creator_display_name(ffs), "Filesystem driver") == 0);
@@ -151,7 +151,7 @@ int main(void) {
     CHECK(strcmp(ldtm_creator_display_name(NULL), "Unavailable") == 0);
     CHECK(strstr(sfs->note, "SFS0") != NULL &&
           strstr(sfs->note, "200 MiB heterogeneous") != NULL);
-    CHECK(pfs3->creator == LDTM_CREATOR_PFS3 &&
+    CHECK(pfs3->creator == LDTM_CREATOR_GENERIC_V2 &&
           strstr(pfs3->note, "200 MiB heterogeneous") != NULL);
     CHECK(strstr(ufs->note, "UFS2") != NULL &&
           strstr(ufs->note, "exact fragmentation") != NULL);
@@ -162,7 +162,7 @@ int main(void) {
     CHECK(ofs->size_mib == 2048U && ffs->size_mib == 2048U);
     CHECK(sfs->size_mib == 2048U && pfs3->size_mib == 2048U);
     CHECK(zfs->size_mib == 2048U && apfs->size_mib == 2048U);
-    CHECK(apfs->creator == LDTM_CREATOR_APFS);
+    CHECK(apfs->creator == LDTM_CREATOR_GENERIC_V2);
     CHECK(ldtm_build_sfdisk_script(script, sizeof(script)) == 0);
     CHECK(strstr(script, "label: gpt") == script);
     CHECK(strstr(script, "name=\"LD_FAT16\"") != NULL);
@@ -205,10 +205,10 @@ int main(void) {
     CHECK(ldtm_find_spec("ufs1") != NULL && ldtm_find_spec("sfs2") != NULL);
     CHECK(ldtm_find_spec("ufs") == NULL);
     CHECK(strstr(script, "name=\"LD_ZFS\"") != NULL);
-    CHECK(strstr(script, "type=swap, name=\"LD_SWAP\"") != NULL);
+    CHECK(strstr(script, "type=linux, name=\"LD_SWAP\"") != NULL);
     cursor = script;
     while ((cursor = strstr(cursor, "name=\"LD_")) != NULL) { ++count; cursor += 6; }
-    CHECK(count == LDTM_SPEC_COUNT);
+    CHECK(count == ldtm_spec_count());
     /* Every new profile appears exactly once and uses only the generic
      * Common V2 corpus path. */
     const char *const added[] = {"adfs", "bcachefs", "befs", "bfs", "cpm", "efs", "f2fs", "fosfat", "gfs2", "hpfs", "jfs", "nilfs2", "ocfs2", "omfs", "qnx4", "qnx6", "reiserfs", "sysv", "udf", "vmfs", "vmfs6"};

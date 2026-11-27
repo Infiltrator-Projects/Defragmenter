@@ -48,7 +48,7 @@ typedef struct {
 } LdtmPartition;
 
 typedef struct {
-    LdtmPartition items[LDTM_SPEC_COUNT];
+    LdtmPartition items[LDTM_SPEC_LIMIT];
     size_t count;
 } LdtmPartitionMap;
 
@@ -896,7 +896,7 @@ static int settle_partitions(const char *device, LdtmPartitionMap *map) {
      */
     for (attempt = 0U; attempt < 50U; ++attempt) {
         if (load_partition_map(device, map) == 0 &&
-            map->count == LDTM_SPEC_COUNT)
+            map->count == ldtm_spec_count())
             return 0;
         usleep(100000U);
     }
@@ -912,7 +912,7 @@ static int load_partition_map(const char *device, LdtmPartitionMap *map) {
     memset(map, 0, sizeof(*map));
     if (capture_process(argv, &output) != 0) return -1;
     line = strtok_r(output, "\n", &saveptr);
-    while (line != NULL && map->count < LDTM_SPEC_COUNT) {
+    while (line != NULL && map->count < LDTM_SPEC_LIMIT) {
         char path[PATH_MAX] = "";
         char label[64] = "";
         if (extract_pair(line, "PATH", path, sizeof(path)) &&
@@ -925,8 +925,9 @@ static int load_partition_map(const char *device, LdtmPartitionMap *map) {
         }
         line = strtok_r(NULL, "\n", &saveptr);
     }
+    int complete=line==NULL;
     free(output);
-    return map->count > 0U ? 0 : -1;
+    return complete&&map->count>0U?0:-1;
 }
 
 static const char *partition_for_label(const LdtmPartitionMap *map, const char *label) {
@@ -1084,7 +1085,7 @@ static int create_raw_and_populate(const LdtmFilesystemSpec *spec, const char *p
     }
     const char *message =
         ldtm_common_v2_layout(spec)==IFS_FS_LAYOUT_NO_NAMESPACE
-            ? "Common V2 SWAP header verified; file fragmentation does not apply"
+            ? "Common V2 Namespace-free format verified; file fragmentation does not apply"
             : ldtm_common_v2_layout(spec)==IFS_FS_LAYOUT_CONTIGUOUS_FILE
               ? "Common V2 contiguous-file corpus verified; provider maps proved eight genuine free-space gaps"
               : "Common V2 corpus fully verified; provider extent maps proved all eight large files fragmented";
@@ -1229,7 +1230,7 @@ static int preflight_image(const LdtmFilesystemSpec *spec,
         result = qualify_corpus(spec, image, detail, capacity);
         /* The negative corruption regression is part of installed preflight,
          * not only CI. It can run solely on this private regular image. */
-        if(result==0 && !operation && spec->creator!=LDTM_CREATOR_SWAP &&
+        if(result==0 && !operation && ldtm_common_v2_layout(spec)!=IFS_FS_LAYOUT_NO_NAMESPACE &&
            verify_corruption(spec,image)!=0) {
             (void)snprintf(detail,capacity,"Disposable Common V2 payload corruption qualification failed");
             result=-1;
@@ -1484,12 +1485,13 @@ static int qualified_media_geometry(const char *canonical)
 }
 
 int ldtm_worker_prepare(const char *device, const char *confirmed_device,
-                        const char *confirmed_fingerprint) {
+                        const char *confirmed_fingerprint, const char *confirmed_catalogue) {
     char canonical[PATH_MAX];
     char confirmed[PATH_MAX];
     char current_fingerprint[LDTM_HASH_HEX];
     char safety[512];
-    char script[8192];
+    char script[16384];
+    char actual_catalogue[65];
     char work_template[] = "/tmp/defragmenter-test-media.XXXXXX";
     char *work;
     char state_path[PATH_MAX];
@@ -1499,6 +1501,11 @@ int ldtm_worker_prepare(const char *device, const char *confirmed_device,
     int result = 1;
     if (geteuid() != 0) {
         fputs("Test-media prepare worker must run as root.\n", stderr);
+        return 2;
+    }
+    if(!confirmed_catalogue||ldtm_catalogue_fingerprint(actual_catalogue)!=0||
+       strcmp(actual_catalogue,confirmed_catalogue)!=0){
+        fputs("Installed provider layout differs from the confirmed layout; physical media untouched.\n",stderr);
         return 2;
     }
     if (!ldtm_required_modules_available(safety, sizeof(safety))) {
@@ -1716,15 +1723,16 @@ static bool state_hash(const char *text)
  * is compiled into the native verifiers for every slot. Legacy schema 2 media
  * must be rebuilt; accepting it would reintroduce the mutable-list authority. */
 static int parse_verify_state(FILE *stream, const char *device,
-                              LdtmVerifyFilesystem state[LDTM_SPEC_COUNT],
+                              LdtmVerifyFilesystem state[LDTM_SPEC_LIMIT],
                               char saved_fingerprint[LDTM_HASH_HEX])
 {
     char line[LDTM_LINE_MAX];
     unsigned headers = 0U;
     size_t filesystems = 0U;
-    bool seen[LDTM_SPEC_COUNT] = {false};
-    memset(state, 0, sizeof(*state) * LDTM_SPEC_COUNT);
+    bool seen[LDTM_SPEC_LIMIT] = {false};
+    memset(state, 0, sizeof(*state) * LDTM_SPEC_LIMIT);
     saved_fingerprint[0] = '\0';
+    if(!ldtm_spec_count())return -1;
     while (fgets(line, sizeof(line), stream) != NULL) {
         const size_t length = strlen(line);
         if (length == 0U || line[length - 1U] != '\n')
@@ -1765,7 +1773,7 @@ static int parse_verify_state(FILE *stream, const char *device,
             if (spec == NULL)
                 return -1;
             const size_t index = (size_t)(spec - ldtm_specs());
-            if (index >= LDTM_SPEC_COUNT || seen[index] ||
+            if (index >= ldtm_spec_count() || seen[index] ||
                 strlen(fields[2]) >= sizeof(state[index].build_status) ||
                 strlen(fields[3]) >= sizeof(state[index].build_detail))
                 return -1;
@@ -1782,13 +1790,13 @@ static int parse_verify_state(FILE *stream, const char *device,
         } else
             return -1;
     }
-    return !ferror(stream) && headers == 15U && filesystems == LDTM_SPEC_COUNT
+    return !ferror(stream) && headers == 15U && filesystems == ldtm_spec_count()
                ? 0
                : -1;
 }
 
 static int load_verify_state(const char *state_path, const char *device,
-                             LdtmVerifyFilesystem state[LDTM_SPEC_COUNT])
+                             LdtmVerifyFilesystem state[LDTM_SPEC_LIMIT])
 {
     FILE *stream = open_state_stream(state_path, 0);
     if (stream == NULL)
@@ -1807,7 +1815,7 @@ int ldtm_worker_verify(const char *device) {
     char safety[512];
     char state_path[PATH_MAX];
     LdtmPartitionMap map;
-    LdtmVerifyFilesystem expected[LDTM_SPEC_COUNT];
+    LdtmVerifyFilesystem expected[LDTM_SPEC_LIMIT];
     size_t index;
     int failures = 0;
     if (geteuid() != 0) {
@@ -1827,7 +1835,7 @@ int ldtm_worker_verify(const char *device) {
     if (unmount_descendants(canonical) != 0 ||
         load_partition_map(canonical, &map) != 0)
         return 2;
-    for (index = 0U; index < LDTM_SPEC_COUNT; ++index) {
+    for (index = 0U; index < ldtm_spec_count(); ++index) {
         const LdtmFilesystemSpec *spec = &ldtm_specs()[index];
         const char *partition;
         if (!expected[index].populated) {
@@ -1857,7 +1865,7 @@ int ldtm_worker_verify(const char *device) {
             } else {
                 emit_status(
                     spec->key, "verified",
-                    "SWAP header verified by its Common V2 provider; no file allocation map applies");
+                    "Namespace-free format verified by its Common V2 provider; no file allocation map applies");
             }
             continue;
         }
@@ -1916,7 +1924,7 @@ int ldtm_worker_qualify(const char *device)
     char state_path[PATH_MAX];
     char fingerprint[LDTM_HASH_HEX];
     LdtmPartitionMap map;
-    LdtmVerifyFilesystem expected[LDTM_SPEC_COUNT];
+    LdtmVerifyFilesystem expected[LDTM_SPEC_LIMIT];
     int failures = 0;
 
     if (geteuid() != 0) {
@@ -1943,7 +1951,7 @@ int ldtm_worker_qualify(const char *device)
     /* Do not mutate a previously prepared disk until the currently installed
      * providers have passed both destructive policies on disposable media.
      * The provider package may have changed since Build Test Disk. */
-    for (size_t index = 0U; index < LDTM_SPEC_COUNT; ++index) {
+    for (size_t index = 0U; index < ldtm_spec_count(); ++index) {
         const LdtmFilesystemSpec *spec = &ldtm_specs()[index];
         if (!expected[index].populated ||
             preflight_corpus(spec, safety, sizeof(safety)) != 0 ||
@@ -1968,7 +1976,7 @@ int ldtm_worker_qualify(const char *device)
         return 2;
     }
 
-    for (size_t index = 0U; index < LDTM_SPEC_COUNT; ++index) {
+    for (size_t index = 0U; index < ldtm_spec_count(); ++index) {
         const LdtmFilesystemSpec *spec = &ldtm_specs()[index];
         const char *partition;
         char journal[PATH_MAX];
@@ -1997,7 +2005,7 @@ int ldtm_worker_qualify(const char *device)
                 ++failures;
             } else {
                 emit_status(spec->key, "qualified",
-                    "Common V2 SWAP header verified; file mutation does not apply");
+                    "Common V2 Namespace-free format verified; file mutation does not apply");
             }
             continue;
         }

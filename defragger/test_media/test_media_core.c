@@ -12,100 +12,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
-static const LdtmFilesystemSpec LDTM_SPECS[LDTM_SPEC_COUNT] = {
-    {"fat12", "LD_FAT12", 255U, 200U, LDTM_CREATOR_FAT12,
-     "FAT12 Common V2 profile uses 64 KiB clusters below the 4085-cluster FAT16 threshold and "
-     "retains the full 200 MiB corpus plus boundary files."},
-    {"fat16", "LD_FAT16", 2048U, 200U, LDTM_CREATOR_FAT16, ""},
-    {"fat32", "LD_FAT32", 2048U, 200U, LDTM_CREATOR_FAT32, ""},
-    {"exfat", "LD_EXFAT", 2048U, 200U, LDTM_CREATOR_EXFAT, ""},
-    {"ntfs", "LD_NTFS", 2048U, 200U, LDTM_CREATOR_NTFS, ""},
-    {"ext2", "LD_EXT2", 2048U, 200U, LDTM_CREATOR_EXT2, ""},
-    {"ext3", "LD_EXT3", 2048U, 200U, LDTM_CREATOR_EXT3, ""},
-    {"ext4", "LD_EXT4", 2048U, 200U, LDTM_CREATOR_EXT4, ""},
-    {"xfs", "LD_XFS", 2048U, 200U, LDTM_CREATOR_XFS, ""},
-    {"btrfs", "LD_BTRFS", 2048U, 200U, LDTM_CREATOR_BTRFS, ""},
-    {"ofs", "LD_OFS", 2048U, 200U, LDTM_CREATOR_AFFS,
-     "Amiga Original File System DOS\\0; installed OFS driver uses the full 2 GiB qualification "
-     "cap."},
-    {"ffs", "LD_FFS", 2048U, 200U, LDTM_CREATOR_AFFS,
-     "Amiga Fast File System DOS\\1; Common V2 driver uses the full 2 GiB qualification cap."},
-    {"sfs", "LD_SFS", 2048U, 200U, LDTM_CREATOR_AFFS,
-     "Amiga Smart File System SFS0 v3; Common V2 driver uses the standard 200 MiB "
-     "heterogeneous fragmented corpus."},
-    {"pfs3", "LD_PFS3", 2048U, 200U, LDTM_CREATOR_PFS3,
-     "Amiga Professional File System 3; Common V2 driver uses the standard 200 MiB "
-     "heterogeneous fragmented corpus in the qualified small-disk subset."},
-    {"hfs", "LD_HFS", 2048U, 200U, LDTM_CREATOR_HFS, ""},
-    {"hfsplus", "LD_HFSPLUS", 2048U, 200U, LDTM_CREATOR_HFSPLUS, ""},
-    {"minix", "LD_MINIX", 2048U, 200U, LDTM_CREATOR_MINIX, ""},
-    {"ufs2", "LD_UFS2", 2048U, 200U, LDTM_CREATOR_UFS,
-     "UFS2 Common V2 provider must support the full corpus and exact fragmentation analysis."},
-    {"zfs", "LD_ZFS", 2048U, 200U, LDTM_CREATOR_ZFS,
-     "ZFS Common V2 provider must create and verify the corpus; defragmentation is analysis-only."},
-    {"apfs", "LD_APFS", 2048U, 200U, LDTM_CREATOR_APFS,
-     "APFS Common V2 provider must create and verify the full fragmented corpus."},
-    {"swap", "LD_SWAP", 2048U, 0U, LDTM_CREATOR_SWAP, "Swap contains no files."},
-    {"ufs1", "LD_UFS1", 2048U, 200U, LDTM_CREATOR_UFS1,
-     "UFS1 must independently support the full corpus and exact fragmentation analysis."},
-    {"sfs2", "LD_SFS2", 2048U, 200U, LDTM_CREATOR_SFS2,
-     "SFS2 must independently support the full corpus and exact fragmentation analysis."},
-    /* New independent providers start with the standard disposable profile.
-     * This is not qualification: the provider must accept default FORMAT,
-     * the geometry and the entire real fragmented corpus before physical
-     * media can be touched. No filesystem-specific fallback is permitted. */
-    {"adfs", "LD_ADFS", 2048U, 200U, LDTM_CREATOR_GENERIC_V2,
-     "Common V2 default format and real corpus qualification required."},
-    {"bcachefs", "LD_BCACHEFS", 2048U, 200U, LDTM_CREATOR_GENERIC_V2,
-     "Common V2 default format and real corpus qualification required."},
-    {"befs", "LD_BEFS", 2048U, 200U, LDTM_CREATOR_GENERIC_V2,
-     "Common V2 default format and real corpus qualification required."},
-    {"bfs", "LD_BFS", 2048U, 200U, LDTM_CREATOR_GENERIC_V2,
-     "Common V2 default format and real corpus qualification required."},
-    {"cpm", "LD_CPM", 2048U, 200U, LDTM_CREATOR_GENERIC_V2,
-     "Common V2 default format and real corpus qualification required."},
-    {"efs", "LD_EFS", 2048U, 200U, LDTM_CREATOR_GENERIC_V2,
-     "Common V2 default format and real corpus qualification required."},
-    {"f2fs", "LD_F2FS", 2048U, 200U, LDTM_CREATOR_GENERIC_V2,
-     "Common V2 default format and real corpus qualification required."},
-    {"fosfat", "LD_FOSFAT", 2048U, 200U, LDTM_CREATOR_GENERIC_V2,
-     "Common V2 default format and real corpus qualification required."},
-    {"gfs2", "LD_GFS2", 2048U, 200U, LDTM_CREATOR_GENERIC_V2,
-     "Common V2 default format and real corpus qualification required."},
-    {"hpfs", "LD_HPFS", 2048U, 200U, LDTM_CREATOR_GENERIC_V2,
-     "Common V2 default format and real corpus qualification required."},
-    {"jfs", "LD_JFS", 2048U, 200U, LDTM_CREATOR_GENERIC_V2,
-     "Common V2 default format and real corpus qualification required."},
-    {"nilfs2", "LD_NILFS2", 2048U, 200U, LDTM_CREATOR_GENERIC_V2,
-     "Common V2 default format and real corpus qualification required."},
-    {"ocfs2", "LD_OCFS2", 2048U, 200U, LDTM_CREATOR_GENERIC_V2,
-     "Common V2 default format and real corpus qualification required."},
-    {"omfs", "LD_OMFS", 2048U, 200U, LDTM_CREATOR_GENERIC_V2,
-     "Common V2 default format and real corpus qualification required."},
-    {"qnx4", "LD_QNX4", 2048U, 200U, LDTM_CREATOR_GENERIC_V2,
-     "Common V2 default format and real corpus qualification required."},
-    {"qnx6", "LD_QNX6", 2048U, 200U, LDTM_CREATOR_GENERIC_V2,
-     "Common V2 default format and real corpus qualification required."},
-    {"reiserfs", "LD_REISERFS", 2048U, 200U, LDTM_CREATOR_GENERIC_V2,
-     "Common V2 default format and real corpus qualification required."},
-    {"sysv", "LD_SYSV", 2048U, 200U, LDTM_CREATOR_GENERIC_V2,
-     "Common V2 default format and real corpus qualification required."},
-    {"udf", "LD_UDF", 2048U, 200U, LDTM_CREATOR_GENERIC_V2,
-     "Common V2 default format and real corpus qualification required."},
-    {"vmfs", "LD_VMFS", 2048U, 200U, LDTM_CREATOR_GENERIC_V2,
-     "Common V2 default format and real corpus qualification required."},
-    {"vmfs6", "LD_VMFS6", 2048U, 200U, LDTM_CREATOR_GENERIC_V2,
-     "Common V2 default format and real corpus qualification required."}};
-
-const LdtmFilesystemSpec *ldtm_specs(void) { return LDTM_SPECS; }
-size_t ldtm_spec_count(void) { return LDTM_SPEC_COUNT; }
+#include <openssl/evp.h>
 
 const LdtmFilesystemSpec *ldtm_find_spec(const char *key) {
     size_t index;
     if (key == NULL) return NULL;
-    for (index = 0U; index < LDTM_SPEC_COUNT; ++index) {
-        if (strcmp(LDTM_SPECS[index].key, key) == 0) return &LDTM_SPECS[index];
+    for (index = 0U; index < ldtm_spec_count(); ++index) {
+        if (strcmp(ldtm_specs()[index].key, key) == 0) return &ldtm_specs()[index];
     }
     return NULL;
 }
@@ -113,8 +26,8 @@ const LdtmFilesystemSpec *ldtm_find_spec(const char *key) {
 uint64_t ldtm_allocated_capacity_bytes(void) {
     size_t index;
     uint64_t total = 0U;
-    for (index = 0U; index < LDTM_SPEC_COUNT; ++index) {
-        total += (uint64_t)LDTM_SPECS[index].size_mib * LDTM_MIB;
+    for (index = 0U; index < ldtm_spec_count(); ++index) {
+        total += (uint64_t)ldtm_specs()[index].size_mib * LDTM_MIB;
     }
     return total;
 }
@@ -182,11 +95,14 @@ static int appendf(char *buffer, size_t capacity, size_t *used, const char *form
 int ldtm_build_sfdisk_script(char *buffer, size_t capacity) {
     size_t index;
     size_t used = 0U;
-    if (buffer == NULL || capacity == 0U) return -1;
+    if (buffer == NULL || capacity == 0U || !ldtm_spec_count()) return -1;
     if (appendf(buffer, capacity, &used, "label: gpt\n\n") != 0) return -1;
-    for (index = 0U; index < LDTM_SPEC_COUNT; ++index) {
-        const LdtmFilesystemSpec *spec = &LDTM_SPECS[index];
-        const char *type = spec->creator == LDTM_CREATOR_SWAP ? "swap" : "linux";
+    for (index = 0U; index < ldtm_spec_count(); ++index) {
+        const LdtmFilesystemSpec *spec = &ldtm_specs()[index];
+        if(!spec->size_mib || spec->creator==LDTM_CREATOR_MANUAL)return -1;
+        /* The ABI describes namespace semantics, not GPT type GUIDs. Use
+         * the same generic test-data partition type for every provider. */
+        const char *type = "linux";
         if (appendf(buffer, capacity, &used,
                     "size=%uMiB, type=%s, name=\"%s\"\n",
                     spec->size_mib, type, spec->label) != 0) return -1;
@@ -304,6 +220,10 @@ int ldtm_spec_creator_available(const LdtmFilesystemSpec *spec,
 
 int ldtm_required_modules_available(char *detail, size_t detail_capacity) {
     if (!detail || detail_capacity == 0U) return 0;
+    if(!ldtm_spec_count()){
+        (void)snprintf(detail,detail_capacity,"No unique trusted Common V2 providers discovered; refusing operation");
+        return 0;
+    }
     /*
      * Never curate a secondary subset of filesystem types here: omitted
      * entries used to let Test Media erase/repartition a disk before finding
@@ -316,4 +236,33 @@ int ldtm_required_modules_available(char *detail, size_t detail_capacity) {
             return 0;
     }
     return 1;
+}
+
+/* Bind the exact sorted provider layout to the GUI confirmation. A change
+ * in installed format identities, capacities or namespace roles changes
+ * this hash. It is not a claim about provider binary authenticity. */
+int ldtm_catalogue_fingerprint(char output[65])
+{
+    if(!output)return -1;
+    output[0]=0;
+    if(!ldtm_spec_count())return -1;
+    EVP_MD_CTX *ctx=EVP_MD_CTX_new();
+    if(!ctx)return -1;
+    int ok=EVP_DigestInit_ex(ctx,EVP_sha256(),NULL)==1;
+    for(size_t i=0;ok&&i<ldtm_spec_count();i++){
+        const LdtmFilesystemSpec *s=&ldtm_specs()[i];
+        char row[256];
+        int n=snprintf(row,sizeof row,"%s\t%s\t%u\t%u\t%u\n",
+                       s->key,s->label,s->size_mib,s->payload_mib,(unsigned)s->creator);
+        ok=n>0&&(size_t)n<sizeof row&&EVP_DigestUpdate(ctx,row,(size_t)n)==1;
+    }
+    unsigned char hash[32];unsigned n=0;
+    if(ok)ok=EVP_DigestFinal_ex(ctx,hash,&n)==1&&n==sizeof hash;
+    EVP_MD_CTX_free(ctx);
+    if(!ok)return -1;
+    static const char hex[]="0123456789abcdef";
+    for(unsigned i=0;i<sizeof hash;i++){
+        output[2u*i]=hex[hash[i]>>4];output[2u*i+1u]=hex[hash[i]&15u];
+    }
+    output[64]=0;return 0;
 }

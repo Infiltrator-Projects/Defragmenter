@@ -191,7 +191,7 @@ static gboolean layout_probe(gpointer user_data)
         CHECK(gtk_widget_get_sensitive(app->qualify_button));
         GtkWidget *grid = find_named(window, "ldtm-filesystem-grid");
         GList *tiles = gtk_container_get_children(GTK_CONTAINER(grid));
-        CHECK(g_list_length(tiles) == LDTM_SPEC_COUNT);
+        CHECK(g_list_length(tiles) == ldtm_spec_count());
         g_list_free(tiles);
         capture_window(window, "LDTM_GUI_TEST_DESKTOP_SCREENSHOT");
         gtk_window_resize(GTK_WINDOW(window), 900, 600);
@@ -202,7 +202,7 @@ static gboolean layout_probe(gpointer user_data)
         CHECK(gtk_widget_get_allocated_height(window) <= 768);
         GtkAdjustment *vertical = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(find_named(window, "ldtm-grid-scroll")));
         CHECK(gtk_adjustment_get_upper(vertical) > gtk_adjustment_get_page_size(vertical));
-        for (size_t index = 0U; index < LDTM_SPEC_COUNT; ++index) {
+        for (size_t index = 0U; index < ldtm_spec_count(); ++index) {
             CHECK(GTK_IS_BUTTON(app->filesystem_tiles[index]));
             if (strcmp(ldtm_specs()[index].key, "zfs") == 0) gtk_button_clicked(GTK_BUTTON(app->filesystem_tiles[index]));
         }

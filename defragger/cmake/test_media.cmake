@@ -19,6 +19,7 @@ install(TARGETS defragmenter-desktop RUNTIME DESTINATION /Programs)
 
 add_library(defragmenter-test-media-core STATIC
     test_media/test_media_core.c
+    test_media/test_media_catalogue.c
     test_media/test_media_raw.c
     test_media/test_media_common_v2.c
     test_media/test_media_worker.c
@@ -34,7 +35,7 @@ target_compile_options(defragmenter-test-media-core PRIVATE ${LD_WARNING_FLAGS})
 target_compile_definitions(defragmenter-test-media-core PRIVATE
     _FILE_OFFSET_BITS=64 _GNU_SOURCE)
 target_link_libraries(defragmenter-test-media-core PUBLIC
-    OpenSSL::Crypto InfiltratrCommon::Common defragmenter-core defragmenter-filesystem-module-host defragmenter-fs-host-services)
+    Threads::Threads OpenSSL::Crypto InfiltratrCommon::Common defragmenter-core defragmenter-filesystem-module-host defragmenter-fs-host-services)
 
 add_executable(defragmenter-test-media
     test_media/test_media_main.c
@@ -55,7 +56,7 @@ install(FILES packaging/io.github.defragmenter.TestMedia.desktop
 
 if(BUILD_TESTING)
     # The standalone hosted integration runs this on its own disposable image.
-    add_executable(defragmenter-test-media-raw-test tests/test_test_media_raw.c)
+    add_executable(defragmenter-test-media-raw-test tests/test_test_media_raw.c tests/test_media_catalogue_fixture.c)
     target_include_directories(defragmenter-test-media-raw-test PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src/core")
     target_compile_options(defragmenter-test-media-raw-test PRIVATE ${LD_WARNING_FLAGS})
@@ -100,7 +101,7 @@ if(BUILD_TESTING)
             "$<TARGET_FILE:defragmenter-mapper-cpp>")
     set_tests_properties(defragmenter-test-media-native-swap PROPERTIES TIMEOUT 240)
     add_executable(defragmenter-test-media-gui-test
-        tests/test_test_media_gui.c test_media/test_media_theme.c)
+        tests/test_test_media_gui.c tests/test_media_catalogue_fixture.c test_media/test_media_theme.c)
     target_include_directories(defragmenter-test-media-gui-test PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/test_media" "${LD_GENERATED_DIR}")
     target_compile_options(defragmenter-test-media-gui-test PRIVATE ${LD_WARNING_FLAGS})
@@ -124,7 +125,7 @@ if(BUILD_TESTING)
     set_tests_properties(defragmenter-desktop-analysis PROPERTIES TIMEOUT 20)
     # Pure application policy and geometry checks; no filesystem source,
     # private native engine or alternate fixture constructor is linked.
-    add_executable(defragmenter-test-media-test tests/test_test_media.c)
+    add_executable(defragmenter-test-media-test tests/test_test_media.c tests/test_media_catalogue_fixture.c)
     target_compile_options(defragmenter-test-media-test PRIVATE ${LD_WARNING_FLAGS})
     target_compile_definitions(defragmenter-test-media-test PRIVATE
         _FILE_OFFSET_BITS=64 _GNU_SOURCE)

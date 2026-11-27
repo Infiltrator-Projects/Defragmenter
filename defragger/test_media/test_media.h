@@ -7,34 +7,14 @@
 
 #define LDTM_MIB UINT64_C(1048576)
 #define LDTM_GIB UINT64_C(1073741824)
-#define LDTM_SPEC_COUNT 44U
+#define LDTM_SPEC_LIMIT 128U /* standard GPT entry capacity, not a format list */
 #define LDTM_TARGET_FILE_COUNT 8U
 #define LDTM_STATE_ROOT "/var/lib/defragmenter-test-media"
 
 typedef enum {
-    LDTM_CREATOR_FAT12,
-    LDTM_CREATOR_FAT16,
-    LDTM_CREATOR_FAT32,
-    LDTM_CREATOR_EXFAT,
-    LDTM_CREATOR_NTFS,
-    LDTM_CREATOR_EXT2,
-    LDTM_CREATOR_EXT3,
-    LDTM_CREATOR_EXT4,
-    LDTM_CREATOR_XFS,
-    LDTM_CREATOR_BTRFS,
-    LDTM_CREATOR_AFFS,
-    LDTM_CREATOR_PFS3,
-    LDTM_CREATOR_HFS,
-    LDTM_CREATOR_HFSPLUS,
-    LDTM_CREATOR_MINIX,
-    LDTM_CREATOR_UFS,
-    LDTM_CREATOR_ZFS,
-    LDTM_CREATOR_APFS,
-    LDTM_CREATOR_MANUAL,
-    LDTM_CREATOR_SWAP,
-    LDTM_CREATOR_UFS1,
-    LDTM_CREATOR_SFS2,
-    LDTM_CREATOR_GENERIC_V2
+    LDTM_CREATOR_GENERIC_V2,
+    LDTM_CREATOR_NO_NAMESPACE,
+    LDTM_CREATOR_MANUAL /* installed provider has no usable format profile */
 } LdtmCreator;
 
 typedef struct {
@@ -59,6 +39,7 @@ typedef struct {
 
 const LdtmFilesystemSpec *ldtm_specs(void);
 size_t ldtm_spec_count(void);
+int ldtm_catalogue_fingerprint(char output[65]);
 const LdtmFilesystemSpec *ldtm_find_spec(const char *key);
 uint64_t ldtm_required_capacity_bytes(void);
 uint64_t ldtm_allocated_capacity_bytes(void);
@@ -90,7 +71,7 @@ int ldtm_mmc_identity_material(
     const char *cid, char *material, size_t capacity);
 int ldtm_is_reserved_partition_label(const char *label);
 int ldtm_worker_prepare(const char *device, const char *confirmed_device,
-                        const char *confirmed_fingerprint);
+                        const char *confirmed_fingerprint, const char *confirmed_catalogue);
 int ldtm_worker_verify(const char *device);
 int ldtm_worker_qualify(const char *device);
 void ldtm_apply_mb_theme(void);

@@ -17,7 +17,7 @@ static int parse_case(const char *headers, const char *suffix, int omit, int dup
     if (stream == NULL)
         return -2;
     fputs(headers, stream);
-    for (size_t n = 0U; n < LDTM_SPEC_COUNT; ++n) {
+    for (size_t n = 0U; n < ldtm_spec_count(); ++n) {
         if ((int)n == omit)
             continue;
         fprintf(stream, "fs\t%s\tpopulated\tfully created\n", ldtm_specs()[n].key);
@@ -26,7 +26,7 @@ static int parse_case(const char *headers, const char *suffix, int omit, int dup
     }
     fputs(suffix, stream);
     rewind(stream);
-    LdtmVerifyFilesystem state[LDTM_SPEC_COUNT];
+    LdtmVerifyFilesystem state[LDTM_SPEC_LIMIT];
     char hash[LDTM_HASH_HEX];
     const int result = parse_verify_state(stream, "/dev/qualification", state, hash);
     fclose(stream);
@@ -107,7 +107,7 @@ static int contracts(void)
         CHECK(ldtm_raw_check_finish(&check) != 0);
         check.seen ^= UINT32_C(1) << file;
     }
-    for (size_t n = 0U; n < LDTM_SPEC_COUNT; ++n) {
+    for (size_t n = 0U; n < ldtm_spec_count(); ++n) {
         const LdtmFilesystemSpec *s = &ldtm_specs()[n];
         char detail[256];
         CHECK(strcmp(ldtm_creator_display_name(s), "Filesystem driver") == 0);

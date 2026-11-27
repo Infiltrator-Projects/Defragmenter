@@ -38,8 +38,8 @@ typedef struct {
     GtkWidget *readiness_summary;
     GtkWidget *operation_summary;
     GtkListStore *filesystem_store;
-    GtkWidget *filesystem_tiles[LDTM_SPEC_COUNT];
-    GtkWidget *filesystem_status[LDTM_SPEC_COUNT];
+    GtkWidget *filesystem_tiles[LDTM_SPEC_LIMIT];
+    GtkWidget *filesystem_status[LDTM_SPEC_LIMIT];
     GtkWidget *build_button;
     GtkWidget *qualify_button;
     GtkWidget *verify_button;
@@ -248,7 +248,7 @@ static void set_filesystem_tile_status(LdtmApp *app, size_t index,
         "ldtm-fs-waiting", "ldtm-fs-success", "ldtm-fs-warning", "ldtm-fs-failure"
     };
     GtkStyleContext *context;
-    if (index >= LDTM_SPEC_COUNT || app->filesystem_tiles[index] == NULL ||
+    if (index >= ldtm_spec_count() || app->filesystem_tiles[index] == NULL ||
         app->filesystem_status[index] == NULL) return;
     gtk_label_set_text(GTK_LABEL(app->filesystem_status[index]), status);
     context = gtk_widget_get_style_context(app->filesystem_tiles[index]);
@@ -374,6 +374,7 @@ static void update_interaction_controls(LdtmApp *app)
     if (gtk_combo_box_get_active_iter(app->device_combo, &iter))
         gtk_tree_model_get(GTK_TREE_MODEL(app->device_store), &iter,
                            LDTM_DEVICE_COL_SAFE, &safe, -1);
+    safe=safe&&ldtm_spec_count()!=0u;
     gtk_widget_set_sensitive(app->build_button, idle && safe);
     gtk_widget_set_sensitive(app->qualify_button, idle && safe);
     gtk_widget_set_sensitive(app->verify_button, idle && safe);
@@ -491,7 +492,7 @@ static gboolean spawn_worker(LdtmApp *app, const char *operation,
                              const char *fingerprint)
 {
     gchar *self = g_file_read_link("/proc/self/exe", NULL);
-    gchar *argv[10];
+    gchar *argv[12];
     gint stdout_fd = -1, stderr_fd = -1;
     GError *error = NULL;
     guint arg = 0U;
@@ -507,6 +508,13 @@ static gboolean spawn_worker(LdtmApp *app, const char *operation,
             for (guint i = 0U; i < arg; ++i) g_free(argv[i]);
             return FALSE;
         }
+        char catalogue[65];
+        if(ldtm_catalogue_fingerprint(catalogue)!=0){
+            for(guint i=0;i<arg;++i)g_free(argv[i]);
+            return FALSE;
+        }
+        argv[arg++] = g_strdup("--catalogue");
+        argv[arg++] = g_strdup(catalogue);
         argv[arg++] = g_strdup("--confirmed");
         argv[arg++] = g_strdup(device);
         argv[arg++] = g_strdup("--fingerprint");
@@ -649,7 +657,7 @@ static void reset_filesystem_rows(LdtmApp *app)
                            LDTM_FS_COL_AVAILABILITY, availability,
                            LDTM_FS_COL_RESULT, "Waiting",
                            LDTM_FS_COL_DETAIL, detail, -1);
-        if (index < LDTM_SPEC_COUNT) {
+        if (index < ldtm_spec_count()) {
             char tile_detail[768];
             (void)snprintf(tile_detail, sizeof(tile_detail), "%s  •  %s  •  %s\n%s",
                            spec->label, size, ldtm_creator_display_name(spec), detail);
@@ -1262,11 +1270,11 @@ static void create_test_media_window(LdtmApp *app)
     gtk_style_context_add_class(gtk_widget_get_style_context(ready), "ldtm-ready-badge");
     gtk_box_pack_start(GTK_BOX(ready), make_label("Creators ready", NULL), FALSE, FALSE, 0);
     char layout_copy[96];
-    snprintf(layout_copy, sizeof(layout_copy), "0 / %u", LDTM_SPEC_COUNT);
+    snprintf(layout_copy, sizeof(layout_copy), "0 / %zu", ldtm_spec_count());
     app->readiness_summary = make_label(layout_copy, "ldtm-ready-count");
     gtk_box_pack_end(GTK_BOX(ready), app->readiness_summary, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(facts), ready, FALSE, FALSE, 0);
-    snprintf(layout_copy, sizeof(layout_copy), "%u layouts  •  200 MiB per data slot", LDTM_SPEC_COUNT);
+    snprintf(layout_copy, sizeof(layout_copy), "%zu layouts  •  200 MiB per data slot", ldtm_spec_count());
     gtk_box_pack_start(GTK_BOX(facts), make_label(layout_copy, "ldtm-layout-facts"), FALSE, FALSE, 0);
     gtk_box_pack_end(GTK_BOX(banner), facts, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(shell), hero, FALSE, FALSE, 0);
@@ -1306,7 +1314,7 @@ static void create_test_media_window(LdtmApp *app)
     gtk_widget_set_size_request(workflow, 236, -1);
     gtk_container_set_border_width(GTK_CONTAINER(workflow), 10U);
     gtk_box_pack_start(GTK_BOX(workflow), make_label("Test workflow", "ldtm-section-title"), FALSE, FALSE, 0);
-    snprintf(layout_copy, sizeof(layout_copy), "Erase disk and create %u layouts", LDTM_SPEC_COUNT);
+    snprintf(layout_copy, sizeof(layout_copy), "Erase disk and create %zu layouts", ldtm_spec_count());
     app->build_button = make_operation_button("edit-delete-symbolic", "1. Build test disk", layout_copy, "ldtm-operation-red");
     app->qualify_button = make_operation_button("applications-engineering-symbolic", "2. Qualify engines", "Defragment, Growth Defrag, verify", "ldtm-operation-cyan");
     app->verify_button = make_operation_button("emblem-ok-symbolic", "3. Verify files", "Read back retained test payloads", "ldtm-operation-purple");
@@ -1332,7 +1340,7 @@ static void create_test_media_window(LdtmApp *app)
     gtk_container_set_border_width(GTK_CONTAINER(results), 10U);
     GtkWidget *results_header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     gtk_box_pack_start(GTK_BOX(results_header), make_label("Filesystem results", "ldtm-section-title"), FALSE, FALSE, 0);
-    snprintf(layout_copy, sizeof(layout_copy), "%u waiting", LDTM_SPEC_COUNT);
+    snprintf(layout_copy, sizeof(layout_copy), "%zu waiting", ldtm_spec_count());
     app->result_summary = make_label(layout_copy, "ldtm-result-summary");
     gtk_label_set_ellipsize(GTK_LABEL(app->result_summary), PANGO_ELLIPSIZE_END);
     gtk_label_set_xalign(GTK_LABEL(app->result_summary), 1.0F);

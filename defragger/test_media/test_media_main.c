@@ -9,7 +9,7 @@
 static void usage(const char *program) {
     fprintf(stderr,
             "Usage: %s [--version]\n"
-            "       %s --worker prepare DEVICE --confirmed DEVICE --fingerprint SHA256\n"
+            "       %s --worker prepare DEVICE --catalogue SHA256 --confirmed DEVICE --fingerprint SHA256\n"
             "       %s --worker verify DEVICE\n"
             "       %s --worker qualify DEVICE\n",
             program, program, program, program);
@@ -21,10 +21,11 @@ int main(int argc, char **argv) {
         return 0;
     }
     if (argc >= 2 && strcmp(argv[1], "--worker") == 0) {
-        if (argc == 8 && strcmp(argv[2], "prepare") == 0 &&
-            strcmp(argv[4], "--confirmed") == 0 &&
-            strcmp(argv[6], "--fingerprint") == 0) {
-            return ldtm_worker_prepare(argv[3], argv[5], argv[7]);
+        if (argc == 10 && strcmp(argv[2], "prepare") == 0 &&
+            strcmp(argv[4], "--catalogue") == 0 &&
+            strcmp(argv[6], "--confirmed") == 0 &&
+            strcmp(argv[8], "--fingerprint") == 0) {
+            return ldtm_worker_prepare(argv[3], argv[7], argv[9], argv[5]);
         }
         if (argc == 4 && strcmp(argv[2], "verify") == 0) {
             return ldtm_worker_verify(argv[3]);
