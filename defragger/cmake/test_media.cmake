@@ -55,6 +55,26 @@ install(FILES packaging/io.github.defragmenter.TestMedia.desktop
         DESTINATION share/applications)
 
 if(BUILD_TESTING)
+    # Production discovery must accept arbitrary exported IDs, not a
+    # curated set of known formats. These providers exist only in tests.
+    add_library(defragmenter-catalogue-test-provider SHARED tests/mock_test_media_catalogue_provider.c)
+    add_library(defragmenter-catalogue-test-long-provider SHARED tests/mock_test_media_catalogue_provider.c)
+    foreach(provider defragmenter-catalogue-test-provider defragmenter-catalogue-test-long-provider)
+        target_include_directories(${provider} PRIVATE "${INFILTRATR_COMMON_DIR}/include")
+        target_compile_options(${provider} PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    endforeach()
+    target_compile_definitions(defragmenter-catalogue-test-long-provider PRIVATE
+        TEST_CATALOGUE_ID="a-very-long-future-native-provider-identifier-for-gpt")
+    add_executable(defragmenter-test-media-catalogue-test tests/test_test_media_catalogue.c)
+    target_compile_options(defragmenter-test-media-catalogue-test PRIVATE ${LD_WARNING_FLAGS})
+    target_link_libraries(defragmenter-test-media-catalogue-test PRIVATE
+        defragmenter-test-media-core defragmenter-common-v2-test-host)
+    add_test(NAME defragmenter-test-media-catalogue
+        COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_test_media_catalogue.sh"
+          "$<TARGET_FILE:defragmenter-test-media-catalogue-test>"
+          "$<TARGET_FILE:defragmenter-catalogue-test-provider>"
+          "$<TARGET_FILE:defragmenter-catalogue-test-long-provider>"
+          "$<TARGET_FILE:defragmenter-common-v2-test-provider>")
     # The standalone hosted integration runs this on its own disposable image.
     add_executable(defragmenter-test-media-raw-test tests/test_test_media_raw.c tests/test_media_catalogue_fixture.c)
     target_include_directories(defragmenter-test-media-raw-test PRIVATE

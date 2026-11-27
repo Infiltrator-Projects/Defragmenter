@@ -45,7 +45,7 @@ jobs:
             -R '^defragmenter-strict-common-v2-host$'
       - name: Verify generic corpus and application policy contracts
         run: |
-          ctest --test-dir defragger/build --output-on-failure -R '^defragmenter-test-media-(core|corpus-contract|install)$'
+          ctest --test-dir defragger/build --output-on-failure -R '^defragmenter-test-media-(core|corpus-contract|catalogue|install)$'
       - name: Verify actual Common V2 mapping presentation and desktop mutation policy
         run: |
           ctest --test-dir defragger/build --output-on-failure -R '^defragmenter-(cpp-runtime|desktop-policy|helper-policy)$'

@@ -18,6 +18,7 @@ static char labels[LDTM_SPEC_LIMIT][37]; /* GPT name: 36 UTF-16 code units */
 static size_t count;
 static pthread_once_t once=PTHREAD_ONCE_INIT;
 
+typedef struct {const char *id;IfsFsFormatProfileV2 profile;} ProfileQuery;
 static int profile_call(const IfsDefragHostV2 *unused,void *symbol,void *arg)
 {
     (void)unused;
@@ -25,10 +26,11 @@ static int profile_call(const IfsDefragHostV2 *unused,void *symbol,void *arg)
     _Static_assert(sizeof(entry)==sizeof(symbol),"Common V2 entry width");
     memcpy(&entry,&symbol,sizeof entry);
     const IfsFsModuleApiV2 *api=entry?entry():NULL;
-    if(!api||!ifs_fs_api_v2_valid(api,api->format_id)||
+    ProfileQuery *q=arg;
+    if(!api||!ifs_fs_api_v2_valid(api,q->id)||
        !(api->runtime_profiles&IFS_FS_PROFILE_HOSTED))return -1;
     const IfsFsFormatProfileOpsV2 *ops=(const void*)ifs_fs_group_v2(api,IFS_FS_GROUP_FORMAT_PROFILE);
-    IfsFsFormatProfileV2 *p=arg;
+    IfsFsFormatProfileV2 *p=&q->profile;
     return ops&&(ops->header.capabilities&IFS_FS_FORMAT_PROFILE_DEFAULT)&&
         ops->get_default&&ops->get_default(p)==IFS_FS_OK&&
         ifs_fs_format_profile_v2_valid(p)?0:-1;
@@ -62,8 +64,9 @@ static int collect(void *unused,const char *id,uint64_t caps,uint64_t groups)
     for(size_t j=0;j<count;j++)if(!strcmp(specs[j].label,labels[i]))return -1;
     LdtmFilesystemSpec s={.key=ids[i],.label=labels[i],.creator=LDTM_CREATOR_MANUAL,
         .note="Installed provider has no usable Common V2 format profile"};
-    IfsFsFormatProfileV2 p={.structure_bytes=sizeof p};
-    if(ifs_filesystem_module_call(id,filename,IFS_FS_COMMON_EXPORT_V2,profile_call,&p)==0){
+    ProfileQuery q={.id=id,.profile={.structure_bytes=sizeof(IfsFsFormatProfileV2)}};
+    if(ifs_filesystem_module_call(id,filename,IFS_FS_COMMON_EXPORT_V2,profile_call,&q)==0){
+        IfsFsFormatProfileV2 p=q.profile;
         /* Fixed application workload, variable provider geometry. Prefer 2
          * GiB, but obey the provider's minimum, recommendation and maximum.
          * MiB-aligned GPT slots must fit the exact advertised geometry. */
